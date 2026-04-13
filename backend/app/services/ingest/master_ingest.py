@@ -167,7 +167,7 @@ def _attach_provider(place: Place, match) -> None:
 
 
 def _http_fetch_wrapper(url: str):
-    try:
-        return fetch_html(url)
-    except Exception:
-        return None
+    # Delegate to the default fetcher built into grubhub_fetcher,
+    # which resolves the restaurant page URL → API URL → JSON.
+    from app.services.menu.fetchers.grubhub_fetcher import _default_fetcher
+    return _default_fetcher(url)

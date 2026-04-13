@@ -15,6 +15,13 @@ class DomainPolicy:
 _DEFAULT_POLICY = DomainPolicy()
 
 _DOMAIN_POLICIES: dict[str, DomainPolicy] = {
+    "grubhub.com": DomainPolicy(
+        max_attempts=3,
+        max_redirects=4,
+        backoff_seconds=2.0,
+        warm_host_first=True,
+        penalty_seconds=20.0,
+    ),
     "toasttab.com": DomainPolicy(
         max_attempts=2,
         max_redirects=4,

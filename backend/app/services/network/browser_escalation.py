@@ -3,8 +3,6 @@ from __future__ import annotations
 import logging
 from typing import Optional
 
-from playwright.sync_api import Error, TimeoutError, sync_playwright
-
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +40,12 @@ def fetch_with_browser(
     referer: Optional[str] = None,
 ) -> Optional[str]:
     if not url:
+        return None
+
+    try:
+        from playwright.sync_api import Error, TimeoutError, sync_playwright  # noqa: F401
+    except ImportError:
+        logger.debug("playwright_not_installed skipping browser escalation url=%s", url)
         return None
 
     try:

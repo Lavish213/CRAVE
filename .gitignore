@@ -28,3 +28,5 @@ build/
 
 # Misc
 *.lock
+# Grubhub local credentials (NEVER commit)
+.grubhub_env
