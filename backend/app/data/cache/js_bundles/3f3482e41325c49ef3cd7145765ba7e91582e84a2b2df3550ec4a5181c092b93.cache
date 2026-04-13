@@ -1,0 +1,842 @@
+var wt = Object.defineProperty, yt = Object.defineProperties;
+var vt = Object.getOwnPropertyDescriptors;
+var L = Object.getOwnPropertySymbols;
+var bt = Object.prototype.hasOwnProperty, Et = Object.prototype.propertyIsEnumerable;
+var I = (e, t, i) => t in e ? wt(e, t, { enumerable: !0, configurable: !0, writable: !0, value: i }) : e[t] = i, c = (e, t) => {
+  for (var i in t || (t = {}))
+    bt.call(t, i) && I(e, i, t[i]);
+  if (L)
+    for (var i of L(t))
+      Et.call(t, i) && I(e, i, t[i]);
+  return e;
+}, w = (e, t) => yt(e, vt(t));
+var l = (e, t, i) => I(e, typeof t != "symbol" ? t + "" : t, i);
+var h = (e, t, i) => new Promise((n, s) => {
+  var o = (d) => {
+    try {
+      r(i.next(d));
+    } catch (u) {
+      s(u);
+    }
+  }, a = (d) => {
+    try {
+      r(i.throw(d));
+    } catch (u) {
+      s(u);
+    }
+  }, r = (d) => d.done ? n(d.value) : Promise.resolve(d.value).then(o, a);
+  r((i = i.apply(e, t)).next());
+});
+const v = { strictlyNecessary: "C0001", performanceAndAnalytics: "C0002", functionality: "C0003", retargetingOrAdvertising: "C0004" }, H = "groups=", ct = ["BE", "BG", "CZ", "DK", "DE", "EE", "IE", "GR", "ES", "FR", "IT", "CY", "LV", "LT", "LU", "HU", "MT", "NL", "AT", "PL", "PT", "RO", "SI", "SK", "FI", "SE", "GB", "HR", "LI", "NO", "IS"], Tt = /* @__PURE__ */ new Map([["US", ["CA"]]]), Ct = ["US", "CA"], N = ct;
+class R {
+  constructor({ passSquareGeoToOneTrust: t = !1 } = {}) {
+    l(this, "oneTrustPreferencesSet", !1);
+    l(this, "strictlyNecessaryCookiesBlocked", !1);
+    l(this, "performanceAndAnalyticsCookiesBlocked", !1);
+    l(this, "functionalityCookiesBlocked", !1);
+    l(this, "retargetingOrAdvertisingCookiesBlocked", !1);
+    l(this, "locationDataHash", {});
+    l(this, "userLocatedInEU", !1);
+    l(this, "allCookiesAllowed", !1);
+    l(this, "optanonConsentCookieString", "");
+    l(this, "optanonAlertBoxClosedCookieString", "");
+    l(this, "squareGeoCookieString", "");
+    l(this, "squareGeoCookieCountry", "");
+    l(this, "squareGeoCookieRegion", "");
+    l(this, "squareGeoLocationHash", {});
+    l(this, "squareGeoInEu");
+    l(this, "artificialIntelligenceFunctionalityBlocked");
+    l(this, "groupConsentHash", {});
+    l(this, "defaultConsentRequired", !0);
+    l(this, "accessToDataPrivacyPreferencesRequired", !0);
+    l(this, "_passSquareGeoToOneTrust", !1);
+    this._init(t);
+  }
+  _init(t) {
+    this._setVars(t), this._setGeolocationData(), this._onUpdatedCookiePreferences(), this._setAIData();
+  }
+  _setVars(t) {
+    this.optanonConsentCookieString = this._getCookieValue("OptanonConsent"), this.optanonAlertBoxClosedCookieString = this._getCookieValue("OptanonAlertBoxClosed"), this.squareGeoCookieString = this._getCookieValue("squareGeo"), this._passSquareGeoToOneTrust = t;
+  }
+  get isUserLocatedInEU() {
+    return !!this.locationDataHash && this.checkIfUserLocatedInEU(this.locationDataHash.country);
+  }
+  get isSquareGeoInEu() {
+    if (this.squareGeoCookieCountry) return this.checkIfUserLocatedInEU(this.squareGeoCookieCountry);
+  }
+  get isartificialIntelligenceFunctionalityBlocked() {
+    const t = (Tt.get(this.squareGeoCookieCountry) || []).includes(this.squareGeoCookieRegion);
+    return this.isSquareGeoInEu || t || this.retargetingOrAdvertisingCookiesBlocked;
+  }
+  get isAccessToDataPrivacyPreferencesRequired() {
+    const t = this._getCountryInLocationDataHash();
+    return !!t && (Ct.includes(t) || N.includes(t));
+  }
+  get isDefaultConsentRequired() {
+    const t = this._getCountryInLocationDataHash();
+    return !t || N.includes(t);
+  }
+  _getCountryInLocationDataHash() {
+    return "country" in this.locationDataHash ? this.locationDataHash.country : "";
+  }
+  _dispatchUpdateEvent() {
+    const t = new CustomEvent("oneTrustPreferencesChangedEvent", this.groupConsentHash);
+    document.dispatchEvent(t);
+  }
+  _onUpdatedCookiePreferences() {
+    this._oneTrustGroupChoicesSet() ? this._buildHashOfGroupConsentChoices() : this._buildHashOfGroupConsentFromActiveGroups(), Object.keys(this.groupConsentHash).length > 0 && (this._setConsentChoices(), this._dispatchUpdateEvent());
+  }
+  checkIfUserLocatedInEU(t) {
+    const i = t || "";
+    return ct.includes(i);
+  }
+  _setGeolocationData() {
+    var t;
+    this.squareGeoCookieString.length >= 2 && this.squareGeoCookieString.length <= 6 ? (this._parseSquareGeoCookieForLocationData(), this.squareGeoInEu = this.isSquareGeoInEu, this.locationDataHash = this.squareGeoLocationHash, this.userLocatedInEU = this.squareGeoInEu, this.accessToDataPrivacyPreferencesRequired = this.isAccessToDataPrivacyPreferencesRequired, this.defaultConsentRequired = this.isDefaultConsentRequired, this._passSquareGeoToOneTrust && this.squareGeoCookieCountry && (globalThis.OneTrust = globalThis.OneTrust || { geolocationResponse: { stateCode: this.squareGeoCookieRegion, countryCode: this.squareGeoCookieCountry } })) : globalThis.OneTrust && (this.locationDataHash = ((t = OneTrust.getGeolocationData) == null ? void 0 : t.call(OneTrust)) || {}, this.userLocatedInEU = this.isUserLocatedInEU, this.accessToDataPrivacyPreferencesRequired = this.isAccessToDataPrivacyPreferencesRequired, this.defaultConsentRequired = this.isDefaultConsentRequired);
+  }
+  _setAIData() {
+    this.artificialIntelligenceFunctionalityBlocked = this.isartificialIntelligenceFunctionalityBlocked;
+  }
+  _setConsentChoices() {
+    this.optanonAlertBoxClosedCookieString.length > 0 && (this.oneTrustPreferencesSet = !0), Object.values(this.groupConsentHash).includes("0") ? this.allCookiesAllowed = !1 : Object.values(this.groupConsentHash).every((t) => t === "1") && Object.keys(this.groupConsentHash).length === Object.keys(v).length && (this.allCookiesAllowed = !0), this.groupConsentHash[v.strictlyNecessary] !== "1" && (this.strictlyNecessaryCookiesBlocked = !0), this.groupConsentHash[v.performanceAndAnalytics] !== "1" && (this.performanceAndAnalyticsCookiesBlocked = !0), this.groupConsentHash[v.functionality] !== "1" && (this.functionalityCookiesBlocked = !0), this.groupConsentHash[v.retargetingOrAdvertising] !== "1" && (this.retargetingOrAdvertisingCookiesBlocked = !0);
+  }
+  _buildHashOfGroupConsentChoices() {
+    const t = this.optanonConsentCookieString.split("&").find((n) => n.includes(H));
+    if (!t) throw new Error("No group cookie data string");
+    const i = t.split("=")[1].split(",");
+    return this.groupConsentHash = i.reduce((n, s) => {
+      const o = s.split(":");
+      return n[o[0]] = o[1], n;
+    }, this.groupConsentHash), this.groupConsentHash;
+  }
+  _buildHashOfGroupConsentFromActiveGroups() {
+    (globalThis.OnetrustActiveGroups || "").split(",").forEach((t) => {
+      t !== "" && (this.groupConsentHash[t] = "1");
+    });
+  }
+  _getCookieValue(t) {
+    if (typeof document == "undefined") return "";
+    const i = document.cookie ? document.cookie.split("; ") : [];
+    for (const n of i) {
+      const s = n.split("=");
+      let o = s.slice(1).join("=");
+      o[0] === '"' && (o = o.slice(1, -1));
+      try {
+        if (s[0] === t) return decodeURIComponent(o);
+      } catch (a) {
+        console.log(a);
+      }
+    }
+    return "";
+  }
+  _parseSquareGeoCookieForLocationData() {
+    const t = this.squareGeoCookieString.split("-");
+    this.squareGeoCookieCountry = t[0] || "", this.squareGeoCookieRegion = t[1] || "", this.squareGeoLocationHash = { country: t[0], state: t[1] };
+  }
+  _oneTrustGroupChoicesSet() {
+    return this.optanonConsentCookieString.includes(H);
+  }
+}
+const b = /* @__PURE__ */ new Map();
+function T(e) {
+  if (b.has(e.id)) return b.get(e.id);
+  const t = document.createElement("script");
+  for (const [i, n] of Object.entries(e)) n && t.setAttribute(i, n);
+  return b.set(e.id, new Promise((i, n) => {
+    t.onload = () => i(void 0), t.onerror = (s, o, a, r, d) => {
+      var f;
+      var u;
+      u = e.id, b.delete(u), (f = document.getElementById(u)) == null || f.remove(), n(new Error(`${e.src} Unknown error occurred - ${d}`));
+    };
+  })), document.head.appendChild(t), b.get(e.id);
+}
+const _ = "sq:oneTrustInitialized", x = "sq:oneTrustChanged", qt = "C0001", M = "C0002", $ = "C0003", j = "C0004", B = ".toggle-one-trust-prefs";
+class _t {
+  constructor(t) {
+    this.initialized = !1, this.trackingPermissions = { analyticsTrackingEnabled: !1, functionalityTrackingEnabled: !1, advertisingTrackingEnabled: !1 }, this.scriptSrc = t.one_trust_script_src, this.domainScript = t.one_trust_data_domain_script, this.addOptAnonWrapper(), this.config = new R({ passSquareGeoToOneTrust: !0 }), this.config.allCookiesAllowed || this.config.oneTrustPreferencesSet ? (this.init(), this.dispatchInitialization()) : this.config.squareGeoInEu === void 0 || this.config.defaultConsentRequired || (this.init(), this.dispatchInitialization()), this.addScript();
+  }
+  init() {
+    this.config = new R({ passSquareGeoToOneTrust: !0 }), this.bindOnClickEvent(), this.trackingPermissions = { analyticsTrackingEnabled: this.cookieGroupEnabled(M), functionalityTrackingEnabled: this.cookieGroupEnabled($), advertisingTrackingEnabled: this.cookieGroupEnabled(j), defaultConsentRequired: this.config.defaultConsentRequired, accessToDataPrivacyPreferencesRequired: this.config.accessToDataPrivacyPreferencesRequired, isUserLocatedInEU: this.config.userLocatedInEU }, this.trackingPermissions.consentGroup = this.getOneTrustConsentGroupString();
+  }
+  addScript() {
+    const t = { id: "one-trust-integration", src: this.scriptSrc, charset: "utf8", "data-domain-script": this.domainScript };
+    this.config.defaultConsentRequired ? T(t) : this.config.accessToDataPrivacyPreferencesRequired && (this.dispatchInitialization(), t.async = "true", T(t));
+  }
+  addOptAnonWrapper() {
+    window.OptanonWrapper = () => {
+      this.previousState = c({}, this.trackingPermissions), this.init();
+      const { defaultConsentRequired: t, oneTrustPreferencesSet: i } = this.config;
+      (t && i || !t) && this.dispatchInitialization(), window.OneTrust.OnConsentChanged(() => {
+        const n = Object.entries(this.trackingPermissions).some(([s, o]) => this.previousState[s] !== o);
+        document.dispatchEvent(new CustomEvent(x, { detail: c({ changeDetected: this.initialized && n }, this.trackingPermissions) }));
+      });
+    };
+  }
+  onclick(t) {
+    t.target && t.target.closest(B) && (t.preventDefault(), window.OneTrust.ToggleInfoDisplay());
+  }
+  bindOnClickEvent() {
+    document.querySelector(B) && document.removeEventListener("click", this.onclick), document.addEventListener("click", this.onclick);
+  }
+  cookieGroupEnabled(t) {
+    return !!this.config.allCookiesAllowed || (Object.keys(this.config.groupConsentHash).length > 0 ? this.config.groupConsentHash[t] === "1" : !this.config.defaultConsentRequired);
+  }
+  dispatchInitialization() {
+    this.initialized = !0, document.dispatchEvent(new CustomEvent(_, { detail: c({}, this.trackingPermissions) }));
+  }
+  getOneTrustConsentGroupString() {
+    if (!this.trackingPermissions) return "no consent data";
+    let t = qt;
+    return this.trackingPermissions.analyticsTrackingEnabled && (t += `,${M}`), this.trackingPermissions.functionalityTrackingEnabled && (t += `,${$}`), this.trackingPermissions.advertisingTrackingEnabled && (t += `,${j}`), t;
+  }
+}
+/*! js-cookie v3.0.5 | MIT */
+function q(e) {
+  for (var t = 1; t < arguments.length; t++) {
+    var i = arguments[t];
+    for (var n in i) e[n] = i[n];
+  }
+  return e;
+}
+var k = function e(t, i) {
+  function n(s, o, a) {
+    if (typeof document != "undefined") {
+      typeof (a = q({}, i, a)).expires == "number" && (a.expires = new Date(Date.now() + 864e5 * a.expires)), a.expires && (a.expires = a.expires.toUTCString()), s = encodeURIComponent(s).replace(/%(2[346B]|5E|60|7C)/g, decodeURIComponent).replace(/[()]/g, escape);
+      var r = "";
+      for (var d in a) a[d] && (r += "; " + d, a[d] !== !0 && (r += "=" + a[d].split(";")[0]));
+      return document.cookie = s + "=" + t.write(o, s) + r;
+    }
+  }
+  return Object.create({ set: n, get: function(s) {
+    if (typeof document != "undefined" && (!arguments.length || s)) {
+      for (var o = document.cookie ? document.cookie.split("; ") : [], a = {}, r = 0; r < o.length; r++) {
+        var d = o[r].split("="), u = d.slice(1).join("=");
+        try {
+          var f = decodeURIComponent(d[0]);
+          if (a[f] = t.read(u, f), s === f) break;
+        } catch (ie) {
+        }
+      }
+      return s ? a[s] : a;
+    }
+  }, remove: function(s, o) {
+    n(s, "", q({}, o, { expires: -1 }));
+  }, withAttributes: function(s) {
+    return e(this.converter, q({}, this.attributes, s));
+  }, withConverter: function(s) {
+    return e(q({}, this.converter, s), this.attributes);
+  } }, { attributes: { value: Object.freeze(i) }, converter: { value: Object.freeze(t) } });
+}({ read: function(e) {
+  return e[0] === '"' && (e = e.slice(1, -1)), e.replace(/(%[\dA-F]{2})+/gi, decodeURIComponent);
+}, write: function(e) {
+  return encodeURIComponent(e).replace(/%(2[346BF]|3[AC-F]|40|5[BDE]|60|7[BCD])/g, decodeURIComponent);
+} }, { path: "/" });
+class C {
+  constructor() {
+    this.flushed = !1, this.queue = [];
+  }
+  size() {
+    return this.queue.length;
+  }
+  add(t) {
+    this.flushed ? t() : this.queue.push(t);
+  }
+  flush() {
+    for (const t of this.queue) t();
+    this.queue = [], this.flushed = !0;
+  }
+}
+const dt = { country_code: "US", lang_code: "en", locale: "en-US", env: "unknown", country_default_language: "en", default_country: "US", default_language: "en", supported_countries: ["US"], available_languages: ["en"], service_name: "pw-tracking" }, lt = "content", S = (e) => {
+  try {
+    const [t, i] = ((n) => {
+      const s = document.querySelector(`meta[name='${n}']`);
+      return s === null ? [new Error(`meta tag with name ${n} does not exist`), null] : [null, s.getAttribute(lt) || ""];
+    })(e);
+    return t !== null ? [t, null] : [null, JSON.parse(i)];
+  } catch (t) {
+    return [t, null];
+  }
+}, F = (e) => {
+  const t = document.querySelectorAll(`meta[name^='${e}']`), i = {};
+  for (const n of t) {
+    const s = n.getAttribute("name"), o = n.getAttribute(lt);
+    try {
+      i[s] = JSON.parse(o || "");
+    } catch (a) {
+      i[s] = o;
+    }
+  }
+  return i;
+};
+var St = Object.defineProperty, W = Object.getOwnPropertySymbols, It = Object.prototype.hasOwnProperty, Pt = Object.prototype.propertyIsEnumerable, J = (e, t, i) => t in e ? St(e, t, { enumerable: !0, configurable: !0, writable: !0, value: i }) : e[t] = i;
+let g = dt;
+const [Ot, At] = S("sq:environment");
+Ot === null ? g = ((e, t) => {
+  for (var i in t || (t = {})) It.call(t, i) && J(e, i, t[i]);
+  if (W) for (var i of W(t)) Pt.call(t, i) && J(e, i, t[i]);
+  return e;
+})({ service_name: dt.service_name }, At) : console.warn("Invalid sq:environment meta tag detected! Using default environment configuration"), Object.defineProperty(g, "website_host", { get() {
+  return this.website_host_override ? this.website_host_override : this.env === "production" ? "https://squareup.com" : this.env === "staging" ? "https://squareupstaging.com" : "";
+} });
+const U = "sq:cdpTrackerInitialized", z = "sq:cdpTrackerFailedInitialization";
+class Dt {
+  constructor(t) {
+    this.optimizelyMetadata = {}, this.experimentationMetadata = {}, this.config = t, this.queue = new C(), this.pageSessionToken = crypto.randomUUID();
+  }
+  track({ eventName: t, eventProps: i, options: n }) {
+    const s = c(c({}, this.defaultProperties()), i);
+    this.queue.add(() => {
+      var o;
+      this.client.trackStrict({ eventName: t, eventProps: w(c(c(c({}, this.optimizelyMetadata), this.experimentationMetadata), s), { onetrust_active_group: (o = this.trackingPermissions) == null ? void 0 : o.consentGroup }), options: w(c({}, n), { page: { session_token: this.pageSessionToken } }) });
+    });
+  }
+  identify({ entityId: t, entityType: i, traits: n, options: s }, o = !1) {
+    const a = c(c({}, this.defaultProperties()), n), r = () => {
+      var d;
+      this.client.identifyStrict({ entityId: t, entityType: i, traits: w(c(c(c({}, this.optimizelyMetadata), this.experimentationMetadata), a), { onetrust_active_group: (d = this.trackingPermissions) == null ? void 0 : d.consentGroup }), options: w(c({}, s), { page: { session_token: this.pageSessionToken } }) });
+    };
+    o ? r() : this.queue.add(r);
+  }
+  page({ pageCategory: t, pageName: i, eventProps: n, options: s }) {
+    const o = c(c({}, this.defaultProperties()), n);
+    this.queue.add(() => {
+      var a;
+      this.client.pageStrict({ pageCategory: t, pageName: i, eventProps: w(c(c(c({}, this.optimizelyMetadata), this.experimentationMetadata), o), { onetrust_active_group: (a = this.trackingPermissions) == null ? void 0 : a.consentGroup }), options: w(c({}, s), { page: { session_token: this.pageSessionToken } }) });
+    });
+  }
+  init(t) {
+    return h(this, null, function* () {
+      if (!this.config.cdp) return void document.dispatchEvent(new CustomEvent(z, { detail: { reason: "config" } }));
+      if (t.isUserLocatedInEU && t.analyticsTrackingEnabled === !1) return;
+      this.trackingPermissions = t;
+      try {
+        this.client = yield this.buildCDPClient();
+      } catch (o) {
+        throw document.dispatchEvent(new CustomEvent(z, { detail: { reason: "script_load" } })), o;
+      }
+      const i = this.client.user;
+      this.entityType = this.config.cdp_entity_type || i.entityType || "anonymous_visitor", this.entityId = this.config.cdp_entity_id || i.entityId || k.get("_savt") || "", this.optimizelyMetadata = F("optly_"), this.experimentationMetadata = F("exp_");
+      const n = {}, s = k.get("optimizelyEndUserId");
+      if (s && (n.optimizely_visitor_id = JSON.stringify([s, navigator.userAgent])), this.entityType === "anonymous_visitor" && !this.config.cdp_entity_id) try {
+        if (!g.website_host_override) {
+          const o = `${g.website_host || ""}/mp/status`, a = yield window.fetch(o);
+          if (a.status >= 400) throw new Error("failed to fetch /mp/status");
+          const { merchant_token: r } = yield a.json();
+          r && (this.entityType = "merchant", this.entityId = r);
+        }
+      } catch (o) {
+      }
+      this.entityId !== void 0 && this.entityType !== void 0 && this.identify({ entityId: this.entityId, entityType: this.entityType, traits: n }, !0), this.queue.flush(), document.dispatchEvent(new CustomEvent(U, { detail: { entityId: this.entityId, entityType: this.entityType, AVT: k.get("_savt") } }));
+    });
+  }
+  defaultProperties() {
+    return w(c(c(c({}, this.windowData()), this.geoData()), this.performanceData()), { time_to_event: performance.now() });
+  }
+  windowData() {
+    return { device_pixel_ratio: window.devicePixelRatio, window_height: window.innerHeight, window_width: window.innerWidth };
+  }
+  geoData() {
+    return { square_geo: k.get("squareGeo") || "" };
+  }
+  performanceData() {
+    if (this.cachedPerformanceData) return this.cachedPerformanceData;
+    const t = window.performance.getEntriesByName(window.location.toString()).find((o) => {
+      if (o.entryType === "navigation") return o;
+    });
+    if (t === void 0) return;
+    const { responseEnd: i, domInteractive: n, startTime: s } = t;
+    return this.cachedPerformanceData = { time_to_response_end: i - s, time_to_dom_interactive: n - s }, this.cachedPerformanceData;
+  }
+  buildCDPClient() {
+    return h(this, null, function* () {
+      const { CDP: t } = yield import("./cdp.es.js"), i = this.config.cdp_batch_size || 1, n = g.env, s = n === "production" && location.hostname === "squareup.com" || n === "staging" && location.hostname === "squareupstaging.com";
+      return new t({ apiKey: this.config.cdp || "", application: { name: g.service_name }, batchSize: i, environment: n, useSameOrigin: s });
+    });
+  }
+}
+const zt = g.env === "development" || g.env === "staging" || !!globalThis.__CI__, P = (e, t) => {
+  zt && console[e](...t);
+}, m = { log(...e) {
+  P("log", e);
+}, warn(...e) {
+  P("warn", e);
+}, error(...e) {
+  P("error", e);
+} }, y = new class {
+  constructor() {
+    this.initialized = !1;
+  }
+  captureException(e) {
+    return h(this, null, function* () {
+      this.initialized || (yield this.init()), yield this.client.captureException(e);
+    });
+  }
+  captureMessage(e) {
+    return h(this, null, function* () {
+      this.initialized || (yield this.init()), yield this.client.captureMessage(e), m.warn(e);
+    });
+  }
+  init() {
+    return h(this, null, function* () {
+      const { init: e, globalHandlersIntegration: t } = yield import("./sentry.es.js");
+      this.client = e({ dsn: "https://d78302f5cf64a9e454e64c704f6ba3de@o160250.ingest.us.sentry.io/4508421901647872", environment: g.env, release: window.__VERSION__, integrations: [t({ onerror: !1, onunhandledrejection: !1 })] }), this.initialized = !0;
+    });
+  }
+}(), Gt = new class {
+  constructor() {
+    this.flags = {}, this.initialized = !1;
+  }
+  get(e) {
+    if (!this.initialized) {
+      const i = this.init();
+      if (i !== null) return [i, null];
+    }
+    const t = this.flags[e];
+    return t === void 0 ? (m.warn(`Flag ${e} does not exist in sq:flags. Make sure it has been added to flag_config. Returning null instead.`), [new Error(`Flag ${e} does not exist in sq:flags. Make sure it has been added to flag_config. Returning null instead.`), null]) : [null, t];
+  }
+  init() {
+    const [e, t] = S("sq:flags");
+    return e !== null ? new Error("sq:flags meta tag cannot be found or has invalid content.") : (this.flags = t, this.initialized = !0, null);
+  }
+}(), xt = (e) => {
+  const [t, i] = Gt.get(e);
+  return t !== null ? (m.warn(t), !1) : i !== null && Array.isArray(i) ? i.length !== 0 && (i[0] === "*" || new RegExp(`^/[a-z]{2}/[a-z]{2}/(?:${i.join("|")})/?$`).test(window.location.pathname) || i.includes(window.location.pathname)) : (m.warn(new Error(`Feature flag: ${e} is not in the correct format`)), !1);
+}, ht = "sq:gaTrackerInitialized", Ut = new Event(ht);
+class E {
+  constructor(t) {
+    var i, n;
+    this.queue = new C(), this.trackerIds = (i = t.google_universal) != null ? i : [], this.contentGroups = (n = t.content_groups) != null ? n : {};
+  }
+  init(t) {
+    return h(this, null, function* () {
+      if (t.advertisingTrackingEnabled) {
+        window.ga = window.ga || ((...i) => (ga.q = ga.q || []).push(i)), window.ga.l = Date.now();
+        for (const i of this.trackerIds) {
+          const n = E.trackerNameFrom(i), s = k.get("_savt"), o = k.get("_ga");
+          ga("create", i, "auto", n, { transport: "beacon" }), ga(`${n}.set`, "userId", s), ga(`${n}.set`, "dimension9", o), ga(`${n}.set`, "dimension10", s);
+          for (const [a, r] of Object.entries(this.contentGroups)) ga(`${n}.set`, `contentGroup${a}`, r);
+        }
+        yield T({ id: "googleAnalytics", src: "https://www.google-analytics.com/analytics.js", async: "true" }), this.queue.flush(), document.dispatchEvent(Ut);
+      }
+    });
+  }
+  track(t) {
+    this.queue.add(() => {
+      for (const i of this.trackerIds) {
+        const n = E.trackerNameFrom(i);
+        ga(`${n}.send`, "event", { eventCategory: t.category, eventAction: t.action, eventLabel: t.label, eventValue: t.value, fieldsObject: t.fields });
+      }
+    });
+  }
+  page(t) {
+    this.trackerIds.forEach((i) => {
+      const n = E.trackerNameFrom(i);
+      ga(`${n}.set`, "page", t), ga(`${n}.send`, "pageview");
+    });
+  }
+  identify() {
+  }
+  static trackerNameFrom(t) {
+    return `tracker${t.replaceAll(/\W+/g, "")}`;
+  }
+}
+const V = "tealium-f.squarecdn.com", ut = "sq:gtmTrackerInitialized", Lt = new Event(ut);
+class Ht {
+  constructor() {
+    this.options = {}, this.queue = new C();
+    const [, t] = S("sq:gtm");
+    t === null ? (this.enabled = !0, this.domain = V, this.delay = 0) : (this.config = t, this.enabled = !!this.config.enabled, this.options = this.config.options || {}, this.domain = this.config.domain || V, this.delay = this.config.delay || 0), this.baseUrl = `https://${this.domain}/gtm-container.html`, this.useMpStatusEndpointForMerchantToken = !1, this.options.useMpStatusEndpointForMerchantToken !== void 0 && (delete this.options.useMpStatusEndpointForMerchantToken, this.useMpStatusEndpointForMerchantToken = !0);
+  }
+  init(t) {
+    return h(this, null, function* () {
+      if (this.trackingPermissions = t, !t.advertisingTrackingEnabled) return;
+      const i = () => h(this, null, function* () {
+        yield this.enableGTMTrackerPromise = this.enableGTMTracker(), window.removeEventListener("load", i);
+      });
+      window.addEventListener("load", i), yield Promise.resolve();
+    });
+  }
+  track(t) {
+    this.queue.add(() => {
+      const i = c({}, t);
+      let n = document.querySelector("iframe.gtm-tracker");
+      n && document.body.removeChild(n), n = document.createElement("iframe"), n.height = "0", n.width = "0", n.src = this.iframeUrl(i), n.className = "gtm-tracker", n.referrerPolicy = "no-referrer-when-downgrade", n.style.border = "0", n.style.display = "none", n.style.visibility = "hidden", i.onload && n.addEventListener("load", i.onload), document.body.appendChild(n);
+    });
+  }
+  page() {
+  }
+  identify() {
+  }
+  get trackingUrl() {
+    return this.useMpStatusEndpointForMerchantToken ? "/mp/status" : `${g ? g.website_host : ""}/tracking.json`;
+  }
+  getVisitorToken() {
+    return h(this, null, function* () {
+      try {
+        const t = yield window.fetch(this.trackingUrl);
+        if (t.status >= 400) return [new Error("bad request to the tracking url"), null];
+        const i = yield t.json();
+        return this.useMpStatusEndpointForMerchantToken ? [null, i.merchant_token] : [null, i.visitor_token];
+      } catch (t) {
+        return [t, null];
+      }
+    });
+  }
+  iframeUrl(t) {
+    const i = c({}, t);
+    i.country_code || (i.country_code = g.country_code), i.page_url || (i.page_url = window.location.href);
+    const n = Object.fromEntries(new URLSearchParams(window.location.search).entries());
+    n.gclid && (i.gclid || (i.gclid = n.gclid)), n.msclkid && (i.msclkid || (i.msclkid = n.msclkid)), n.fbclid && (i.fbclid || (i.fbclid = n.fbclid)), i.env || (i.env = g.env === "production" ? "prod" : "qa"), i.referrer = document.referrer;
+    const s = k.get("_savt");
+    s !== void 0 && (i.avt = s), this.visitorToken && (i.user_token = this.visitorToken);
+    const o = new URLSearchParams(i).toString(), a = btoa(o);
+    return `${this.baseUrl}?${o}#${a}`;
+  }
+  enableGTMTracker() {
+    return h(this, null, function* () {
+      if (this.enabled) {
+        const [, n] = yield this.getVisitorToken();
+        n !== null && (this.visitorToken = n);
+      }
+      this.queue.flush(), document.dispatchEvent(Lt);
+      const t = c({}, this.options), i = t.skipTrack;
+      t.skipTrack !== void 0 && delete t.skipTrack, i || (this.delay > 0 ? window.setTimeout(() => {
+        this.track(t);
+      }, this.delay) : this.track(t));
+    });
+  }
+}
+const O = { a8: 90, unit_token: 90, _saasquatch: 365, rsCode: 365, incomingurl: 365 }, pt = ["_saasquatch", "rsCode"], gt = (e) => `${e}_mktg_affiliate_id`, Nt = new Event("sq:marketingCookiesSet"), Rt = /[^.]*\.([^.]*|..\...|...\...)$/, Mt = /^[\d.]+$/, A = (e) => {
+  const t = Rt.exec(e);
+  return !Mt.exec(e) && t ? `.${t[0]}` : "";
+}, kt = "sq:martechJsTrackerInitialized", $t = new Event(kt);
+class jt {
+  constructor() {
+    this.queue = new C(), this.srcUrl = `https://martech-${g.env}-c.squarecdn.com/martech.js`;
+    const t = {};
+    pt.forEach((i) => {
+      const n = gt(i), s = k.get(n);
+      s && (t[n] = s);
+    }), window.MARTECH_OPTIONS = window.MARTECH_OPTIONS || {}, window.MARTECH_OPTIONS.defaultPageLoadProps = c(c({}, window.MARTECH_OPTIONS.defaultPageLoadProps), t);
+  }
+  init(t) {
+    return h(this, null, function* () {
+      if (this.trackingPermissions = t, !this.trackingPermissions.advertisingTrackingEnabled) return;
+      const i = () => h(this, null, function* () {
+        yield this.scriptPromise = this.insertScript(), window.removeEventListener("load", i);
+      });
+      window.addEventListener("load", i), yield Promise.resolve();
+    });
+  }
+  track(t) {
+    this.queue.add(() => {
+      window.martech && window.martech.track && window.martech.track(t);
+    });
+  }
+  page() {
+  }
+  identify() {
+  }
+  insertScript() {
+    return h(this, null, function* () {
+      try {
+        yield T({ id: "martech-script-tag", src: this.srcUrl, async: "true" }), document.dispatchEvent($t), this.queue.flush();
+      } catch (t) {
+        m.warn("Error loading martech.js script:", t);
+      }
+    });
+  }
+}
+const mt = "sq:optimizelyWebTrackerInitialized", Bt = new Event(mt);
+class Ft {
+  constructor(t) {
+    this.queue = new C(), t.optimizely !== void 0 && (this.srcUrl = `https://xms-production-f.squarecdn.com/optimizelyjs/${t.optimizely}.js`);
+  }
+  init(t) {
+    return h(this, null, function* () {
+      if (this.trackingPermissions = t, this.trackingPermissions.functionalityTrackingEnabled && this.srcUrl && xt("optimizely_web_injection_allow_list")) try {
+        document.getElementById("xms-optimizely-snippet-injection") === null && (yield T({ id: "xms-optimizely-snippet-injection", src: this.srcUrl, async: "true" })), document.dispatchEvent(Bt), this.queue.flush();
+      } catch (i) {
+        m.warn("Error loading Optimizely Web script:", i);
+      }
+    });
+  }
+  track(t) {
+    this.queue.add(() => {
+      window.optimizely && window.optimizely.push && window.optimizely.push(t);
+    });
+  }
+  identify() {
+  }
+  page(t) {
+    this.queue.add(() => {
+      window.optimizely && window.optimizely.push && window.optimizely.push(t);
+    });
+  }
+}
+class Wt {
+  constructor(t) {
+    this.trackers = t;
+  }
+  start(t) {
+    this.trackers.cdp.page({ pageCategory: "", eventProps: {} });
+    const i = window.location.pathname + window.location.search;
+    t.advertisingTrackingEnabled && this.trackers.googleAnalytics.page(i), t.functionalityTrackingEnabled && this.trackers.optimizelyWeb.page({ type: "page", pageName: i });
+  }
+  stop() {
+  }
+}
+const Jt = [0.25, 0.5, 0.75, 1];
+class Vt {
+  constructor(t) {
+    this.lastTrackedDepth = 0, this.trackers = t, this.scrollHandler = this.onScroll.bind(this);
+  }
+  start() {
+    document.addEventListener("scroll", this.scrollHandler);
+  }
+  stop() {
+    document.removeEventListener("scroll", this.scrollHandler);
+  }
+  onScroll() {
+    const t = document.documentElement.scrollHeight - window.innerHeight, i = window.scrollY / t, n = Jt.findLast((s) => i >= s);
+    !n || n <= this.lastTrackedDepth || (this.emitScrollDepthEvent(n), this.trackReachedScrolledDepth(n), this.lastTrackedDepth = n);
+  }
+  emitScrollDepthEvent(t) {
+    const i = new CustomEvent("sq:scrollDepth", { detail: { scrollDepth: 100 * t + "%" } });
+    document.dispatchEvent(i);
+  }
+  trackReachedScrolledDepth(t) {
+    const i = 100 * t, n = `${i}%`;
+    this.trackers.googleAnalytics.track({ category: `Scroll Depth ${n}`, action: n }), this.trackers.cdp.track({ eventName: "Scroll Page", eventProps: { scrollDepth: i, pageTitle: document.title } });
+  }
+}
+const Qt = (e) => {
+  var t, i, n;
+  if (e.parentNode === null) return null;
+  const s = e.parentNode, o = s.closest("[data-tracking-parent-id]");
+  return o !== null ? (t = o.dataset.trackingParentId) != null ? t : null : (n = (i = s.closest("[id]")) == null ? void 0 : i.getAttribute("id")) != null ? n : null;
+}, Kt = (e) => (e.textContent || "").trim().replaceAll(/\s\s+/g, " "), Yt = (e, t) => {
+  const i = { link_id: "linkId", link_parent_id: "linkParentId", link_title: "linkTitle", link_text: "linkText" }, n = {};
+  for (const s of Object.keys(e)) {
+    const o = e[s], a = i[s];
+    o && o.length > 0 && (n[a] = o);
+  }
+  return n.linkUrl = t.includes("http") ? t : `${window.location.origin}${t}`, n;
+};
+class Zt {
+  constructor(t) {
+    this.trackers = t, this.trackLinkImpl = this.trackLink.bind(this);
+  }
+  start() {
+    document.addEventListener("click", this.trackLinkImpl);
+  }
+  stop() {
+    document.removeEventListener("click", this.trackLinkImpl);
+  }
+  trackLink(t) {
+    const i = ((a) => {
+      let r;
+      if (!(a.target && a.target instanceof Element && a.target.closest('a[href]:not([href=""])') !== null)) return;
+      r = a.target, r.hasAttribute("href") || (r = r.closest("[href]"));
+      const d = r.getAttribute("href") || "", u = { link_id: r.getAttribute("id"), link_parent_id: Qt(r), link_title: r.getAttribute("title"), link_text: Kt(r) };
+      if (!u.link_id && !u.link_parent_id) {
+        const f = Array.isArray(r) ? r[0] : r;
+        m.log("Sq.Tracking.trackLink(): No ID or parent ID associated with link:", f);
+      }
+      return { data: u, cdpProperties: Yt(u, d), href: d };
+    })(t);
+    if (!i) return;
+    const { data: n, cdpProperties: s, href: o } = i;
+    this.trackers.googleAnalytics.track({ action: o, category: "Link", label: JSON.stringify(n) }), this.trackers.cdp.track({ eventName: "Click Link", eventProps: s });
+  }
+}
+const Q = ["load", "click", "keypress", "touchstart", "mousemove", "mousedown", "scroll"];
+class Xt {
+  constructor(t, i) {
+    this.shouldTrackNextHeartbeat = !1, this.trackers = t, this.options = i, this.trackNextHeartbeat = this.trackNextHeartbeat.bind(this);
+  }
+  start() {
+    const { intervalMs: t, requireHttps: i = !1 } = this.options;
+    t <= 0 || i && !/https:\/\//.test(window.location.toString()) || (Q.forEach((n) => document.addEventListener(n, this.trackNextHeartbeat, !0)), this.intervalId = window.setInterval(this.trackHeartbeatIfStillActive.bind(this), t));
+  }
+  stop() {
+    Q.forEach((t) => document.removeEventListener(t, this.trackNextHeartbeat, !0)), window.clearInterval(this.intervalId);
+  }
+  trackHeartbeatIfStillActive() {
+    this.shouldTrackNextHeartbeat && (this.shouldTrackNextHeartbeat = !1, this.trackers.cdp.track({ eventName: "Heartbeat", options: { integrations: { all: !1, snowflake: !0 } } }));
+  }
+  trackNextHeartbeat() {
+    this.shouldTrackNextHeartbeat = !0;
+  }
+}
+const K = "_sqxp";
+class te {
+  constructor(t) {
+    this.trackers = t;
+  }
+  start() {
+    const t = localStorage.getItem(K);
+    if (!t) return;
+    const i = { integrations: { all: !0, optimizely: !1 } };
+    let n;
+    try {
+      n = JSON.parse(t);
+    } catch (s) {
+      return void y.captureException(new Error(`Failed to parse the experiment JSON from localStorage: ${s.message}`));
+    }
+    n.forEach((s) => {
+      this.trackers.cdp.track({ eventName: "View Experiment", eventProps: s, options: i });
+    }), localStorage.setItem(K, JSON.stringify([]));
+  }
+  stop() {
+  }
+}
+const ft = "sq:trackersInitialized", ee = [ft, U, ht, ut, _, x, kt, mt, z], [D, G] = S("sq:tracking");
+if (D) throw y.captureException(D), D;
+document.addEventListener(_, (e) => {
+  window.Sq.Tracking.analyticsTrackingEnabled = e.detail.analyticsTrackingEnabled, window.Sq.Tracking.functionalityTrackingEnabled = e.detail.functionalityTrackingEnabled, window.Sq.Tracking.advertisingTrackingEnabled = e.detail.advertisingTrackingEnabled;
+}), G.autotrack = c({ heartbeat: !0, experiments: !0 }, G.autotrack);
+const p = new class {
+  constructor(e) {
+    var t, i, n, s, o, a;
+    if (this.subscriptions = {}, this.emittedEvents = [], this.handlers = [], this.trackers = { cdp: new Dt(e), googleAnalytics: new E(e), martechJs: new jt(), googleTagManager: new Ht(), optimizelyWeb: new Ft(e) }, this.addSubscriptionListeners(), document.addEventListener(_, (r) => this.init(r.detail)), document.addEventListener(x, (r) => this.permissionUpdate(r)), this.oneTrust = new _t(e), this.autotracks = [], (t = e.autotrack) != null && t.page_view && this.autotracks.push(new Wt(this.trackers)), (i = e.autotrack) != null && i.scroll_depth && this.autotracks.push(new Vt(this.trackers)), (n = e.autotrack) != null && n.link_click && this.autotracks.push(new Zt(this.trackers)), (s = e.autotrack) == null ? void 0 : s.heartbeat) {
+      const r = 1e3 * ((o = e.cdp_heartbeat_interval_seconds) != null ? o : 0);
+      this.autotracks.push(new Xt(this.trackers, { intervalMs: r }));
+    }
+    (a = e.autotrack) != null && a.experiments && this.autotracks.push(new te(this.trackers));
+  }
+  subscribe(e, t) {
+    this.subscriptions[e] === void 0 && (this.subscriptions[e] = []), this.subscriptions[e].push(t), this.emittedEvents.forEach((i) => {
+      i.name === e && t(i.data);
+    });
+  }
+  unsubscribe(e, t) {
+    if (this.subscriptions[e] === void 0) return;
+    const i = this.subscriptions[e].indexOf(t);
+    this.subscriptions[e].splice(i, 1);
+  }
+  identify({ entityId: e, entityType: t, properties: i }, n) {
+    ((n == null ? void 0 : n.destinations) || ["cdp"]).forEach((s) => {
+      if (s === "cdp") this.trackers.cdp.identify({ entityId: e, entityType: t, traits: i });
+      else {
+        const o = new Error(`identify only exists for CDP right now, please either add the method for ${s} or do not call with said destination`);
+        y.captureMessage(o.message), m.warn(o);
+      }
+    });
+  }
+  page(e, t) {
+    const { pageName: i, pageCategory: n, path: s, properties: o } = e;
+    ((t == null ? void 0 : t.destinations) || Object.keys(this.trackers)).forEach((a) => {
+      switch (a) {
+        case "googleAnalytics":
+          if (s === void 0) {
+            const r = new Error(`path required when including Google Tag Manager: ${JSON.stringify(e)}`);
+            y.captureException(r), m.warn(r);
+          } else this.trackers.googleAnalytics.page(s);
+          break;
+        case "cdp":
+          if (i === void 0) {
+            const r = new Error(`pageName is required when including CDP: ${JSON.stringify(e)}`);
+            y.captureException(r), m.warn(r);
+          } else this.trackers.cdp.page({ pageName: i, pageCategory: n, eventProps: o });
+          break;
+        case "martechJs":
+          this.trackers.martechJs.page(void 0);
+          break;
+        case "googleTagManager":
+          this.trackers.googleTagManager.page(void 0);
+          break;
+        case "optimizelyWeb":
+          this.trackers.optimizelyWeb.page({ type: "page", pageName: s || i || "no path found" });
+          break;
+        default:
+          throw new Error(`destination: ${a} does not have the ability to track a page event`);
+      }
+    });
+  }
+  pageExplicit(e) {
+    e.cdp && this.trackers.cdp.page(e.cdp), e.googleAnalytics && this.trackers.googleAnalytics.page(e.googleAnalytics), e.optimizelyWeb && this.trackers.optimizelyWeb.page(e.optimizelyWeb);
+  }
+  track(e, t) {
+    ((t == null ? void 0 : t.destinations) || Object.keys(this.trackers)).forEach((i) => {
+      switch (i) {
+        case "googleAnalytics":
+          this.trackers.googleAnalytics.track({ category: e.category || "Uncategorized", action: e.action, fields: e.properties });
+          break;
+        case "cdp":
+          this.trackers.cdp.track({ eventName: e.action, eventProps: e.properties });
+          break;
+        case "martechJs":
+          this.trackers.martechJs.track(c({ eventName: e.action }, e.properties));
+          break;
+        case "googleTagManager":
+          this.trackers.googleTagManager.track(c({ eventName: e.action }, e.properties));
+          break;
+        case "optimizelyWeb":
+          this.trackers.optimizelyWeb.track({ type: "event", eventName: e.action, tags: c({}, e.properties) });
+          break;
+        default:
+          throw new Error(`Unknown destination: ${i}`);
+      }
+    });
+  }
+  trackExplicit(e) {
+    e.cdp && this.trackers.cdp.track(e.cdp), e.googleAnalytics && this.trackers.googleAnalytics.track(e.googleAnalytics), e.martechJs && this.trackers.martechJs.track(e.martechJs), e.googleTagManager && this.trackers.googleTagManager.track(e.googleTagManager), e.optimizelyWeb && this.trackers.optimizelyWeb.track(e.optimizelyWeb);
+  }
+  init(e) {
+    return h(this, null, function* () {
+      if (this.initialized) return;
+      this.trackingPermissions = e, k.get("_savt") === void 0 && k.set("_savt", crypto.randomUUID(), { expires: 1095, secure: !0, domain: A(location.hostname) }), this.trackingPermissions.advertisingTrackingEnabled && (() => {
+        const n = window.location.search, s = new URLSearchParams(n);
+        s.forEach((o, a) => {
+          a in O && k.set(gt(a), o, { expires: O[a], domain: A(location.hostname) });
+        }), pt.every((o) => s.get(o)) && k.set("incomingurl", window.location.href, { expires: O.incomingurl, domain: A(location.hostname) }), document.dispatchEvent(Nt);
+      })(), document.addEventListener(U, (n) => {
+        this.cdpUser = n.detail;
+      });
+      const t = [];
+      for (const n of Object.values(this.trackers)) t.push(n.init(this.trackingPermissions));
+      this.initialized = Promise.allSettled(t);
+      const i = yield this.initialized;
+      for (const n of i) n.status === "rejected" && y.captureException(n.reason);
+      for (const n of this.autotracks) n.start(this.trackingPermissions);
+      document.dispatchEvent(new CustomEvent(ft, { detail: c(c({}, this.trackingPermissions), this.cdpUser) }));
+    });
+  }
+  removeSubscriptionListeners() {
+    for (const { name: e, cb: t } of this.handlers) document.removeEventListener(e, t);
+  }
+  permissionUpdate(e) {
+    this.track({ action: "Onetrust Consent Changed", category: "OneTrust" }, { destinations: ["cdp"] }), e.detail.changeDetected && location.reload();
+  }
+  addSubscriptionListeners() {
+    for (const e of ee) {
+      const t = (i) => {
+        this.emittedEvents.push({ name: e, data: i }), this.subscriptions[e] !== void 0 && this.subscriptions[e].forEach((n) => {
+          n(i);
+        });
+      };
+      this.handlers.push({ name: e, cb: t }), document.addEventListener(e, t.bind(this));
+    }
+  }
+}(G);
+window.Sq.Tracking.trackExplicit = p.trackExplicit.bind(p), window.Sq.Tracking.track = p.track.bind(p), window.Sq.Tracking.page = p.page.bind(p), window.Sq.Tracking.pageExplicit = p.pageExplicit.bind(p), window.Sq.Tracking.identify = p.identify.bind(p), window.Sq.Tracking.subscribe = p.subscribe.bind(p), window.Sq.Tracking.unsubscribe = p.unsubscribe.bind(p);
+var Y, Z, X, tt, et, it, nt, st, ot, at, rt;
+(Z = (Y = window.Sq) == null ? void 0 : Y.Tracking) != null && Z.queue && window.Sq.Tracking.queue.length > 0 && (window.Sq.Tracking.queue.forEach((e) => {
+  ((t) => t.data !== void 0)(e) ? window.Sq.Tracking.track(e.data, e.destinations ? { destinations: e.destinations } : void 0) : window.Sq.Tracking.trackExplicit(e);
+}), window.Sq.Tracking.queue = []), ((et = (tt = (X = window.Sq) == null ? void 0 : X.Tracking) == null ? void 0 : tt.pageQueue) == null ? void 0 : et.length) > 0 && (window.Sq.Tracking.pageQueue.forEach((e) => {
+  ((t) => t.data !== void 0)(e) ? window.Sq.Tracking.page(e.data, e.destinations ? { destinations: e.destinations } : void 0) : window.Sq.Tracking.pageExplicit(e);
+}), window.Sq.Tracking.pageQueue = []), ((st = (nt = (it = window.Sq) == null ? void 0 : it.Tracking) == null ? void 0 : nt.identifyQueue) == null ? void 0 : st.length) > 0 && (window.Sq.Tracking.identifyQueue.forEach((e) => {
+  window.Sq.Tracking.identify(e.data, e.destinations ? { destinations: e.destinations } : void 0);
+}), window.Sq.Tracking.identifyQueue = []), ((rt = (at = (ot = window.Sq) == null ? void 0 : ot.Tracking) == null ? void 0 : at.subscriptions) == null ? void 0 : rt.length) > 0 && (window.Sq.Tracking.subscriptions.forEach((e) => {
+  e.type === "subscribe" ? window.Sq.Tracking.subscribe(e.eventName, e.callback) : window.Sq.Tracking.unsubscribe(e.eventName, e.callback);
+}), window.Sq.Tracking.subscriptions = []);
+export {
+  _ as S,
+  k as a,
+  U as b,
+  x as c,
+  y as e,
+  xt as g,
+  g as r
+};

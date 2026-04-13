@@ -1,0 +1,80 @@
+var p = (e, n, t) => new Promise((a, i) => {
+  var o = (s) => {
+    try {
+      c(t.next(s));
+    } catch (l) {
+      i(l);
+    }
+  }, r = (s) => {
+    try {
+      c(t.throw(s));
+    } catch (l) {
+      i(l);
+    }
+  }, c = (s) => s.done ? a(s.value) : Promise.resolve(s.value).then(o, r);
+  c((t = t.apply(e, n)).next());
+});
+import { r as w, S as T, b, c as E, g as y, a as d, e as u } from "./pwt.es.js";
+const k = "_sqtraits", h = "_sqgroups", S = `https://api.${w.env === "production" ? "" : "broadway."}squareup.com/api/v1/xms/personalization/profiles`, m = `.${window.location.hostname}`, f = 36e5, $ = { key: "segmentation", cookieName: k, timeMS: 864e5, action: "Set Segmentation Cookie" }, N = { key: "groups", cookieName: h, timeMS: f, action: "Set Groups Cookie" };
+new class {
+  constructor() {
+    this.entityType = null, this.entityId = null, window.Sq.Tracking.subscribe(T, (e) => p(this, null, function* () {
+      this.analyticsTrackingEnabled = e.detail.analyticsTrackingEnabled, this.analyticsTrackingEnabled || this.deleteAllCookies();
+    })), window.Sq.Tracking.subscribe(b, (e) => p(this, null, function* () {
+      this.entityType = e.detail.entityType || null, this.entityId = e.detail.entityId || null, this.analyticsTrackingEnabled && (yield Promise.all([this.applySegment(), this.applyGroups()]), this.trackPersonalizedExperiences());
+    })), window.Sq.Tracking.subscribe(E, (e) => p(this, null, function* () {
+      this.analyticsTrackingEnabled = e.detail.analyticsTrackingEnabled, this.analyticsTrackingEnabled ? (yield Promise.all([this.applySegment(), this.applyGroups()]), this.trackPersonalizedExperiences()) : this.deleteAllCookies();
+    }));
+  }
+  applySegment() {
+    return y("personalization_segment_pages_list") && this.analyticsTrackingEnabled ? this.setCookieAndTrack($) : Promise.resolve();
+  }
+  applyGroups() {
+    return y("personalization_groups_pages_list") && this.analyticsTrackingEnabled ? this.setCookieAndTrack(N) : Promise.resolve();
+  }
+  trackPersonalizedExperiences() {
+    const [e] = document.getElementsByName("optly_p13n_rendered");
+    if (!e) return;
+    const n = e.content.split(";");
+    for (const t of n) {
+      if (t.length === 0) continue;
+      const [a, i] = t.split(":");
+      a !== void 0 && i !== void 0 && window.Sq.Tracking.track({ action: "Set Personalized Experience", category: "", properties: { experimentName: a, variationName: i } }, { destinations: ["cdp"] });
+    }
+  }
+  deleteAllCookies() {
+    d.remove(k, { domain: m }), d.remove(h, { domain: m });
+  }
+  setCookieAndTrack(e) {
+    return p(this, null, function* () {
+      const { cookieName: n, key: t, action: a } = e;
+      if (this.canSetCookie(e)) try {
+        const i = yield fetch(this.url(t));
+        if (!i.ok) throw new Error(`request returned a status of: ${i.status}`);
+        const o = yield i.json();
+        if (!o || !o.result || !o.result[t]) return void u.captureException(new Error(`Personalization: API response format is incorrect for setting ${n}`));
+        const r = o.result[t], c = Object.entries(r).map(([l, g]) => `${l}=${g}`);
+        c.push(`_ts=${(/* @__PURE__ */ new Date()).toISOString()}`);
+        const s = c.join("&");
+        d.set(n, s, { expires: 30, domain: m }), window.Sq.Tracking.track({ action: a, category: "", properties: r }, { destinations: ["cdp"] });
+      } catch (i) {
+        u.captureException(new Error(`could not set cookie ${n}: ${i}`));
+      }
+    });
+  }
+  canSetCookie(e) {
+    const { cookieName: n, timeMS: t } = e;
+    return !!this.isDataOlderThan(t, n) && this.entityType === "merchant" && (this.entityId !== null || (u.captureException(new Error("Personalization: Invalid entity id obtained from CDP")), !1));
+  }
+  url(e) {
+    return `${S}/${this.entityType}/${this.entityId}/${e}`;
+  }
+  isDataOlderThan(e, n) {
+    const t = d.get(n);
+    if (!t) return !0;
+    const a = Object.fromEntries(t.split("&").map((r) => r.split("=")))._ts, i = new Date(Number(a));
+    if (Number.isNaN(i.getTime())) return !0;
+    const o = new Date(Number(a)).getTime() + e;
+    return Date.now() > o;
+  }
+}();

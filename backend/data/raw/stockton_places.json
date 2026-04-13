@@ -1,0 +1,5081 @@
+{
+  "version": 0.6,
+  "generator": "Overpass API 0.7.62.10 2d4cfc48",
+  "osm3s": {
+    "timestamp_osm_base": "2026-03-01T00:01:26Z",
+    "copyright": "The data included in this document is from www.openstreetmap.org. The data is made available under ODbL."
+  },
+  "elements": [
+    {
+      "type": "node",
+      "id": 444098109,
+      "lat": 37.8960465,
+      "lon": -121.2810158,
+      "tags": {
+        "amenity": "fast_food",
+        "brand": "Togo's",
+        "brand:wikidata": "Q3530375",
+        "cuisine": "sandwich",
+        "name": "Togo's",
+        "takeaway": "yes"
+      }
+    },
+    {
+      "type": "node",
+      "id": 1609584205,
+      "lat": 38.0558527,
+      "lon": -121.3756325,
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "10858",
+        "addr:postcode": "95219",
+        "addr:state": "CA",
+        "addr:street": "Trinity Park Way",
+        "amenity": "fast_food",
+        "brand": "Jack in the Box",
+        "brand:wikidata": "Q1538507",
+        "cuisine": "burger",
+        "name": "Jack in the Box",
+        "phone": "+1 209-800-3650",
+        "takeaway": "yes",
+        "website": "https://locations.jackinthebox.com/us/ca/stockton/10858-trinity-park-way"
+      }
+    },
+    {
+      "type": "node",
+      "id": 2674335030,
+      "lat": 37.9869467,
+      "lon": -121.311844,
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "4343",
+        "addr:postcode": "95207",
+        "addr:state": "CA",
+        "addr:street": "Pacific Avenue",
+        "addr:unit": "A9",
+        "amenity": "restaurant",
+        "cuisine": "mexican",
+        "name": "Tequileros Taqueria",
+        "opening_hours": "Mo-Su 10:00-22:00",
+        "phone": "+1 209 715 1806",
+        "website": "https://www.tequilerostaqueria.com/"
+      }
+    },
+    {
+      "type": "node",
+      "id": 2675775157,
+      "lat": 38.0100736,
+      "lon": -121.3221362,
+      "tags": {
+        "amenity": "restaurant",
+        "cuisine": "chinese",
+        "name": "Dynasty"
+      }
+    },
+    {
+      "type": "node",
+      "id": 2675775174,
+      "lat": 37.990634,
+      "lon": -121.3213013,
+      "tags": {
+        "amenity": "restaurant",
+        "cuisine": "mexican",
+        "name": "Tepa Taqueria"
+      }
+    },
+    {
+      "type": "node",
+      "id": 2675775212,
+      "lat": 37.9848523,
+      "lon": -121.334121,
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "2233",
+        "addr:postcode": "95207",
+        "addr:state": "CA",
+        "addr:street": "Grand Canal Boulevard",
+        "addr:unit": "204A",
+        "amenity": "cafe",
+        "cuisine": "bubble_tea",
+        "name": "Lollicup Tea Zone"
+      }
+    },
+    {
+      "type": "node",
+      "id": 2675775215,
+      "lat": 37.9848934,
+      "lon": -121.3339657,
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "2233",
+        "addr:postcode": "95207",
+        "addr:street": "Grand Canal Boulevard",
+        "addr:unit": "205",
+        "amenity": "restaurant",
+        "cuisine": "indian",
+        "name": "Swagat Indian Cuisine",
+        "phone": "+1-209-478-4724"
+      }
+    },
+    {
+      "type": "node",
+      "id": 2684512523,
+      "lat": 37.9905752,
+      "lon": -121.3127406,
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "4663",
+        "addr:postcode": "95207",
+        "addr:state": "CA",
+        "addr:street": "Pacific Avenue",
+        "addr:unit": "B",
+        "amenity": "fast_food",
+        "brand": "Subway",
+        "brand:wikidata": "Q244457",
+        "cuisine": "sandwich",
+        "name": "Subway",
+        "opening_hours": "Mo-Fr 07:00-21:30; Sa 08:00-21:00; Su 09:00-21:00",
+        "phone": "+1 209-473-4744",
+        "takeaway": "yes",
+        "website": "https://restaurants.subway.com/united-states/ca/stockton/4663-pacific-ave"
+      }
+    },
+    {
+      "type": "node",
+      "id": 2690341502,
+      "lat": 37.9985805,
+      "lon": -121.3141169,
+      "tags": {
+        "amenity": "restaurant",
+        "brand": "Ono Hawaiian BBQ",
+        "brand:wikidata": "Q99526964",
+        "cuisine": "barbecue;hawaiian",
+        "name": "Ono Hawaiian BBQ"
+      }
+    },
+    {
+      "type": "node",
+      "id": 2690341508,
+      "lat": 37.9905416,
+      "lon": -121.3128645,
+      "tags": {
+        "amenity": "fast_food",
+        "brand": "Papa Murphy's",
+        "brand:wikidata": "Q7132349",
+        "cuisine": "pizza",
+        "name": "Papa Murphy's",
+        "official_name": "Papa Murphy's Take 'N' Bake Pizza",
+        "takeaway": "only"
+      }
+    },
+    {
+      "type": "node",
+      "id": 2697114400,
+      "lat": 37.9875627,
+      "lon": -121.3216727,
+      "tags": {
+        "amenity": "fast_food",
+        "brand": "L&L Hawaiian Barbecue",
+        "brand:wikidata": "Q6455441",
+        "cuisine": "hawaiian",
+        "name": "L&L Hawaiian Barbecue",
+        "takeaway": "yes"
+      }
+    },
+    {
+      "type": "node",
+      "id": 2711826816,
+      "lat": 37.9870215,
+      "lon": -121.3219248,
+      "tags": {
+        "amenity": "restaurant",
+        "name": "Da Vinci's"
+      }
+    },
+    {
+      "type": "node",
+      "id": 2711826818,
+      "lat": 37.986994,
+      "lon": -121.3220321,
+      "tags": {
+        "amenity": "restaurant",
+        "cuisine": "mexican",
+        "name": "Taquiera Carolina"
+      }
+    },
+    {
+      "type": "node",
+      "id": 2711826827,
+      "lat": 37.9894221,
+      "lon": -121.3224301,
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "4729",
+        "addr:postcode": "95207",
+        "addr:state": "CA",
+        "addr:street": "North Pershing Avenue",
+        "amenity": "restaurant",
+        "brand": "Pizza Hut",
+        "brand:wikidata": "Q191615",
+        "cuisine": "pizza",
+        "name": "Pizza Hut",
+        "phone": "+1 209-951-0100",
+        "website": "https://locations.pizzahut.com/ca/stockton/4729-n-pershing-ave"
+      }
+    },
+    {
+      "type": "node",
+      "id": 2711826836,
+      "lat": 37.9897877,
+      "lon": -121.3228802,
+      "tags": {
+        "amenity": "fast_food",
+        "brand": "Togo's",
+        "brand:wikidata": "Q3530375",
+        "cuisine": "sandwich",
+        "name": "Togo's",
+        "takeaway": "yes"
+      }
+    },
+    {
+      "type": "node",
+      "id": 2711826852,
+      "lat": 37.99056,
+      "lon": -121.321628,
+      "tags": {
+        "alt_name": "T4 Tea House",
+        "amenity": "cafe",
+        "brand": "T4",
+        "brand:wikidata": "Q112123535",
+        "cuisine": "bubble_tea",
+        "name": "T4 Tea For U",
+        "takeaway": "yes"
+      }
+    },
+    {
+      "type": "node",
+      "id": 2711826853,
+      "lat": 37.9905896,
+      "lon": -121.321548,
+      "tags": {
+        "amenity": "restaurant",
+        "cuisine": "poke",
+        "name": "Poke Salad"
+      }
+    },
+    {
+      "type": "node",
+      "id": 2961951748,
+      "lat": 37.9386508,
+      "lon": -121.2854577,
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "110",
+        "addr:postcode": "95206",
+        "addr:state": "CA",
+        "addr:street": "Doctor M.L.K. Jr Boulevard",
+        "amenity": "fast_food",
+        "brand": "Church's Chicken",
+        "brand:wikidata": "Q1089932",
+        "cuisine": "chicken",
+        "name": "Church's Chicken",
+        "phone": "+1 209-948-6351",
+        "takeaway": "yes",
+        "website": "https://locations.churchs.com/ca/stockton/110-doctor-mlk-jr-boulevard"
+      }
+    },
+    {
+      "type": "node",
+      "id": 2961951754,
+      "lat": 37.9392467,
+      "lon": -121.2865553,
+      "tags": {
+        "amenity": "restaurant",
+        "name": "El Grullense"
+      }
+    },
+    {
+      "type": "node",
+      "id": 2962128081,
+      "lat": 38.0229933,
+      "lon": -121.2738746,
+      "tags": {
+        "amenity": "fast_food",
+        "brand": "McDonald's",
+        "brand:wikidata": "Q38076",
+        "cuisine": "burger",
+        "fixme:atp": "Check if still exists. No corresponding ATP object.",
+        "name": "McDonald's",
+        "takeaway": "yes"
+      }
+    },
+    {
+      "type": "node",
+      "id": 2962130634,
+      "lat": 38.0206237,
+      "lon": -121.3197065,
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "616",
+        "addr:postcode": "95207",
+        "addr:state": "CA",
+        "addr:street": "West Hammer Lane",
+        "addr:unit": "A",
+        "amenity": "fast_food",
+        "branch": "Pacific & Hammer",
+        "brand": "Panda Express",
+        "brand:wikidata": "Q1358690",
+        "cuisine": "chinese",
+        "name": "Panda Express",
+        "opening_hours": "09:30-21:30",
+        "phone": "+1 209-475-0138",
+        "takeaway": "yes",
+        "website": "https://www.pandaexpress.com/locations/ca/stockton/839"
+      }
+    },
+    {
+      "type": "node",
+      "id": 2978644024,
+      "lat": 37.9868167,
+      "lon": -121.30168,
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "4130",
+        "addr:street": "North El Dorado Street",
+        "amenity": "fast_food",
+        "cuisine": "donut",
+        "name": "California Donuts and Deli"
+      }
+    },
+    {
+      "type": "node",
+      "id": 2983914313,
+      "lat": 37.9611588,
+      "lon": -121.2823188,
+      "tags": {
+        "amenity": "cafe",
+        "name": "Ira & Luis Cafe"
+      }
+    },
+    {
+      "type": "node",
+      "id": 2983924443,
+      "lat": 37.9857895,
+      "lon": -121.2476354,
+      "tags": {
+        "amenity": "restaurant",
+        "brand": "Denny's",
+        "brand:wikidata": "Q1189695",
+        "cuisine": "american",
+        "name": "Denny's"
+      }
+    },
+    {
+      "type": "node",
+      "id": 2983924701,
+      "lat": 37.9615478,
+      "lon": -121.269804,
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "1705",
+        "addr:postcode": "95205",
+        "addr:state": "CA",
+        "addr:street": "East Fremont Street",
+        "addr:unit": "A",
+        "amenity": "cafe",
+        "branch": "Fremont & Wilson - Stockton",
+        "brand": "Starbucks",
+        "brand:wikidata": "Q37158",
+        "cuisine": "coffee_shop",
+        "name": "Starbucks",
+        "official_name": "Starbucks Coffee",
+        "phone": "+1 209-469-2934",
+        "ref": "7830",
+        "takeaway": "yes",
+        "website": "https://www.starbucks.com/store-locator/store/7830/fremont-wilson-stockton-1705-e-fremont-st-a-stockton-ca-952054519-us"
+      }
+    },
+    {
+      "type": "node",
+      "id": 2983926238,
+      "lat": 37.9609643,
+      "lon": -121.272685,
+      "tags": {
+        "amenity": "fast_food",
+        "brand": "Yum Yum Donuts",
+        "brand:wikidata": "Q8061011",
+        "cuisine": "donut",
+        "name": "Yum Yum Donuts",
+        "takeaway": "yes"
+      }
+    },
+    {
+      "type": "node",
+      "id": 2983933973,
+      "lat": 37.9672934,
+      "lon": -121.297856,
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "1504",
+        "addr:postcode": "95204",
+        "addr:state": "CA",
+        "addr:street": "Pacific Avenue",
+        "amenity": "fast_food",
+        "brand": "Jack in the Box",
+        "brand:wikidata": "Q1538507",
+        "cuisine": "burger",
+        "drive_through": "yes",
+        "name": "Jack in the Box",
+        "phone": "+1 209-337-3756",
+        "takeaway": "yes",
+        "website": "https://locations.jackinthebox.com/us/ca/stockton/1504-pacific-ave"
+      }
+    },
+    {
+      "type": "node",
+      "id": 2983935254,
+      "lat": 37.9676835,
+      "lon": -121.294303,
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "45",
+        "addr:postcode": "95204",
+        "addr:state": "CA",
+        "addr:street": "East Harding Way",
+        "amenity": "fast_food",
+        "brand": "Taco Bell",
+        "brand:wikidata": "Q752941",
+        "cuisine": "tex-mex",
+        "name": "Taco Bell",
+        "opening_hours": "Mo-Th 06:00-02:00; Fr-Sa 06:00-03:00; Su 06:00-02:00",
+        "phone": "+1 209-943-2782",
+        "takeaway": "yes",
+        "website": "https://locations.tacobell.com/ca/stockton/45-e-harding-way.html"
+      }
+    },
+    {
+      "type": "node",
+      "id": 2985109254,
+      "lat": 37.9692615,
+      "lon": -121.2992745,
+      "tags": {
+        "amenity": "cafe"
+      }
+    },
+    {
+      "type": "node",
+      "id": 3748087528,
+      "lat": 37.9710636,
+      "lon": -121.2761048,
+      "tags": {
+        "alt_name": "Kentucky Fried Chicken",
+        "amenity": "fast_food",
+        "brand": "KFC",
+        "brand:wikidata": "Q524757",
+        "cuisine": "chicken",
+        "drive_through": "yes",
+        "name": "KFC",
+        "takeaway": "yes",
+        "website": "https://locations.kfc.com/ca/stockton/1537-n-wilson-way"
+      }
+    },
+    {
+      "type": "node",
+      "id": 3748097155,
+      "lat": 37.9634257,
+      "lon": -121.2731886,
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "702",
+        "addr:postcode": "95205-4225",
+        "addr:state": "CA",
+        "addr:street": "North Wilson Way",
+        "amenity": "fast_food",
+        "brand": "Burger King",
+        "brand:wikidata": "Q177054",
+        "cuisine": "burger",
+        "delivery": "yes",
+        "drive_through": "yes",
+        "internet_access": "wlan",
+        "name": "Burger King",
+        "opening_hours": "06:00-22:00",
+        "phone": "+1 209-937-0844",
+        "ref": "4861",
+        "takeaway": "yes",
+        "website": "https://www.bk.com/store-locator/store/restaurant_2720"
+      }
+    },
+    {
+      "type": "node",
+      "id": 3748097174,
+      "lat": 37.9395247,
+      "lon": -121.28111,
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "402",
+        "addr:postcode": "95206",
+        "addr:state": "CA",
+        "addr:street": "East Charter Way",
+        "amenity": "fast_food",
+        "brand": "Domino's",
+        "brand:wikidata": "Q839466",
+        "cuisine": "pizza",
+        "name": "Domino's",
+        "opening_hours": "Mo-Th 10:00-24:00; Fr-Sa 10:00-01:00; Su 10:00-24:00",
+        "phone": "+1 209-464-0303",
+        "ref": "8338",
+        "short_name": "Domino's",
+        "takeaway": "yes",
+        "website": "https://pizza.dominos.com/california/stockton/402-e-charter-way"
+      }
+    },
+    {
+      "type": "node",
+      "id": 3748097977,
+      "lat": 37.9668685,
+      "lon": -121.2723593,
+      "tags": {
+        "amenity": "restaurant",
+        "name": "Eddie's Pizza"
+      }
+    },
+    {
+      "type": "node",
+      "id": 3748100426,
+      "lat": 37.963407,
+      "lon": -121.2725766,
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "678",
+        "addr:postcode": "95205",
+        "addr:state": "CA",
+        "addr:street": "North Wilson Way",
+        "amenity": "fast_food",
+        "brand": "Subway",
+        "brand:wikidata": "Q244457",
+        "cuisine": "sandwich",
+        "name": "Subway",
+        "opening_hours": "Mo-Fr 07:00-21:30; Sa 08:00-21:00; Su 09:00-21:00",
+        "phone": "+1 209-466-2433",
+        "takeaway": "yes",
+        "website": "https://restaurants.subway.com/united-states/ca/stockton/678-n-wilson-way"
+      }
+    },
+    {
+      "type": "node",
+      "id": 3748100427,
+      "lat": 37.9634536,
+      "lon": -121.2724082,
+      "tags": {
+        "amenity": "restaurant",
+        "name": "Sombrero Taqueria"
+      }
+    },
+    {
+      "type": "node",
+      "id": 3748100428,
+      "lat": 37.9630866,
+      "lon": -121.2731179,
+      "tags": {
+        "amenity": "fast_food",
+        "name": "El Polo Loco"
+      }
+    },
+    {
+      "type": "node",
+      "id": 3862258853,
+      "lat": 37.96667,
+      "lon": -121.2979004,
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:country": "US",
+        "addr:housenumber": "1423",
+        "addr:postcode": "95202-1022",
+        "addr:state": "CA",
+        "addr:street": "North Center Street",
+        "amenity": "fast_food",
+        "brand": "McDonald's",
+        "brand:wikidata": "Q38076",
+        "cuisine": "burger",
+        "drive_through": "yes",
+        "internet_access": "wlan",
+        "name": "McDonald's",
+        "opening_hours": "05:00-23:00",
+        "phone": "+1 209-307-6555",
+        "ref": "6216",
+        "takeaway": "yes",
+        "website": "https://www.mcdonalds.com/us/en-us/location/6216.html"
+      }
+    },
+    {
+      "type": "node",
+      "id": 3862258855,
+      "lat": 37.9670738,
+      "lon": -121.2939165,
+      "tags": {
+        "amenity": "restaurant",
+        "name": "Le's Dynasty"
+      }
+    },
+    {
+      "type": "node",
+      "id": 3864110580,
+      "lat": 37.9368916,
+      "lon": -121.295318,
+      "tags": {
+        "amenity": "fast_food",
+        "brand": "Quiznos",
+        "brand:wikidata": "Q1936229",
+        "cuisine": "sandwich",
+        "name": "Quiznos",
+        "takeaway": "yes"
+      }
+    },
+    {
+      "type": "node",
+      "id": 3864112118,
+      "lat": 37.9541996,
+      "lon": -121.2859779,
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "46",
+        "addr:postcode": "95202",
+        "addr:state": "CA",
+        "addr:street": "North Sutter Street",
+        "amenity": "fast_food",
+        "brand": "Subway",
+        "brand:wikidata": "Q244457",
+        "cuisine": "sandwich",
+        "name": "Subway",
+        "opening_hours": "Mo-Fr 07:00-20:00; Sa-Su 10:00-19:00",
+        "phone": "+1 209-467-7101",
+        "takeaway": "yes",
+        "website": "https://restaurants.subway.com/united-states/ca/stockton/46-n-sutter-st"
+      }
+    },
+    {
+      "type": "node",
+      "id": 3864112464,
+      "lat": 37.9374941,
+      "lon": -121.2961311,
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "619",
+        "addr:postcode": "95206-1709",
+        "addr:state": "CA",
+        "addr:street": "West Charter Way",
+        "amenity": "fast_food",
+        "brand": "Burger King",
+        "brand:wikidata": "Q177054",
+        "cuisine": "burger",
+        "delivery": "yes",
+        "drive_through": "yes",
+        "internet_access": "wlan",
+        "name": "Burger King",
+        "opening_hours": "24/7",
+        "phone": "+1 209-463-2003",
+        "ref": "2268",
+        "takeaway": "yes",
+        "website": "https://www.bk.com/store-locator/store/restaurant_1200"
+      }
+    },
+    {
+      "type": "node",
+      "id": 3864112467,
+      "lat": 37.9367577,
+      "lon": -121.299302,
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "733",
+        "addr:postcode": "95206",
+        "addr:state": "CA",
+        "addr:street": "West Charter Way",
+        "amenity": "fast_food",
+        "brand": "Jack in the Box",
+        "brand:wikidata": "Q1538507",
+        "cuisine": "burger",
+        "drive_through": "yes",
+        "name": "Jack in the Box",
+        "phone": "+1 209-800-3630",
+        "takeaway": "yes",
+        "website": "https://locations.jackinthebox.com/us/ca/stockton/733-w-charter-wy"
+      }
+    },
+    {
+      "type": "node",
+      "id": 3864112658,
+      "lat": 37.9383096,
+      "lon": -121.2861853,
+      "tags": {
+        "amenity": "restaurant",
+        "name": "Eddie's Pizza"
+      }
+    },
+    {
+      "type": "node",
+      "id": 3864112660,
+      "lat": 37.9376053,
+      "lon": -121.2955275,
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "611",
+        "addr:postcode": "95206-1709",
+        "addr:state": "CA",
+        "addr:street": "West Charter Way",
+        "amenity": "fast_food",
+        "brand": "McDonald's",
+        "brand:wikidata": "Q38076",
+        "cuisine": "burger",
+        "drive_through": "yes",
+        "internet_access": "wlan",
+        "name": "McDonald's",
+        "opening_hours": "05:00-23:00",
+        "phone": "+1 209-762-3500",
+        "takeaway": "yes",
+        "website": "https://www.mcdonalds.com/us/en-us/location/4111.html"
+      }
+    },
+    {
+      "type": "node",
+      "id": 4047495872,
+      "lat": 38.0208946,
+      "lon": -121.357565,
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "3264",
+        "addr:postcode": "95209",
+        "addr:state": "CA",
+        "addr:street": "West Hammer Lane",
+        "alt_name": "Kentucky Fried Chicken",
+        "amenity": "fast_food",
+        "brand": "KFC",
+        "brand:wikidata": "Q524757",
+        "cuisine": "chicken",
+        "name": "KFC",
+        "takeaway": "yes",
+        "website": "https://locations.kfc.com/ca/stockton/3264-west-hammer-lane"
+      }
+    },
+    {
+      "type": "node",
+      "id": 4052675545,
+      "lat": 37.9388459,
+      "lon": -121.2852163,
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "134",
+        "addr:postcode": "95206",
+        "addr:state": "CA",
+        "addr:street": "East Charter Way",
+        "alt_name": "Kentucky Fried Chicken",
+        "amenity": "fast_food",
+        "brand": "KFC",
+        "brand:wikidata": "Q524757",
+        "cuisine": "chicken",
+        "name": "KFC",
+        "takeaway": "yes",
+        "website": "https://locations.kfc.com/ca/stockton/134-east-charter-way"
+      }
+    },
+    {
+      "type": "node",
+      "id": 4052675546,
+      "lat": 37.9388797,
+      "lon": -121.285015,
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "134",
+        "addr:postcode": "95206",
+        "addr:state": "CA",
+        "addr:street": "East Charter Way",
+        "amenity": "fast_food",
+        "brand": "A&W",
+        "brand:wikidata": "Q277641",
+        "cuisine": "burger",
+        "name": "A&W",
+        "takeaway": "yes",
+        "website": "https://awrestaurants.com/locations/california/stockton/134-e-martin-luther-king-jr-blvd/"
+      }
+    },
+    {
+      "type": "node",
+      "id": 4052698072,
+      "lat": 37.9878652,
+      "lon": -121.244525,
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "4450",
+        "addr:postcode": "95215",
+        "addr:state": "CA",
+        "addr:street": "Waterloo Road",
+        "amenity": "fast_food",
+        "brand": "A&W",
+        "brand:wikidata": "Q277641",
+        "cuisine": "burger",
+        "name": "A&W",
+        "takeaway": "yes",
+        "website": "https://awrestaurants.com/locations/california/stockton/4450-east-waterloo-rd/"
+      }
+    },
+    {
+      "type": "node",
+      "id": 4052698073,
+      "lat": 37.9877563,
+      "lon": -121.2444581,
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "4450",
+        "addr:postcode": "95215",
+        "addr:state": "CA",
+        "addr:street": "Waterloo Road",
+        "alt_name": "Kentucky Fried Chicken",
+        "amenity": "fast_food",
+        "brand": "KFC",
+        "brand:wikidata": "Q524757",
+        "cuisine": "chicken",
+        "name": "KFC",
+        "takeaway": "yes",
+        "website": "https://locations.kfc.com/ca/stockton/4450-east-waterloo-rd"
+      }
+    },
+    {
+      "type": "node",
+      "id": 4054522929,
+      "lat": 38.0214858,
+      "lon": -121.270974,
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "3519",
+        "addr:postcode": "95212",
+        "addr:state": "CA",
+        "addr:street": "East Hammer Lane",
+        "amenity": "fast_food",
+        "brand": "A&W",
+        "brand:wikidata": "Q277641",
+        "cuisine": "burger",
+        "name": "A&W",
+        "takeaway": "yes",
+        "website": "https://awrestaurants.com/locations/california/stockton/3519-east-hammer-lane/"
+      }
+    },
+    {
+      "type": "node",
+      "id": 4054522930,
+      "lat": 38.0214931,
+      "lon": -121.2708009,
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "3519",
+        "addr:postcode": "95212",
+        "addr:state": "CA",
+        "addr:street": "East Hammer Lane",
+        "alt_name": "Kentucky Fried Chicken",
+        "amenity": "fast_food",
+        "brand": "KFC",
+        "brand:wikidata": "Q524757",
+        "cuisine": "chicken",
+        "name": "KFC",
+        "takeaway": "yes",
+        "website": "https://locations.kfc.com/ca/stockton/3519-east-hammer-lane"
+      }
+    },
+    {
+      "type": "node",
+      "id": 4093400971,
+      "lat": 37.9865853,
+      "lon": -121.301582,
+      "tags": {
+        "amenity": "restaurant",
+        "cuisine": "pizza",
+        "name": "Eric's New York Style Pizza"
+      }
+    },
+    {
+      "type": "node",
+      "id": 4093400981,
+      "lat": 38.0021134,
+      "lon": -121.292234,
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "1049",
+        "addr:postcode": "95210-3544",
+        "addr:state": "CA",
+        "addr:street": "East March Lane",
+        "amenity": "fast_food",
+        "brand": "McDonald's",
+        "brand:wikidata": "Q38076",
+        "cuisine": "burger",
+        "drive_through": "yes",
+        "internet_access": "wlan",
+        "name": "McDonald's",
+        "opening_hours": "05:00-24:00",
+        "phone": "+1 209-307-6533",
+        "takeaway": "yes",
+        "website": "https://www.mcdonalds.com/us/en-us/location/11797.html"
+      }
+    },
+    {
+      "type": "node",
+      "id": 4093403711,
+      "lat": 38.009744,
+      "lon": -121.3233786,
+      "tags": {
+        "amenity": "restaurant",
+        "name": "David's Pizza"
+      }
+    },
+    {
+      "type": "node",
+      "id": 4093403712,
+      "lat": 38.0050284,
+      "lon": -121.3176388,
+      "tags": {
+        "amenity": "pub",
+        "name": "Finnigan's"
+      }
+    },
+    {
+      "type": "node",
+      "id": 4093403714,
+      "lat": 37.999261,
+      "lon": -121.3252778,
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "5620",
+        "addr:postcode": "95207",
+        "addr:state": "CA",
+        "addr:street": "North Pershing Avenue",
+        "addr:unit": "B",
+        "amenity": "fast_food",
+        "brand": "Subway",
+        "brand:wikidata": "Q244457",
+        "cuisine": "sandwich",
+        "name": "Subway",
+        "opening_hours": "Mo-Fr 09:00-20:00; Sa 10:00-19:00; Su 10:00-18:00",
+        "phone": "+1 209-955-0895",
+        "takeaway": "yes",
+        "website": "https://restaurants.subway.com/united-states/ca/stockton/5620-n-pershing-avenue"
+      }
+    },
+    {
+      "type": "node",
+      "id": 4173373547,
+      "lat": 37.9340032,
+      "lon": -121.3116209,
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "1789",
+        "addr:postcode": "95206",
+        "addr:state": "CA",
+        "addr:street": "Charter Way",
+        "amenity": "fast_food",
+        "brand": "Subway",
+        "brand:wikidata": "Q244457",
+        "cuisine": "sandwich",
+        "name": "Subway",
+        "opening_hours": "Mo-Fr 08:00-22:00; Sa 08:00-20:00; Su 09:00-20:00",
+        "phone": "+1 209-466-3401",
+        "takeaway": "yes",
+        "website": "https://restaurants.subway.com/united-states/ca/stockton/1789-charter-way"
+      }
+    },
+    {
+      "type": "node",
+      "id": 4173373549,
+      "lat": 37.9324729,
+      "lon": -121.3125391,
+      "tags": {
+        "amenity": "pub",
+        "name": "Bar Lupita's"
+      }
+    },
+    {
+      "type": "node",
+      "id": 4173373550,
+      "lat": 37.9113124,
+      "lon": -121.2923744,
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "3526",
+        "addr:postcode": "95206",
+        "addr:state": "CA",
+        "addr:street": "Manthey Road",
+        "addr:unit": "D",
+        "amenity": "fast_food",
+        "brand": "Subway",
+        "brand:wikidata": "Q244457",
+        "cuisine": "sandwich",
+        "name": "Subway",
+        "opening_hours": "08:00-21:00",
+        "phone": "+1 209-983-5021",
+        "takeaway": "yes",
+        "website": "https://restaurants.subway.com/united-states/ca/stockton/3526-manthey-rd"
+      }
+    },
+    {
+      "type": "node",
+      "id": 4611578287,
+      "lat": 38.0208769,
+      "lon": -121.324705,
+      "tags": {
+        "amenity": "fast_food",
+        "brand": "Papa Murphy's",
+        "brand:wikidata": "Q7132349",
+        "cuisine": "pizza",
+        "name": "Papa Murphy's",
+        "official_name": "Papa Murphy's Take 'N' Bake Pizza",
+        "takeaway": "only"
+      }
+    },
+    {
+      "type": "node",
+      "id": 4611578311,
+      "lat": 38.0212882,
+      "lon": -121.3227394,
+      "tags": {
+        "amenity": "fast_food",
+        "brand": "Wingstop",
+        "brand:wikidata": "Q8025339",
+        "cuisine": "wings",
+        "name": "Wingstop",
+        "takeaway": "yes"
+      }
+    },
+    {
+      "type": "node",
+      "id": 4611578315,
+      "lat": 38.0189672,
+      "lon": -121.3225593,
+      "tags": {
+        "amenity": "restaurant",
+        "name": "UJ's Restaurant"
+      }
+    },
+    {
+      "type": "node",
+      "id": 4611578319,
+      "lat": 38.0171673,
+      "lon": -121.3225205,
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "7432",
+        "addr:postcode": "95207",
+        "addr:state": "CA",
+        "addr:street": "Pacific Avenue",
+        "amenity": "fast_food",
+        "brand": "Carl's Jr.",
+        "brand:wikidata": "Q1043486",
+        "cuisine": "burger",
+        "drive_through": "yes",
+        "name": "Carl's Jr.",
+        "phone": "+1 209-957-2000",
+        "ref": "1100494",
+        "takeaway": "yes",
+        "website": "https://locations.carlsjr.com/ca/stockton/7432-pacific-avenue"
+      }
+    },
+    {
+      "type": "node",
+      "id": 4611578326,
+      "lat": 38.0203272,
+      "lon": -121.3197194,
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "616",
+        "addr:postcode": "95210",
+        "addr:state": "CA",
+        "addr:street": "West Hammer Lane",
+        "addr:unit": "D",
+        "amenity": "fast_food",
+        "brand": "Subway",
+        "brand:wikidata": "Q244457",
+        "cuisine": "sandwich",
+        "name": "Subway",
+        "opening_hours": "09:00-21:00",
+        "phone": "+1 209-474-5959",
+        "takeaway": "yes",
+        "website": "https://restaurants.subway.com/united-states/ca/stockton/616-west-hammer-lane"
+      }
+    },
+    {
+      "type": "node",
+      "id": 4611578403,
+      "lat": 38.018816,
+      "lon": -121.320141,
+      "tags": {
+        "amenity": "restaurant",
+        "cuisine": "chinese",
+        "name": "Oriental Chef"
+      }
+    },
+    {
+      "type": "node",
+      "id": 4611578519,
+      "lat": 38.0224545,
+      "lon": -121.322069,
+      "tags": {
+        "amenity": "restaurant",
+        "cuisine": "chinese",
+        "name": "China Express"
+      }
+    },
+    {
+      "type": "node",
+      "id": 6199573509,
+      "lat": 37.9838645,
+      "lon": -121.3466111,
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "2866",
+        "addr:postcode": "95219",
+        "addr:state": "CA",
+        "addr:street": "West March Lane",
+        "addr:suite": "B",
+        "amenity": "cafe",
+        "branch": "March & I-5 - Stockton",
+        "brand": "Starbucks",
+        "brand:wikidata": "Q37158",
+        "cuisine": "coffee_shop",
+        "drive_through": "yes",
+        "name": "Starbucks",
+        "official_name": "Starbucks Coffee",
+        "outdoor_seating": "yes",
+        "phone": "+1 209-472-0637",
+        "ref": "8093",
+        "takeaway": "yes",
+        "website": "https://www.starbucks.com/store-locator/store/8093/march-i-5-stockton-2866-w-march-lane-stockton-ca-952198216-us"
+      }
+    },
+    {
+      "type": "node",
+      "id": 6215275790,
+      "lat": 37.984776,
+      "lon": -121.3344057,
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "2233",
+        "addr:postcode": "95207",
+        "addr:state": "CA",
+        "addr:street": "Grand Canal Boulevard",
+        "addr:unit": "202",
+        "amenity": "fast_food",
+        "brand": "Domino's",
+        "brand:wikidata": "Q839466",
+        "cuisine": "pizza",
+        "name": "Domino's",
+        "opening_hours": "Mo-Th 10:00-24:00; Fr-Sa 10:00-01:00; Su 10:00-24:00",
+        "phone": "+1 209-451-0050",
+        "ref": "8691",
+        "takeaway": "yes",
+        "website": "https://pizza.dominos.com/california/stockton/2233-grand-canal-blvd"
+      }
+    },
+    {
+      "type": "node",
+      "id": 6215275794,
+      "lat": 37.9850852,
+      "lon": -121.3335078,
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "2233",
+        "addr:postcode": "95207",
+        "addr:state": "CA",
+        "addr:street": "Grand Canal Boulevard",
+        "addr:unit": "119",
+        "amenity": "restaurant",
+        "cuisine": "asian;cambodian",
+        "name": "Bayon Restaurant"
+      }
+    },
+    {
+      "type": "node",
+      "id": 6235134545,
+      "lat": 37.9849379,
+      "lon": -121.3333802,
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "2233",
+        "addr:postcode": "95207",
+        "addr:state": "CA",
+        "addr:street": "Grand Canal Boulevard",
+        "addr:unit": "117",
+        "amenity": "restaurant",
+        "cuisine": "mongolian_grill",
+        "name": "GK Mongolian BBQ",
+        "website": "https://www.gkmongolianbbq.com/"
+      }
+    },
+    {
+      "type": "node",
+      "id": 6236225675,
+      "lat": 37.9839457,
+      "lon": -121.3362164,
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "2324",
+        "addr:postcode": "95207",
+        "addr:state": "CA",
+        "addr:street": "Grand Canal Boulevard",
+        "addr:unit": "1",
+        "amenity": "restaurant",
+        "name": "La Boulangerie"
+      }
+    },
+    {
+      "type": "node",
+      "id": 6236225678,
+      "lat": 37.9837956,
+      "lon": -121.336072,
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "2324",
+        "addr:postcode": "95207",
+        "addr:state": "CA",
+        "addr:street": "Grand Canal Boulevard",
+        "addr:unit": "4",
+        "amenity": "bar",
+        "food": "sandwiches",
+        "name": "Basil's Spirit's & Sandwiches"
+      }
+    },
+    {
+      "type": "node",
+      "id": 6653177906,
+      "lat": 37.9695745,
+      "lon": -121.2699966,
+      "tags": {
+        "amenity": "restaurant",
+        "cuisine": "pizza",
+        "name": "Pizza Guys"
+      }
+    },
+    {
+      "type": "node",
+      "id": 6711248289,
+      "lat": 38.0030192,
+      "lon": -121.3691345,
+      "tags": {
+        "amenity": "restaurant",
+        "name": "Bob\u2019s"
+      }
+    },
+    {
+      "type": "node",
+      "id": 6958935285,
+      "lat": 37.9521618,
+      "lon": -121.2894597,
+      "tags": {
+        "amenity": "restaurant",
+        "name": "Mimosas Corner"
+      }
+    },
+    {
+      "type": "node",
+      "id": 8765718292,
+      "lat": 37.9873838,
+      "lon": -121.24488,
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "4426",
+        "addr:postcode": "95215",
+        "addr:state": "CA",
+        "addr:street": "East Waterloo Road",
+        "amenity": "cafe",
+        "branch": "Highway 99 & Waterloo - Stockton",
+        "brand": "Starbucks",
+        "brand:wikidata": "Q37158",
+        "cuisine": "coffee_shop",
+        "drive_through": "yes",
+        "name": "Starbucks",
+        "official_name": "Starbucks Coffee",
+        "phone": "+1 209-931-4576",
+        "ref": "11621",
+        "takeaway": "yes",
+        "toilets": "yes",
+        "website": "https://www.starbucks.com/store-locator/store/11621/hwy-99-waterloo-stockton-4426-east-waterloo-road-stockton-ca-952154041-us"
+      }
+    },
+    {
+      "type": "node",
+      "id": 9333723140,
+      "lat": 38.0102573,
+      "lon": -121.320929,
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "6625",
+        "addr:postcode": "95207",
+        "addr:state": "CA",
+        "addr:street": "Pacific Avenue",
+        "amenity": "restaurant",
+        "cuisine": "chicken;wings",
+        "name": "Fire Wings"
+      }
+    },
+    {
+      "type": "node",
+      "id": 9333723141,
+      "lat": 38.010201,
+      "lon": -121.322437,
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "878",
+        "addr:postcode": "95207",
+        "addr:state": "CA",
+        "addr:street": "West Benjamin Holt Drive",
+        "alt_name": "85C",
+        "amenity": "cafe",
+        "branch": "Bakery Cafe",
+        "brand": "85\u00b0C",
+        "brand:wikidata": "Q4644852",
+        "cuisine": "coffee_shop;chinese",
+        "name": "85\u00b0C",
+        "shop": "bakery",
+        "takeaway": "yes"
+      }
+    },
+    {
+      "type": "node",
+      "id": 9333723142,
+      "lat": 38.0103235,
+      "lon": -121.322066,
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "866",
+        "addr:postcode": "95207",
+        "addr:state": "CA",
+        "addr:street": "West Benjamin Holt Drive",
+        "amenity": "restaurant",
+        "cuisine": "noodle",
+        "name": "Ramen 101"
+      }
+    },
+    {
+      "type": "node",
+      "id": 9333723143,
+      "lat": 38.0101746,
+      "lon": -121.3217303,
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "856",
+        "addr:postcode": "95207",
+        "addr:state": "CA",
+        "addr:street": "West Benjamin Holt Drive",
+        "amenity": "fast_food",
+        "cuisine": "burger",
+        "drive_through": "no",
+        "indoor_seating": "yes",
+        "name": "Squeeze Burger and Brew",
+        "outdoor_seating": "yes"
+      }
+    },
+    {
+      "type": "node",
+      "id": 9333723160,
+      "lat": 38.0101621,
+      "lon": -121.3196964,
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "6530",
+        "addr:postcode": "95207",
+        "addr:state": "CA",
+        "addr:street": "Pacific Avenue",
+        "addr:unit": "A",
+        "alt_name": "HoneyBaked Ham",
+        "amenity": "fast_food",
+        "brand": "Honey Baked Ham",
+        "brand:wikidata": "Q5893363",
+        "contact:website": "https://www.honeybaked.com/stores/8923",
+        "cuisine": "american",
+        "name": "Honey Baked Ham",
+        "official_name": "The Honey Baked Ham Company",
+        "takeaway": "yes"
+      }
+    },
+    {
+      "type": "node",
+      "id": 9333723161,
+      "lat": 38.0072777,
+      "lon": -121.31867,
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "6248",
+        "addr:postcode": "95207",
+        "addr:state": "CA",
+        "addr:street": "Pacific Avenue",
+        "amenity": "cafe",
+        "cuisine": "bubble_tea",
+        "name": "Dila Tea House",
+        "not:brand:wikidata": "Q630866",
+        "takeaway": "yes"
+      }
+    },
+    {
+      "type": "node",
+      "id": 9333723162,
+      "lat": 38.0073462,
+      "lon": -121.318692,
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "6252",
+        "addr:postcode": "95207",
+        "addr:state": "CA",
+        "addr:street": "Pacific Avenue",
+        "amenity": "restaurant",
+        "cuisine": "hotpot",
+        "name": "Tasty Pot"
+      }
+    },
+    {
+      "type": "node",
+      "id": 9333723163,
+      "lat": 38.0224623,
+      "lon": -121.322439,
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "8014",
+        "addr:postcode": "95210",
+        "addr:state": "CA",
+        "addr:street": "North Lower Sacramento Road",
+        "amenity": "restaurant",
+        "cuisine": "noodle",
+        "name": "Mama's Ph\u1edf & Sandwiches",
+        "phone": "+1-209-473-7154"
+      }
+    },
+    {
+      "type": "node",
+      "id": 9333723165,
+      "lat": 38.0574172,
+      "lon": -121.3751673,
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "10952",
+        "addr:postcode": "95219",
+        "addr:state": "CA",
+        "addr:street": "Trinity Parkway",
+        "addr:unit": "H",
+        "alt_name": "Jamba Juice",
+        "amenity": "fast_food",
+        "branch": "Park West Place",
+        "brand": "Jamba",
+        "brand:wikidata": "Q3088784",
+        "cuisine": "juice",
+        "name": "Jamba",
+        "opening_hours": "08:00-20:00",
+        "phone": "+1 209-475-9770",
+        "takeaway": "yes",
+        "website": "https://locations.jamba.com/ca/stockton/10952-trinity-pkwy"
+      }
+    },
+    {
+      "type": "node",
+      "id": 9333723166,
+      "lat": 38.0574013,
+      "lon": -121.3752707,
+      "tags": {
+        "amenity": "restaurant",
+        "brand": "Ono Hawaiian BBQ",
+        "brand:wikidata": "Q99526964",
+        "cuisine": "barbecue;hawaiian",
+        "name": "Ono Hawaiian BBQ"
+      }
+    },
+    {
+      "type": "node",
+      "id": 9333723167,
+      "lat": 38.0574117,
+      "lon": -121.3753699,
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "10952",
+        "addr:postcode": "95219",
+        "addr:state": "CA",
+        "addr:street": "Trinity Parkway",
+        "addr:unit": "E",
+        "amenity": "fast_food",
+        "brand": "Subway",
+        "brand:wikidata": "Q244457",
+        "cuisine": "sandwich",
+        "name": "Subway",
+        "opening_hours": "Mo-Th 07:00-21:00; Fr-Sa 07:00-21:30; Su 07:00-21:00",
+        "phone": "+1 209-476-9932",
+        "takeaway": "yes",
+        "website": "https://restaurants.subway.com/united-states/ca/stockton/10952-e-trinity-pkwy"
+      }
+    },
+    {
+      "type": "node",
+      "id": 9333723170,
+      "lat": 38.0573782,
+      "lon": -121.3756997,
+      "tags": {
+        "amenity": "restaurant",
+        "brand": "Round Table Pizza",
+        "brand:wikidata": "Q7371139",
+        "cuisine": "pizza",
+        "name": "Round Table Pizza"
+      }
+    },
+    {
+      "type": "node",
+      "id": 9333723171,
+      "lat": 38.0572545,
+      "lon": -121.3758024,
+      "tags": {
+        "amenity": "restaurant",
+        "cuisine": "mongolian_grill",
+        "name": "GK Mongolian BBQ",
+        "website": "https://www.gkmongolianbbq.com/"
+      }
+    },
+    {
+      "type": "node",
+      "id": 9333723177,
+      "lat": 38.0568464,
+      "lon": -121.3758933,
+      "tags": {
+        "amenity": "fast_food",
+        "cuisine": "burger",
+        "name": "Moo Moo's Burger Barn"
+      }
+    },
+    {
+      "type": "node",
+      "id": 9333723183,
+      "lat": 38.0539598,
+      "lon": -121.3746808,
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "10710",
+        "addr:postcode": "95219",
+        "addr:state": "CA",
+        "addr:street": "Trinity Parkway",
+        "amenity": "fast_food",
+        "brand": "Chipotle",
+        "brand:wikidata": "Q465751",
+        "cuisine": "mexican",
+        "name": "Chipotle",
+        "official_name": "Chipotle Mexican Grill",
+        "phone": "+1 209-390-1023",
+        "takeaway": "yes",
+        "website": "https://locations.chipotle.com/ca/stockton/10710-trinity-pkwy"
+      }
+    },
+    {
+      "type": "node",
+      "id": 9333723184,
+      "lat": 38.053511,
+      "lon": -121.3738967,
+      "tags": {
+        "amenity": "restaurant",
+        "cuisine": "mediterranean",
+        "name": "Sugar Mediterranean Bistro"
+      }
+    },
+    {
+      "type": "node",
+      "id": 9333723185,
+      "lat": 38.0521869,
+      "lon": -121.3748342,
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "10506",
+        "addr:postcode": "95219",
+        "addr:state": "CA",
+        "addr:street": "Trinity Parkway",
+        "amenity": "fast_food",
+        "brand": "El Pollo Loco",
+        "brand:wikidata": "Q2353849",
+        "craft": "caterer",
+        "cuisine": "mexican",
+        "drive_through": "yes",
+        "name": "El Pollo Loco",
+        "opening_hours": "Mo-Su 09:00-23:00",
+        "operator": "Norcal Chicken Inc.",
+        "phone": "+1-209-478-1664",
+        "ref": "3771",
+        "takeaway": "yes",
+        "website": "https://restaurants.elpolloloco.com/ca/stockton/10506-trinity-pkwy"
+      }
+    },
+    {
+      "type": "node",
+      "id": 9333723189,
+      "lat": 38.0489264,
+      "lon": -121.3732281,
+      "tags": {
+        "amenity": "cafe",
+        "brand": "Sharetea",
+        "brand:wikidata": "Q64827032",
+        "cuisine": "bubble_tea",
+        "name": "Sharetea",
+        "name:en": "Sharetea",
+        "name:zh": "\u6b47\u8173\u4ead",
+        "takeaway": "yes"
+      }
+    },
+    {
+      "type": "node",
+      "id": 9333723193,
+      "lat": 38.0521441,
+      "lon": -121.3726712,
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "10424",
+        "addr:postcode": "95219",
+        "addr:state": "CA",
+        "addr:street": "Trinity Parkway",
+        "amenity": "cafe",
+        "branch": "Target Stockton NORTH 1862",
+        "brand": "Starbucks",
+        "brand:wikidata": "Q37158",
+        "cuisine": "coffee_shop",
+        "name": "Starbucks",
+        "official_name": "Starbucks Coffee",
+        "phone": "+1 209-235-0251",
+        "ref": "15059",
+        "takeaway": "yes",
+        "website": "https://www.starbucks.com/store-locator/store/15059/target-stockton-north-1862-10424-trinity-pkwy-stockton-ca-952197225-us"
+      }
+    },
+    {
+      "type": "node",
+      "id": 9333723194,
+      "lat": 38.0538244,
+      "lon": -121.372874,
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "10742",
+        "addr:postcode": "95219",
+        "addr:state": "CA",
+        "addr:street": "Trinity Parkway",
+        "addr:unit": "D",
+        "amenity": "restaurant",
+        "bar": "yes",
+        "branch": "Stockton",
+        "brand": "Raw Sushi Bistro",
+        "cuisine": "sushi",
+        "name": "Raw Sushi Bistro",
+        "opening_hours": "Mo-Tu 16:30-20:30; We-Th 11:30-14:00, 16:30-20:30; Fr 11:30-14:00, 16:00-21:00; Sa 11:30-14:00, 16:00-20:30; Su 12:00-20:00",
+        "phone": "+1 209 954 9729",
+        "smoking": "no",
+        "website": "https://www.rawsushibar.com/stockton-location",
+        "website:menu": "https://www.rawsushibar.com/stockton-menu"
+      }
+    },
+    {
+      "type": "node",
+      "id": 9333723197,
+      "lat": 38.0539556,
+      "lon": -121.3729252,
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "10742",
+        "addr:postcode": "95219",
+        "addr:state": "CA",
+        "addr:street": "Trinity Parkway",
+        "addr:unit": "C",
+        "amenity": "fast_food",
+        "branch": "Stockton Trinity",
+        "brand": "Wingstop",
+        "brand:wikidata": "Q8025339",
+        "cuisine": "wings",
+        "name": "Wingstop",
+        "phone": "+1 209-474-3238",
+        "takeaway": "yes"
+      }
+    },
+    {
+      "type": "node",
+      "id": 9333723210,
+      "lat": 37.9986332,
+      "lon": -121.3126231,
+      "tags": {
+        "amenity": "food_court",
+        "name": "The Pat\u00edo Food Court"
+      }
+    },
+    {
+      "type": "node",
+      "id": 9335746864,
+      "lat": 37.9874106,
+      "lon": -121.311517,
+      "tags": {
+        "amenity": "cafe",
+        "cuisine": "bubble_tea",
+        "name": "Tea Daze"
+      }
+    },
+    {
+      "type": "node",
+      "id": 9335746865,
+      "lat": 37.9870769,
+      "lon": -121.3112785,
+      "tags": {
+        "amenity": "cafe",
+        "cuisine": "coffee_shop",
+        "name": "Poppy Coffee"
+      }
+    },
+    {
+      "type": "node",
+      "id": 9335746866,
+      "lat": 37.9905077,
+      "lon": -121.3130763,
+      "tags": {
+        "amenity": "cafe",
+        "brand": "Kung Fu Tea",
+        "brand:wikidata": "Q66023886",
+        "cuisine": "bubble_tea",
+        "name": "Kung Fu Tea",
+        "takeaway": "yes"
+      }
+    },
+    {
+      "type": "node",
+      "id": 9335746868,
+      "lat": 38.0013907,
+      "lon": -121.3147663,
+      "tags": {
+        "amenity": "restaurant",
+        "cuisine": "noodle;vietnamese",
+        "name": "Ph\u1edf Saigon Bay Restaurant"
+      }
+    },
+    {
+      "type": "node",
+      "id": 9335746870,
+      "lat": 38.0012186,
+      "lon": -121.3153971,
+      "tags": {
+        "amenity": "restaurant",
+        "cuisine": "burger",
+        "name": "The Creamery"
+      }
+    },
+    {
+      "type": "node",
+      "id": 9335906806,
+      "lat": 38.0073951,
+      "lon": -121.32046,
+      "tags": {
+        "amenity": "cafe",
+        "brand": "Happy Lemon",
+        "brand:wikidata": "Q109968422",
+        "cuisine": "bubble_tea",
+        "name": "Happy Lemon",
+        "name:en": "Happy Lemon",
+        "name:zh": "\u5feb\u6a02\u6ab8\u6aac",
+        "takeaway": "yes"
+      }
+    },
+    {
+      "type": "node",
+      "id": 9335916929,
+      "lat": 37.999943,
+      "lon": -121.3175304,
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "960",
+        "addr:postcode": "95207",
+        "addr:state": "CA",
+        "addr:street": "West Robinhood Drive",
+        "amenity": "cafe",
+        "branch": "Stockton",
+        "brand": "Quickly",
+        "brand:en": "Quickly",
+        "brand:wikidata": "Q3771463",
+        "brand:zh": "\u5feb\u53ef\u7acb",
+        "cuisine": "bubble_tea",
+        "drive_through": "no",
+        "name": "Quickly",
+        "name:en": "Quickly",
+        "name:zh": "\u5feb\u53ef\u7acb",
+        "opening_hours": "11:30-21:30",
+        "outdoor_seating": "no",
+        "phone": "+1 209 227 8596",
+        "start_date": "2014-03-20",
+        "takeaway": "yes",
+        "website": "http://quicklyusa.com/stockton.html",
+        "website:menu": "https://quicklystockton.cloveronline.com/menu/all"
+      }
+    },
+    {
+      "type": "node",
+      "id": 9335983285,
+      "lat": 38.0212848,
+      "lon": -121.2918796,
+      "tags": {
+        "amenity": "cafe",
+        "cuisine": "bubble_tea",
+        "name": "Lollicup"
+      }
+    },
+    {
+      "type": "node",
+      "id": 9335983287,
+      "lat": 38.0216745,
+      "lon": -121.2924253,
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "7908",
+        "addr:postcode": "95210",
+        "addr:state": "CA",
+        "addr:street": "West Lane",
+        "addr:unit": "219 A",
+        "amenity": "fast_food",
+        "brand": "Domino's",
+        "brand:wikidata": "Q839466",
+        "cuisine": "pizza",
+        "name": "Domino's",
+        "opening_hours": "Mo-Th 10:00-24:00; Fr-Sa 10:00-01:00; Su 10:00-24:00",
+        "phone": "+1 209-956-3030",
+        "ref": "8335",
+        "takeaway": "yes",
+        "website": "https://pizza.dominos.com/california/stockton/7908-west-lane-suite-219-a"
+      }
+    },
+    {
+      "type": "node",
+      "id": 9335983288,
+      "lat": 38.0217104,
+      "lon": -121.2924659,
+      "tags": {
+        "amenity": "restaurant",
+        "cuisine": "mongolian_grill",
+        "name": "GK Mongolian BBQ",
+        "website": "https://www.gkmongolianbbq.com/"
+      }
+    },
+    {
+      "type": "node",
+      "id": 9335983289,
+      "lat": 38.0218232,
+      "lon": -121.292536,
+      "tags": {
+        "amenity": "restaurant",
+        "cuisine": "japanese;chinese",
+        "name": "Sushi House Buffet"
+      }
+    },
+    {
+      "type": "node",
+      "id": 9335983292,
+      "lat": 38.0239253,
+      "lon": -121.2938165,
+      "tags": {
+        "amenity": "restaurant",
+        "cuisine": "sandwich;asian;fusion",
+        "name": "Bigworm's Bakery and Deli"
+      }
+    },
+    {
+      "type": "node",
+      "id": 9335983293,
+      "lat": 38.0227151,
+      "lon": -121.2945115,
+      "tags": {
+        "amenity": "restaurant",
+        "cuisine": "cambodian",
+        "name": "Cambodian Restaurant"
+      }
+    },
+    {
+      "type": "node",
+      "id": 9335983306,
+      "lat": 38.0205283,
+      "lon": -121.2955627,
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "1440",
+        "addr:postcode": "95210",
+        "addr:state": "CA",
+        "addr:street": "East Hammer Lane",
+        "air_conditioning": "yes",
+        "amenity": "cafe",
+        "branch": "Hammer & West - Stockton",
+        "brand": "Starbucks",
+        "brand:wikidata": "Q37158",
+        "cuisine": "coffee_shop",
+        "indoor_seating": "yes",
+        "internet_access": "wlan",
+        "name": "Starbucks",
+        "official_name": "Starbucks Coffee",
+        "opening_hours": "Mo-Su 04:30-20:00",
+        "outdoor_seating": "yes",
+        "payment:cash": "yes",
+        "payment:credit_cards": "yes",
+        "payment:debit_cards": "yes",
+        "phone": "+1 209-474-7094",
+        "smoking": "no",
+        "takeaway": "yes",
+        "website": "https://www.starbucks.com/store-locator/store/14106/hammer-west-stockton-1440-east-hammer-lane-stockton-ca-952103049-us",
+        "wheelchair": "yes"
+      }
+    },
+    {
+      "type": "node",
+      "id": 9335983310,
+      "lat": 38.0205117,
+      "lon": -121.2941016,
+      "tags": {
+        "amenity": "fast_food",
+        "brand": "Firehouse Subs",
+        "brand:wikidata": "Q5451873",
+        "cuisine": "sandwich",
+        "indoor_seating": "yes",
+        "name": "Firehouse Subs",
+        "opening_hours": "Mo-Su 10:30-21:00",
+        "outdoor_seating": "no",
+        "takeaway": "yes"
+      }
+    },
+    {
+      "type": "node",
+      "id": 9335983311,
+      "lat": 38.0200884,
+      "lon": -121.2931471,
+      "tags": {
+        "amenity": "restaurant",
+        "cuisine": "thai",
+        "name": "Green Papaya"
+      }
+    },
+    {
+      "type": "node",
+      "id": 9335983312,
+      "lat": 38.0200499,
+      "lon": -121.2932074,
+      "tags": {
+        "amenity": "restaurant",
+        "cuisine": "filipino",
+        "name": "Manilla Express"
+      }
+    },
+    {
+      "type": "node",
+      "id": 9335983313,
+      "lat": 38.0200293,
+      "lon": -121.2933409,
+      "tags": {
+        "amenity": "restaurant",
+        "cuisine": "chinese",
+        "name": "Prosperity Szechuan Cuisine"
+      }
+    },
+    {
+      "type": "node",
+      "id": 9335983314,
+      "lat": 38.0201407,
+      "lon": -121.2930545,
+      "tags": {
+        "amenity": "restaurant",
+        "name": "JJ Fish and Chicken"
+      }
+    },
+    {
+      "type": "node",
+      "id": 9335983315,
+      "lat": 38.0199072,
+      "lon": -121.2935333,
+      "tags": {
+        "amenity": "restaurant",
+        "brand": "Bonchon Chicken",
+        "brand:wikidata": "Q4941248",
+        "cuisine": "chicken;korean;sushi",
+        "name": "Bonchon Chicken"
+      }
+    },
+    {
+      "type": "node",
+      "id": 9335983316,
+      "lat": 38.0227508,
+      "lon": -121.3568445,
+      "tags": {
+        "amenity": "fast_food",
+        "cuisine": "burger",
+        "name": "Midnight at Burnie's Drive-Up"
+      }
+    },
+    {
+      "type": "node",
+      "id": 9336041009,
+      "lat": 37.9905397,
+      "lon": -121.3216925,
+      "tags": {
+        "amenity": "fast_food",
+        "cuisine": "hot_dog",
+        "name": "Ssong's Hotdog"
+      }
+    },
+    {
+      "type": "node",
+      "id": 9341606531,
+      "lat": 37.9991767,
+      "lon": -121.3153847,
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "5350",
+        "addr:postcode": "95207",
+        "addr:state": "CA",
+        "addr:street": "Pacific Avenue",
+        "addr:unit": "J1",
+        "amenity": "fast_food",
+        "branch": "Pacific & Robinhood",
+        "brand": "Panda Express",
+        "brand:wikidata": "Q1358690",
+        "cuisine": "chinese",
+        "drive_through": "no",
+        "name": "Panda Express",
+        "opening_hours": "Mo-Su 10:30-22:30",
+        "phone": "+1 209-476-1908",
+        "takeaway": "yes",
+        "website": "https://www.pandaexpress.com/locations/ca/stockton/5350-pacific-ave-space-j1"
+      }
+    },
+    {
+      "type": "node",
+      "id": 9344760683,
+      "lat": 37.9707904,
+      "lon": -121.300093,
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "2041",
+        "addr:postcode": "95204",
+        "addr:state": "CA",
+        "addr:street": "North Pacific Avenue",
+        "amenity": "restaurant",
+        "cuisine": "korean",
+        "name": "Seoul Soon Dubu",
+        "name:en": "Seoul Soon Dubu",
+        "name:ko": "\uc11c\uc6b8 \uc21c\ub450\ubd80",
+        "name:ko-Kore": "\uc11c\uc6b8 \u7d14\u8c46\u8150",
+        "name:ko-Latn": "Seoul Sundubu",
+        "opening_hours": "Mo,We-Th 12:00-14:30,17:00-21:30; Fr-Sa 12:00-21:00; Su 16:00-21:00",
+        "phone": "+1-209-462-8989",
+        "website": "https://seoulsoontobu.com"
+      }
+    },
+    {
+      "type": "node",
+      "id": 9348967918,
+      "lat": 38.0205772,
+      "lon": -121.2960695,
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "1304",
+        "addr:state": "CA",
+        "addr:street": "East Hammer Lane",
+        "amenity": "restaurant",
+        "cuisine": "pizza",
+        "indoor_seating": "yes",
+        "name": "Eddie's Pizza Cafe",
+        "outdoor_seating": "no",
+        "website": "http://adoraimages.blob.core.windows.net/content/eddies/online/index.html"
+      }
+    },
+    {
+      "type": "node",
+      "id": 9349733843,
+      "lat": 38.002761,
+      "lon": -121.2849183,
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "1916",
+        "addr:postcode": "95210",
+        "addr:state": "CA",
+        "addr:street": "East March Lane",
+        "amenity": "fast_food",
+        "brand": "Jack in the Box",
+        "brand:wikidata": "Q1538507",
+        "cuisine": "burger",
+        "drive_through": "yes",
+        "name": "Jack in the Box",
+        "phone": "+1 209-662-8317",
+        "takeaway": "yes",
+        "website": "https://locations.jackinthebox.com/us/ca/stockton/1916-e-march-ln"
+      }
+    },
+    {
+      "type": "node",
+      "id": 9351075510,
+      "lat": 38.0022032,
+      "lon": -121.2886798,
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "1540",
+        "addr:postcode": "95210",
+        "addr:state": "CA",
+        "addr:street": "East March Lane",
+        "addr:unit": "B3",
+        "amenity": "fast_food",
+        "brand": "Subway",
+        "brand:wikidata": "Q244457",
+        "cuisine": "sandwich",
+        "drive_through": "no",
+        "indoor_seating": "yes",
+        "name": "Subway",
+        "opening_hours": "Mo-Fr 07:00-21:30; Sa,Su 08:00-21:30",
+        "outdoor_seating": "no",
+        "phone": "+1 209-951-9698",
+        "takeaway": "yes",
+        "website": "https://restaurants.subway.com/united-states/ca/stockton/1540-e-march-lane"
+      }
+    },
+    {
+      "type": "node",
+      "id": 9514445709,
+      "lat": 38.0205809,
+      "lon": -121.2733646,
+      "tags": {
+        "amenity": "restaurant",
+        "cuisine": "noodle",
+        "name": "Mac Ph\u1edf"
+      }
+    },
+    {
+      "type": "node",
+      "id": 9514445710,
+      "lat": 38.0205803,
+      "lon": -121.2738069,
+      "tags": {
+        "amenity": "restaurant",
+        "cuisine": "seafood",
+        "name": "The Crab Zone"
+      }
+    },
+    {
+      "type": "node",
+      "id": 9514445712,
+      "lat": 38.0206063,
+      "lon": -121.2727073,
+      "tags": {
+        "amenity": "restaurant",
+        "cuisine": "sandwich;smoothie",
+        "name": "Best Sandwiches & Smoothies"
+      }
+    },
+    {
+      "type": "node",
+      "id": 9514445714,
+      "lat": 38.0205455,
+      "lon": -121.2751444,
+      "tags": {
+        "amenity": "restaurant",
+        "cuisine": "indian",
+        "name": "Shan-E-Punjab"
+      }
+    },
+    {
+      "type": "node",
+      "id": 9514483417,
+      "lat": 38.0205366,
+      "lon": -121.277029,
+      "tags": {
+        "amenity": "fast_food",
+        "cuisine": "donut",
+        "name": "Star Donuts"
+      }
+    },
+    {
+      "type": "node",
+      "id": 9514483422,
+      "lat": 38.0206411,
+      "lon": -121.2788224,
+      "tags": {
+        "amenity": "restaurant",
+        "cuisine": "mexican",
+        "name": "Tacos Chapala"
+      }
+    },
+    {
+      "type": "node",
+      "id": 9514483423,
+      "lat": 38.0231818,
+      "lon": -121.293746,
+      "tags": {
+        "amenity": "restaurant",
+        "cuisine": "noodle",
+        "name": "T L Noodle"
+      }
+    },
+    {
+      "type": "node",
+      "id": 9546068544,
+      "lat": 38.0288266,
+      "lon": -121.3222683,
+      "tags": {
+        "amenity": "restaurant",
+        "cuisine": "thai",
+        "name": "Spice It Up!"
+      }
+    },
+    {
+      "type": "node",
+      "id": 9546068546,
+      "lat": 38.0290293,
+      "lon": -121.321552,
+      "tags": {
+        "amenity": "fast_food",
+        "cuisine": "donut",
+        "name": "SK Donuts"
+      }
+    },
+    {
+      "type": "node",
+      "id": 9546068548,
+      "lat": 38.0297813,
+      "lon": -121.3216491,
+      "tags": {
+        "amenity": "restaurant",
+        "cuisine": "mexican",
+        "name": "Tu Pueblito Taqueria"
+      }
+    },
+    {
+      "type": "node",
+      "id": 9546068556,
+      "lat": 38.0224798,
+      "lon": -121.3226578,
+      "tags": {
+        "amenity": "fast_food",
+        "cuisine": "pizza",
+        "name": "Piara Pizza"
+      }
+    },
+    {
+      "type": "node",
+      "id": 9807692486,
+      "lat": 38.0200425,
+      "lon": -121.296215,
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "1304",
+        "addr:postcode": "95210",
+        "addr:state": "CA",
+        "addr:street": "East Hammer Lane",
+        "addr:unit": "10",
+        "air_conditioning": "yes",
+        "amenity": "fast_food",
+        "brand": "Subway",
+        "brand:wikidata": "Q244457",
+        "cuisine": "sandwich",
+        "indoor_seating": "yes",
+        "name": "Subway",
+        "opening_hours": "Mo-Fr 08:00-21:30; Sa,Su 09:00-21:00",
+        "outdoor_seating": "no",
+        "payment:credit_cards": "yes",
+        "payment:debit_cards": "yes",
+        "phone": "+1 209-473-1678",
+        "smoking": "no",
+        "takeaway": "yes",
+        "website": "https://restaurants.subway.com/united-states/ca/stockton/1304-e-hammer-lane"
+      }
+    },
+    {
+      "type": "node",
+      "id": 9921734159,
+      "lat": 38.0025074,
+      "lon": -121.29374,
+      "tags": {
+        "amenity": "fast_food",
+        "brand": "Little Caesars",
+        "brand:wikidata": "Q1393809",
+        "cuisine": "pizza",
+        "name": "Little Caesars",
+        "takeaway": "yes",
+        "website": "https://littlecaesars.com/en-us/store/3440/"
+      }
+    },
+    {
+      "type": "node",
+      "id": 10052776174,
+      "lat": 37.905494,
+      "lon": -121.2221435,
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "4895",
+        "addr:postcode": "95215",
+        "addr:state": "CA",
+        "addr:street": "State Route 99",
+        "addr:unit": "B",
+        "amenity": "fast_food",
+        "brand": "Subway",
+        "brand:wikidata": "Q244457",
+        "cuisine": "sandwich",
+        "name": "Subway",
+        "opening_hours": "Mo-Fr 07:00-21:30; Sa 08:00-21:00; Su 09:00-21:00",
+        "phone": "+1 209-462-9933",
+        "takeaway": "yes",
+        "website": "https://restaurants.subway.com/united-states/ca/stockton/4895-state-rt-99"
+      }
+    },
+    {
+      "type": "node",
+      "id": 10052776175,
+      "lat": 37.9054951,
+      "lon": -121.2220207,
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "4895",
+        "addr:postcode": "95215",
+        "addr:state": "CA",
+        "addr:street": "South State Highway 99, East Frontage Road",
+        "amenity": "cafe",
+        "branch": "Arch Road & Highway 99 - Stockton",
+        "brand": "Starbucks",
+        "brand:wikidata": "Q37158",
+        "cuisine": "coffee_shop",
+        "name": "Starbucks",
+        "official_name": "Starbucks Coffee",
+        "phone": "+1 209-465-4374",
+        "ref": "10055",
+        "takeaway": "yes",
+        "website": "https://www.starbucks.com/store-locator/store/10055/arch-road-hwy-99-stockton-4895-s-state-hwy-99-east-frontage-road-stockton-ca"
+      }
+    },
+    {
+      "type": "node",
+      "id": 11008500764,
+      "lat": 38.0117925,
+      "lon": -121.3239217,
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "501",
+        "addr:postcode": "95207",
+        "addr:state": "CA",
+        "addr:street": "Lincoln Center",
+        "amenity": "restaurant",
+        "cuisine": "mediterranean",
+        "name": "Papapavlo's Bistro & Bar"
+      }
+    },
+    {
+      "type": "node",
+      "id": 11592864873,
+      "lat": 38.010717,
+      "lon": -121.3232756,
+      "tags": {
+        "amenity": "restaurant",
+        "cuisine": "japanese",
+        "name": "ShoMi Japanese Cuisine"
+      }
+    },
+    {
+      "type": "node",
+      "id": 11592864874,
+      "lat": 38.0113604,
+      "lon": -121.3232644,
+      "tags": {
+        "amenity": "restaurant",
+        "cuisine": "american",
+        "name": "Market Tavern"
+      }
+    },
+    {
+      "type": "node",
+      "id": 11592864875,
+      "lat": 38.0110958,
+      "lon": -121.322821,
+      "tags": {
+        "amenity": "fast_food",
+        "brand": "N\u00e9kter Juice Bar",
+        "brand:wikidata": "Q112826281",
+        "cuisine": "juice",
+        "name": "N\u00e9kter Juice Bar",
+        "takeaway": "yes"
+      }
+    },
+    {
+      "type": "node",
+      "id": 11592864876,
+      "lat": 38.0111384,
+      "lon": -121.3226571,
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "201",
+        "addr:postcode": "95207",
+        "addr:state": "CA",
+        "addr:street": "Lincoln Center",
+        "alt_name": "Jamba Juice",
+        "amenity": "fast_food",
+        "branch": "Lincoln Center",
+        "brand": "Jamba",
+        "brand:wikidata": "Q3088784",
+        "cuisine": "juice",
+        "name": "Jamba",
+        "opening_hours": "Mo-Fr 07:00-21:00; Sa 07:30-21:00; Su 08:00-21:00",
+        "phone": "+1 209-951-9300",
+        "takeaway": "yes",
+        "website": "https://locations.jamba.com/ca/stockton/201-lincoln-center"
+      }
+    },
+    {
+      "type": "node",
+      "id": 11592864877,
+      "lat": 38.0112263,
+      "lon": -121.3221637,
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "121",
+        "addr:postcode": "95207",
+        "addr:state": "CA",
+        "addr:street": "Lincoln Center",
+        "amenity": "cafe",
+        "branch": "Lincoln Center - Stockton",
+        "brand": "Starbucks",
+        "brand:wikidata": "Q37158",
+        "cuisine": "coffee_shop",
+        "name": "Starbucks",
+        "official_name": "Starbucks Coffee",
+        "phone": "+1 209-952-7292",
+        "ref": "9126",
+        "takeaway": "yes",
+        "website": "https://www.starbucks.com/store-locator/store/9126/lincoln-center-stockton-121-lincoln-center-stockton-ca-952072613-us"
+      }
+    },
+    {
+      "type": "node",
+      "id": 11592864878,
+      "lat": 38.0124165,
+      "lon": -121.3214878,
+      "tags": {
+        "amenity": "restaurant",
+        "cuisine": "japanese",
+        "name": "Domo Japanese Sushi Grill and Bar"
+      }
+    },
+    {
+      "type": "node",
+      "id": 11592864879,
+      "lat": 38.0073285,
+      "lon": -121.3186911,
+      "tags": {
+        "amenity": "fast_food",
+        "brand": "Mochinut",
+        "brand:wikidata": "Q112757409",
+        "cuisine": "donut;bubble_tea",
+        "name": "Mochinut",
+        "takeaway": "yes"
+      }
+    },
+    {
+      "type": "node",
+      "id": 11592864880,
+      "lat": 38.0075948,
+      "lon": -121.318785,
+      "tags": {
+        "amenity": "restaurant",
+        "cuisine": "thai",
+        "name": "Green Papaya"
+      }
+    },
+    {
+      "type": "node",
+      "id": 11592864881,
+      "lat": 38.0070433,
+      "lon": -121.3199721,
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "6283",
+        "addr:postcode": "95207",
+        "addr:state": "CA",
+        "addr:street": "Pacific Avenue",
+        "amenity": "fast_food",
+        "brand": "Subway",
+        "brand:wikidata": "Q244457",
+        "cuisine": "sandwich",
+        "name": "Subway",
+        "opening_hours": "Mo-Fr 07:00-22:00; Sa 08:00-20:00; Su 09:00-20:00",
+        "phone": "+1 209-954-9502",
+        "takeaway": "yes",
+        "website": "https://restaurants.subway.com/united-states/ca/stockton/6283-pacific-ave"
+      }
+    },
+    {
+      "type": "node",
+      "id": 11794684849,
+      "lat": 38.0442047,
+      "lon": -121.337956,
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:state": "CA",
+        "addr:street": "Gerber Drive",
+        "amenity": "bar",
+        "internet_access": "yes"
+      }
+    },
+    {
+      "type": "node",
+      "id": 12156722467,
+      "lat": 37.9998641,
+      "lon": -121.3177236,
+      "tags": {
+        "alt_name": "Mountain Mike's Pizza",
+        "amenity": "restaurant",
+        "brand": "Mountain Mike's",
+        "brand:wikidata": "Q6925120",
+        "cuisine": "pizza",
+        "indoor_seating": "yes",
+        "name": "Mountain Mike's",
+        "outdoor_seating": "no",
+        "takeaway": "yes"
+      }
+    },
+    {
+      "type": "node",
+      "id": 12181367110,
+      "lat": 38.0374359,
+      "lon": -121.2605404,
+      "tags": {
+        "amenity": "fast_food",
+        "brand": "Panda Express",
+        "brand:wikidata": "Q1358690",
+        "cuisine": "chinese",
+        "indoor_seating": "yes",
+        "name": "Panda Express",
+        "opening_hours": "Mo-Su 09:30-21:30",
+        "outdoor_seating": "no",
+        "takeaway": "yes"
+      }
+    },
+    {
+      "type": "node",
+      "id": 12185219811,
+      "lat": 38.0058715,
+      "lon": -121.3180977,
+      "tags": {
+        "addr:housenumber": "6124",
+        "addr:street": "Pacific Avenue",
+        "amenity": "restaurant",
+        "cuisine": "thai",
+        "name": "Royal Siam",
+        "phone": "+1 209 323-4557",
+        "website": "https://www.royalsiamstockton.com"
+      }
+    },
+    {
+      "type": "node",
+      "id": 12211909605,
+      "lat": 38.0015721,
+      "lon": -121.3695948,
+      "tags": {
+        "amenity": "restaurant",
+        "indoor_seating": "yes",
+        "name": "Garlic Brothers",
+        "outdoor_seating": "yes"
+      }
+    },
+    {
+      "type": "node",
+      "id": 12231691027,
+      "lat": 38.0002649,
+      "lon": -121.3186446,
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "1025",
+        "addr:state": "CA",
+        "addr:street": "West Robinhood Drive",
+        "amenity": "restaurant",
+        "cuisine": "chinese",
+        "name": "Beijing Buffet",
+        "website": "https://beijingbuffetstockton.kwickmenu.com/"
+      }
+    },
+    {
+      "type": "node",
+      "id": 12288544566,
+      "lat": 37.9493913,
+      "lon": -121.2893142,
+      "tags": {
+        "addr:country": "US",
+        "addr:housenumber": "322",
+        "addr:postcode": "95203",
+        "addr:state": "CA",
+        "addr:street": "South Center Street",
+        "amenity": "fast_food",
+        "brand": "McDonald's",
+        "brand:wikidata": "Q38076",
+        "check_date": "2024-02-01",
+        "check_date:opening_hours": "2024-02-01",
+        "check_date:opening_hours:drive_through": "2024-02-01",
+        "cuisine": "burger",
+        "drive_through": "yes",
+        "indoor_seating": "yes",
+        "internet_access": "wlan",
+        "name": "McDonald's",
+        "opening_hours": "Mo-Su 06:00-22:00",
+        "opening_hours:drive_through": "Mo-Su 06:00-23:00",
+        "phone": "+1 209-307-6323",
+        "takeaway": "yes",
+        "website": "https://www.mcdonalds.com/us/en-us/location/ca/stockton/322-s-center/25489.html"
+      }
+    },
+    {
+      "type": "node",
+      "id": 12288548989,
+      "lat": 38.0054637,
+      "lon": -121.3541267,
+      "tags": {
+        "addr:country": "US",
+        "addr:housenumber": "3143",
+        "addr:postcode": "95219",
+        "addr:state": "CA",
+        "addr:street": "West Benjamin Holt Drive",
+        "amenity": "fast_food",
+        "brand": "McDonald's",
+        "brand:wikidata": "Q38076",
+        "check_date": "2024-02-01",
+        "check_date:opening_hours": "2024-02-01",
+        "check_date:opening_hours:drive_through": "2024-02-01",
+        "cuisine": "burger",
+        "drive_through": "yes",
+        "indoor_seating": "yes",
+        "internet_access": "wlan",
+        "name": "McDonald's",
+        "opening_hours": "Mo-Su 05:00-23:00",
+        "opening_hours:drive_through": "24/7",
+        "phone": "+1 209-395-3604",
+        "takeaway": "yes",
+        "website": "https://www.mcdonalds.com/us/en-us/location/ca/stockton/3143-w-benjamin-holt-dr/4643.html"
+      }
+    },
+    {
+      "type": "node",
+      "id": 12288558515,
+      "lat": 38.0215641,
+      "lon": -121.3445586,
+      "tags": {
+        "addr:country": "US",
+        "addr:housenumber": "2415",
+        "addr:postcode": "95209",
+        "addr:state": "CA",
+        "addr:street": "West Hammer Lane",
+        "amenity": "fast_food",
+        "brand": "McDonald's",
+        "brand:wikidata": "Q38076",
+        "check_date": "2024-02-01",
+        "check_date:opening_hours": "2024-02-01",
+        "check_date:opening_hours:drive_through": "2024-02-01",
+        "cuisine": "burger",
+        "drive_through": "yes",
+        "indoor_seating": "yes",
+        "internet_access": "wlan",
+        "name": "McDonald's",
+        "opening_hours": "Mo-Su 06:00-23:00",
+        "opening_hours:drive_through": "Mo-Su 06:00-24:00",
+        "phone": "+1 209-395-3825",
+        "takeaway": "yes",
+        "website": "https://www.mcdonalds.com/us/en-us/location/ca/stockton/2415-w-hammer-ln/24092.html"
+      }
+    },
+    {
+      "type": "node",
+      "id": 12372820227,
+      "lat": 38.0200392,
+      "lon": -121.2965319,
+      "tags": {
+        "amenity": "fast_food",
+        "cuisine": "donut",
+        "indoor_seating": "yes",
+        "name": "Tender Donuts & Pastries",
+        "outdoor_seating": "no"
+      }
+    },
+    {
+      "type": "node",
+      "id": 12406888079,
+      "lat": 37.9117969,
+      "lon": -121.2963286,
+      "tags": {
+        "amenity": "fast_food",
+        "drive_through": "yes"
+      }
+    },
+    {
+      "type": "node",
+      "id": 12406888080,
+      "lat": 37.9129904,
+      "lon": -121.294325,
+      "tags": {
+        "amenity": "fast_food",
+        "brand": "McDonald's",
+        "brand:wikidata": "Q38076",
+        "cuisine": "burger",
+        "name": "McDonald's",
+        "takeaway": "yes",
+        "website": "https://www.mcdonalds.com/us/en-us/location/ca/stockton/563-carolyn-weston-blvd/40735.html"
+      }
+    },
+    {
+      "type": "node",
+      "id": 12559132994,
+      "lat": 38.0201917,
+      "lon": -121.2960456,
+      "tags": {
+        "amenity": "restaurant",
+        "cuisine": "indian",
+        "name": "Mother India Cuisine"
+      }
+    },
+    {
+      "type": "node",
+      "id": 12624137088,
+      "lat": 38.0217994,
+      "lon": -121.2967639,
+      "tags": {
+        "amenity": "bar",
+        "name": "La Cantina Sports Bar & Lounge"
+      }
+    },
+    {
+      "type": "node",
+      "id": 12624616304,
+      "lat": 38.0017092,
+      "lon": -121.3192651,
+      "tags": {
+        "amenity": "restaurant",
+        "cuisine": "italian",
+        "name": "De Vega Brothers Italian Cuisine"
+      }
+    },
+    {
+      "type": "node",
+      "id": 12671167813,
+      "lat": 38.0376316,
+      "lon": -121.2607844,
+      "tags": {
+        "amenity": "fast_food",
+        "brand": "Subway",
+        "brand:wikidata": "Q244457",
+        "cuisine": "sandwich",
+        "name": "Subway",
+        "takeaway": "yes"
+      }
+    },
+    {
+      "type": "node",
+      "id": 12993311403,
+      "lat": 37.9359587,
+      "lon": -121.2988628,
+      "tags": {
+        "amenity": "cafe",
+        "brand": "Starbucks",
+        "cuisine": "coffee_shop",
+        "drive_through": "yes",
+        "name": "Starbucks",
+        "official_name": "Starbucks Coffee",
+        "takeaway": "yes"
+      }
+    },
+    {
+      "type": "node",
+      "id": 13360338530,
+      "lat": 37.9799418,
+      "lon": -121.263383,
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "2029",
+        "addr:postcode": "95205",
+        "addr:state": "CA",
+        "addr:street": "Cherokee Road",
+        "amenity": "restaurant",
+        "check_date:currency:XBT": "2025-12-07",
+        "currency:XBT": "yes",
+        "name": "Fuego Taqueria",
+        "opening_hours": "Mo-Su 08:00-22:00",
+        "payment:lightning": "yes",
+        "payment:lightning:operator": "square",
+        "payment:onchain": "no",
+        "phone": "+12097518472",
+        "website": "https://fuego-taqueria.com/"
+      }
+    },
+    {
+      "type": "node",
+      "id": 13360338531,
+      "lat": 38.0551725,
+      "lon": -121.2588545,
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "10878",
+        "addr:postcode": "95212",
+        "addr:state": "CA",
+        "addr:street": "North State Route 99 East Frontage Road",
+        "amenity": "restaurant",
+        "check_date:currency:XBT": "2025-12-07",
+        "currency:XBT": "yes",
+        "name": "Fuego Taqueria",
+        "opening_hours": "Mo-Su 10:00-22:00",
+        "payment:lightning": "yes",
+        "payment:lightning:operator": "square",
+        "payment:onchain": "no",
+        "phone": "+12093276141",
+        "website": "https://fuego-taqueria.com/"
+      }
+    },
+    {
+      "type": "node",
+      "id": 13393375100,
+      "lat": 37.9610777,
+      "lon": -121.2823301,
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "650",
+        "addr:postcode": "95202",
+        "addr:state": "CA",
+        "addr:street": "North Grant Street",
+        "amenity": "restaurant",
+        "check_date": "2025-12-21",
+        "cuisine": "salvadoran",
+        "currency:XBT": "yes",
+        "name": "Restaurante Los Latinos",
+        "opening_hours": "Mo-Fr 09:00-17:00",
+        "payment:lightning": "yes",
+        "payment:lightning:operator": "square",
+        "payment:lightning_contactless": "no",
+        "payment:onchain": "no",
+        "phone": "+1-209-451-1075"
+      }
+    },
+    {
+      "type": "node",
+      "id": 13466014701,
+      "lat": 38.0555976,
+      "lon": -121.2580847,
+      "tags": {
+        "amenity": "cafe",
+        "name": "Starbucks",
+        "opening_hours": "Mo-Sa 04:30-21:00; Su 05:00-21:00"
+      }
+    },
+    {
+      "type": "way",
+      "id": 206844135,
+      "center": {
+        "lat": 37.9561555,
+        "lon": -121.2897033
+      },
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "135",
+        "addr:postcode": "95202",
+        "addr:state": "CA",
+        "addr:street": "East Miner Avenue",
+        "amenity": "restaurant",
+        "building": "yes",
+        "check_date": "2024-05-11",
+        "cuisine": "mexican",
+        "delivery": "yes",
+        "email": "www.cancunrestaurantstockton@yahoo.com",
+        "name": "Cancun",
+        "opening_hours": "Mo-Su 11:00-21:00; PH off",
+        "phone": "+1 209-465-6810",
+        "takeaway": "yes",
+        "website": "https://www.cancunrestaurantstockton.com/"
+      }
+    },
+    {
+      "type": "way",
+      "id": 272203046,
+      "center": {
+        "lat": 37.9878329,
+        "lon": -121.2460435
+      },
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:country": "US",
+        "addr:housenumber": "4419",
+        "addr:postcode": "95215",
+        "addr:state": "CA",
+        "addr:street": "East Waterloo Road",
+        "amenity": "fast_food",
+        "brand": "McDonald's",
+        "brand:website": "https://www.mcdonalds.com/",
+        "brand:wikidata": "Q38076",
+        "building": "retail",
+        "cuisine": "burger",
+        "drive_through": "yes",
+        "internet_access": "wlan",
+        "name": "McDonald's",
+        "opening_hours": "05:00-23:00",
+        "phone": "+1 209-851-2893",
+        "takeaway": "yes",
+        "website": "https://www.mcdonalds.com/us/en-us/location/7058.html"
+      }
+    },
+    {
+      "type": "way",
+      "id": 272203048,
+      "center": {
+        "lat": 37.9870869,
+        "lon": -121.2469999
+      },
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "4327",
+        "addr:postcode": "95215",
+        "addr:state": "CA",
+        "addr:street": "East Highway 88",
+        "amenity": "fast_food",
+        "brand": "Taco Bell",
+        "brand:wikidata": "Q752941",
+        "cuisine": "tex-mex",
+        "name": "Taco Bell",
+        "opening_hours": "Mo-Th 07:00-01:00; Fr-Sa 07:00-02:00; Su 07:00-01:00",
+        "phone": "+1 209-931-5815",
+        "takeaway": "yes",
+        "website": "https://locations.tacobell.com/ca/stockton/4327-east-highway-88.html"
+      }
+    },
+    {
+      "type": "way",
+      "id": 287546492,
+      "center": {
+        "lat": 38.0020683,
+        "lon": -121.3174842
+      },
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "5733",
+        "addr:state": "CA",
+        "addr:street": "Pacific Avenue",
+        "amenity": "restaurant",
+        "brand": "BJ's",
+        "brand:wikidata": "Q4835755",
+        "building": "retail",
+        "check_date": "2024-09-22",
+        "cuisine": "american",
+        "name": "BJ's",
+        "official_name": "BJ's Restaurant & Brewhouse",
+        "phone": "+1 209-373-4660",
+        "website": "https://www.bjsrestaurants.com/locations/ca/stockton"
+      }
+    },
+    {
+      "type": "way",
+      "id": 287546494,
+      "center": {
+        "lat": 38.0011399,
+        "lon": -121.3178987
+      },
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "5615",
+        "addr:postcode": "95207",
+        "addr:state": "CA",
+        "addr:street": "North Pacific Avenue",
+        "amenity": "restaurant",
+        "building": "yes",
+        "cuisine": "french",
+        "name": "Boudin SF",
+        "phone": "+1-209-952-2000"
+      }
+    },
+    {
+      "type": "way",
+      "id": 287546498,
+      "center": {
+        "lat": 37.9925575,
+        "lon": -121.3140017
+      },
+      "tags": {
+        "addr:state": "CA",
+        "amenity": "restaurant",
+        "brand": "Buffalo Wild Wings",
+        "brand:wikidata": "Q509255",
+        "building": "commercial",
+        "cuisine": "wings",
+        "name": "Buffalo Wild Wings",
+        "short_name": "BW3"
+      }
+    },
+    {
+      "type": "way",
+      "id": 287546499,
+      "center": {
+        "lat": 37.9880912,
+        "lon": -121.3219317
+      },
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "4571",
+        "addr:postcode": "95207-6705",
+        "addr:state": "CA",
+        "addr:street": "North Pershing Avenue",
+        "amenity": "fast_food",
+        "brand": "Burger King",
+        "brand:wikidata": "Q177054",
+        "building": "yes",
+        "cuisine": "burger",
+        "delivery": "yes",
+        "drive_through": "yes",
+        "internet_access": "wlan",
+        "name": "Burger King",
+        "opening_hours": "Mo-Sa 06:00-20:00; Su 07:00-20:00",
+        "phone": "+1 209-227-3700",
+        "ref": "4886",
+        "takeaway": "yes",
+        "website": "https://www.bk.com/store-locator/store/restaurant_2731"
+      }
+    },
+    {
+      "type": "way",
+      "id": 287546508,
+      "center": {
+        "lat": 37.9946845,
+        "lon": -121.3134162
+      },
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "4940",
+        "addr:postcode": "95207",
+        "addr:state": "CA",
+        "addr:street": "Pacific Avenue",
+        "amenity": "fast_food",
+        "brand": "Chipotle",
+        "brand:wikidata": "Q465751",
+        "building": "yes",
+        "cuisine": "mexican",
+        "name": "Chipotle",
+        "official_name": "Chipotle Mexican Grill",
+        "phone": "+1 209-476-7217",
+        "takeaway": "yes",
+        "website": "https://locations.chipotle.com/ca/stockton/4940-pacific-ave"
+      }
+    },
+    {
+      "type": "way",
+      "id": 287546512,
+      "center": {
+        "lat": 37.9621372,
+        "lon": -121.2728626
+      },
+      "tags": {
+        "amenity": "fast_food",
+        "building": "yes"
+      }
+    },
+    {
+      "type": "way",
+      "id": 287546513,
+      "center": {
+        "lat": 37.9842193,
+        "lon": -121.3419561
+      },
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "2670",
+        "addr:postcode": "95207",
+        "addr:state": "CA",
+        "addr:street": "West March Lane",
+        "amenity": "restaurant",
+        "brand": "Denny's",
+        "brand:wikidata": "Q1189695",
+        "building": "yes",
+        "cuisine": "american",
+        "name": "Denny's"
+      }
+    },
+    {
+      "type": "way",
+      "id": 287546514,
+      "center": {
+        "lat": 37.9926874,
+        "lon": -121.313667
+      },
+      "tags": {
+        "addr:housenumber": "4747",
+        "addr:street": "Pacific Avenue",
+        "amenity": "restaurant",
+        "brand": "Denny's",
+        "brand:wikidata": "Q1189695",
+        "building": "retail",
+        "cuisine": "american",
+        "name": "Denny's",
+        "opening_hours": "24/7"
+      }
+    },
+    {
+      "type": "way",
+      "id": 287546515,
+      "center": {
+        "lat": 37.9613887,
+        "lon": -121.2727967
+      },
+      "tags": {
+        "amenity": "restaurant",
+        "building": "yes",
+        "cuisine": "mexican",
+        "name": "El Forrestero"
+      }
+    },
+    {
+      "type": "way",
+      "id": 287546520,
+      "center": {
+        "lat": 37.9969522,
+        "lon": -121.3145439
+      },
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "5202",
+        "addr:postcode": "95207",
+        "addr:state": "CA",
+        "addr:street": "Pacific Avenue",
+        "amenity": "fast_food",
+        "brand": "In-N-Out Burger",
+        "brand:wikidata": "Q1205312",
+        "building": "yes",
+        "cuisine": "burger",
+        "name": "In-N-Out Burger",
+        "ref": "369",
+        "takeaway": "yes",
+        "website": "https://locations.in-n-out.com/369"
+      }
+    },
+    {
+      "type": "way",
+      "id": 287546521,
+      "center": {
+        "lat": 37.9867931,
+        "lon": -121.321537
+      },
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "1409",
+        "addr:state": "CA",
+        "addr:street": "Rosemarie Lane",
+        "amenity": "restaurant",
+        "building": "yes",
+        "name": "Fat's Grill"
+      }
+    },
+    {
+      "type": "way",
+      "id": 287547156,
+      "center": {
+        "lat": 37.9655819,
+        "lon": -121.2739103
+      },
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "1006",
+        "addr:state": "CA",
+        "addr:street": "North Wilson Way",
+        "amenity": "fast_food",
+        "building": "yes",
+        "cuisine": "burger",
+        "name": "Five Star Burger"
+      }
+    },
+    {
+      "type": "way",
+      "id": 287548942,
+      "center": {
+        "lat": 38.0505892,
+        "lon": -121.3739072
+      },
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "10354",
+        "addr:postcode": "95219",
+        "addr:state": "CA",
+        "addr:street": "Trinity Parkway",
+        "amenity": "fast_food",
+        "brand": "Sonic",
+        "brand:wikidata": "Q7561808",
+        "building": "yes",
+        "cuisine": "burger",
+        "drive_in": "yes",
+        "drive_through": "yes",
+        "name": "Sonic",
+        "opening_hours": "10:00-24:00",
+        "phone": "+1 209-474-0735",
+        "takeaway": "yes",
+        "website": "https://locations.sonicdrivein.com/ca/stockton/10354-trinity-parkway.html"
+      }
+    },
+    {
+      "type": "way",
+      "id": 287549048,
+      "center": {
+        "lat": 38.0507329,
+        "lon": -121.3746187
+      },
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "10370",
+        "addr:postcode": "95219",
+        "addr:state": "CA",
+        "addr:street": "Trinity Parkway",
+        "amenity": "fast_food",
+        "branch": "Eight Mile & I-5",
+        "brand": "Panda Express",
+        "brand:wikidata": "Q1358690",
+        "building": "yes",
+        "cuisine": "chinese",
+        "drive_through": "yes",
+        "name": "Panda Express",
+        "opening_hours": "09:30-21:00",
+        "phone": "+1 209-477-3917",
+        "takeaway": "yes",
+        "website": "https://www.pandaexpress.com/locations/ca/stockton/1226"
+      }
+    },
+    {
+      "type": "way",
+      "id": 287549806,
+      "center": {
+        "lat": 37.9665719,
+        "lon": -121.2748169
+      },
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "1045",
+        "addr:state": "CA",
+        "addr:street": "North Wilson Way",
+        "amenity": "fast_food",
+        "brand": "Domino's",
+        "brand:wikidata": "Q839466",
+        "building": "yes",
+        "cuisine": "pizza",
+        "name": "Domino's",
+        "takeaway": "yes"
+      }
+    },
+    {
+      "type": "way",
+      "id": 287550147,
+      "center": {
+        "lat": 38.0525459,
+        "lon": -121.3748516
+      },
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "10512",
+        "addr:postcode": "95209",
+        "addr:state": "CA",
+        "addr:street": "Trinity Parkway",
+        "air_conditioning": "yes",
+        "amenity": "fast_food",
+        "brand": "Wendy's",
+        "brand:wikidata": "Q550258",
+        "building": "retail",
+        "cuisine": "burger",
+        "drive_through": "yes",
+        "internet_access": "yes",
+        "name": "Wendy's",
+        "opening_hours": "Mo-Fr 06:00-22:00; Sa-Su 06:30-22:00",
+        "opening_hours:drive_through": "Mo-Th 06:00-23:00; Fr 06:00-00:00; Sa 06:30-00:00; Su 06:30-23:00",
+        "outdoor_seating": "no",
+        "phone": "+1-209-477-4520",
+        "takeaway": "yes",
+        "toilets": "yes",
+        "website": "https://locations.wendys.com/united-states/ca/stockton/10512-trinity-park",
+        "wheelchair": "yes"
+      }
+    },
+    {
+      "type": "way",
+      "id": 287550865,
+      "center": {
+        "lat": 38.0542423,
+        "lon": -121.3749726
+      },
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "10718",
+        "addr:state": "CA",
+        "addr:street": "Trinity Parkway",
+        "amenity": "restaurant",
+        "building": "retail",
+        "cuisine": "american",
+        "name": "Huckleberry's Breakfast & Lunch"
+      }
+    },
+    {
+      "type": "way",
+      "id": 287553700,
+      "center": {
+        "lat": 38.0212709,
+        "lon": -121.297017
+      },
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "1205",
+        "addr:state": "CA",
+        "addr:street": "East Hammer Lane",
+        "amenity": "fast_food",
+        "brand": "Chipotle",
+        "brand:wikidata": "Q465751",
+        "building": "yes",
+        "cuisine": "mexican",
+        "name": "Chipotle",
+        "official_name": "Chipotle Mexican Grill",
+        "opening_hours": "Mo-Su 10:45-23:00",
+        "takeaway": "yes"
+      }
+    },
+    {
+      "type": "way",
+      "id": 287555046,
+      "center": {
+        "lat": 37.9491433,
+        "lon": -121.2879816
+      },
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "333",
+        "addr:postcode": "95203",
+        "addr:state": "CA",
+        "addr:street": "South Hunter Street",
+        "amenity": "restaurant",
+        "building": "yes",
+        "cuisine": "chinese",
+        "name": "Sun Wong Kee",
+        "name:en": "Sun Wong Kee",
+        "name:zh": "\u65b0\u65fa\u8a18",
+        "name:zh-Hans": "\u65b0\u65fa\u8bb0",
+        "name:zh-Hant": "\u65b0\u65fa\u8a18",
+        "opening_hours": "We-Sa 09:30-16:00; Su 09:30-15:00",
+        "phone": "+1-209-466-8686"
+      }
+    },
+    {
+      "type": "way",
+      "id": 287557273,
+      "center": {
+        "lat": 37.9437941,
+        "lon": -121.2549731
+      },
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "1457",
+        "addr:state": "CA",
+        "addr:street": "Mariposa Road",
+        "amenity": "restaurant",
+        "building": "yes",
+        "cuisine": "steak_house",
+        "name": "El Rancho Inn"
+      }
+    },
+    {
+      "type": "way",
+      "id": 287558242,
+      "center": {
+        "lat": 38.0213539,
+        "lon": -121.2932169
+      },
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "1535",
+        "addr:postcode": "95210",
+        "addr:state": "CA",
+        "addr:street": "East Hammer Lane",
+        "amenity": "fast_food",
+        "brand": "Carl's Jr.",
+        "brand:wikidata": "Q1043486",
+        "building": "yes",
+        "cuisine": "burger",
+        "name": "Carl's Jr.",
+        "takeaway": "yes"
+      }
+    },
+    {
+      "type": "way",
+      "id": 287558694,
+      "center": {
+        "lat": 37.9613077,
+        "lon": -121.27144
+      },
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "1563",
+        "addr:state": "CA",
+        "addr:street": "East Fremont Street",
+        "amenity": "restaurant",
+        "building": "yes",
+        "cuisine": "italian",
+        "name": "Angelina's Spaghetti House"
+      }
+    },
+    {
+      "type": "way",
+      "id": 287561704,
+      "center": {
+        "lat": 38.0206057,
+        "lon": -121.2918467
+      },
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "1674",
+        "addr:state": "CA",
+        "addr:street": "East Hammer Lane",
+        "amenity": "restaurant",
+        "brand": "IHOP",
+        "brand:wikidata": "Q1185675",
+        "building": "retail",
+        "cuisine": "breakfast;pancake",
+        "indoor_seating": "yes",
+        "name": "IHOP",
+        "outdoor_seating": "no",
+        "phone": "+1-209-951-3137",
+        "website": "https://restaurants.ihop.com/en-us/ca/stockton/breakfast-1674-e-hammer-lane-653"
+      }
+    },
+    {
+      "type": "way",
+      "id": 287562822,
+      "center": {
+        "lat": 38.0205665,
+        "lon": -121.2914129
+      },
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "1718",
+        "addr:state": "CA",
+        "addr:street": "East Hammer Lane",
+        "amenity": "fast_food",
+        "branch": "3",
+        "building": "retail",
+        "building:levels": "1",
+        "cuisine": "mexican",
+        "drive_through": "yes",
+        "name": "El Forastero",
+        "opening_hours:drive_through": "24/7",
+        "phone": "+1-209-478-4128",
+        "roof:levels": "0",
+        "website": "https://elforasteromexicanfood.com",
+        "website:menu": "https://elforasteromexicanfood.com/wp-content/uploads/El-Forastero-menu-2022.pdf"
+      }
+    },
+    {
+      "type": "way",
+      "id": 287564090,
+      "center": {
+        "lat": 37.9690474,
+        "lon": -121.2985931
+      },
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "1732",
+        "addr:state": "CA",
+        "addr:street": "Pacific Avenue",
+        "amenity": "restaurant",
+        "building": "yes",
+        "name": "FAT CITY Brew & BBQ"
+      }
+    },
+    {
+      "type": "way",
+      "id": 287568944,
+      "center": {
+        "lat": 38.0206172,
+        "lon": -121.2902325
+      },
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "1862",
+        "addr:state": "CA",
+        "addr:street": "East Hammer Lane",
+        "amenity": "restaurant",
+        "brand": "Sizzler",
+        "brand:wikidata": "Q1848822",
+        "building": "yes",
+        "cuisine": "steak_house",
+        "indoor_seating": "yes",
+        "name": "Sizzler",
+        "opening_hours": "Fr, Sa 11:30-21:00; Mo-Th, Su 11:30-20:00",
+        "outdoor_seating": "yes",
+        "website": "https://sizzler.com/locations/sizzler-stockton/"
+      }
+    },
+    {
+      "type": "way",
+      "id": 287580347,
+      "center": {
+        "lat": 37.9720125,
+        "lon": -121.3010919
+      },
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "2317",
+        "addr:state": "CA",
+        "addr:street": "Pacific Avenue",
+        "amenity": "restaurant",
+        "building": "yes",
+        "name": "Midtown Creperie & Cafe"
+      }
+    },
+    {
+      "type": "way",
+      "id": 287583231,
+      "center": {
+        "lat": 37.9724991,
+        "lon": -121.3014658
+      },
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "2353",
+        "addr:state": "CA",
+        "addr:street": "Pacific Avenue",
+        "amenity": "restaurant",
+        "building": "yes",
+        "name": "The Black Rabbit"
+      }
+    },
+    {
+      "type": "way",
+      "id": 287584548,
+      "center": {
+        "lat": 37.9855657,
+        "lon": -121.3374158
+      },
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "2407",
+        "addr:postcode": "95207",
+        "addr:state": "CA",
+        "addr:street": "West March Lane",
+        "amenity": "fast_food",
+        "brand": "Taco Bell",
+        "brand:wikidata": "Q752941",
+        "building": "yes",
+        "cuisine": "tex-mex",
+        "name": "Taco Bell",
+        "opening_hours": "Mo-Th 06:00-02:00; Fr-Sa 06:00-03:00; Su 06:00-02:00",
+        "phone": "+1 209-952-0421",
+        "takeaway": "yes",
+        "website": "https://locations.tacobell.com/ca/stockton/2407-west-march-lane.html"
+      }
+    },
+    {
+      "type": "way",
+      "id": 287585941,
+      "center": {
+        "lat": 37.9854687,
+        "lon": -121.3378115
+      },
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "2439",
+        "addr:postcode": "95207",
+        "addr:state": "CA",
+        "addr:street": "West March Lane",
+        "amenity": "fast_food",
+        "brand": "Wendy's",
+        "brand:wikidata": "Q550258",
+        "building": "yes",
+        "cuisine": "burger",
+        "name": "Wendy's",
+        "opening_hours": "09:00-20:00",
+        "opening_hours:drive_through": "Mo-Su 06:30-01:00",
+        "phone": "+1 209-478-8273",
+        "takeaway": "yes",
+        "website": "https://locations.wendys.com/united-states/ca/stockton/2439-west-march-lane"
+      }
+    },
+    {
+      "type": "way",
+      "id": 287587876,
+      "center": {
+        "lat": 37.9845813,
+        "lon": -121.3393598
+      },
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "2592",
+        "addr:postcode": "95207",
+        "addr:state": "CA",
+        "addr:street": "West March Lane",
+        "amenity": "fast_food",
+        "brand": "Jack in the Box",
+        "brand:wikidata": "Q1538507",
+        "building": "yes",
+        "cuisine": "burger",
+        "drive_through": "yes",
+        "name": "Jack in the Box",
+        "phone": "+1 209-900-5870",
+        "takeaway": "yes",
+        "website": "https://locations.jackinthebox.com/us/ca/stockton/2592-w-march-ln"
+      }
+    },
+    {
+      "type": "way",
+      "id": 287588061,
+      "center": {
+        "lat": 37.9843976,
+        "lon": -121.3402053
+      },
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "2610",
+        "addr:postcode": "95207",
+        "addr:state": "CA",
+        "addr:street": "West March Lane",
+        "amenity": "fast_food",
+        "brand": "Carl's Jr.",
+        "brand:wikidata": "Q1043486",
+        "building": "yes",
+        "cuisine": "burger",
+        "name": "Carl's Jr.",
+        "phone": "+1 209-957-7311",
+        "ref": "1100495",
+        "takeaway": "yes",
+        "website": "https://locations.carlsjr.com/ca/stockton/2610-w-march-ln"
+      }
+    },
+    {
+      "type": "way",
+      "id": 287588739,
+      "center": {
+        "lat": 37.9842611,
+        "lon": -121.3410798
+      },
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "2628",
+        "addr:postcode": "95207",
+        "addr:state": "CA",
+        "addr:street": "West March Lane",
+        "amenity": "fast_food",
+        "branch": "March Lane at I-5",
+        "brand": "Chick-fil-A",
+        "brand:wikidata": "Q491516",
+        "building": "yes",
+        "cuisine": "chicken",
+        "delivery": "yes",
+        "drive_through": "yes",
+        "indoor_seating": "yes",
+        "internet_access": "wlan",
+        "name": "Chick-fil-A",
+        "opening_hours": "Mo-Th 06:30-22:00; Fr-Sa 06:30-23:00; Su off",
+        "phone": "+1 209-477-5936",
+        "ref": "03664",
+        "takeaway": "yes",
+        "website": "https://www.chick-fil-a.com/locations/ca/march-lane-at-i-5"
+      }
+    },
+    {
+      "type": "way",
+      "id": 287590640,
+      "center": {
+        "lat": 37.9839297,
+        "lon": -121.3449035
+      },
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "2716",
+        "addr:postcode": "95219",
+        "addr:state": "CA",
+        "addr:street": "West March Lane",
+        "amenity": "restaurant",
+        "brand": "IHOP",
+        "brand:wikidata": "Q1185675",
+        "building": "yes",
+        "cuisine": "breakfast;pancake",
+        "name": "IHOP"
+      }
+    },
+    {
+      "type": "way",
+      "id": 287591816,
+      "center": {
+        "lat": 37.984761,
+        "lon": -121.3463017
+      },
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "2809",
+        "addr:postcode": "95219",
+        "addr:state": "CA",
+        "addr:street": "West March Lane",
+        "amenity": "fast_food",
+        "brand": "Krispy Kreme",
+        "brand:wikidata": "Q1192805",
+        "building": "yes",
+        "cuisine": "donut",
+        "name": "Krispy Kreme",
+        "takeaway": "yes"
+      }
+    },
+    {
+      "type": "way",
+      "id": 287592112,
+      "center": {
+        "lat": 37.9837495,
+        "lon": -121.3462825
+      },
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "2828",
+        "addr:postcode": "95219",
+        "addr:state": "CA",
+        "addr:street": "West March Lane",
+        "amenity": "restaurant",
+        "building": "yes",
+        "cuisine": "asian",
+        "name": "Dave Wong's"
+      }
+    },
+    {
+      "type": "way",
+      "id": 287600446,
+      "center": {
+        "lat": 38.0217547,
+        "lon": -121.3579765
+      },
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "3249",
+        "addr:state": "CA",
+        "addr:street": "West Hammer Lane",
+        "amenity": "restaurant",
+        "building": "yes",
+        "cuisine": "japanese",
+        "name": "Shirasoni"
+      }
+    },
+    {
+      "type": "way",
+      "id": 287601729,
+      "center": {
+        "lat": 38.0217343,
+        "lon": -121.2723231
+      },
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "3355",
+        "addr:postcode": "95212",
+        "addr:state": "CA",
+        "addr:street": "East Hammer Lane",
+        "amenity": "fast_food",
+        "brand": "McDonald's",
+        "brand:wikidata": "Q38076",
+        "building": "yes",
+        "cuisine": "burger",
+        "drive_through": "yes",
+        "internet_access": "wlan",
+        "name": "McDonald's",
+        "opening_hours": "05:00-24:00",
+        "phone": "+1 209-395-3618",
+        "takeaway": "yes",
+        "website": "https://www.mcdonalds.com/us/en-us/location/20612.html"
+      }
+    },
+    {
+      "type": "way",
+      "id": 287605970,
+      "center": {
+        "lat": 38.0208385,
+        "lon": -121.2682277
+      },
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "3714",
+        "addr:postcode": "95212",
+        "addr:state": "CA",
+        "addr:street": "East Hammer Lane",
+        "amenity": "fast_food",
+        "brand": "Taco Bell",
+        "brand:wikidata": "Q752941",
+        "building": "yes",
+        "cuisine": "tex-mex",
+        "name": "Taco Bell",
+        "opening_hours": "Mo-We 07:00-01:00; Th-Su 07:00-03:00",
+        "phone": "+1 209-477-0608",
+        "takeaway": "yes",
+        "website": "https://locations.tacobell.com/ca/stockton/3714-east-hammer-lane.html"
+      }
+    },
+    {
+      "type": "way",
+      "id": 287607495,
+      "center": {
+        "lat": 38.0206475,
+        "lon": -121.2672991
+      },
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "3810",
+        "addr:postcode": "95212",
+        "addr:state": "CA",
+        "addr:street": "East Hammer Lane",
+        "amenity": "fast_food",
+        "brand": "Wendy's",
+        "brand:wikidata": "Q550258",
+        "building": "yes",
+        "cuisine": "burger",
+        "name": "Wendy's",
+        "opening_hours": "Mo-Fr 06:00-22:00; Sa-Su 06:30-22:00",
+        "opening_hours:drive_through": "Mo-Fr 06:00-00:00; Sa-Su 06:30-00:00",
+        "phone": "+1 209-952-0333",
+        "takeaway": "yes",
+        "website": "https://locations.wendys.com/united-states/ca/stockton/3810-east-hammer-lane"
+      }
+    },
+    {
+      "type": "way",
+      "id": 287611551,
+      "center": {
+        "lat": 37.9542243,
+        "lon": -121.2341368
+      },
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "4105",
+        "addr:state": "CA",
+        "addr:street": "East Main Street",
+        "amenity": "fast_food",
+        "building": "yes",
+        "name": "Hamburger Stand"
+      }
+    },
+    {
+      "type": "way",
+      "id": 287615808,
+      "center": {
+        "lat": 37.9871177,
+        "lon": -121.2455015
+      },
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "4380",
+        "addr:postcode": "95215",
+        "addr:state": "CA",
+        "addr:street": "East State Route 88",
+        "addr:unit": "2",
+        "amenity": "fast_food",
+        "brand": "Subway",
+        "brand:wikidata": "Q244457",
+        "building": "commercial",
+        "check_date": "2021-08-14",
+        "cuisine": "sandwich",
+        "drive_through": "yes",
+        "name": "Subway",
+        "opening_hours": "05:00-23:00",
+        "phone": "+1 209-931-9557",
+        "takeaway": "yes",
+        "website": "https://restaurants.subway.com/united-states/ca/stockton/4170-e-waterloo-rd"
+      }
+    },
+    {
+      "type": "way",
+      "id": 287616977,
+      "center": {
+        "lat": 37.9883392,
+        "lon": -121.2435608
+      },
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "4608",
+        "addr:postcode": "95215-2311",
+        "addr:state": "CA",
+        "addr:street": "East State Route 88",
+        "amenity": "fast_food",
+        "brand": "Burger King",
+        "brand:wikidata": "Q177054",
+        "building": "yes",
+        "cuisine": "burger",
+        "drive_through": "yes",
+        "name": "Burger King",
+        "opening_hours": "06:00-23:00",
+        "phone": "+1 209-931-4619",
+        "ref": "10834",
+        "takeaway": "yes",
+        "website": "https://www.bk.com/store-locator/store/restaurant_6156"
+      }
+    },
+    {
+      "type": "way",
+      "id": 287617652,
+      "center": {
+        "lat": 37.9976693,
+        "lon": -121.2872906
+      },
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "4780",
+        "addr:state": "CA",
+        "addr:street": "West Lane",
+        "amenity": "restaurant",
+        "building": "yes",
+        "name": "The Kitchen @ Stonebrier"
+      }
+    },
+    {
+      "type": "way",
+      "id": 287618014,
+      "center": {
+        "lat": 37.9056396,
+        "lon": -121.2213549
+      },
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "4881",
+        "addr:postcode": "95215-8254",
+        "addr:state": "CA",
+        "addr:street": "South State Route 99 Fr E Road",
+        "amenity": "fast_food",
+        "brand": "Burger King",
+        "brand:wikidata": "Q177054",
+        "building": "yes",
+        "building:levels": "1",
+        "cuisine": "burger",
+        "drive_through": "yes",
+        "name": "Burger King",
+        "opening_hours": "Mo-Fr 06:00-23:00; Sa-Su 07:00-23:00",
+        "phone": "+1 209-937-0868",
+        "ref": "10368",
+        "roof:shape": "flat",
+        "takeaway": "yes",
+        "website": "https://www.bk.com/store-locator/store/restaurant_5863"
+      }
+    },
+    {
+      "type": "way",
+      "id": 287618240,
+      "center": {
+        "lat": 37.9940512,
+        "lon": -121.3131875
+      },
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "4932",
+        "addr:postcode": "95207",
+        "addr:state": "CA",
+        "addr:street": "Pacific Avenue",
+        "amenity": "fast_food",
+        "brand": "Panera Bread",
+        "brand:wikidata": "Q7130852",
+        "building": "yes",
+        "cuisine": "sandwich;bakery",
+        "name": "Panera Bread",
+        "opening_hours": "Mo-Sa 06:00-21:00; Su 07:00-21:00",
+        "phone": "+1 209-808-7076",
+        "short_name": "Panera",
+        "takeaway": "yes",
+        "website": "https://locations.panerabread.com/ca/stockton/4932-pacific-ave.html"
+      }
+    },
+    {
+      "type": "way",
+      "id": 287618543,
+      "center": {
+        "lat": 37.9036191,
+        "lon": -121.2209902
+      },
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "4989",
+        "addr:postcode": "95215",
+        "addr:state": "CA",
+        "addr:street": "South State Route 99 Fr E Road",
+        "amenity": "fast_food",
+        "brand": "Jack in the Box",
+        "brand:wikidata": "Q1538507",
+        "building": "yes",
+        "cuisine": "burger",
+        "drive_through": "yes",
+        "name": "Jack in the Box",
+        "phone": "+1 209-425-0640",
+        "takeaway": "yes",
+        "website": "https://locations.jackinthebox.com/us/ca/stockton/4989-s-highway-99"
+      }
+    },
+    {
+      "type": "way",
+      "id": 287619705,
+      "center": {
+        "lat": 38.0205919,
+        "lon": -121.3190295
+      },
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "532",
+        "addr:postcode": "95210",
+        "addr:state": "CA",
+        "addr:street": "West Hammer Lane",
+        "amenity": "fast_food",
+        "brand": "Taco Bell",
+        "brand:wikidata": "Q752941",
+        "building": "yes",
+        "cuisine": "tex-mex",
+        "name": "Taco Bell",
+        "opening_hours": "Mo-We 06:00-02:00; Th-Sa 06:00-03:00; Su 06:00-02:00",
+        "phone": "+1 209-477-9566",
+        "takeaway": "yes",
+        "website": "https://locations.tacobell.com/ca/stockton/532-w-hammer-lane.html"
+      }
+    },
+    {
+      "type": "way",
+      "id": 287620986,
+      "center": {
+        "lat": 38.0010009,
+        "lon": -121.3183327
+      },
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "5633",
+        "addr:postcode": "95207",
+        "addr:state": "CA",
+        "addr:street": "Pacific Avenue",
+        "amenity": "fast_food",
+        "branch": "Stockton",
+        "brand": "Five Guys",
+        "brand:wikidata": "Q1131810",
+        "building": "yes",
+        "cuisine": "burger",
+        "name": "Five Guys",
+        "official_name": "Five Guys Burgers and Fries",
+        "opening_hours": "11:00-21:30",
+        "phone": "+1 209-473-9922",
+        "takeaway": "yes",
+        "website": "https://restaurants.fiveguys.com/5633-pacific-ave"
+      }
+    },
+    {
+      "type": "way",
+      "id": 287622050,
+      "center": {
+        "lat": 38.0206997,
+        "lon": -121.256917
+      },
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "5950",
+        "addr:state": "CA",
+        "addr:street": "North State Route 99 Fr E Road",
+        "amenity": "fast_food",
+        "brand": "Wienerschnitzel",
+        "brand:wikidata": "Q324679",
+        "building": "yes",
+        "cuisine": "hot_dog",
+        "name": "Wienerschnitzel",
+        "takeaway": "yes"
+      }
+    },
+    {
+      "type": "way",
+      "id": 287624590,
+      "center": {
+        "lat": 37.9366719,
+        "lon": -121.2960555
+      },
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "642",
+        "addr:state": "CA",
+        "addr:street": "West Dr Martin Luther King Jr Boulevard",
+        "amenity": "restaurant",
+        "brand": "Denny's",
+        "brand:wikidata": "Q1189695",
+        "building": "yes",
+        "cuisine": "american",
+        "name": "Denny's"
+      }
+    },
+    {
+      "type": "way",
+      "id": 287624656,
+      "center": {
+        "lat": 38.0092499,
+        "lon": -121.3185981
+      },
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "6436",
+        "addr:state": "CA",
+        "addr:street": "Pacific Avenue",
+        "amenity": "restaurant",
+        "brand": "Chuck E. Cheese",
+        "brand:wikidata": "Q2438391",
+        "building": "yes",
+        "cuisine": "pizza",
+        "leisure": "amusement_arcade",
+        "name": "Chuck E. Cheese",
+        "website": "https://locations.chuckecheese.com/us/ca/stockton/6436-pacific-ave."
+      }
+    },
+    {
+      "type": "way",
+      "id": 287626762,
+      "center": {
+        "lat": 38.0212674,
+        "lon": -121.3215075
+      },
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "725",
+        "addr:postcode": "95210",
+        "addr:state": "CA",
+        "addr:street": "West Hammer Lane",
+        "amenity": "fast_food",
+        "brand": "Wendy's",
+        "brand:wikidata": "Q550258",
+        "building": "yes",
+        "cuisine": "burger",
+        "name": "Wendy's",
+        "opening_hours": "Mo-Fr 06:00-22:00; Sa-Su 06:30-22:00",
+        "opening_hours:drive_through": "Mo-Th 06:00-01:00; Fr 06:00-02:00; Sa 06:30-02:00; Su 06:30-01:00",
+        "phone": "+1 209-472-0557",
+        "takeaway": "yes",
+        "website": "https://locations.wendys.com/united-states/ca/stockton/725-west-hammer-lane"
+      }
+    },
+    {
+      "type": "way",
+      "id": 287627852,
+      "center": {
+        "lat": 38.0181283,
+        "lon": -121.3238762
+      },
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "7567",
+        "addr:postcode": "95207",
+        "addr:state": "CA",
+        "addr:street": "Pacific Avenue",
+        "amenity": "fast_food",
+        "brand": "Popeyes",
+        "brand:wikidata": "Q1330910",
+        "building": "commercial",
+        "cuisine": "chicken",
+        "delivery": "yes",
+        "drive_through": "yes",
+        "indoor_seating": "yes",
+        "internet_access": "wlan",
+        "name": "Popeyes",
+        "official_name": "Popeyes Louisiana Kitchen",
+        "opening_hours": "10:00-22:00",
+        "phone": "+1 209-851-2689",
+        "takeaway": "yes",
+        "website": "https://www.popeyes.com/store-locator/store/restaurant_85381"
+      }
+    },
+    {
+      "type": "way",
+      "id": 287628042,
+      "center": {
+        "lat": 38.0201734,
+        "lon": -121.3240367
+      },
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "7810",
+        "addr:postcode": "95207",
+        "addr:state": "CA",
+        "addr:street": "Thornton Road",
+        "amenity": "cafe",
+        "branch": "Thornton & Hammer",
+        "brand": "Starbucks",
+        "brand:wikidata": "Q37158",
+        "building": "yes",
+        "cuisine": "coffee_shop",
+        "name": "Starbucks",
+        "official_name": "Starbucks Coffee",
+        "phone": "+1 209-689-8146",
+        "ref": "1009924",
+        "takeaway": "yes",
+        "website": "https://www.starbucks.com/store-locator/store/1009924/thornton-hammer-7810-thornton-road-stockton-ca-952073063-us"
+      }
+    },
+    {
+      "type": "way",
+      "id": 287628151,
+      "center": {
+        "lat": 38.021728,
+        "lon": -121.2952726
+      },
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "7945",
+        "addr:state": "CA",
+        "addr:street": "West Lane",
+        "amenity": "restaurant",
+        "building": "yes",
+        "cuisine": "noodle;vietnamese",
+        "name": "Pho Bac Hoa Viet"
+      }
+    },
+    {
+      "type": "way",
+      "id": 287628221,
+      "center": {
+        "lat": 38.0237122,
+        "lon": -121.2708794
+      },
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "8010",
+        "addr:postcode": "95212",
+        "addr:state": "CA",
+        "addr:street": "Holman Road",
+        "amenity": "restaurant",
+        "brand": "Round Table Pizza",
+        "brand:wikidata": "Q7371139",
+        "building": "yes",
+        "cuisine": "pizza",
+        "name": "Round Table Pizza"
+      }
+    },
+    {
+      "type": "way",
+      "id": 287628238,
+      "center": {
+        "lat": 38.0231296,
+        "lon": -121.3224374
+      },
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "8020",
+        "addr:postcode": "95210-3724",
+        "addr:state": "CA",
+        "addr:street": "Lower Sacramento Road",
+        "amenity": "fast_food",
+        "brand": "McDonald's",
+        "brand:wikidata": "Q38076",
+        "building": "yes",
+        "cuisine": "burger",
+        "drive_through": "yes",
+        "internet_access": "wlan",
+        "name": "McDonald's",
+        "opening_hours": "05:30-23:00",
+        "phone": "+1 209-279-1243",
+        "takeaway": "yes",
+        "website": "https://www.mcdonalds.com/us/en-us/location/3017.html"
+      }
+    },
+    {
+      "type": "way",
+      "id": 287628246,
+      "center": {
+        "lat": 38.0224655,
+        "lon": -121.2952538
+      },
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "8023",
+        "addr:postcode": "95210",
+        "addr:state": "CA",
+        "addr:street": "West Lane",
+        "amenity": "fast_food",
+        "brand": "Church's Chicken",
+        "brand:wikidata": "Q1089932",
+        "building": "yes",
+        "cuisine": "chicken",
+        "name": "Church's Chicken",
+        "phone": "+1 209-475-1547",
+        "takeaway": "yes",
+        "website": "https://locations.churchs.com/ca/stockton/8023-west-lane"
+      }
+    },
+    {
+      "type": "way",
+      "id": 287628515,
+      "center": {
+        "lat": 38.0213438,
+        "lon": -121.3220453
+      },
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "817",
+        "addr:state": "CA",
+        "addr:street": "West Hammer Lane",
+        "amenity": "fast_food",
+        "brand": "Del Taco",
+        "brand:wikidata": "Q1183818",
+        "building": "yes",
+        "cuisine": "mexican",
+        "name": "Del Taco",
+        "takeaway": "yes",
+        "website": "https://locations.deltaco.com/us/ca/stockton/817-west-hammer-lane"
+      }
+    },
+    {
+      "type": "way",
+      "id": 287629407,
+      "center": {
+        "lat": 37.9358273,
+        "lon": -121.299549
+      },
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "864",
+        "addr:postcode": "95206",
+        "addr:state": "CA",
+        "addr:street": "West Charter Way",
+        "amenity": "fast_food",
+        "brand": "Taco Bell",
+        "brand:wikidata": "Q752941",
+        "building": "yes",
+        "cuisine": "tex-mex",
+        "name": "Taco Bell",
+        "opening_hours": "Mo-Th 06:00-02:00; Fr-Sa 06:00-03:00; Su 06:00-02:00",
+        "phone": "+1 209-946-0970",
+        "takeaway": "yes",
+        "website": "https://locations.tacobell.com/ca/stockton/864-w-charter-way.html"
+      }
+    },
+    {
+      "type": "way",
+      "id": 287630909,
+      "center": {
+        "lat": 38.0206582,
+        "lon": -121.2994864
+      },
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "920",
+        "addr:postcode": "95210",
+        "addr:state": "CA",
+        "addr:street": "East Hammer Lane",
+        "amenity": "fast_food",
+        "brand": "Jack in the Box",
+        "brand:wikidata": "Q1538507",
+        "building": "retail",
+        "cuisine": "burger",
+        "drive_through": "yes",
+        "name": "Jack in the Box",
+        "phone": "+1-209-473-7016",
+        "takeaway": "yes",
+        "website": "https://locations.jackinthebox.com/us/ca/stockton/920-e-hammer-ln"
+      }
+    },
+    {
+      "type": "way",
+      "id": 287634062,
+      "center": {
+        "lat": 37.9847167,
+        "lon": -121.3455875
+      },
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "2727",
+        "addr:postcode": "95219",
+        "addr:state": "CA",
+        "addr:street": "West March Lane",
+        "amenity": "fast_food",
+        "brand": "In-N-Out Burger",
+        "brand:wikidata": "Q1205312",
+        "building": "retail",
+        "building:use": "fast_food",
+        "cuisine": "burger",
+        "drive_through": "yes",
+        "name": "In-N-Out Burger",
+        "opening_hours": "Mo-Su 10:30-01:00",
+        "ref": "101",
+        "start_date": "1994-11-30",
+        "store_number": "101",
+        "takeaway": "yes",
+        "website": "https://locations.in-n-out.com/101"
+      }
+    },
+    {
+      "type": "way",
+      "id": 287634063,
+      "center": {
+        "lat": 37.9883264,
+        "lon": -121.31214
+      },
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "4455",
+        "addr:postcode": "95207",
+        "addr:state": "CA",
+        "addr:street": "Pacific Avenue",
+        "alt_name": "Kentucky Fried Chicken",
+        "amenity": "fast_food",
+        "brand": "KFC",
+        "brand:wikidata": "Q524757",
+        "building": "retail",
+        "cuisine": "chicken",
+        "name": "KFC",
+        "operator": "Yum! Brands",
+        "takeaway": "yes",
+        "website": "https://locations.kfc.com/ca/stockton/4455-pacific-ave"
+      }
+    },
+    {
+      "type": "way",
+      "id": 287634070,
+      "center": {
+        "lat": 37.9892875,
+        "lon": -121.312488
+      },
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "4515",
+        "addr:postcode": "95207-7694",
+        "addr:state": "CA",
+        "addr:street": "Pacific Avenue",
+        "amenity": "fast_food",
+        "brand": "McDonald's",
+        "brand:wikidata": "Q38076",
+        "building": "yes",
+        "cuisine": "burger",
+        "drive_through": "yes",
+        "internet_access": "wlan",
+        "name": "McDonald's",
+        "opening_hours": "06:00-23:00",
+        "phone": "+1 209-762-3745",
+        "takeaway": "yes",
+        "website": "https://www.mcdonalds.com/us/en-us/location/802.html"
+      }
+    },
+    {
+      "type": "way",
+      "id": 287634071,
+      "center": {
+        "lat": 37.9853092,
+        "lon": -121.3384478
+      },
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "2505",
+        "addr:postcode": "95207",
+        "addr:state": "CA",
+        "addr:street": "West March Lane",
+        "amenity": "fast_food",
+        "brand": "McDonald's",
+        "brand:wikidata": "Q38076",
+        "building": "yes",
+        "cuisine": "burger",
+        "drive_through": "yes",
+        "internet_access": "wlan",
+        "name": "McDonald's",
+        "opening_hours": "06:00-24:00",
+        "phone": "+1 209-307-6256",
+        "takeaway": "yes",
+        "website": "https://www.mcdonalds.com/us/en-us/location/25768.html"
+      }
+    },
+    {
+      "type": "way",
+      "id": 287634074,
+      "center": {
+        "lat": 37.990426,
+        "lon": -121.3222179
+      },
+      "tags": {
+        "amenity": "cafe",
+        "building": "yes",
+        "name": "Empresso Coffeehouse"
+      }
+    },
+    {
+      "type": "way",
+      "id": 287634083,
+      "center": {
+        "lat": 38.002455,
+        "lon": -121.3175434
+      },
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "5765",
+        "addr:state": "CA",
+        "addr:street": "Pacific Avenue",
+        "amenity": "cafe",
+        "brand": "Peet's Coffee",
+        "brand:wikidata": "Q1094101",
+        "building": "retail",
+        "cuisine": "coffee_shop",
+        "name": "Peet's Coffee",
+        "takeaway": "yes"
+      }
+    },
+    {
+      "type": "way",
+      "id": 287634084,
+      "center": {
+        "lat": 38.0004695,
+        "lon": -121.3156504
+      },
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "5420",
+        "addr:state": "CA",
+        "addr:street": "Pacific Avenue",
+        "amenity": "restaurant",
+        "building": "yes",
+        "cuisine": "italian",
+        "name": "Ramano's Macaroni Grill"
+      }
+    },
+    {
+      "type": "way",
+      "id": 287634094,
+      "center": {
+        "lat": 38.0530642,
+        "lon": -121.3749193
+      },
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "10602",
+        "addr:postcode": "95219",
+        "addr:state": "CA",
+        "addr:street": "Trinity Parkway",
+        "amenity": "cafe",
+        "branch": "Eight Mile & I-5 - Stockton",
+        "brand": "Starbucks",
+        "brand:wikidata": "Q37158",
+        "building": "retail",
+        "cuisine": "coffee_shop",
+        "name": "Starbucks",
+        "official_name": "Starbucks Coffee",
+        "outdoor_seating": "yes",
+        "phone": "+1 209-955-0318",
+        "ref": "9492",
+        "takeaway": "yes",
+        "website": "https://www.starbucks.com/store-locator/store/9492/eight-mile-i-5-stockton-10602-trinity-parkway-stockton-ca-952197228-us"
+      }
+    },
+    {
+      "type": "way",
+      "id": 287634098,
+      "center": {
+        "lat": 37.9621786,
+        "lon": -121.2735832
+      },
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "627",
+        "addr:postcode": "95205",
+        "addr:state": "CA",
+        "addr:street": "North Wilson Way",
+        "amenity": "fast_food",
+        "brand": "Taco Bell",
+        "brand:wikidata": "Q752941",
+        "building": "yes",
+        "cuisine": "tex-mex",
+        "name": "Taco Bell",
+        "opening_hours": "Mo-Th 06:00-24:00; Fr 06:00-01:00; Sa 07:00-01:00; Su 07:00-24:00",
+        "phone": "+1 209-466-1328",
+        "takeaway": "yes",
+        "website": "https://locations.tacobell.com/ca/stockton/627-n-wilson-way.html"
+      }
+    },
+    {
+      "type": "way",
+      "id": 287634108,
+      "center": {
+        "lat": 37.9900559,
+        "lon": -121.319394
+      },
+      "tags": {
+        "amenity": "fast_food",
+        "brand": "Wienerschnitzel",
+        "brand:wikidata": "Q324679",
+        "building": "yes",
+        "cuisine": "hot_dog",
+        "name": "Wienerschnitzel",
+        "takeaway": "yes"
+      }
+    },
+    {
+      "type": "way",
+      "id": 287634124,
+      "center": {
+        "lat": 37.9659302,
+        "lon": -121.2746644
+      },
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "1009",
+        "addr:postcode": "95205",
+        "addr:state": "CA",
+        "addr:street": "North Wilson Way",
+        "amenity": "fast_food",
+        "brand": "McDonald's",
+        "brand:wikidata": "Q38076",
+        "building": "yes",
+        "cuisine": "burger",
+        "drive_through": "yes",
+        "internet_access": "wlan",
+        "name": "McDonald's",
+        "opening_hours": "06:00-23:00",
+        "phone": "+1 209-762-3452",
+        "ref": "969",
+        "takeaway": "yes",
+        "website": "https://www.mcdonalds.com/us/en-us/location/969.html"
+      }
+    },
+    {
+      "type": "way",
+      "id": 287634147,
+      "center": {
+        "lat": 38.0533983,
+        "lon": -121.375748
+      },
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "10623",
+        "addr:postcode": "95219",
+        "addr:state": "CA",
+        "addr:street": "Trinity Parkway",
+        "amenity": "fast_food",
+        "brand": "McDonald's",
+        "brand:wikidata": "Q38076",
+        "building": "yes",
+        "cuisine": "burger",
+        "drive_through": "yes",
+        "internet_access": "wlan",
+        "name": "McDonald's",
+        "opening_hours": "06:00-23:00",
+        "phone": "+1 209-307-6038",
+        "takeaway": "yes",
+        "website": "https://www.mcdonalds.com/us/en-us/location/32074.html"
+      }
+    },
+    {
+      "type": "way",
+      "id": 287634149,
+      "center": {
+        "lat": 38.0016727,
+        "lon": -121.3163431
+      },
+      "tags": {
+        "amenity": "restaurant",
+        "brand": "Chili's",
+        "brand:wikidata": "Q1072948",
+        "building": "yes",
+        "cuisine": "tex-mex",
+        "name": "Chili's",
+        "official_name": "Chili's Grill & Bar"
+      }
+    },
+    {
+      "type": "way",
+      "id": 287814208,
+      "center": {
+        "lat": 38.0066418,
+        "lon": -121.3184837
+      },
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "6200",
+        "addr:postcode": "95207",
+        "addr:state": "CA",
+        "addr:street": "Pacific Avenue",
+        "amenity": "fast_food",
+        "brand": "Jack in the Box",
+        "brand:wikidata": "Q1538507",
+        "building": "yes",
+        "cuisine": "burger",
+        "drive_through": "yes",
+        "name": "Jack in the Box",
+        "phone": "+1 209-800-7090",
+        "takeaway": "yes",
+        "website": "https://locations.jackinthebox.com/us/ca/stockton/6200-pacific-ave"
+      }
+    },
+    {
+      "type": "way",
+      "id": 289979353,
+      "center": {
+        "lat": 37.9994407,
+        "lon": -121.2891495
+      },
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "4966",
+        "addr:postcode": "95210",
+        "addr:state": "CA",
+        "addr:street": "West Lane",
+        "amenity": "fast_food",
+        "brand": "Popeyes",
+        "brand:wikidata": "Q1330910",
+        "building": "yes",
+        "cuisine": "chicken",
+        "delivery": "yes",
+        "drive_through": "yes",
+        "indoor_seating": "yes",
+        "internet_access": "wlan",
+        "name": "Popeyes",
+        "official_name": "Popeyes Louisiana Kitchen",
+        "opening_hours": "10:00-22:00",
+        "phone": "+1 209-477-4833",
+        "takeaway": "yes",
+        "website": "https://www.popeyes.com/store-locator/store/restaurant_84041"
+      }
+    },
+    {
+      "type": "way",
+      "id": 289979360,
+      "center": {
+        "lat": 38.0014922,
+        "lon": -121.2917702
+      },
+      "tags": {
+        "amenity": "fast_food",
+        "building": "yes",
+        "drive_through": "yes"
+      }
+    },
+    {
+      "type": "way",
+      "id": 289979404,
+      "center": {
+        "lat": 37.9996636,
+        "lon": -121.289318
+      },
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "5010",
+        "addr:postcode": "95210",
+        "addr:state": "CA",
+        "addr:street": "West Lane",
+        "amenity": "cafe",
+        "branch": "March & West, Stockton",
+        "brand": "Starbucks",
+        "brand:wikidata": "Q37158",
+        "building": "yes",
+        "cuisine": "coffee_shop",
+        "name": "Starbucks",
+        "official_name": "Starbucks Coffee",
+        "phone": "+1 209-476-8347",
+        "ref": "7473",
+        "takeaway": "yes",
+        "website": "https://www.starbucks.com/store-locator/store/7473/march-west-stockton-5010-west-lane-stockton-ca-952103568-us"
+      }
+    },
+    {
+      "type": "way",
+      "id": 289979462,
+      "center": {
+        "lat": 38.0019564,
+        "lon": -121.2897211
+      },
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "1502",
+        "addr:postcode": "95210-5663",
+        "addr:state": "CA",
+        "addr:street": "East March Lane",
+        "amenity": "fast_food",
+        "brand": "Burger King",
+        "brand:wikidata": "Q177054",
+        "building": "yes",
+        "cuisine": "burger",
+        "delivery": "yes",
+        "drive_through": "yes",
+        "internet_access": "wlan",
+        "name": "Burger King",
+        "opening_hours": "06:00-20:00",
+        "phone": "+1 209-956-9344",
+        "ref": "9344",
+        "takeaway": "yes",
+        "website": "https://www.bk.com/store-locator/store/restaurant_5261"
+      }
+    },
+    {
+      "type": "way",
+      "id": 293612251,
+      "center": {
+        "lat": 37.9032355,
+        "lon": -121.2211185
+      },
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "5025",
+        "addr:postcode": "95215",
+        "addr:state": "CA",
+        "addr:street": "South Highway 99",
+        "amenity": "fast_food",
+        "brand": "Taco Bell",
+        "brand:wikidata": "Q752941",
+        "building": "yes",
+        "cuisine": "tex-mex",
+        "drive_through": "yes",
+        "name": "Taco Bell",
+        "opening_hours": "Mo-We 06:00-24:00; Th-Fr 06:00-01:00; Sa 07:00-01:00; Su 07:00-24:00",
+        "phone": "+1 209-946-4713",
+        "takeaway": "yes",
+        "website": "https://locations.tacobell.com/ca/stockton/5025-s-highway-99.html"
+      }
+    },
+    {
+      "type": "way",
+      "id": 293619131,
+      "center": {
+        "lat": 37.9028499,
+        "lon": -121.2211865
+      },
+      "tags": {
+        "amenity": "restaurant",
+        "brand": "Denny's",
+        "brand:wikidata": "Q1189695",
+        "building": "yes",
+        "cuisine": "american",
+        "name": "Denny's"
+      }
+    },
+    {
+      "type": "way",
+      "id": 293621111,
+      "center": {
+        "lat": 38.0229746,
+        "lon": -121.3551065
+      },
+      "tags": {
+        "amenity": "restaurant",
+        "building": "yes",
+        "cuisine": "filipino",
+        "name": "Island Gourmet Restaurant & Market"
+      }
+    },
+    {
+      "type": "way",
+      "id": 293624217,
+      "center": {
+        "lat": 38.0216815,
+        "lon": -121.3575649
+      },
+      "tags": {
+        "amenity": "fast_food",
+        "building": "yes",
+        "cuisine": "mexican",
+        "name": "Adalberto's M\u00e9xican Food Restaurant"
+      }
+    },
+    {
+      "type": "way",
+      "id": 293624237,
+      "center": {
+        "lat": 38.0205151,
+        "lon": -121.2933302
+      },
+      "tags": {
+        "addr:housenumber": "1510",
+        "amenity": "fast_food",
+        "brand": "El Pollo Loco",
+        "brand:wikidata": "Q2353849",
+        "building": "retail",
+        "cuisine": "mexican",
+        "indoor_seating": "yes",
+        "name": "El Pollo Loco",
+        "outdoor_seating": "yes",
+        "takeaway": "yes"
+      }
+    },
+    {
+      "type": "way",
+      "id": 458907056,
+      "center": {
+        "lat": 37.9523072,
+        "lon": -121.2885409
+      },
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "25",
+        "addr:postcode": "95202",
+        "addr:state": "CA",
+        "addr:street": "South Hunter Street",
+        "amenity": "cafe",
+        "building": "yes",
+        "cuisine": "regional",
+        "internet_access": "wlan",
+        "name": "Fusion Boba Cafe",
+        "phone": "+1-209-473-1156",
+        "smoking": "no",
+        "website": "https://www.fusionbobacafe.com/"
+      }
+    },
+    {
+      "type": "way",
+      "id": 472394064,
+      "center": {
+        "lat": 38.0025435,
+        "lon": -121.3178199
+      },
+      "tags": {
+        "amenity": "restaurant",
+        "building": "retail",
+        "cuisine": "japanese",
+        "name": "Kyodai"
+      }
+    },
+    {
+      "type": "way",
+      "id": 472394240,
+      "center": {
+        "lat": 38.002412,
+        "lon": -121.3175225
+      },
+      "tags": {
+        "amenity": "cafe",
+        "brand": "Peet's Coffee",
+        "brand:wikidata": "Q1094101",
+        "building:part": "yes",
+        "cuisine": "coffee_shop",
+        "internet_access": "yes",
+        "internet_access:fee": "no",
+        "name": "Peet's Coffee",
+        "outdoor_seating": "yes",
+        "smoking": "no",
+        "takeaway": "yes"
+      }
+    },
+    {
+      "type": "way",
+      "id": 958027716,
+      "center": {
+        "lat": 37.9710848,
+        "lon": -121.3005072
+      },
+      "tags": {
+        "amenity": "restaurant",
+        "building:part": "yes",
+        "cuisine": "sushi",
+        "name": "Cocoro Bistro Sushi Bar"
+      }
+    },
+    {
+      "type": "way",
+      "id": 958027717,
+      "center": {
+        "lat": 37.9712365,
+        "lon": -121.3005659
+      },
+      "tags": {
+        "amenity": "restaurant",
+        "building:part": "yes",
+        "name": "Mile Wine Restaurant"
+      }
+    },
+    {
+      "type": "way",
+      "id": 1011922147,
+      "center": {
+        "lat": 37.9506031,
+        "lon": -121.2911579
+      },
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "139",
+        "addr:postcode": "95202",
+        "addr:state": "CA",
+        "addr:street": "South Center Street",
+        "amenity": "cafe",
+        "brand": "Dutch Bros. Coffee",
+        "brand:wikidata": "Q5317253",
+        "building": "yes",
+        "cuisine": "coffee_shop",
+        "name": "Dutch Bros. Coffee",
+        "opening_hours": "05:00-21:00",
+        "ref": "DB342",
+        "takeaway": "only",
+        "website": "https://locations.dutchbros.com/dutch-bros-coffee-fdf1b434a0cd"
+      }
+    },
+    {
+      "type": "way",
+      "id": 1011922155,
+      "center": {
+        "lat": 38.0212379,
+        "lon": -121.2937861
+      },
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "1509",
+        "addr:postcode": "95210",
+        "addr:state": "CA",
+        "addr:street": "East Hammer Lane",
+        "amenity": "cafe",
+        "brand": "Dutch Bros. Coffee",
+        "brand:wikidata": "Q5317253",
+        "building": "yes",
+        "cuisine": "coffee_shop",
+        "name": "Dutch Bros. Coffee",
+        "opening_hours": "05:00-22:00",
+        "ref": "DB370",
+        "takeaway": "only",
+        "website": "https://locations.dutchbros.com/dutch-bros-coffee-a641556fbdf7"
+      }
+    },
+    {
+      "type": "way",
+      "id": 1107633084,
+      "center": {
+        "lat": 38.057229,
+        "lon": -121.3514235
+      },
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "2994",
+        "addr:postcode": "95209",
+        "addr:state": "CA",
+        "addr:street": "West Eight Mile Road",
+        "amenity": "fast_food",
+        "brand": "Burger King",
+        "brand:wikidata": "Q177054",
+        "building": "yes",
+        "cuisine": "burger",
+        "drive_through": "yes",
+        "name": "Burger King",
+        "opening_hours": "06:00-22:00",
+        "phone": "+1 209-800-8090",
+        "ref": "27834",
+        "takeaway": "yes",
+        "website": "https://www.bk.com/store-locator/store/restaurant_88941"
+      }
+    },
+    {
+      "type": "way",
+      "id": 1119503905,
+      "center": {
+        "lat": 37.9915235,
+        "lon": -121.3133149
+      },
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "601",
+        "addr:postcode": "95207",
+        "addr:state": "CA",
+        "addr:street": "West March Lane",
+        "amenity": "fast_food",
+        "branch": "Cane's 530 - The Generator",
+        "brand": "Raising Cane's",
+        "brand:wikidata": "Q7285144",
+        "building": "yes",
+        "cuisine": "chicken",
+        "drive_through": "yes",
+        "name": "Raising Cane's",
+        "official_name": "Raising Cane's Chicken Fingers",
+        "opening_hours": "Th-Sa 09:00-03:30, Su-We 09:00-02:00",
+        "phone": "+1-209-307-9956",
+        "takeaway": "yes",
+        "website": "https://www.raisingcanes.com/locations/c530/"
+      }
+    },
+    {
+      "type": "way",
+      "id": 1186002185,
+      "center": {
+        "lat": 37.9686273,
+        "lon": -121.2990274
+      },
+      "tags": {
+        "addr:city": "Stockton",
+        "addr:housenumber": "1665",
+        "addr:postcode": "95204",
+        "addr:state": "CA",
+        "addr:street": "pacific Avenue",
+        "amenity": "cafe",
+        "branch": "Stockton",
+        "brand": "Dutch Bros. Coffee",
+        "brand:wikidata": "Q5317253",
+        "building": "commercial",
+        "cuisine": "coffee_shop",
+        "drive_through": "yes",
+        "name": "Dutch Bros. Coffee",
+        "opening_hours": "05:00-22:00",
+        "ref": "DB286",
+        "takeaway": "only",
+        "website": "https://locations.dutchbros.com/dutch-bros-coffee-babdd2486aab"
+      }
+    }
+  ]
+}

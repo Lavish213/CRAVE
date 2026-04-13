@@ -1,0 +1,142 @@
+// prima_id.js — Tria Prima Web Tracking
+// Host this file on your infrastructure. Cal loads it with a <script> tag.
+// It reads window.primaUser (set by Cal on the page) for known user data.
+
+(function () {
+  'use strict';
+
+  var FC_KEY      = 'GWijHxc8SSNm7GTCiUbMLVINqFg4Mlb9';
+  var WEBHOOK_URL = 'https://etl.triaprima.io/webhook/71e89922-a2a7-4806-98ae-01eaa3bf1d8e';
+  var lastFiredUrl = null;
+  var MAX_RETRIES  = 20;
+  var RETRY_DELAY  = 500;
+
+  // ---- 1. Bot guard ----
+  var BOT_PATTERN = /googlebot|bingbot|slurp|duckduckbot|baiduspider|yandexbot|facebookexternalhit|crawler|spider|headlesschrome/i;
+
+  if (BOT_PATTERN.test(navigator.userAgent)) {
+    console.log('[Prima ID] Bot detected, exiting.');
+    return;
+  }
+
+  // ---- 2. Load FullContact ----
+  (function (w, d, s, o, f, js, fjs) {
+    w['FCObject'] = o;
+    w[o] = w[o] || function () { (w[o].q = w[o].q || []).push(arguments); };
+    js = d.createElement(s);
+    fjs = d.getElementsByTagName(s)[0];
+    js.id = o; js.src = f; js.async = 1;
+    fjs.parentNode.insertBefore(js, fjs);
+  }(window, document, 'script', 'fc', 'https://tags.fullcontact.com/anon/fullcontact.js'));
+
+  fc('init', FC_KEY);
+
+  // ---- 3. Send user identifiers to FullContact (if available) ----
+  var u = window.primaUser || {};
+  var fcData = {};
+
+  if (u.email)     fcData.email        = u.email;
+  if (u.phone)     fcData.phone        = u.phone;
+  if (u.firstName) fcData.givenName    = u.firstName;
+  if (u.lastName)  fcData.familyName   = u.lastName;
+  if (u.company)   fcData.organization = u.company;
+
+  if (Object.keys(fcData).length > 0) {
+    fc('identify', fcData);
+  }
+
+  // ---- 4. Cookie helper ----
+  function getCookie(name) {
+    var escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    var match = document.cookie.match(new RegExp('(?:^|; )' + escaped + '=([^;]*)'));
+    return match ? decodeURIComponent(match[1]) : null;
+  }
+
+  // ---- 5. Webhook relay ----
+  function fireWebhook() {
+    if (window.location.href === lastFiredUrl) return;
+    lastFiredUrl = window.location.href;
+
+    var fcPid = getCookie('fc_pid');
+
+    var payload = {
+      pid:        fcPid || null,
+      email:      u.email     || null,
+      phone:      u.phone     || null,
+      first_name: u.firstName || null,
+      last_name:  u.lastName  || null,
+      company:    u.company   || null,
+      date:       new Date().toISOString(),
+      page_url:   window.location.href,
+      referrer:   document.referrer,
+      user_agent: navigator.userAgent
+    };
+
+    fetch(WEBHOOK_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    })
+    .then(function (res) {
+      if (!res.ok) return res.text().then(function (t) { throw new Error(t); });
+      return res.text();
+    })
+    .then(function (result) {
+      console.log('[Prima ID] Webhook fired:', result);
+    })
+    .catch(function (err) {
+      console.error('[Prima ID] Webhook error:', err);
+    });
+  }
+
+  // ---- 6. Wait for fc_pid cookie then fire ----
+  function waitForPidAndFire(retries) {
+    retries = retries || 0;
+
+    if (retries > MAX_RETRIES) {
+      console.warn('[Prima ID] fc_pid not found after max retries, firing anyway.');
+      fireWebhook();
+      return;
+    }
+
+    var pid = getCookie('fc_pid');
+
+    if (pid) {
+      console.log('[Prima ID] fc_pid found, firing webhook.');
+      fireWebhook();
+    } else {
+      setTimeout(function () {
+        waitForPidAndFire(retries + 1);
+      }, RETRY_DELAY);
+    }
+  }
+
+  // ---- 7. SPA navigation support ----
+  var origPush    = history.pushState;
+  var origReplace = history.replaceState;
+
+  history.pushState = function () {
+    var r = origPush.apply(history, arguments);
+    window.dispatchEvent(new Event('locationchange'));
+    return r;
+  };
+
+  history.replaceState = function () {
+    var r = origReplace.apply(history, arguments);
+    window.dispatchEvent(new Event('locationchange'));
+    return r;
+  };
+
+  window.addEventListener('popstate', function () {
+    window.dispatchEvent(new Event('locationchange'));
+  });
+
+  window.addEventListener('locationchange', function () {
+    lastFiredUrl = null; // reset so SPA nav always re-fires
+    waitForPidAndFire();
+  });
+
+  // ---- 8. Initial fire ----
+  waitForPidAndFire();
+
+})();

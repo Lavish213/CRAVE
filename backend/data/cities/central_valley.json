@@ -1,0 +1,21 @@
+[
+  {"name":"Bakersfield","state":"CA","country":"US","lat":35.3733,"lng":-119.0187},
+  {"name":"Clovis","state":"CA","country":"US","lat":36.8252,"lng":-119.7029},
+  {"name":"Elk Grove","state":"CA","country":"US","lat":38.4088,"lng":-121.3716},
+  {"name":"Fresno","state":"CA","country":"US","lat":36.7378,"lng":-119.7871},
+  {"name":"Hanford","state":"CA","country":"US","lat":36.3275,"lng":-119.6457},
+  {"name":"Lodi","state":"CA","country":"US","lat":38.1341,"lng":-121.2722},
+  {"name":"Madera","state":"CA","country":"US","lat":36.9613,"lng":-120.0607},
+  {"name":"Manteca","state":"CA","country":"US","lat":37.7974,"lng":-121.2161},
+  {"name":"Merced","state":"CA","country":"US","lat":37.3022,"lng":-120.4829},
+  {"name":"Modesto","state":"CA","country":"US","lat":37.6391,"lng":-120.9969},
+  {"name":"Porterville","state":"CA","country":"US","lat":36.0652,"lng":-119.0168},
+  {"name":"Redding","state":"CA","country":"US","lat":40.5865,"lng":-122.3917},
+  {"name":"Roseville","state":"CA","country":"US","lat":38.7521,"lng":-121.2880},
+  {"name":"Sacramento","state":"CA","country":"US","lat":38.5816,"lng":-121.4944},
+  {"name":"Stockton","state":"CA","country":"US","lat":37.9577,"lng":-121.2908},
+  {"name":"Tracy","state":"CA","country":"US","lat":37.7397,"lng":-121.4252},
+  {"name":"Turlock","state":"CA","country":"US","lat":37.4947,"lng":-120.8466},
+  {"name":"Visalia","state":"CA","country":"US","lat":36.3302,"lng":-119.2921},
+  {"name":"Yuba City","state":"CA","country":"US","lat":39.1404,"lng":-121.6169}
+]

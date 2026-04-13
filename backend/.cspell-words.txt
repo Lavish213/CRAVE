@@ -1,0 +1,11 @@
+autoflush
+backref
+dedupe
+ilike
+ondelete
+onupdate
+oversample
+poolclass
+selectin
+sessionmaker
+taqueria

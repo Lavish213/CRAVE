@@ -1,0 +1,19 @@
+[
+  {"name":"Anaheim","state":"CA","country":"US","lat":33.8366,"lng":-117.9143},
+  {"name":"Carlsbad","state":"CA","country":"US","lat":33.1581,"lng":-117.3506},
+  {"name":"Chula Vista","state":"CA","country":"US","lat":32.6401,"lng":-117.0842},
+  {"name":"Costa Mesa","state":"CA","country":"US","lat":33.6411,"lng":-117.9187},
+  {"name":"Escondido","state":"CA","country":"US","lat":33.1192,"lng":-117.0864},
+  {"name":"Fullerton","state":"CA","country":"US","lat":33.8704,"lng":-117.9242},
+  {"name":"Garden Grove","state":"CA","country":"US","lat":33.7743,"lng":-117.9379},
+  {"name":"Huntington Beach","state":"CA","country":"US","lat":33.6603,"lng":-117.9992},
+  {"name":"Irvine","state":"CA","country":"US","lat":33.6846,"lng":-117.8265},
+  {"name":"Laguna Beach","state":"CA","country":"US","lat":33.5427,"lng":-117.7854},
+  {"name":"Newport Beach","state":"CA","country":"US","lat":33.6189,"lng":-117.9298},
+  {"name":"Oceanside","state":"CA","country":"US","lat":33.1959,"lng":-117.3795},
+  {"name":"Oxnard","state":"CA","country":"US","lat":34.1975,"lng":-119.1771},
+  {"name":"San Diego","state":"CA","country":"US","lat":32.7157,"lng":-117.1611},
+  {"name":"Santa Ana","state":"CA","country":"US","lat":33.7455,"lng":-117.8677},
+  {"name":"Thousand Oaks","state":"CA","country":"US","lat":34.1706,"lng":-118.8376},
+  {"name":"Ventura","state":"CA","country":"US","lat":34.2746,"lng":-119.2290}
+]
