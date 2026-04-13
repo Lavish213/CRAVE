@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Iterable, List
+from typing import Iterable, List, Optional
 
 from sqlalchemy.orm import Session
 
@@ -9,6 +9,9 @@ from app.db.models.place import Place
 
 
 ACTIVE_MENU_JOB_STATUSES = ("pending", "running")
+
+HIGH_PRIORITY = 10
+NORMAL_PRIORITY = 1
 
 
 def schedule_menu_jobs(
@@ -72,3 +75,52 @@ def schedule_menu_jobs(
         db.refresh(job)
 
     return created_jobs
+
+
+def enqueue_menu_job(
+    db: Session,
+    place_id: str,
+    priority: int = HIGH_PRIORITY,
+) -> Optional[EnrichmentJob]:
+    """
+    Manually enqueue a high-priority menu job for a specific place.
+
+    If an active job (pending/running) already exists, returns None (skip).
+    If a stale active job exists (stuck), deactivates it and creates a new one.
+    """
+    if not place_id:
+        return None
+
+    existing = (
+        db.query(EnrichmentJob)
+        .filter(
+            EnrichmentJob.place_id == place_id,
+            EnrichmentJob.job_type == "menu",
+            EnrichmentJob.is_active.is_(True),
+        )
+        .first()
+    )
+
+    if existing is not None:
+        if existing.status in ACTIVE_MENU_JOB_STATUSES:
+            # Already queued or running — bump priority if lower
+            if existing.priority < priority:
+                existing.priority = priority
+                db.commit()
+            return existing
+
+        # Stale active job (shouldn't happen, but deactivate it)
+        existing.is_active = False
+        db.flush()
+
+    job = EnrichmentJob(
+        place_id=place_id,
+        job_type="menu",
+        priority=priority,
+        status="pending",
+        is_active=True,
+    )
+    db.add(job)
+    db.commit()
+    db.refresh(job)
+    return job

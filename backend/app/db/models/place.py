@@ -68,6 +68,17 @@ class Place(Base, TimestampMixin):
         index=True,
     )
 
+    grubhub_url: Mapped[str | None] = mapped_column(
+        String(1024),
+        nullable=True,
+        index=True,
+    )
+
+    menu_source_url: Mapped[str | None] = mapped_column(
+        String(1024),
+        nullable=True,
+    )
+
     lat: Mapped[float | None] = mapped_column(Float, nullable=True, index=True)
     lng: Mapped[float | None] = mapped_column(Float, nullable=True, index=True)
 

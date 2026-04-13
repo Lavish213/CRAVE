@@ -30,6 +30,8 @@ def get_places_needing_menus(
     return (
         db.query(Place)
         .filter(
+            Place.is_active.is_(True),
+            Place.grubhub_url.isnot(None),
             Place.has_menu.is_(False),
             or_(
                 Place.last_menu_updated_at.is_(None),
