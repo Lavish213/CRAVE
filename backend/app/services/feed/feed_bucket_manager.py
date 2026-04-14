@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Optional, List
+from typing import Optional, List, Tuple
 from sqlalchemy.orm import Session
 from app.db.models.place import Place
 from app.services.feed.feed_bucket_store import (
@@ -14,7 +14,7 @@ def get_feed_places(
     *,
     city_id: Optional[str],
     limit: int = 30,
-) -> List[Place]:
+) -> Tuple[List[Place], int]:
 
     key = bucket_key(city_id)
 
@@ -29,10 +29,11 @@ def get_feed_places(
 
         set_bucket(key, bucket)
 
+    total = len(bucket.place_ids)
     ids = bucket.place_ids[:limit]
 
     if not ids:
-        return []
+        return [], total
 
     places = (
         db.query(Place)
@@ -44,4 +45,4 @@ def get_feed_places(
 
     ordered = [place_map[i] for i in ids if i in place_map]
 
-    return ordered
+    return ordered, total

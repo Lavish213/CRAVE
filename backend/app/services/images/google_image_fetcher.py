@@ -22,6 +22,16 @@ MAX_GOOGLE_IMAGES = 20
 DEFAULT_MAX_WIDTH = 1600
 REQUEST_TIMEOUT = 5
 
+_API_CALL_COUNTER: dict = {"total": 0}
+
+
+def reset_api_call_counter() -> None:
+    _API_CALL_COUNTER["total"] = 0
+
+
+def get_api_call_count() -> int:
+    return _API_CALL_COUNTER["total"]
+
 
 class GoogleImageFetcher:
     """
@@ -159,6 +169,12 @@ class GoogleImageFetcher:
                 json=body,
                 timeout=REQUEST_TIMEOUT,
             )
+            _API_CALL_COUNTER["total"] += 1
+            if _API_CALL_COUNTER["total"] % 10 == 0:
+                logger.info(
+                    "google_api_calls_made total=%s",
+                    _API_CALL_COUNTER["total"],
+                )
             if resp.status_code != 200:
                 logger.debug(
                     "google_search_text_error place=%s status=%s",

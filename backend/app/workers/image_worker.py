@@ -4,7 +4,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Dict, List, Optional
 
-from sqlalchemy import exists, func, not_, or_, select
+from sqlalchemy import exists, func, not_, or_, select, update
 from sqlalchemy.orm import Session
 
 from app.db.models.place import Place
@@ -21,6 +21,7 @@ MAX_BATCH_SIZE = 200
 
 MIN_IMAGE_COUNT = 3
 STALE_IMAGE_DAYS = 30
+MAX_FETCH_ATTEMPTS = 3
 
 
 def _utcnow() -> datetime:
@@ -103,6 +104,9 @@ class ImageWorker:
 
             processed += 1
 
+            place_id = getattr(place, "id", None)
+            attempt_failed = False
+
             try:
 
                 images = self.ingest_service.ingest_place_images(
@@ -111,14 +115,16 @@ class ImageWorker:
                     force_refresh=force_refresh,
                 )
 
-                db.commit()
+                # Count as a failed attempt if no images were returned
+                if not images:
+                    attempt_failed = True
 
                 succeeded += 1
                 images_written += len(images)
 
                 logger.debug(
                     "image_worker_place_complete place_id=%s images=%s",
-                    getattr(place, "id", None),
+                    place_id,
                     len(images),
                 )
 
@@ -126,13 +132,44 @@ class ImageWorker:
 
                 db.rollback()
 
+                attempt_failed = True
                 failed += 1
 
                 logger.exception(
                     "image_worker_place_failed place_id=%s error=%s",
-                    getattr(place, "id", None),
+                    place_id,
                     exc,
                 )
+
+            # Track fetch attempts and block after MAX_FETCH_ATTEMPTS failures
+            if attempt_failed and not force_refresh and place_id:
+                try:
+                    new_attempts = getattr(place, "image_fetch_attempts", 0) + 1
+                    should_block = new_attempts >= MAX_FETCH_ATTEMPTS
+                    db.execute(
+                        update(Place)
+                        .where(Place.id == place_id)
+                        .values(
+                            image_fetch_attempts=new_attempts,
+                            image_blocked=should_block,
+                        )
+                    )
+                    db.commit()
+                    if should_block:
+                        logger.warning(
+                            "image_worker_place_blocked place_id=%s attempts=%s",
+                            place_id,
+                            new_attempts,
+                        )
+                except Exception:
+                    db.rollback()
+                    logger.exception(
+                        "image_worker_attempt_update_failed place_id=%s",
+                        place_id,
+                    )
+            elif not attempt_failed:
+                # Commit succeeded path (images returned)
+                db.commit()
 
         result = {
             "processed": processed,
@@ -173,6 +210,7 @@ class ImageWorker:
 
         if not force_refresh:
             stmt = stmt.where(self._needs_image_work_clause())
+            stmt = stmt.where(Place.image_blocked.is_not(True))
 
         stmt = stmt.order_by(
             Place.rank_score.desc(),

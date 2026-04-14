@@ -39,6 +39,11 @@ from app.db.models.city_place_ranking import CityPlaceRanking  # noqa: F401
 # Fetch logs
 from app.db.models.place_image_fetch_log import PlaceImageFetchLog  # noqa: F401
 
+# Hit List
+from app.db.models.hitlist_save import HitlistSave  # noqa: F401
+from app.db.models.hitlist_suggestion import HitlistSuggestion  # noqa: F401
+from app.db.models.hitlist_dedup_key import HitlistDedupKey  # noqa: F401
+
 
 # --------------------------------------------------
 # Alembic Config
@@ -65,6 +70,11 @@ DATABASE_URL = str(settings.resolved_database_url)
 
 if not DATABASE_URL:
     raise RuntimeError("DATABASE_URL is not configured properly.")
+
+# Normalise Heroku legacy scheme (postgres://) — already handled by settings,
+# but guard here in case the URL is injected via alembic.ini directly.
+if DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
 config.set_main_option("sqlalchemy.url", DATABASE_URL)
 

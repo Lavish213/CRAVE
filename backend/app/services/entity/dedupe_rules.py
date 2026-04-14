@@ -241,3 +241,48 @@ def is_same_place(
     )
 
     return score >= FUZZY_THRESHOLD, score
+
+
+# =========================================================
+# PUBLIC BOOLEAN HELPERS (used by entity_matcher)
+# =========================================================
+
+def names_match(name_a: Optional[str], name_b: Optional[str]) -> bool:
+    """
+    Return True when two place names are similar enough to be the same entity.
+    Uses normalized fuzzy comparison against FUZZY_THRESHOLD.
+    """
+    n1 = _normalize_name(name_a)
+    n2 = _normalize_name(name_b)
+
+    if not n1 or not n2:
+        return False
+
+    if n1 == n2:
+        return True
+
+    return _similar(n1, n2) >= FUZZY_THRESHOLD
+
+
+def addresses_match(addr_a: Optional[str], addr_b: Optional[str]) -> bool:
+    """
+    Return True when two address strings are similar enough to be the same location.
+    Uses normalized fuzzy comparison against ADDRESS_FUZZY_THRESHOLD.
+    """
+    a1 = _normalize_address(addr_a)
+    a2 = _normalize_address(addr_b)
+
+    if not a1 or not a2:
+        return False
+
+    if a1 == a2:
+        return True
+
+    # street number mismatch is a hard disqualifier
+    num1 = _extract_number(a1)
+    num2 = _extract_number(a2)
+
+    if num1 and num2 and num1 != num2:
+        return False
+
+    return _similar(a1, a2) >= ADDRESS_FUZZY_THRESHOLD

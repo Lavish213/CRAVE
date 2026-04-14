@@ -1,32 +1,87 @@
+# app/workers/recompute_scores_worker.py
 from __future__ import annotations
 
 import json
-import time
+import logging
+from collections import defaultdict
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, Iterable, Optional, Tuple
+from typing import Any, Dict, Optional, Set
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.db.session import SessionLocal
 from app.db.models.place import Place
-from app.services.scoring.recompute import recompute_place_scores
+from app.db.models.place_image import PlaceImage
+from app.db.models.place_signal import PlaceSignal
+from app.services.scoring.signal_context import SignalContext
+from app.services.scoring.place_score_v3 import compute_place_score_v3
+from app.services.cache.response_cache import response_cache
+from app.services.cache.cache_keys import _norm
+
+logger = logging.getLogger(__name__)
+
+BASE_DIR = Path(__file__).resolve().parents[2]
+QUEUE_FILE = BASE_DIR / "var" / "queue" / "recompute_scores.queue"
+
+UTC = timezone.utc
+
+SIGNAL_DECAY_DAYS: Dict[str, int] = {
+    "creator": 30,
+    "award": 365,
+    "blog": 180,
+    "review": 730,
+    "save": 730,
+}
+DEFAULT_DECAY_DAYS = 180
 
 
-# ------------------------------------------------------------
-# Queue location (must match enqueue file)
-# ------------------------------------------------------------
+def _compute_decayed_signal_scores(
+    rows: list,
+    signal_types: list,
+    now: datetime,
+) -> Dict[str, Dict[str, float]]:
+    """
+    Returns {signal_type: {place_id: decayed_score}}.
 
-APP_DIR = Path(__file__).resolve().parents[2]
-VAR_DIR = APP_DIR / "var"
-QUEUE_DIR = VAR_DIR / "queue"
-QUEUE_FILE = QUEUE_DIR / "recompute_scores.queue"
+    Applies exponential-style linear decay per signal type so that older
+    signals contribute less to a place's score.
+    """
+    grouped: Dict[str, Dict[str, list]] = defaultdict(lambda: defaultdict(list))
 
+    for row in rows:
+        place_id = row.place_id
+        sig_type = row.signal_type
+        value = row.value
+        created_at = row.created_at
 
-def _ensure_queue_dir() -> None:
-    """Create the queue directory if it does not exist."""
-    QUEUE_DIR.mkdir(parents=True, exist_ok=True)
+        if sig_type not in signal_types:
+            continue
+
+        # Normalize created_at — SQLite may return a string
+        if isinstance(created_at, str):
+            try:
+                created_at = datetime.fromisoformat(created_at)
+            except ValueError:
+                created_at = now  # treat as fresh if unparseable
+        if created_at.tzinfo is None:
+            created_at = created_at.replace(tzinfo=UTC)
+
+        decay_days = SIGNAL_DECAY_DAYS.get(sig_type, DEFAULT_DECAY_DAYS)
+        days_old = max(0, (now - created_at).days)
+        decay_factor = max(0.05, 1.0 - days_old / decay_days)
+        effective = float(value) * decay_factor
+        grouped[sig_type][place_id].append(effective)
+
+    result: Dict[str, Dict[str, float]] = {}
+    for sig_type in signal_types:
+        result[sig_type] = {
+            place_id: min(sum(vals) / len(vals), 1.0)
+            for place_id, vals in grouped[sig_type].items()
+        }
+    return result
 
 
 @dataclass(frozen=True)
@@ -36,145 +91,234 @@ class Job:
     payload: Dict[str, Any]
 
 
-def _read_jobs(path: Path) -> Tuple[list[Job], bool]:
-    """
-    Read all jobs currently queued.
-    Returns: (jobs, had_file)
-
-    File is treated as append-only; worker "consumes" by truncating after successful parse.
-    """
-    _ensure_queue_dir()
-    if not path.exists():
-        return [], False
-
-    raw = path.read_text(encoding="utf-8").strip()
+def _read_jobs() -> list[Job]:
+    if not QUEUE_FILE.exists():
+        return []
+    raw = QUEUE_FILE.read_text(encoding="utf-8").strip()
     if not raw:
-        return [], True
-
-    jobs: list[Job] = []
-    for line in raw.splitlines():
-        line = line.strip()
-        if not line:
-            continue
-        data = json.loads(line)
-        jobs.append(
-            Job(
-                type=str(data.get("type")),
-                created_at=str(data.get("created_at")),
-                payload=dict(data.get("payload") or {}),
-            )
+        return []
+    return [
+        Job(
+            type=str(d.get("type")),
+            created_at=str(d.get("created_at")),
+            payload=dict(d.get("payload") or {}),
         )
+        for d in (json.loads(line) for line in raw.splitlines())
+    ]
 
-    return jobs, True
+
+def _clear_queue() -> None:
+    QUEUE_FILE.write_text("", encoding="utf-8")
 
 
-def _truncate_queue(path: Path) -> None:
-    _ensure_queue_dir()
-    path.write_text("", encoding="utf-8")
+def _fetch_signal_context(db: Session, place_ids: list[str]) -> SignalContext:
+    """Batch-fetch all signal data. One query per signal type — never per-place."""
+    if not place_ids:
+        return SignalContext()
+
+    # Image counts per place
+    image_rows = db.execute(
+        select(PlaceImage.place_id, func.count(PlaceImage.id).label("cnt"))
+        .where(PlaceImage.place_id.in_(place_ids))
+        .group_by(PlaceImage.place_id)
+    ).all()
+    image_counts = {r.place_id: r.cnt for r in image_rows}
+
+    # Places with a primary image
+    primary_rows = db.execute(
+        select(PlaceImage.place_id)
+        .where(
+            PlaceImage.place_id.in_(place_ids),
+            PlaceImage.is_primary.is_(True),
+        )
+    ).all()
+    has_primary = {r.place_id for r in primary_rows}
+
+    # Menu item counts from PlaceClaim (where field="menu_item")
+    # The menu pipeline writes PlaceClaim rows with field="menu_item", NOT menu_items table
+    menu_counts: Dict[str, int] = {}
+    try:
+        from app.db.models.place_claim import PlaceClaim
+        menu_claim_rows = db.execute(
+            select(PlaceClaim.place_id, func.count(PlaceClaim.id).label("cnt"))
+            .where(
+                PlaceClaim.place_id.in_(place_ids),
+                PlaceClaim.field == "menu_item",
+            )
+            .group_by(PlaceClaim.place_id)
+        ).all()
+        menu_counts = {r.place_id: r.cnt for r in menu_claim_rows}
+    except Exception:
+        pass
+
+    # Hitlist velocity scores — places that have been saved to hitlists
+    hitlist_scores: Dict[str, float] = {}
+    try:
+        from app.db.models.hitlist_save import HitlistSave
+        hitlist_rows = db.execute(
+            select(HitlistSave.place_id, func.count(HitlistSave.id).label("cnt"))
+            .where(
+                HitlistSave.place_id.in_(place_ids),
+                HitlistSave.place_id.isnot(None),
+            )
+            .group_by(HitlistSave.place_id)
+        ).all()
+        hitlist_scores = {r.place_id: min(float(r.cnt) / 100.0, 1.0) for r in hitlist_rows}
+    except Exception:
+        pass
+
+    # Fetch ALL signal rows for creator/award/blog in one query, then compute
+    # time-decayed weighted averages in Python.
+    PS = PlaceSignal
+    signal_rows = db.execute(
+        select(PS.place_id, PS.signal_type, PS.value, PS.created_at)
+        .where(
+            PS.place_id.in_(place_ids),
+            PS.signal_type.in_(["creator", "award", "blog"]),
+        )
+    ).all()
+
+    now = datetime.now(UTC)
+    decayed = _compute_decayed_signal_scores(signal_rows, ["creator", "award", "blog"], now)
+
+    creator_scores: Dict[str, float] = decayed.get("creator", {})
+    awards_scores: Dict[str, float] = decayed.get("award", {})
+    blog_scores: Dict[str, float] = decayed.get("blog", {})
+
+    return SignalContext(
+        image_counts=image_counts,
+        has_primary=has_primary,
+        menu_item_counts=menu_counts,
+        hitlist_scores=hitlist_scores,
+        creator_scores=creator_scores,
+        awards_scores=awards_scores,
+        blog_scores=blog_scores,
+    )
 
 
 def _clamp_limit(limit: Optional[int]) -> Optional[int]:
     if limit is None:
         return None
     try:
-        limit = int(limit)
+        return max(1, int(limit))
     except Exception:
         return None
-    return max(1, limit)
 
 
-def _iter_places_for_recompute(
-    db: Session,
-    *,
-    city_id: Optional[str],
-    limit: Optional[int],
-    batch_size: int,
-) -> Iterable[list[Place]]:
-    """
-    Deterministic batching:
-      - WHERE city_id if provided
-      - ORDER BY id ASC (stable)
-      - batches of batch_size
-    """
-    limit = _clamp_limit(limit)
-
-    base = select(Place).order_by(Place.id.asc())
-    if city_id:
-        base = base.where(Place.city_id == city_id)
-
-    fetched = 0
-    offset = 0
-
-    while True:
-        stmt = base.limit(batch_size).offset(offset)
-        rows = db.execute(stmt).scalars().all()
-
-        if not rows:
-            break
-
-        # Apply global limit across batches (if requested)
-        if limit is not None:
-            remaining = limit - fetched
-            if remaining <= 0:
-                break
-            if len(rows) > remaining:
-                rows = rows[:remaining]
-
-        yield rows
-
-        fetched += len(rows)
-        offset += batch_size
-
-        if limit is not None and fetched >= limit:
-            break
-
-
-def run_recompute_job(
+def _iter_place_batches(
     db: Session,
     *,
     city_id: Optional[str],
     limit: Optional[int],
     batch_size: int = 500,
-    commit_every_batch: bool = True,
-) -> int:
-    """
-    Production-safe recompute runner:
-      - no randomness
-      - deterministic batch ordering
-      - commits per batch (keeps transactions small)
-    """
-    total_updated = 0
+):
+    limit = _clamp_limit(limit)
+    stmt = select(Place).order_by(Place.id.asc())
+    if city_id:
+        stmt = stmt.where(Place.city_id == city_id)
 
-    for batch in _iter_places_for_recompute(
-        db,
-        city_id=city_id,
-        limit=limit,
-        batch_size=batch_size,
-    ):
-        updated = recompute_place_scores(db, places=batch)
-        total_updated += updated
+    offset = 0
+    processed = 0
 
-        if commit_every_batch:
-            db.commit()
+    while True:
+        batch = db.execute(stmt.limit(batch_size).offset(offset)).scalars().all()
+        if not batch:
+            break
+        if limit is not None:
+            remaining = limit - processed
+            if remaining <= 0:
+                break
+            batch = batch[:remaining]
 
-    return total_updated
+        yield batch
+        processed += len(batch)
+        offset += batch_size
+        if limit is not None and processed >= limit:
+            break
 
 
-def worker_once() -> int:
-    """
-    Process queued jobs once.
-    If queue is empty: returns 0.
-    """
-    jobs, had_file = _read_jobs(QUEUE_FILE)
+def _score_batch(db: Session, places: list[Place]) -> tuple[int, Set[str]]:
+    place_ids = [p.id for p in places]
+    ctx = _fetch_signal_context(db, place_ids)
 
+    now = datetime.now(timezone.utc)
+    updated = 0
+    city_ids: Set[str] = set()
+
+    for place in places:
+        pid = place.id
+
+        # Track city IDs for cache invalidation
+        if place.city_id:
+            city_ids.add(place.city_id)
+
+        # Resolve city slug for city-aware weights
+        city_slug: Optional[str] = None
+        city = getattr(place, "city", None)
+        if city:
+            city_slug = getattr(city, "slug", None) or getattr(city, "name", None)
+
+        result = compute_place_score_v3(
+            place_id=pid,
+            name=place.name or "",
+            lat=place.lat,
+            lng=place.lng,
+            has_menu=bool(place.has_menu),
+            website=place.website,
+            updated_at=place.updated_at,
+            grubhub_url=place.grubhub_url,
+            menu_source_url=place.menu_source_url,
+            image_count=ctx.image_count(pid),
+            has_primary_image=ctx.has_primary_image(pid),
+            menu_item_count=ctx.menu_item_count(pid),
+            hitlist_score=ctx.hitlist_score(pid),
+            creator_score=ctx.creator_score(pid),
+            awards_score=ctx.awards_score(pid),
+            blog_score=ctx.blog_score(pid),
+            city_slug=city_slug,
+        )
+
+        place.master_score = result.final_score
+        place.rank_score = result.final_score
+        # Only set last_scored_at if the column exists
+        if hasattr(place, "last_scored_at"):
+            place.last_scored_at = now
+        updated += 1
+
+    return updated, city_ids
+
+
+def _invalidate_cache_for_cities(affected_cities: Set[str]) -> None:
+    """Invalidate feed and map cache entries for the given set of city IDs."""
+    city_norms = {_norm(city_id) for city_id in affected_cities}
+
+    for city_norm in city_norms:
+        # Feed keys: feed:{city}:{page}:{page_size} — prefix covers all pages/sizes
+        response_cache.delete_prefix(f"feed:{city_norm}:")
+
+    # Map keys: map:{lat}:{lng}:{radius}:{limit}:{city}:{cat}
+    # City is not a prefix segment, so scan for :{city_norm}: substring in map keys
+    with response_cache._lock:
+        to_delete = [
+            k for k in response_cache._store
+            if k.startswith("map:") and any(f":{cn}:" in k for cn in city_norms)
+        ]
+        for k in to_delete:
+            del response_cache._store[k]
+
+    logger.info("cache_invalidated_after_recompute cities=%s", affected_cities)
+
+
+def run_worker_once() -> int:
+    jobs = _read_jobs()
     if not jobs:
         return 0
 
-    # Consume queue AFTER successful parsing
-    _truncate_queue(QUEUE_FILE)
-
-    updated_total = 0
+    _clear_queue()
     db = SessionLocal()
+    total_updated = 0
+    affected_cities: Set[str] = set()
+
     try:
         for job in jobs:
             if job.type != "recompute_scores":
@@ -183,37 +327,20 @@ def worker_once() -> int:
             city_id = job.payload.get("city_id")
             limit = job.payload.get("limit")
 
-            updated = run_recompute_job(
-                db,
-                city_id=city_id,
-                limit=limit,
-                batch_size=500,
-                commit_every_batch=True,
-            )
-            updated_total += updated
+            for batch in _iter_place_batches(db, city_id=city_id, limit=limit):
+                updated, batch_cities = _score_batch(db, batch)
+                total_updated += updated
+                affected_cities.update(batch_cities)
+                db.commit()
 
-        # If any job did not commit per batch, commit here (we do per batch already)
-        return updated_total
+        if affected_cities:
+            _invalidate_cache_for_cities(affected_cities)
+
+        return total_updated
 
     except Exception:
         db.rollback()
         raise
+
     finally:
         db.close()
-
-
-def main() -> None:
-    """
-    Usage:
-      PYTHONPATH=backend python backend/app/workers/recompute_scores_worker.py
-
-    Default behavior:
-      - run once
-      - exit with code 0
-    """
-    updated = worker_once()
-    print(f"✅ Worker done. Updated places: {updated}")
-
-
-if __name__ == "__main__":
-    main()

@@ -60,10 +60,17 @@ class Settings(BaseSettings):
 
     @property
     def resolved_database_url(self) -> str:
-        if self.database_url:
-            return self.database_url
+        raw = (self.database_url or "").strip()
 
-        return f"sqlite:///{DEFAULT_SQLITE_PATH}"
+        if not raw:
+            return f"sqlite:///{DEFAULT_SQLITE_PATH}"
+
+        # Heroku and some providers emit the deprecated "postgres://" scheme.
+        # SQLAlchemy 1.4+ requires "postgresql://".
+        if raw.startswith("postgres://"):
+            raw = raw.replace("postgres://", "postgresql://", 1)
+
+        return raw
 
     @property
     def is_dev(self) -> bool:

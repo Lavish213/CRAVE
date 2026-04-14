@@ -63,6 +63,14 @@ class ResponseCache:
         with self._lock:
             self._store.pop(key, None)
 
+    def delete_prefix(self, prefix: str) -> int:
+        """Delete all keys starting with prefix. Returns count deleted."""
+        with self._lock:
+            to_delete = [k for k in self._store if k.startswith(prefix)]
+            for k in to_delete:
+                del self._store[k]
+            return len(to_delete)
+
     def clear(self) -> None:
 
         with self._lock:

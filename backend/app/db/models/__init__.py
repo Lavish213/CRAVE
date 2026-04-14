@@ -43,6 +43,11 @@ from .place_feed_snapshot import PlaceFeedSnapshot
 # ----- Ranking Layer -----
 from .city_place_ranking import CityPlaceRanking
 
+# ----- Hit List Layer -----
+from .hitlist_save import HitlistSave
+from .hitlist_suggestion import HitlistSuggestion
+from .hitlist_dedup_key import HitlistDedupKey
+
 
 # ---------------------------------------------------------
 # EXPORTS (STRICT + COMPLETE)
@@ -82,4 +87,9 @@ __all__ = [
 
     # Ranking
     "CityPlaceRanking",
+
+    # Hit List
+    "HitlistSave",
+    "HitlistSuggestion",
+    "HitlistDedupKey",
 ]

@@ -171,6 +171,21 @@ class Place(Base, TimestampMixin):
         index=True,
     )
 
+    image_fetch_attempts: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=0,
+        server_default=text("0"),
+    )
+
+    image_blocked: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default=text("0"),
+        index=True,
+    )
+
     city: Mapped["City"] = relationship(
         "City",
         back_populates="places",

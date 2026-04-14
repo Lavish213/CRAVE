@@ -3,13 +3,15 @@ from __future__ import annotations
 from contextlib import asynccontextmanager
 import logging
 import time
-import uuid
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from app.config.settings import settings
 from app.api import router as api_router
+from app.api.v1.routes.health import router as health_router
+from app.middleware.request_id import RequestIDMiddleware
+from app.core.logging_config import RequestIDFilter
 
 # ---------------------------------------------------------
 # FORCE MODEL REGISTRY LOAD (CRITICAL)
@@ -25,6 +27,9 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
 )
+
+# Attach request_id to all log records (populated by RequestIDMiddleware)
+logging.getLogger().addFilter(RequestIDFilter())
 
 logger = logging.getLogger("lavish")
 
@@ -83,6 +88,7 @@ app = FastAPI(
 # ============================================================
 
 app.include_router(api_router, prefix="/api")
+app.include_router(health_router)
 
 
 # ============================================================
@@ -92,7 +98,6 @@ app.include_router(api_router, prefix="/api")
 @app.middleware("http")
 async def request_metrics(request: Request, call_next):
 
-    request_id = str(uuid.uuid4())
     start = time.perf_counter()
 
     try:
@@ -103,7 +108,6 @@ async def request_metrics(request: Request, call_next):
 
     duration = time.perf_counter() - start
 
-    response.headers["X-Request-ID"] = request_id
     response.headers["X-Process-Time"] = f"{duration:.4f}"
 
     logger.info(
@@ -116,13 +120,9 @@ async def request_metrics(request: Request, call_next):
     return response
 
 
-# ============================================================
-# Health
-# ============================================================
-
-@app.get("/health")
-def health():
-    return {"status": "ok"}
+# RequestIDMiddleware runs first (last-added = first-executed in Starlette).
+# It generates/validates the UUID and sets the X-Request-ID response header.
+app.add_middleware(RequestIDMiddleware)
 
 
 # ============================================================

@@ -5,11 +5,12 @@ from __future__ import annotations
 import logging
 from typing import Optional, List
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
 from app.services.search.search_engine import execute_search
+from app.core.rate_limit import rate_limit
 
 from app.services.cache.response_cache import response_cache
 from app.services.cache.cache_keys import search_cache_key
@@ -73,6 +74,7 @@ def search(
     page: int = Query(DEFAULT_PAGE, ge=1),
     page_size: int = Query(DEFAULT_PAGE_SIZE, ge=1, le=MAX_PAGE_SIZE),
     db: Session = Depends(get_db),
+    _: None = Depends(rate_limit),
 ) -> SearchResponse:
 
     # -----------------------------

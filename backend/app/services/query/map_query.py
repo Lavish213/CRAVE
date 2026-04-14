@@ -189,3 +189,91 @@ def fetch_places_for_map(
 
 
 get_map_places = fetch_places_for_map
+
+
+# --- GeoJSON / Mapbox support ---
+
+def _compute_tier_thresholds(scores: list) -> dict:
+    """
+    Compute percentile-based tier thresholds from the scores in this result set.
+    elite = top 5%, trusted = next 15%, solid = next 30%, default = bottom 50%.
+    """
+    if not scores:
+        return {"elite": float("inf"), "trusted": float("inf"), "solid": float("inf")}
+
+    sorted_scores = sorted(scores)
+    n = len(sorted_scores)
+
+    elite_idx   = max(0, int(n * 0.95))
+    trusted_idx = max(0, int(n * 0.80))
+    solid_idx   = max(0, int(n * 0.50))
+
+    return {
+        "elite":   sorted_scores[elite_idx],
+        "trusted": sorted_scores[trusted_idx],
+        "solid":   sorted_scores[solid_idx],
+    }
+
+
+def _assign_tier(score: float, thresholds: dict) -> str:
+    if score >= thresholds["elite"]:
+        return "elite"
+    if score >= thresholds["trusted"]:
+        return "trusted"
+    if score >= thresholds["solid"]:
+        return "solid"
+    return "default"
+
+
+def fetch_places_for_map_geojson(
+    db,
+    *,
+    lat: float,
+    lng: float,
+    radius_km: float = None,
+    limit: int = None,
+    city_id=None,
+    category_id=None,
+) -> dict:
+    """
+    Returns a Mapbox-compatible GeoJSON FeatureCollection dict.
+    Wraps fetch_places_for_map — same query, same cache eligibility.
+    Tiers are percentile-based within this result set.
+    """
+    # Build kwargs — only pass params that fetch_places_for_map accepts
+    kwargs = {"db": db, "lat": lat, "lng": lng}
+    if radius_km is not None:
+        kwargs["radius_km"] = radius_km
+    if limit is not None:
+        kwargs["limit"] = limit
+    if city_id is not None:
+        kwargs["city_id"] = city_id
+    if category_id is not None:
+        kwargs["category_id"] = category_id
+
+    result = fetch_places_for_map(**kwargs)
+    places = result.get("places", [])
+    scores = [p.get("rank_score", 0.0) for p in places]
+    thresholds = _compute_tier_thresholds(scores)
+
+    features = []
+    for p in places:
+        features.append({
+            "type": "Feature",
+            "geometry": {
+                "type": "Point",
+                "coordinates": [p.get("lng"), p.get("lat")],
+            },
+            "properties": {
+                "id": p.get("id"),
+                "name": p.get("name"),
+                "city_id": p.get("city_id"),
+                "tier": _assign_tier(p.get("rank_score", 0.0), thresholds),
+                "rank_score": p.get("rank_score", 0.0),
+                "price_tier": p.get("price_tier"),
+                "primary_image_url": p.get("primary_image_url"),
+                "has_menu": False,
+            },
+        })
+
+    return {"type": "FeatureCollection", "features": features}

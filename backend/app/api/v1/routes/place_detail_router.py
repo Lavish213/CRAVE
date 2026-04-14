@@ -130,6 +130,8 @@ def get_place_detail(
         "confidence_score": float(place.confidence_score or 0.0),
         "operational_confidence": float(place.operational_confidence or 0.0),
         "local_validation": float(place.local_validation or 0.0),
+        "website": place.website or None,
+        "grubhub_url": place.grubhub_url or None,
         "images": image_urls,
         "categories": category_names,
         "created_at": place.created_at,

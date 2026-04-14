@@ -66,3 +66,37 @@ class MapResponse(BaseModel):
     count: int = Field(..., ge=0)
 
     places: List[MapPlace]
+
+
+# --- GeoJSON types (Mapbox FeatureCollection) ---
+
+
+class GeoJSONProperties(BaseModel):
+    model_config = ConfigDict(frozen=True)
+    id: str
+    name: str
+    city_id: Optional[str] = None
+    tier: str  # elite | trusted | solid | default
+    rank_score: float = Field(..., ge=0.0)
+    price_tier: Optional[int] = Field(default=None, ge=1, le=4)
+    primary_image_url: Optional[str] = None
+    has_menu: bool = False
+
+
+class GeoJSONGeometry(BaseModel):
+    model_config = ConfigDict(frozen=True)
+    type: str = "Point"
+    coordinates: list[float]  # [lng, lat] — Mapbox standard
+
+
+class GeoJSONFeature(BaseModel):
+    model_config = ConfigDict(frozen=True)
+    type: str = "Feature"
+    geometry: GeoJSONGeometry
+    properties: GeoJSONProperties
+
+
+class GeoJSONFeatureCollection(BaseModel):
+    model_config = ConfigDict(frozen=True)
+    type: str = "FeatureCollection"
+    features: List[GeoJSONFeature]

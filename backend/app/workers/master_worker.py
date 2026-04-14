@@ -22,6 +22,10 @@ LOOP_DELAY_SECONDS    = 30
 DISCOVERY_BATCH_LIMIT = 50
 MAX_LOOP_ERRORS       = 20
 
+RANKING_INTERVAL_CYCLES = 20  # run every 20 main cycles (~10 minutes)
+
+_ranking_cycle_counter = 0
+
 
 # =========================================================
 # SAFE RUNNERS
@@ -68,6 +72,18 @@ def _run_menu_safe() -> None:
         logger.exception("master_menu_failed error=%s", exc)
 
 
+def _run_ranking_safe(db) -> None:
+    """Recompute city place rankings for all active cities."""
+    try:
+        from app.workers.ranking_worker import run_ranking_cycle
+        run_ranking_cycle(db)
+        logger.info("master_ranking_complete")
+    except Exception as exc:
+        logger.exception("master_ranking_failed error=%s", exc)
+        with suppress(Exception):
+            db.rollback()
+
+
 def _run_images_safe(db) -> None:
     try:
         from app.workers.image_worker import ImageWorker
@@ -89,6 +105,7 @@ def _run_images_safe(db) -> None:
 # =========================================================
 
 def run_master_worker() -> None:
+    global _ranking_cycle_counter
     logger.info("master_worker_start")
     error_count = 0
 
@@ -98,14 +115,20 @@ def run_master_worker() -> None:
             # Stage 1: discover + promote candidates → places
             _run_discovery_safe(db)
 
-            # Stage 1b: score any newly promoted places (rank_score=0)
-            _run_recompute_safe(db)
-
-            # Stage 2: menu ingestion for known places
+            # Stage 2: menu ingestion (enrich signals before scoring)
             _run_menu_safe()
 
-            # Stage 3: image crawling for known places
+            # Stage 3: recompute scores with latest signals (menu data included)
+            _run_recompute_safe(db)
+
+            # Stage 4: image crawling for known places (lowest priority)
             _run_images_safe(db)
+
+            # Stage 5: ranking cycle (every ~10 minutes, not every 30s loop)
+            _ranking_cycle_counter += 1
+            if _ranking_cycle_counter >= RANKING_INTERVAL_CYCLES:
+                _run_ranking_safe(db)
+                _ranking_cycle_counter = 0
 
             error_count = 0
 

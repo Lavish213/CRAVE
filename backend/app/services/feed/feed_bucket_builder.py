@@ -15,7 +15,7 @@ def build_bucket(
     limit: int = 200,
 ) -> FeedBucket:
 
-    stable = list_places(
+    stable, _total = list_places(
         db,
         city_id=city_id,
         limit=limit * 2,

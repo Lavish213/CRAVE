@@ -3,15 +3,16 @@ from __future__ import annotations
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
-from app.services.query.map_query import fetch_places_for_map
+from app.services.query.map_query import fetch_places_for_map, fetch_places_for_map_geojson
 from app.services.cache.response_cache import response_cache
 from app.services.cache.cache_keys import map_key
 from app.services.cache.cache_ttl import map_ttl
-from app.api.v1.schemas.map import MapResponse, MapCenter
+from app.api.v1.schemas.map import MapResponse, MapCenter, GeoJSONFeatureCollection
+from app.core.rate_limit import rate_limit
 
 
 logger = logging.getLogger(__name__)
@@ -79,6 +80,7 @@ def map_places(
     city_id: Optional[str] = Query(None),
     category_id: Optional[str] = Query(None),
     db: Session = Depends(get_db),
+    _: None = Depends(rate_limit),
 ) -> MapResponse:
 
     lat = _safe_float(lat)
@@ -159,5 +161,57 @@ def map_places(
             cache_key,
             exc,
         )
+
+    return payload
+
+
+@router.get(
+    "/geojson",
+    response_model=GeoJSONFeatureCollection,
+    summary="Get places as Mapbox GeoJSON FeatureCollection",
+)
+def map_places_geojson(
+    lat: float = Query(..., description="Latitude"),
+    lng: float = Query(..., description="Longitude"),
+    radius_km: float = Query(DEFAULT_RADIUS_KM, ge=0.1, le=50.0),
+    limit: int = Query(DEFAULT_LIMIT, ge=1, le=MAX_LIMIT),
+    city_id: Optional[str] = Query(None),
+    category_id: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+    _: None = Depends(rate_limit),
+) -> GeoJSONFeatureCollection:
+
+    lat_v = _safe_float(lat)
+    lng_v = _safe_float(lng)
+    if lat_v is None or lng_v is None:
+        return GeoJSONFeatureCollection(features=[])
+
+    cache_key = map_key(
+        lat=lat_v, lng=lng_v, radius_km=radius_km,
+        limit=limit, city_id=city_id, category_id=category_id,
+    ) + ":geojson"
+
+    cached = response_cache.get(cache_key)
+    if cached is not None:
+        try:
+            return GeoJSONFeatureCollection.model_validate(cached)
+        except Exception:
+            pass
+
+    try:
+        result = fetch_places_for_map_geojson(
+            db=db, lat=lat_v, lng=lng_v, radius_km=radius_km,
+            limit=_clamp_limit(limit), city_id=_clean_str(city_id),
+            category_id=_clean_str(category_id),
+        )
+        payload = GeoJSONFeatureCollection.model_validate(result)
+    except Exception as exc:
+        logger.error("map_geojson_failed lat=%s lng=%s error=%s", lat_v, lng_v, exc)
+        return GeoJSONFeatureCollection(features=[])
+
+    try:
+        response_cache.set(cache_key, payload.model_dump(), map_ttl(radius_km=radius_km))
+    except Exception:
+        pass
 
     return payload

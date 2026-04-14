@@ -1,0 +1,17 @@
+# CRAVE backend — optional / development dependencies
+# These are NOT required for the core API but are used by
+# specific extraction modules (browser crawling, PDF parsing).
+#
+# Install with:  pip install -r requirements-dev.txt
+
+-r requirements.txt
+
+# Testing
+pytest>=9.0.0
+
+# Browser automation (used by browser_fallback and toast_browser_scraper)
+# Install separately:  playwright install chromium
+playwright>=1.44.0
+
+# PDF menu extraction
+pdfminer.six>=20221105

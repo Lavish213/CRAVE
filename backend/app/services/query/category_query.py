@@ -28,3 +28,7 @@ def get_categories(db: Session) -> List[Category]:
     )
 
     return db.execute(stmt).scalars().all()
+
+
+# Alias for backward compatibility
+list_categories = get_categories
