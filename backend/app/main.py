@@ -33,6 +33,24 @@ logger = logging.getLogger("lavish")
 # Lifespan
 # ============================================================
 
+def _startup_validation() -> None:
+    """Validate critical imports and DB connectivity at startup."""
+    from app.db.session import SessionLocal
+    from app.db.models.place import Place
+    from sqlalchemy import select, text
+
+    db = SessionLocal()
+    try:
+        # Verify DB is reachable and models are mapped
+        db.execute(text("SELECT 1"))
+        logger.info("startup_validation db=ok")
+    except Exception as exc:
+        logger.critical("startup_validation db=FAILED error=%s", exc)
+        raise
+    finally:
+        db.close()
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
 
@@ -40,6 +58,8 @@ async def lifespan(app: FastAPI):
 
     # hard fail if models fail to register
     _ = models
+
+    _startup_validation()
 
     yield
 

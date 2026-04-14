@@ -95,7 +95,7 @@ class ImageIngestService:
             getattr(place, "name", None),
         )
 
-        raw_candidates = self._read_candidates(place=place)
+        raw_candidates = self._read_candidates(db=db, place=place)
 
         if not raw_candidates:
             logger.info(
@@ -260,9 +260,10 @@ class ImageIngestService:
         self,
         *,
         place: Place,
+        db=None,
     ) -> List[dict]:
 
-        candidates = self.reader.read(place=place)
+        candidates = self.reader.read(place=place, db=db)
 
         if not candidates:
             return []

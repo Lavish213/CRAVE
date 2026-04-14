@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from typing import List, Optional
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 # =========================================================
@@ -43,6 +43,19 @@ class PlaceOut(BaseModel):
     primary_image_url: Optional[str] = None
 
     categories: List[str] = Field(default_factory=list)
+
+    @field_validator("categories", mode="before")
+    @classmethod
+    def _clean_categories(cls, v) -> List[str]:
+        seen: set = set()
+        cleaned: List[str] = []
+        for c in v or []:
+            name = (getattr(c, "name", None) or str(c) or "").strip()
+            if not name or name in seen:
+                continue
+            seen.add(name)
+            cleaned.append(name)
+        return cleaned
 
 
 # =========================================================

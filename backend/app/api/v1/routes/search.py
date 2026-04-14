@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
-from app.services.query.search_query import search_places
+from app.services.search.search_engine import execute_search
 
 from app.services.cache.response_cache import response_cache
 from app.services.cache.cache_keys import search_cache_key
@@ -17,6 +17,7 @@ from app.services.cache.cache_ttl import search_ttl
 
 from app.api.v1.schemas.search import SearchResponse
 from app.api.v1.schemas.place_card import PlaceCardOut
+from app.services.query.place_image_query import get_primary_image_urls_bulk
 
 
 logger = logging.getLogger(__name__)
@@ -117,8 +118,8 @@ def search(
     offset = (page - 1) * page_size
 
     try:
-        results, total = search_places(
-            db=db,
+        results, total = execute_search(
+            db,
             query=query,
             city_id=city_id,
             category_id=category_id,
@@ -143,10 +144,15 @@ def search(
     # -----------------------------
     # Serialize (safe)
     # -----------------------------
+    # Bulk image lookup — one query for the entire result set
+    place_ids = [getattr(p, "id", None) for p in results if getattr(p, "id", None)]
+    image_urls = get_primary_image_urls_bulk(db, place_ids=place_ids)
+
     items: List[PlaceCardOut] = []
 
     for p in results:
         try:
+            p.primary_image = image_urls.get(getattr(p, "id", None))
             items.append(
                 PlaceCardOut.model_validate(p, from_attributes=True)
             )

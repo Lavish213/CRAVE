@@ -6,14 +6,16 @@ from app.api.v1.routes.places import router as places_router
 from app.api.v1.routes.search import router as search_router
 from app.api.v1.routes.map import router as map_router
 from app.api.v1.routes.place_detail_router import router as place_detail_router
+from app.api.v1.routes.categories import router as categories_router
+from app.api.v1.routes.cities import router as cities_router
 from app.api.routes.menus import router as menus_router
 
 router = APIRouter()
-
-
 
 router.include_router(places_router)
 router.include_router(menus_router)
 router.include_router(search_router)
 router.include_router(map_router)
 router.include_router(place_detail_router)
+router.include_router(categories_router)
+router.include_router(cities_router)

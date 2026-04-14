@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import logging
+import os
 from typing import Dict, List, Optional
-from urllib.parse import urlencode
 
 import requests
 
@@ -11,9 +11,12 @@ from app.db.models.place import Place
 
 logger = logging.getLogger(__name__)
 
+# Set this env var to enable Google image enrichment:
+#   export GOOGLE_PLACES_API_KEY='AIza...'
+_GOOGLE_API_KEY_ENV = "GOOGLE_PLACES_API_KEY"
 
-GOOGLE_PHOTO_API = "https://maps.googleapis.com/maps/api/place/photo"
-GOOGLE_PLACE_DETAILS = "https://maps.googleapis.com/maps/api/place/details/json"
+# New Places API (v1) — required for keys created after 2022
+GOOGLE_SEARCH_TEXT = "https://places.googleapis.com/v1/places:searchText"
 
 MAX_GOOGLE_IMAGES = 20
 DEFAULT_MAX_WIDTH = 1600
@@ -36,8 +39,8 @@ class GoogleImageFetcher:
         api_key: Optional[str] = None,
         session: Optional[requests.Session] = None,
     ) -> None:
-
-        self.api_key = api_key
+        # Load from env if not explicitly provided
+        self.api_key = api_key or os.environ.get(_GOOGLE_API_KEY_ENV, "").strip() or None
         self.session = session or requests.Session()
 
     def fetch(
@@ -119,51 +122,62 @@ class GoogleImageFetcher:
         *,
         place: Place,
     ) -> List[dict]:
-
+        """
+        New Places API (v1): single searchText call returns place + photos.
+        Returns list of photo dicts with 'name' key for URL construction.
+        """
         if not self.api_key:
             return []
 
+        place_name = getattr(place, "name", None)
         lat = getattr(place, "lat", None)
         lng = getattr(place, "lng", None)
 
-        if lat is None or lng is None:
+        if not place_name:
             return []
 
-        params = {
-            "key": self.api_key,
-            "fields": "photos",
-            "input": f"{lat},{lng}",
-            "inputtype": "textquery",
+        body: dict = {
+            "textQuery": place_name,
+            "maxResultCount": 1,
         }
+        if lat is not None and lng is not None:
+            body["locationBias"] = {
+                "circle": {
+                    "center": {"latitude": lat, "longitude": lng},
+                    "radius": 200.0,
+                }
+            }
 
         try:
-
-            url = GOOGLE_PLACE_DETAILS + "?" + urlencode(params)
-
-            response = self.session.get(
-                url,
+            resp = self.session.post(
+                GOOGLE_SEARCH_TEXT,
+                headers={
+                    "X-Goog-Api-Key": self.api_key,
+                    "X-Goog-FieldMask": "places.id,places.photos",
+                    "Content-Type": "application/json",
+                },
+                json=body,
                 timeout=REQUEST_TIMEOUT,
             )
-
-            if response.status_code != 200:
+            if resp.status_code != 200:
+                logger.debug(
+                    "google_search_text_error place=%s status=%s",
+                    place_name, resp.status_code,
+                )
                 return []
 
-            payload = response.json()
-
-            result = payload.get("result")
-
-            if not result:
+            data = resp.json()
+            places = data.get("places", [])
+            if not places:
                 return []
 
-            photos = result.get("photos")
+            return places[0].get("photos", [])
 
-            if not photos:
-                return []
-
-            return photos
-
-        except Exception:
-
+        except Exception as exc:
+            logger.debug(
+                "google_search_text_failed place=%s error=%s",
+                place_name, exc,
+            )
             return []
 
     def _build_photo_url(
@@ -171,16 +185,13 @@ class GoogleImageFetcher:
         *,
         photo_reference: Dict,
     ) -> Optional[str]:
+        # New API uses 'name' field (e.g. "places/ChIJ.../photos/AXCi...")
+        photo_name = photo_reference.get("name")
 
-        ref = photo_reference.get("photo_reference")
-
-        if not ref:
+        if not photo_name:
             return None
 
-        params = {
-            "maxwidth": DEFAULT_MAX_WIDTH,
-            "photoreference": ref,
-            "key": self.api_key,
-        }
-
-        return GOOGLE_PHOTO_API + "?" + urlencode(params)
+        return (
+            f"https://places.googleapis.com/v1/{photo_name}/media"
+            f"?maxWidthPx={DEFAULT_MAX_WIDTH}&key={self.api_key}"
+        )

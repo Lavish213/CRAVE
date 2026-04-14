@@ -11,6 +11,7 @@ from app.db.models.place import Place
 from app.db.models.place_truth import PlaceTruth
 
 from app.services.menu.processing.menu_orchestrator import MenuOrchestrator
+from app.services.scoring.recompute import recompute_place_scores
 
 
 logger = logging.getLogger(__name__)
@@ -61,6 +62,12 @@ class MenuWorker:
                         )
 
                         total_processed += 1
+                        materialized = getattr(result, "materialized", False)
+
+                        # Set has_menu flag and recompute score after successful materialization
+                        if materialized:
+                            place.has_menu = True
+                            recompute_place_scores(db, places=[place])
 
                         logger.info(
                             "menu_worker_place_complete place_id=%s sources=%s extracted=%s claims=%s materialized=%s",
@@ -68,7 +75,7 @@ class MenuWorker:
                             getattr(result, "source_count", 0),
                             getattr(result, "extracted_item_count", 0),
                             getattr(result, "emitted_claim_count", 0),
-                            getattr(result, "materialized", False),
+                            materialized,
                         )
 
                         db.commit()

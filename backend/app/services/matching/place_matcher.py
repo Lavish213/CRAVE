@@ -3,6 +3,7 @@ from __future__ import annotations
 import math
 import logging
 from dataclasses import dataclass
+from difflib import SequenceMatcher
 from typing import List, Optional
 
 from sqlalchemy.orm import Session
@@ -96,6 +97,9 @@ def match_place(
     )
 
 
+_GEO_DEGREE_TOLERANCE = 0.02   # ~2 km bounding box
+
+
 def match_or_create_place(
     *,
     db: Session,
@@ -108,7 +112,23 @@ def match_or_create_place(
     if not name:
         raise ValueError("name required")
 
-    local_places = db.query(Place).all()
+    # Geo-bounded query to avoid full-table scan (N+1 fix).
+    # Falls back to city-agnostic name query when no coordinates provided.
+    from sqlalchemy import select, and_
+
+    if lat is not None and lng is not None:
+        stmt = select(Place).where(
+            and_(
+                Place.lat >= lat - _GEO_DEGREE_TOLERANCE,
+                Place.lat <= lat + _GEO_DEGREE_TOLERANCE,
+                Place.lng >= lng - _GEO_DEGREE_TOLERANCE,
+                Place.lng <= lng + _GEO_DEGREE_TOLERANCE,
+            )
+        )
+        local_places = list(db.execute(stmt).scalars().all())
+    else:
+        stmt = select(Place).where(Place.name.ilike(f"%{name}%")).limit(200)
+        local_places = list(db.execute(stmt).scalars().all())
 
     provider_candidates = [
         {
@@ -160,19 +180,28 @@ def _name_similarity(a: str, b: str) -> float:
     if a_norm == b_norm:
         return 1.0
 
+    if not a_norm or not b_norm:
+        return 0.0
+
+    # SequenceMatcher catches partial overlaps that Jaccard misses
+    seq_score = SequenceMatcher(None, a_norm, b_norm).ratio()
+
+    # Jaccard token score
     tokens_a = set(a_norm.split())
     tokens_b = set(b_norm.split())
 
-    if not tokens_a or not tokens_b:
-        return 0.0
+    if tokens_a and tokens_b:
+        intersection = tokens_a & tokens_b
+        union = tokens_a | tokens_b
+        jaccard = len(intersection) / len(union)
+    else:
+        jaccard = 0.0
 
-    intersection = tokens_a & tokens_b
-    union = tokens_a | tokens_b
-
-    base_score = len(intersection) / len(union)
+    # Blend: SequenceMatcher is the primary signal
+    base_score = (seq_score * 0.6) + (jaccard * 0.4)
 
     if a_norm in b_norm or b_norm in a_norm:
-        base_score += 0.1
+        base_score = min(base_score + 0.1, 1.0)
 
     return min(base_score, 1.0)
 

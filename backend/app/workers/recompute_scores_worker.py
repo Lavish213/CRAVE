@@ -24,6 +24,11 @@ QUEUE_DIR = VAR_DIR / "queue"
 QUEUE_FILE = QUEUE_DIR / "recompute_scores.queue"
 
 
+def _ensure_queue_dir() -> None:
+    """Create the queue directory if it does not exist."""
+    QUEUE_DIR.mkdir(parents=True, exist_ok=True)
+
+
 @dataclass(frozen=True)
 class Job:
     type: str
@@ -38,6 +43,7 @@ def _read_jobs(path: Path) -> Tuple[list[Job], bool]:
 
     File is treated as append-only; worker "consumes" by truncating after successful parse.
     """
+    _ensure_queue_dir()
     if not path.exists():
         return [], False
 
@@ -63,6 +69,7 @@ def _read_jobs(path: Path) -> Tuple[list[Job], bool]:
 
 
 def _truncate_queue(path: Path) -> None:
+    _ensure_queue_dir()
     path.write_text("", encoding="utf-8")
 
 

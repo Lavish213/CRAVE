@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import time
+from contextlib import suppress
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -12,7 +13,8 @@ from app.services.ranking.city_ranking_worker import recompute_city_ranking
 
 
 logger = logging.getLogger(__name__)
-logging.basicConfig(level=logging.INFO)
+
+MAX_ERRORS = 20
 
 
 def run_ranking_cycle(db: Session) -> None:
@@ -36,23 +38,17 @@ def run_ranking_cycle(db: Session) -> None:
     cities = db.execute(stmt).scalars().all()
 
     for city in cities:
-        logger.info(f"Recomputing ranking for city: {city.name}")
+        logger.info("ranking_city_start city=%s", city.name)
 
         try:
             count = recompute_city_ranking(
                 db=db,
                 city_id=city.id,
             )
+            logger.info("ranking_city_complete city=%s places=%s", city.name, count)
 
-            logger.info(
-                f"City {city.name} ranking updated "
-                f"({count} places)"
-            )
-
-        except Exception as e:
-            logger.exception(
-                f"Ranking failed for city {city.name}: {e}"
-            )
+        except Exception as exc:
+            logger.exception("ranking_city_failed city=%s error=%s", city.name, exc)
 
 
 def run_worker(
@@ -60,30 +56,27 @@ def run_worker(
     interval_seconds: int = 3600,
 ) -> None:
     """
-    Long-running worker.
-
-    Recomputes rankings periodically.
-
-    Default interval:
-        1 hour
+    Long-running worker. Recomputes rankings periodically.
+    Default interval: 1 hour.
     """
-
-    logger.info("Ranking worker started")
+    logger.info("ranking_worker_start interval=%ss", interval_seconds)
+    error_count = 0
 
     while True:
-
         db: Session = SessionLocal()
-
         try:
             run_ranking_cycle(db)
-
+            logger.info("ranking_cycle_complete sleeping=%ss", interval_seconds)
+            error_count = 0
+        except Exception as exc:
+            error_count += 1
+            logger.exception("ranking_cycle_failed count=%s error=%s", error_count, exc)
+            if error_count >= MAX_ERRORS:
+                logger.critical("ranking_worker_stopping — too many errors")
+                raise
         finally:
-            db.close()
-
-        logger.info(
-            f"Ranking cycle complete, sleeping "
-            f"{interval_seconds}s"
-        )
+            with suppress(Exception):
+                db.close()
 
         time.sleep(interval_seconds)
 

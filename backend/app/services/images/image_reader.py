@@ -3,6 +3,8 @@ from __future__ import annotations
 import logging
 from typing import Dict, List, Optional
 
+from sqlalchemy.orm import Session
+
 from app.db.models.place import Place
 
 from app.services.images.google_image_fetcher import GoogleImageFetcher
@@ -46,6 +48,7 @@ class ImageReader:
         self,
         *,
         place: Place,
+        db: Optional[Session] = None,
     ) -> List[dict]:
 
         place_id = getattr(place, "id", None)
@@ -60,7 +63,7 @@ class ImageReader:
 
         candidates.extend(self._read_google(place))
         candidates.extend(self._read_provider(place))
-        candidates.extend(self._read_website(place))
+        candidates.extend(self._read_website(place, db=db))
 
         if not candidates:
             logger.debug(
@@ -132,10 +135,12 @@ class ImageReader:
     def _read_website(
         self,
         place: Place,
+        *,
+        db: Optional[Session] = None,
     ) -> List[dict]:
 
         try:
-            images = self.website_extractor.extract(place=place)
+            images = self.website_extractor.extract(db=db, place=place)
 
             if not images:
                 return []

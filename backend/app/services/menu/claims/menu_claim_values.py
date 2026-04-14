@@ -37,6 +37,7 @@ def build_menu_claim_payload(
         currency=_clean_str(item.currency) or "USD",
 
         description=_clean_str(item.description),
+        image_url=_clean_str(getattr(item, "image_url", None)),
 
         source_url=_clean_str(source_url),
 
@@ -74,6 +75,9 @@ def claim_payload_to_json(payload: MenuClaimPayload) -> Dict[str, Any]:
         "source_type": payload.source_type,
         "external_menu_id": payload.external_menu_id,
         "source_url": payload.source_url,
+
+        # ---------------- IMAGE (🔥 provider/Grubhub item images) ----------------
+        "image_url": payload.image_url or None,
 
         # ---------------- METADATA (🔥 FUTURE SAFE) ----------------
         "metadata": {},

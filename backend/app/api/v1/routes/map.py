@@ -11,10 +11,22 @@ from app.services.query.map_query import fetch_places_for_map
 from app.services.cache.response_cache import response_cache
 from app.services.cache.cache_keys import map_key
 from app.services.cache.cache_ttl import map_ttl
-from app.api.v1.schemas.map import MapResponse
+from app.api.v1.schemas.map import MapResponse, MapCenter
 
 
 logger = logging.getLogger(__name__)
+
+
+def _empty_map_response(lat: float, lng: float, radius_km: float, limit: int) -> MapResponse:
+    """Build a valid empty MapResponse for error/fallback cases."""
+    return MapResponse(
+        ok=False,
+        center=MapCenter(lat=lat, lng=lng),
+        radius_km=radius_km,
+        limit=limit,
+        count=0,
+        places=[],
+    )
 
 
 router = APIRouter(
@@ -73,7 +85,7 @@ def map_places(
     lng = _safe_float(lng)
 
     if lat is None or lng is None:
-        return MapResponse(items=[])
+        return _empty_map_response(0.0, 0.0, radius_km, limit)
 
     limit = _clamp_limit(limit)
     city_id = _clean_str(city_id)
@@ -120,7 +132,7 @@ def map_places(
             lng,
             exc,
         )
-        return MapResponse(items=[])
+        return _empty_map_response(lat, lng, radius_km, limit)
 
     try:
         payload = MapResponse.model_validate(result)
@@ -129,7 +141,7 @@ def map_places(
             "map_serialize_failed error=%s",
             exc,
         )
-        return MapResponse(items=[])
+        return _empty_map_response(lat, lng, radius_km, limit)
 
     # ---------------------------------------------------
     # Cache set

@@ -47,6 +47,10 @@ def _compute_master_score(place: Place) -> float:
 
     base -= place.hype_penalty or 0.0
 
+    # Menu signal: verified menu data meaningfully improves quality signal
+    if getattr(place, "has_menu", False):
+        base += 0.15
+
     return float(base)
 
 

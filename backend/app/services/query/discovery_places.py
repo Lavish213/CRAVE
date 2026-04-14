@@ -2,12 +2,38 @@
 
 from __future__ import annotations
 
-from typing import Optional
+from typing import List, Optional
 
 from sqlalchemy.orm import Session, load_only
 
 from app.db.models.place import Place
 from app.db.models.place_image import PlaceImage
+
+
+def list_discovery_places(
+    db: Session,
+    *,
+    city_id: Optional[str] = None,
+    limit: int = 50,
+) -> List[Place]:
+    """
+    Return recently-added active places for feed discovery mixing.
+    Ordered by created_at DESC so freshest places surface first.
+    """
+    try:
+        limit = max(1, min(200, int(limit)))
+    except Exception:
+        limit = 50
+
+    query = db.query(Place).filter(Place.is_active.is_(True))
+    if city_id:
+        query = query.filter(Place.city_id == str(city_id))
+
+    return (
+        query.order_by(Place.created_at.desc())
+        .limit(limit)
+        .all()
+    )
 
 
 def get_place(

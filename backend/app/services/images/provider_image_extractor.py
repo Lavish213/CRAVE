@@ -97,16 +97,20 @@ class ProviderImageExtractor:
                 if not isinstance(value, dict):
                     continue
 
-                source_type = value.get("source_type")
-
-                if source_type not in {
+                # Accept provider API payloads directly
+                source_type = value.get("source_type", "")
+                if source_type in {
                     "provider_api",
                     "provider_scrape",
                     "delivery_provider",
                 }:
+                    payloads.append(value)
                     continue
 
-                payloads.append(value)
+                # Also accept html-sourced menu items that have image_url
+                # (populated by build_menu_claim_payload for Grubhub/Clover/Popmenu)
+                if source_type == "html" and value.get("image_url"):
+                    payloads.append({"images": [value["image_url"]], "source_type": "html"})
 
             except Exception:
                 continue

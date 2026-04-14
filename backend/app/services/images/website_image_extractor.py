@@ -57,19 +57,32 @@ class WebsiteImageExtractor:
     def extract(
         self,
         *,
-        db: Session,
+        db: Optional[Session] = None,
         place: Place,
     ) -> List[dict]:
 
-        website = getattr(place, "website", None)
+        place_id = getattr(place, "id", None)
+
+        # Priority: official website > menu_source_url > grubhub_url
+        # grubhub_url is a Grubhub SPA page — og:image may not be present in
+        # static HTML, but we still attempt it as a best-effort fallback.
+        website = (
+            getattr(place, "website", None)
+            or getattr(place, "menu_source_url", None)
+            or getattr(place, "grubhub_url", None)
+        )
 
         if not website:
             return []
 
-        if self._recently_fetched(
+        source_tag = "website"
+        if not getattr(place, "website", None):
+            source_tag = "grubhub" if getattr(place, "grubhub_url", None) else "provider"
+
+        if db is not None and self._recently_fetched(
             db=db,
-            place_id=place.id,
-            source="website",
+            place_id=place_id,
+            source=source_tag,
         ):
             return []
 
@@ -89,11 +102,12 @@ class WebsiteImageExtractor:
 
             candidates = self._filter_images(candidates)
 
-            self._record_fetch(
-                db=db,
-                place_id=place.id,
-                source="website",
-            )
+            if db is not None:
+                self._record_fetch(
+                    db=db,
+                    place_id=place_id,
+                    source=source_tag,
+                )
 
             return candidates[:MAX_WEBSITE_IMAGES]
 
@@ -101,7 +115,7 @@ class WebsiteImageExtractor:
 
             logger.debug(
                 "website_image_extract_failed place_id=%s error=%s",
-                getattr(place, "id", None),
+                place_id,
                 exc,
             )
 

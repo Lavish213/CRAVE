@@ -33,9 +33,12 @@ def get_categories(
 
     categories = list_categories(db)
 
+    items = [
+        CategoryOut.model_validate(c, from_attributes=True)
+        for c in categories
+    ]
+
     return CategoriesResponse(
-        items=[
-            CategoryOut.model_validate(c, from_attributes=True)
-            for c in categories
-        ]
+        total=len(items),
+        items=items,
     )

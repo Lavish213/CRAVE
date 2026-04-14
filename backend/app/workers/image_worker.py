@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from typing import Dict, List, Optional
 
 from sqlalchemy import exists, func, not_, or_, select
@@ -175,17 +175,24 @@ class ImageWorker:
             stmt = stmt.where(self._needs_image_work_clause())
 
         stmt = stmt.order_by(
-            Place.confidence_score.asc(),
-            Place.rank_score.asc(),
+            Place.rank_score.desc(),
+            Place.confidence_score.desc(),
             Place.created_at.asc(),
         ).limit(limit)
 
         return list(db.execute(stmt).scalars().all())
 
     def _needs_image_work_clause(self):
+        """
+        Select places that need image work:
+        - no images at all, OR
+        - fewer than MIN_IMAGE_COUNT images, OR
+        - no primary image set
 
-        stale_cutoff = _utcnow() - timedelta(days=STALE_IMAGE_DAYS)
-
+        Stale refresh (images older than STALE_IMAGE_DAYS) is NOT selected
+        here — it requires explicit force_refresh=True to avoid wasting
+        Google API calls on places that already have acceptable images.
+        """
         total_images_subquery = (
             select(func.count(PlaceImage.id))
             .where(PlaceImage.place_id == Place.id)
@@ -199,13 +206,6 @@ class ImageWorker:
             )
         )
 
-        stale_images_clause = exists(
-            select(PlaceImage.id).where(
-                PlaceImage.place_id == Place.id,
-                PlaceImage.created_at < stale_cutoff,
-            )
-        )
-
         any_images_clause = exists(
             select(PlaceImage.id).where(
                 PlaceImage.place_id == Place.id,
@@ -216,7 +216,6 @@ class ImageWorker:
             not_(any_images_clause),
             total_images_subquery < MIN_IMAGE_COUNT,
             not_(primary_exists_clause),
-            stale_images_clause,
         )
 
     # ---------------------------------------------------------

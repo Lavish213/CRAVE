@@ -39,14 +39,15 @@ class PlaceCard(BaseModel):
     def _clean_name(cls, v: str) -> str:
         return (v or "").strip()
 
-    @field_validator("categories")
+    @field_validator("categories", mode="before")
     @classmethod
-    def _clean_categories(cls, v: List[str]) -> List[str]:
+    def _clean_categories(cls, v) -> List[str]:
         seen = set()
         cleaned: List[str] = []
 
         for c in v or []:
-            name = (c or "").strip()
+            # Handle Category ORM objects and plain strings
+            name = (getattr(c, "name", None) or str(c) or "").strip()
             if not name or name in seen:
                 continue
             seen.add(name)
@@ -89,14 +90,14 @@ class PlaceCardOut(BaseModel):
         v = (v or "").strip()
         return v if v else "Unknown"
 
-    @field_validator("categories")
+    @field_validator("categories", mode="before")
     @classmethod
-    def _clean_categories(cls, v: List[str]) -> List[str]:
+    def _clean_categories(cls, v) -> List[str]:
         seen = set()
         cleaned: List[str] = []
 
         for c in v or []:
-            name = (c or "").strip()
+            name = (getattr(c, "name", None) or str(c) or "").strip()
             if not name or name in seen:
                 continue
             seen.add(name)

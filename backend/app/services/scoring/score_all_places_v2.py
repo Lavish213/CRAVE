@@ -22,6 +22,24 @@ def score_all_places_v2(
     db: Session,
     limit: int = DEFAULT_BATCH_LIMIT,
 ) -> Dict[str, Any]:
+    # ⚠️  ORPHANED PATH — reads as of Phase 3 audit (2026-04-13):
+    #
+    # This function is only triggered when Place.needs_recompute = True.
+    # As of Phase 3, NOTHING in the active pipeline sets that flag,
+    # so this function always returns {"scored": 0, "attempted": 0, ...}.
+    #
+    # The ACTIVE scoring path is:
+    #   recompute_scores_worker.py → recompute.py → recompute_place_scores()
+    #
+    # ⚠️  SCALE CONFLICT: this function produces scores on a 0–100 scale
+    # (via score_place_v2 → weights.py). recompute_place_scores() produces
+    # raw ~0–3 floats. Both write to Place.master_score / Place.rank_score.
+    # DO NOT activate both simultaneously — scores become incomparable.
+    #
+    # To activate this path intentionally:
+    #   1. Set Place.needs_recompute = True on target records
+    #   2. Decide whether to standardize to 0–1 or 0–100 across both paths
+    #   3. Run recompute_scores_worker.py in queue mode
     """
     V2 Batch Scoring Orchestrator
 
