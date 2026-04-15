@@ -71,6 +71,15 @@ export default function TabLayout() {
           ),
         }}
       />
+      <Tabs.Screen
+        name="more"
+        options={{
+          title: 'More',
+          tabBarIcon: ({ focused }) => (
+            <TabIcon focused={focused} iconFocused="person-circle" iconUnfocused="person-circle-outline" />
+          ),
+        }}
+      />
     </Tabs>
   );
 }
