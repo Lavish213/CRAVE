@@ -23,7 +23,7 @@ export function useTrending(): PlaceOut[] {
         cache[selectedCity.id] = data;
         setTrending(data);
       })
-      .catch(() => {});
+      .catch(() => {}); // trending is non-critical — fail silently
   }, [selectedCity?.id]);
 
   return trending;

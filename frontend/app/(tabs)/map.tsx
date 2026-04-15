@@ -1,11 +1,11 @@
 // app/(tabs)/map.tsx
 import React, { useEffect, useRef, useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import MapView, { Marker, Region } from 'react-native-maps';
 import { useRouter } from 'expo-router';
 import { fetchMapGeoJSON, GeoJSONFeature } from '../../src/api/map';
 import { useCityStore } from '../../src/stores/cityStore';
-import { Colors } from '../../src/constants/colors';
+import { Colors, Radius, Spacing } from '../../src/constants/colors';
 import { CitySelectorStrip } from '../../src/components/CitySelectorStrip';
 import { MapMarkerDot } from '../../src/components/MapMarker';
 import { MapBottomSheet } from '../../src/components/MapBottomSheet';
@@ -44,12 +44,14 @@ export default function MapScreen() {
 
   const [features, setFeatures] = useState<GeoJSONFeature[]>([]);
   const [selectedFeature, setSelectedFeature] = useState<SelectedFeature | null>(null);
+  const [mapError, setMapError] = useState(false);
 
   useEffect(() => {
     if (!selectedCity) return;
+    setMapError(false);
     fetchMapGeoJSON({ city_id: selectedCity.id })
       .then((fc) => setFeatures(fc.features))
-      .catch(() => {});
+      .catch(() => setMapError(true));
   }, [selectedCity?.id]);
 
   useEffect(() => {
@@ -97,6 +99,13 @@ export default function MapScreen() {
         <CitySelectorStrip />
       </View>
 
+      {/* Error banner — shown when GeoJSON fetch fails */}
+      {mapError && (
+        <View style={styles.mapErrorBanner}>
+          <Text style={styles.mapErrorText}>Could not load places</Text>
+        </View>
+      )}
+
       {/* Bottom sheet on pin tap */}
       <MapBottomSheet
         feature={selectedFeature}
@@ -116,5 +125,21 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     backgroundColor: Colors.background + 'EE',
+  },
+  mapErrorBanner: {
+    position: 'absolute',
+    top: 60, // below the city strip
+    alignSelf: 'center',
+    backgroundColor: Colors.surface,
+    borderRadius: Radius.pill,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+  },
+  mapErrorText: {
+    color: Colors.textSecondary,
+    fontSize: 13,
+    fontWeight: '600',
   },
 });
