@@ -82,6 +82,11 @@ class Place(Base, TimestampMixin):
     lat: Mapped[float | None] = mapped_column(Float, nullable=True, index=True)
     lng: Mapped[float | None] = mapped_column(Float, nullable=True, index=True)
 
+    address: Mapped[str | None] = mapped_column(
+        String(255),
+        nullable=True,
+    )
+
     price_tier: Mapped[int | None] = mapped_column(
         Integer,
         nullable=True,
@@ -239,6 +244,7 @@ class Place(Base, TimestampMixin):
         city_id: str,
         lat: float | None = None,
         lng: float | None = None,
+        address: str | None = None,
         price_tier: int | None = None,
         is_active: bool = True,
         website: str | None = None,
@@ -265,6 +271,7 @@ class Place(Base, TimestampMixin):
         self.id = id or place_uuid(normalized_name, normalized_city_id)
 
         self.website = (website or "").strip().lower() or None
+        self.address = (address or "").strip() or None
 
         try:
             self.lat = float(lat) if lat is not None else None

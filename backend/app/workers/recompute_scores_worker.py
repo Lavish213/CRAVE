@@ -20,6 +20,7 @@ from app.services.scoring.signal_context import SignalContext
 from app.services.scoring.place_score_v3 import compute_place_score_v3
 from app.services.cache.response_cache import response_cache
 from app.services.cache.cache_keys import _norm
+from app.services.feed.feed_bucket_store import invalidate_bucket
 
 logger = logging.getLogger(__name__)
 
@@ -324,6 +325,11 @@ def _invalidate_cache_for_cities(affected_cities: Set[str]) -> None:
         ]
         for k in to_delete:
             del response_cache._store[k]
+
+    # Also clear feed buckets so next request rebuilds with updated scores
+    for city_id in affected_cities:
+        invalidate_bucket(city_id)
+    invalidate_bucket(None)  # global bucket
 
     logger.info("cache_invalidated_after_recompute cities=%s", affected_cities)
 
