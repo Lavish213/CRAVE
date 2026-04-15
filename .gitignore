@@ -32,3 +32,4 @@ build/
 .grubhub_env
 .grubhub_env
 .env
+.worktrees/
