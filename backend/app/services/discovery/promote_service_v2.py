@@ -68,9 +68,17 @@ def promote_candidate_v2(
             lat=candidate.lat,
             lng=candidate.lng,
             price_tier=None,
+            address=candidate.address,
+            website=candidate.website,
         )
         db.add(place)
         db.flush()
+    else:
+        # Backfill address/website if place exists but fields are empty
+        if not place.address and candidate.address:
+            place.address = candidate.address
+        if not place.website and candidate.website:
+            place.website = candidate.website
 
     # Attach categories (if candidate.category_id exists)
     if getattr(candidate, "category_id", None):
