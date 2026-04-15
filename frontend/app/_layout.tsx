@@ -4,6 +4,7 @@ import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { fetchCities } from '../src/api/cities';
 import { useCityStore } from '../src/stores/cityStore';
+import { useAuthStore } from '../src/stores/authStore';
 import { Colors } from '../src/constants/colors';
 import { ToastContainer } from '../src/components/Toast';
 import { useToast } from '../src/hooks/useToast';
@@ -13,6 +14,9 @@ export default function RootLayout() {
   const selectCity = useCityStore((s) => s.selectCity);
   const selectedCity = useCityStore((s) => s.selectedCity);
   const toast = useToast((s) => s.show);
+  const initAuth = useAuthStore((s) => s.init);
+
+  useEffect(() => { initAuth(); }, []);
 
   useEffect(() => {
     fetchCities()

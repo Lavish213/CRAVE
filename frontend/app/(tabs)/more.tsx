@@ -6,6 +6,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { Colors, Spacing, Radius } from '../../src/constants/colors';
 import { useCityStore } from '../../src/stores/cityStore';
+import { useAuthStore } from '../../src/stores/authStore';
 
 // App version — hardcoded, update for each release
 const APP_VERSION = '1.0.0';
@@ -61,6 +62,8 @@ function Divider() {
 
 export default function MoreScreen() {
   const selectedCity = useCityStore((s) => s.selectedCity);
+  const user = useAuthStore((s) => s.user);
+  const signOut = useAuthStore((s) => s.signOut);
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
@@ -141,6 +144,27 @@ export default function MoreScreen() {
           onPress={() => Linking.openURL('mailto:hello@crave.app?subject=CRAVE Feedback')}
         />
       </View>
+
+      {/* Account */}
+      {user ? (
+        <>
+          <SectionTitle title="ACCOUNT" />
+          <View style={styles.card}>
+            <Row
+              icon="person-outline"
+              label={user.email ?? 'Signed in'}
+              sublabel="Your CRAVE account"
+            />
+            <Divider />
+            <Row
+              icon="log-out-outline"
+              label="Sign Out"
+              tint={Colors.error}
+              onPress={signOut}
+            />
+          </View>
+        </>
+      ) : null}
 
       <Text style={styles.footer}>Made with taste.</Text>
     </ScrollView>

@@ -16,13 +16,17 @@ import { Colors, Spacing, Radius } from '../../src/constants/colors';
 import { PlaceCardCompact } from '../../src/components/PlaceCardCompact';
 import { EmptyState } from '../../src/components/EmptyState';
 import { getCraveItems, CraveItem } from '../../src/api/crave';
+import { useAuthStore } from '../../src/stores/authStore';
+import { AuthSheet } from '../../src/components/AuthSheet';
 
 export default function HitlistScreen() {
   const router = useRouter();
   const { saves, removeSave } = useHitlistStore();
   const toast = useToast((s) => s.show);
+  const user = useAuthStore((s) => s.user);
   const [craves, setCraves] = useState<CraveItem[]>([]);
   const [cravesLoading, setCravesLoading] = useState(true);
+  const [authVisible, setAuthVisible] = useState(false);
 
   useEffect(() => {
     getCraveItems()
@@ -30,6 +34,22 @@ export default function HitlistScreen() {
       .catch(() => {})
       .finally(() => setCravesLoading(false));
   }, []);
+
+  // Not signed in — show auth prompt
+  if (!user) {
+    return (
+      <>
+        <EmptyState
+          icon="person-circle-outline"
+          title="Sign in to save places"
+          body="Create a free account to build your Hitlist and track Craves."
+          ctaLabel="Sign in"
+          onCta={() => setAuthVisible(true)}
+        />
+        <AuthSheet visible={authVisible} onClose={() => setAuthVisible(false)} reason="hitlist" />
+      </>
+    );
+  }
 
   if (saves.length === 0 && craves.length === 0 && !cravesLoading) {
     return (

@@ -28,6 +28,8 @@ import { ErrorState } from '../../src/components/ErrorState';
 import { EmptyState } from '../../src/components/EmptyState';
 import { SkeletonFeed } from '../../src/components/SkeletonCard';
 import { FilterSheet, FilterState, EMPTY_FILTERS, hasActiveFilters } from '../../src/components/FilterSheet';
+import { useAuthStore } from '../../src/stores/authStore';
+import { AuthSheet } from '../../src/components/AuthSheet';
 
 type FeedRow =
   | { kind: 'header'; tierKey: TierKey; count: number }
@@ -72,6 +74,8 @@ export default function FeedScreen() {
   const [error, setError] = useState(false);
   const [filterVisible, setFilterVisible] = useState(false);
   const [filters, setFilters] = useState<FilterState>(EMPTY_FILTERS);
+  const [authVisible, setAuthVisible] = useState(false);
+  const user = useAuthStore((s) => s.user);
 
   const loadingRef = useRef(false);
   const cancelledRef = useRef(false);
@@ -204,6 +208,10 @@ export default function FeedScreen() {
                     place={row.place}
                     onPress={() => router.push(`/place/${row.place.id}`)}
                     onSave={() => {
+                      if (!user) {
+                        setAuthVisible(true);
+                        return;
+                      }
                       if (isSaved(row.place.id)) {
                         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
                         removeSave(row.place.id);
@@ -242,6 +250,11 @@ export default function FeedScreen() {
         filters={filters}
         onChange={setFilters}
         availableCategories={availableCategories}
+      />
+      <AuthSheet
+        visible={authVisible}
+        onClose={() => setAuthVisible(false)}
+        reason="save"
       />
     </View>
   );
