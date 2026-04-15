@@ -17,23 +17,36 @@ def list_discovery_places(
     limit: int = 50,
 ) -> List[Place]:
     """
-    Return recently-added active places for feed discovery mixing.
-    Ordered by created_at DESC so freshest places surface first.
+    Return active places for feed discovery mixing using score-tier random sampling.
+    Selects from the top-scoring half of places, then shuffles randomly so the
+    discovery slot always has variety rather than the same created_at-tied cluster.
     """
+    import random
+    from sqlalchemy import func
+
     try:
         limit = max(1, min(200, int(limit)))
     except Exception:
         limit = 50
 
+    # Fetch a larger pool from the top score tier, then randomly sample from it.
+    # Pool size = 5x the requested limit to give shuffle room.
+    pool_size = limit * 5
+
     query = db.query(Place).filter(Place.is_active.is_(True))
     if city_id:
         query = query.filter(Place.city_id == str(city_id))
 
-    return (
-        query.order_by(Place.created_at.desc())
-        .limit(limit)
+    pool = (
+        query.order_by(Place.rank_score.desc())
+        .limit(pool_size)
         .all()
     )
+
+    if len(pool) <= limit:
+        return pool
+
+    return random.sample(pool, limit)
 
 
 def get_place(

@@ -117,7 +117,10 @@ def compute_place_score_v3(
 ) -> ScoreV3Result:
     signals: Dict[str, float] = {
         "menu_score":         _clamp(min(menu_item_count / 50.0, 1.0)),
-        "image_score":        _clamp(min(image_count / 10.0, 1.0)),
+        # Normalized against 5 images: typical Google Places fetch returns 3-5 photos.
+        # 10+ images = exceptional coverage; 5 = good; <3 = limited.
+        # Use /5 so that a place with 5 quality images scores 1.0, not 0.5.
+        "image_score":        _clamp(min(image_count / 5.0, 1.0)),
         "completeness_score": _completeness(
             name=name, lat=lat, lng=lng,
             has_image=has_primary_image,
@@ -131,9 +134,25 @@ def compute_place_score_v3(
         "blog_score":         _clamp(blog_score),
     }
 
+    # Authority signals (awards, creator, blog) are additive — they must ONLY
+    # improve the score, never lower it. Including them in weight redistribution
+    # causes a below-average authority signal (e.g. Eater Heatmap at 0.60) to
+    # drain weight from high-scoring base signals (image=1.0, completeness=1.0),
+    # lowering the final score. Fix: compute base score without authority signals,
+    # then add authority contribution directly on top.
+    _AUTHORITY = {"awards_score", "creator_score", "blog_score"}
+
+    base_signals = {k: v for k, v in signals.items() if k not in _AUTHORITY}
     weights = get_profile(city_slug)
-    weights_used = _redistribute_weights(weights, signals)
-    final_score = sum(signals[k] * weights_used[k] for k in weights_used)
+    base_weights = _redistribute_weights(weights, base_signals)
+    base_score = sum(signals[k] * base_weights[k] for k in base_weights)
+
+    # Authority adds its raw weighted value directly (capped at 1.0 total)
+    authority_add = sum(signals[k] * weights[k] for k in _AUTHORITY)
+    final_score = min(1.0, base_score + authority_add)
+
+    # weights_used for transparency: base redistribution + raw authority weights
+    weights_used = {**base_weights, **{k: weights[k] for k in _AUTHORITY}}
 
     # Count distinct active signal types for this place
     active_types = sum(1 for s in [

@@ -27,5 +27,8 @@ annotated-types>=0.7.0
 # HTML parsing
 beautifulsoup4>=4.14.0
 
+# Fuzzy matching
+rapidfuzz>=3.6.0
+
 # Utilities
 python-dotenv>=1.2.0

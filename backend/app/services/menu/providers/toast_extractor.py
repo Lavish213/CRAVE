@@ -11,6 +11,7 @@ from app.services.menu.contracts import ExtractedMenuItem
 logger = logging.getLogger(__name__)
 
 MAX_ITEMS = 1500
+MAX_RECURSION_DEPTH = 20
 
 
 TOAST_GUID_PATTERN = re.compile(
@@ -73,7 +74,8 @@ def _is_probably_toast(url: Optional[str], html: Optional[str]) -> bool:
     if url and "toasttab.com" in url.lower():
         return True
 
-    if html and "toast" in html.lower():
+    # Only match toasttab.com domain in HTML — not "toast" text (French toast FP)
+    if html and "toasttab.com" in html.lower():
         return True
 
     return False
@@ -137,15 +139,12 @@ def _build_api_candidates(
             f"https://order.toasttab.com/api/menus/v3/restaurant/{guid}",
         ])
 
-    # SLUG (fixed coverage)
+    # SLUG — use actual Toast public URL pattern (/{slug}/v3/menu)
     if slug:
         candidates.extend([
-            f"https://toasttab.com/api/menus/v2/{slug}",
-            f"https://toasttab.com/api/menus/v3/{slug}",
-            f"https://www.toasttab.com/api/menus/v2/{slug}",
-            f"https://www.toasttab.com/api/menus/v3/{slug}",
-            f"https://order.toasttab.com/api/menus/v2/{slug}",
-            f"https://order.toasttab.com/api/menus/v3/{slug}",
+            f"https://www.toasttab.com/{slug}/v3/menu",
+            f"https://toasttab.com/{slug}/v3/menu",
+            f"https://order.toasttab.com/{slug}/v3/menu",
         ])
 
     return list(dict.fromkeys(candidates))
@@ -186,7 +185,10 @@ def _fetch_toast_api(url: str) -> Optional[Dict[str, Any]]:
 # PARSE
 # ---------------------------------------------------------
 
-def _parse_groups(groups, section):
+def _parse_groups(groups, section, depth: int = 0):
+
+    if depth > MAX_RECURSION_DEPTH:
+        return []
 
     items: List[ExtractedMenuItem] = []
 
@@ -213,7 +215,7 @@ def _parse_groups(groups, section):
             )
 
         if group.get("groups"):
-            items.extend(_parse_groups(group["groups"], section_name))
+            items.extend(_parse_groups(group["groups"], section_name, depth + 1))
 
     return items
 

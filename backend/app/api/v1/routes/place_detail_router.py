@@ -2,11 +2,12 @@ from __future__ import annotations
 
 from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
+from app.core.rate_limit import rate_limit
 from app.db.models.place import Place
 from app.db.models.place_image import PlaceImage
 from app.db.models.category import Category
@@ -26,8 +27,10 @@ router = APIRouter(
 @router.get("/{place_id}")
 def get_place_detail(
     *,
+    request: Request,
     place_id: str,
     db: Session = Depends(get_db),
+    _: None = Depends(rate_limit),
 ) -> dict:
 
     place_id = (place_id or "").strip()
@@ -133,6 +136,7 @@ def get_place_detail(
         "website": place.website or None,
         "grubhub_url": place.grubhub_url or None,
         "images": image_urls,
+        "primary_image_url": image_urls[0] if image_urls else None,
         "categories": category_names,
         "created_at": place.created_at,
         "updated_at": place.updated_at,

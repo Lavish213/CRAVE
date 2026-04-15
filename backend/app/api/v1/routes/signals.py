@@ -25,6 +25,12 @@ from app.db.session import get_db
 from app.db.models.place import Place
 from app.db.models.place_signal import PlaceSignal
 from app.core.auth import require_api_key
+from app.services.social.platform_detect import detect_platform
+from app.services.social.url_normalize import normalize_url
+from app.services.social.extractors.tiktok import extract_from_tiktok
+from app.services.social.extractors.instagram import extract_from_instagram
+from app.services.social.extractors.youtube import extract_from_youtube
+from app.services.pipeline.pipeline_runner import run_pipeline
 
 logger = logging.getLogger(__name__)
 
@@ -148,3 +154,79 @@ def intake_signal(
         db.rollback()
         logger.exception("signal_intake_failed place_id=%s error=%s", body.place_id, exc)
         raise HTTPException(status_code=500, detail="Signal intake failed")
+
+
+_EXTRACTORS = {
+    "tiktok": extract_from_tiktok,
+    "instagram": extract_from_instagram,
+    "youtube": extract_from_youtube,
+}
+
+
+class SocialIntakeRequest(BaseModel):
+    url: str = Field(..., description="Social media URL (TikTok/Instagram/YouTube)")
+    place_name: str = Field(..., min_length=2, description="Place name hint from caption/context")
+    city_hint: Optional[str] = Field(None, description="City name or slug hint")
+
+
+class SocialIntakeResponse(BaseModel):
+    platform: str
+    normalized_url: str
+    pipeline_result: dict
+
+
+@router.post("/social-intake", response_model=SocialIntakeResponse, status_code=202)
+def social_intake(
+    body: SocialIntakeRequest,
+    db: Session = Depends(get_db),
+    _: None = Depends(require_api_key),
+) -> SocialIntakeResponse:
+    """
+    Accept a social media URL with a place name hint.
+
+    Normalizes the URL, detects the platform, extracts creator context,
+    and routes through the pipeline runner for place resolution and signal writing.
+    Returns 202 (accepted) — resolution is best-effort.
+    """
+    normalized = normalize_url(body.url)
+    platform = detect_platform(normalized)
+
+    extractor = _EXTRACTORS.get(platform)
+    extracted = extractor(normalized) if extractor else {
+        "platform": platform,
+        "creator_handle": None,
+        "confidence": 0.20,
+        "source_url": normalized,
+        "place_name_hint": None,
+    }
+
+    record = {
+        "name": body.place_name.strip(),
+        "source_platform": extracted["platform"],
+        "source_url": extracted["source_url"],
+        "confidence": extracted["confidence"],
+        "city_hint": body.city_hint,
+        "metadata": {"creator_handle": extracted.get("creator_handle")},
+    }
+
+    result = run_pipeline([record], db=db, commit=True)
+
+    logger.info(
+        "social_intake_processed platform=%s place=%s resolved=%s signals=%s",
+        platform,
+        body.place_name,
+        result.resolved,
+        result.signals_written,
+    )
+
+    return SocialIntakeResponse(
+        platform=platform,
+        normalized_url=normalized,
+        pipeline_result={
+            "normalized": result.normalized,
+            "resolved": result.resolved,
+            "unresolved": result.unresolved,
+            "signals_written": result.signals_written,
+            "discovery_candidates_created": result.discovery_candidates_created,
+        },
+    )

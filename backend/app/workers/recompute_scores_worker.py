@@ -185,6 +185,25 @@ def _fetch_signal_context(db: Session, place_ids: list[str]) -> SignalContext:
     awards_scores: Dict[str, float] = decayed.get("award", {})
     blog_scores: Dict[str, float] = decayed.get("blog", {})
 
+    # Weak creator_score baseline: detect social platform URLs in place.website.
+    # This gives 0.30 to places whose website IS a social profile, indicating
+    # creator-driven discovery. Overridden by any higher signal from PlaceSignal.
+    _SOCIAL_DOMAINS = ("instagram.com", "tiktok.com", "youtube.com", "linktr.ee", "linktree.com")
+    social_url_rows = db.execute(
+        select(Place.id, Place.website)
+        .where(
+            Place.id.in_(place_ids),
+            Place.website.isnot(None),
+            Place.website != "",
+        )
+    ).all()
+    for row in social_url_rows:
+        website = (row.website or "").lower()
+        if any(d in website for d in _SOCIAL_DOMAINS):
+            # Only set baseline if no stronger PlaceSignal-derived value already
+            if row.id not in creator_scores or creator_scores[row.id] < 0.30:
+                creator_scores[row.id] = 0.30
+
     return SignalContext(
         image_counts=image_counts,
         has_primary=has_primary,

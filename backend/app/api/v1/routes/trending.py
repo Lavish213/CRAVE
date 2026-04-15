@@ -13,7 +13,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timezone, timedelta
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -23,6 +23,7 @@ from app.db.models.hitlist_save import HitlistSave
 from app.api.v1.schemas.places import PlaceOut, PlacesResponse
 from app.services.cache.response_cache import response_cache
 from app.services.query.place_image_query import get_primary_image_urls_bulk
+from app.core.rate_limit import rate_limit
 
 logger = logging.getLogger(__name__)
 
@@ -38,9 +39,11 @@ def _trending_cache_key(city_id: str, limit: int) -> str:
 
 @router.get("", response_model=PlacesResponse, summary="Trending places")
 def get_trending(
+    request: Request,
     city_id: str = Query(..., description="City UUID"),
     limit: int = Query(20, ge=1, le=50),
     db: Session = Depends(get_db),
+    _: None = Depends(rate_limit),
 ) -> PlacesResponse:
     """
     Returns trending places for a city.

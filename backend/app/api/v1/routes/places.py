@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
@@ -10,6 +11,8 @@ from app.services.query.places_query import list_places as query_list_places
 from app.services.feed.feed_bucket_manager import get_feed_places
 from app.services.query.place_image_query import get_primary_image_urls_bulk
 from app.api.v1.schemas.places import PlacesResponse, PlaceOut
+from app.db.models.menu_item import MenuItem
+from app.db.models.place import Place
 
 from app.services.cache.response_cache import response_cache
 from app.services.cache.cache_keys import feed_key
@@ -113,3 +116,40 @@ def get_places(
         logger.debug("places_cache_write_failed error=%s", exc)
 
     return response
+
+
+@router.get("/{place_id}/menu", summary="Get menu items for a place")
+def get_place_menu(
+    place_id: str,
+    db: Session = Depends(get_db),
+    _: None = Depends(rate_limit),
+) -> dict:
+    place_id = (place_id or "").strip()
+    if not place_id:
+        raise HTTPException(status_code=400, detail="Invalid place_id")
+
+    exists = db.execute(
+        select(Place.id).where(Place.id == place_id, Place.is_active.is_(True))
+    ).first()
+    if not exists:
+        raise HTTPException(status_code=404, detail="Place not found")
+
+    rows = (
+        db.query(MenuItem)
+        .filter(MenuItem.place_id == place_id, MenuItem.is_active.is_(True))
+        .order_by(MenuItem.category.asc(), MenuItem.name.asc())
+        .limit(200)
+        .all()
+    )
+
+    items = [
+        {
+            "name": row.name,
+            "price": row.price,
+            "description": row.description,
+            "category": row.category,
+        }
+        for row in rows
+    ]
+
+    return {"items": items}
