@@ -91,9 +91,7 @@ export default function HitlistScreen() {
                     <Text style={styles.craveName} numberOfLines={1}>
                       {item.parsed_place_name ?? item.url}
                     </Text>
-                    <Text style={[styles.craveStatus, {
-                      color: item.matched_place_id ? Colors.success : Colors.textMuted
-                    }]}>
+                    <Text style={item.matched_place_id ? styles.craveStatusMatched : styles.craveStatusPending}>
                       {item.matched_place_id ? '● Matched' : 'Searching…'}
                     </Text>
                   </View>
@@ -119,7 +117,7 @@ export default function HitlistScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
-  list: { padding: 12, gap: 8, paddingBottom: 32 },
+  list: { padding: Spacing.md, gap: Spacing.sm, paddingBottom: Spacing.xxl },
   screenHeader: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -146,7 +144,7 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   removeBtn: {
-    padding: 8,
+    padding: Spacing.sm,
     minWidth: 44,
     minHeight: 44,
     alignItems: 'center',
@@ -170,16 +168,17 @@ const styles = StyleSheet.create({
   craveRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 14,
+    padding: Spacing.md,
     backgroundColor: Colors.surface,
     borderRadius: Radius.md,
     borderWidth: 1,
     borderColor: Colors.border,
-    marginBottom: 8,
+    marginBottom: Spacing.sm,
   },
   craveMeta: { flex: 1 },
   craveName: { color: Colors.text, fontSize: 14, fontWeight: '600' },
-  craveStatus: { fontSize: 12, marginTop: 2 },
+  craveStatusMatched: { fontSize: 12, marginTop: 2, color: Colors.success },
+  craveStatusPending: { fontSize: 12, marginTop: 2, color: Colors.textMuted },
   craveOpenBtn: {
     padding: 8,
     minWidth: 44,
