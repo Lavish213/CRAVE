@@ -1,5 +1,5 @@
 // app/(tabs)/index.tsx
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -26,6 +26,7 @@ import { TrendingStrip } from '../../src/components/TrendingStrip';
 import { ErrorState } from '../../src/components/ErrorState';
 import { EmptyState } from '../../src/components/EmptyState';
 import { SkeletonFeed } from '../../src/components/SkeletonCard';
+import { FilterSheet, FilterState, EMPTY_FILTERS, hasActiveFilters } from '../../src/components/FilterSheet';
 
 type FeedRow =
   | { kind: 'header'; tierKey: TierKey; count: number }
@@ -68,6 +69,8 @@ export default function FeedScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [initialLoaded, setInitialLoaded] = useState(false);
   const [error, setError] = useState(false);
+  const [filterVisible, setFilterVisible] = useState(false);
+  const [filters, setFilters] = useState<FilterState>(EMPTY_FILTERS);
 
   const loadingRef = useRef(false);
   const cancelledRef = useRef(false);
@@ -118,7 +121,21 @@ export default function FeedScreen() {
     if (!loadingRef.current && places.length < total) loadPage(page + 1);
   };
 
-  const rows = buildFeedRows(places);
+  const availableCategories = useMemo(() => {
+    const cats = new Set(places.map(p => p.category).filter(Boolean) as string[]);
+    return Array.from(cats).sort();
+  }, [places]);
+
+  const filteredPlaces = useMemo(() => {
+    if (!hasActiveFilters(filters)) return places;
+    return places.filter(p => {
+      if (filters.priceTiers.length > 0 && (p.price_tier == null || !filters.priceTiers.includes(p.price_tier))) return false;
+      if (filters.categories.length > 0 && (p.category == null || !filters.categories.includes(p.category))) return false;
+      return true;
+    });
+  }, [places, filters]);
+
+  const rows = buildFeedRows(filteredPlaces);
 
   return (
     <View style={styles.container}>
@@ -128,11 +145,14 @@ export default function FeedScreen() {
         <View style={styles.spacer} />
         <TouchableOpacity
           style={styles.filterBtn}
-          onPress={() => {/* filter sheet — T5 */}}
+          onPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            setFilterVisible(true);
+          }}
           accessibilityLabel="Filter places"
           accessibilityRole="button"
         >
-          <Ionicons name="options-outline" size={20} color={Colors.textSecondary} />
+          <Ionicons name="options-outline" size={20} color={hasActiveFilters(filters) ? Colors.primary : Colors.textSecondary} />
         </TouchableOpacity>
       </View>
 
@@ -198,6 +218,14 @@ export default function FeedScreen() {
           }
         />
       )}
+
+      <FilterSheet
+        visible={filterVisible}
+        onClose={() => setFilterVisible(false)}
+        filters={filters}
+        onChange={setFilters}
+        availableCategories={availableCategories}
+      />
     </View>
   );
 }
