@@ -30,5 +30,8 @@ beautifulsoup4>=4.14.0
 # Fuzzy matching
 rapidfuzz>=3.6.0
 
+# Scheduling
+apscheduler>=3.10.0
+
 # Utilities
 python-dotenv>=1.2.0

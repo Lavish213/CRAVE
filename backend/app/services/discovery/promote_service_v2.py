@@ -126,6 +126,13 @@ def promote_candidate_v2(
             )
         )
 
+    # normalize_claim returns extra keys not on PlaceClaim (provider, external_id, source_url, raw)
+    _CLAIM_FIELDS = {
+        "field", "value_text", "value_number", "value_json",
+        "source", "confidence", "weight", "claim_key",
+        "is_user_submitted", "is_verified_source",
+    }
+
     for c in core_claims:
         existing = (
             db.query(PlaceClaim)
@@ -141,7 +148,7 @@ def promote_candidate_v2(
             db.add(
                 PlaceClaim(
                     place_id=place.id,
-                    **c,
+                    **{k: v for k, v in c.items() if k in _CLAIM_FIELDS},
                 )
             )
 

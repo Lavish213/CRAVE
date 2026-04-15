@@ -14,6 +14,8 @@ from app.api.v1.routes.trending import router as trending_router
 from app.api.v1.routes.signals import router as signals_router
 from app.api.v1.routes.enrichment import router as enrichment_router
 from app.api.v1.routes.enrichment import router_coverage as coverage_router
+from app.api.v1.routes.share import router as share_router
+from app.api.v1.routes.craves import router as craves_router
 
 router = APIRouter()
 
@@ -29,3 +31,5 @@ router.include_router(trending_router)
 router.include_router(signals_router)
 router.include_router(enrichment_router)
 router.include_router(coverage_router)
+router.include_router(share_router)
+router.include_router(craves_router)

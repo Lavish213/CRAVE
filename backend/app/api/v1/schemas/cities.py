@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import List
+from typing import List, Optional
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -26,6 +26,8 @@ class CityOut(BaseModel):
     id: str
     name: str = Field(..., min_length=1)
     slug: str | None = None
+    lat: Optional[float] = None
+    lng: Optional[float] = None
 
 
 # =========================================================

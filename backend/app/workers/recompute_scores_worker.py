@@ -155,6 +155,7 @@ def _fetch_signal_context(db: Session, place_ids: list[str]) -> SignalContext:
 
     # Hitlist velocity scores — places that have been saved to hitlists
     hitlist_scores: Dict[str, float] = {}
+    hitlist_counts: Dict[str, int] = {}
     try:
         from app.db.models.hitlist_save import HitlistSave
         hitlist_rows = db.execute(
@@ -165,7 +166,9 @@ def _fetch_signal_context(db: Session, place_ids: list[str]) -> SignalContext:
             )
             .group_by(HitlistSave.place_id)
         ).all()
-        hitlist_scores = {r.place_id: min(float(r.cnt) / 100.0, 1.0) for r in hitlist_rows}
+        for r in hitlist_rows:
+            hitlist_scores[r.place_id] = min(float(r.cnt) / 100.0, 1.0)
+            hitlist_counts[r.place_id] = int(r.cnt)
     except Exception:
         pass
 
@@ -173,7 +176,7 @@ def _fetch_signal_context(db: Session, place_ids: list[str]) -> SignalContext:
     # time-decayed weighted averages in Python.
     PS = PlaceSignal
     signal_rows = db.execute(
-        select(PS.place_id, PS.signal_type, PS.value, PS.created_at)
+        select(PS.place_id, PS.signal_type, PS.value, PS.created_at, PS.provider)
         .where(
             PS.place_id.in_(place_ids),
             PS.signal_type.in_(["creator", "award", "blog"]),
@@ -254,6 +257,7 @@ def _fetch_signal_context(db: Session, place_ids: list[str]) -> SignalContext:
         has_primary=has_primary,
         menu_item_counts=menu_counts,
         hitlist_scores=hitlist_scores,
+        hitlist_counts=hitlist_counts,
         creator_scores=creator_scores,
         creator_mention_counts=creator_mention_counts,
         awards_scores=awards_scores,
@@ -339,6 +343,7 @@ def _score_batch(db: Session, places: list[Place]) -> tuple[int, Set[str]]:
             has_primary_image=ctx.has_primary_image(pid),
             menu_item_count=ctx.menu_item_count(pid),
             hitlist_score=ctx.hitlist_score(pid),
+            hitlist_count=ctx.hitlist_count(pid),
             creator_score=ctx.creator_score(pid),
             creator_mention_count=ctx.creator_mention_count(pid),
             awards_score=ctx.awards_score(pid),
@@ -368,13 +373,9 @@ def _invalidate_cache_for_cities(affected_cities: Set[str]) -> None:
 
     # Map keys: map:{lat}:{lng}:{radius}:{limit}:{city}:{cat}
     # City is not a prefix segment, so scan for :{city_norm}: substring in map keys
-    with response_cache._lock:
-        to_delete = [
-            k for k in response_cache._store
-            if k.startswith("map:") and any(f":{cn}:" in k for cn in city_norms)
-        ]
-        for k in to_delete:
-            del response_cache._store[k]
+    response_cache.delete_matching(
+        lambda k: k.startswith("map:") and any(f":{cn}:" in k for cn in city_norms)
+    )
 
     # Also clear feed buckets so next request rebuilds with updated scores
     for city_id in affected_cities:

@@ -45,7 +45,7 @@ def promote_ready_candidates_v2(
     # Oversample in case some promotions fail
     candidates: List[DiscoveryCandidate] = (
         db.query(DiscoveryCandidate)
-        .filter(DiscoveryCandidate.status == "candidate")
+        .filter(DiscoveryCandidate.status.in_(["candidate", "raw"]))
         .filter(DiscoveryCandidate.resolved.is_(False))
         .filter(DiscoveryCandidate.blocked.is_(False))
         .filter(

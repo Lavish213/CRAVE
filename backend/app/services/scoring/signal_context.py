@@ -9,6 +9,7 @@ class SignalContext:
     menu_item_counts: Dict[str, int] = field(default_factory=dict)
     has_primary: Set[str] = field(default_factory=set)
     hitlist_scores: Dict[str, float] = field(default_factory=dict)
+    hitlist_counts: Dict[str, int] = field(default_factory=dict)   # raw save count for gating
     creator_scores: Dict[str, float] = field(default_factory=dict)
     creator_mention_counts: Dict[str, int] = field(default_factory=dict)
     awards_scores: Dict[str, float] = field(default_factory=dict)
@@ -27,6 +28,9 @@ class SignalContext:
 
     def hitlist_score(self, place_id: str) -> float:
         return self.hitlist_scores.get(place_id, 0.0)
+
+    def hitlist_count(self, place_id: str) -> int:
+        return self.hitlist_counts.get(place_id, 0)
 
     def creator_score(self, place_id: str) -> float:
         return self.creator_scores.get(place_id, 0.0)

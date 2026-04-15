@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import Optional
+from typing import Dict, Optional
 
 from sqlalchemy.orm import Session
 from sqlalchemy import select
@@ -17,6 +17,26 @@ logger = logging.getLogger(__name__)
 VALID_SIGNAL_TYPES = frozenset({
     "creator", "award", "blog", "save", "review", "trending", "mention"
 })
+
+# Blog type → signal_class routing
+# "warning" entries are risk signals; verified/neutral are ranking signals
+BLOG_TYPE_TO_SIGNAL_CLASS: Dict[str, str] = {
+    "verified": "ranking",
+    "neutral":  "ranking",
+    "warning":  "risk",
+}
+
+# Platform → signal_class defaults
+PLATFORM_TO_SIGNAL_CLASS: Dict[str, str] = {
+    "tiktok":     "ranking",
+    "instagram":  "ranking",
+    "youtube":    "ranking",
+    "grubhub":    "enrichment",
+    "google_maps": "enrichment",
+    "yelp":       "enrichment",
+    "generic":    "discovery",
+    "unknown":    "discovery",
+}
 
 # Valid providers
 VALID_PROVIDERS = frozenset({
@@ -66,6 +86,8 @@ def write_signal(
     provider: Optional[str] = None,
     value: float = 0.5,
     external_event_id: Optional[str] = None,
+    signal_class: Optional[str] = None,
+    blog_type: Optional[str] = None,
 ) -> Optional[WriteResult]:
     """
     Write a PlaceSignal for a resolved candidate.
@@ -80,6 +102,14 @@ def write_signal(
     # Derive signal_type + provider from platform if not explicit
     _signal_type = signal_type or PLATFORM_TO_SIGNAL_TYPE.get(c.source_platform, "mention")
     _provider = provider or PLATFORM_TO_PROVIDER.get(c.source_platform, "generic")
+
+    # Derive signal_class: blog_type takes precedence, then explicit arg, then platform default
+    if blog_type and blog_type in BLOG_TYPE_TO_SIGNAL_CLASS:
+        _signal_class = BLOG_TYPE_TO_SIGNAL_CLASS[blog_type]
+    elif signal_class:
+        _signal_class = signal_class
+    else:
+        _signal_class = PLATFORM_TO_SIGNAL_CLASS.get(c.source_platform, "discovery")
 
     # Validate
     if _signal_type not in VALID_SIGNAL_TYPES:
@@ -102,6 +132,7 @@ def write_signal(
         value=value,
         raw_value=str(c.confidence),
         external_event_id=_ext_id,
+        signal_class=_signal_class,
     )
 
     try:

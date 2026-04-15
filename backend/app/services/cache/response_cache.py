@@ -71,6 +71,14 @@ class ResponseCache:
                 del self._store[k]
             return len(to_delete)
 
+    def delete_matching(self, predicate) -> int:
+        """Delete all cache entries where predicate(key) is True. Returns count deleted."""
+        with self._lock:
+            to_delete = [k for k in self._store if predicate(k)]
+            for k in to_delete:
+                del self._store[k]
+            return len(to_delete)
+
     def clear(self) -> None:
 
         with self._lock:

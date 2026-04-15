@@ -22,6 +22,11 @@ from app.services.menu.validation.validate_normalized_items import validate_norm
 
 from app.services.menu.normalization.fingerprint import build_menu_fingerprint
 
+from app.services.menu.extraction.fetch_html import fetch_html
+from app.services.menu.extraction.js.js_provider_router import route_provider
+from app.services.menu.extraction.provider.provider_detector import detect_provider
+from app.services.menu.extraction.html_menu_extractor import extract_html_menu
+
 
 logger = logging.getLogger(__name__)
 
@@ -142,6 +147,106 @@ class MenuOrchestrator:
 
             except Exception as exc:
                 logger.exception("csv_ingest_failed place_id=%s error=%s", place_id, exc)
+
+        # =========================================================
+        # PROVIDER EXTRACTION (Toast, Clover, Square, ChowNow, PopMenu)
+        # =========================================================
+
+        website = self._clean_str(getattr(place, "website", None))
+
+        if website and not extracted_items:
+            _html: str | None = None
+
+            try:
+                _html = fetch_html(website)
+            except Exception as exc:
+                logger.debug(
+                    "menu_orchestrator.website_fetch_failed place_id=%s error=%s",
+                    place_id,
+                    exc,
+                )
+
+            if _html:
+                # -- known provider path --
+                try:
+                    _provider = detect_provider(_html, website)
+
+                    if _provider:
+                        logger.info(
+                            "menu_orchestrator.provider_detected place_id=%s provider=%s",
+                            place_id,
+                            _provider,
+                        )
+
+                        provider_items = route_provider(_html, website) or []
+                        provider_items = validate_extracted_items(provider_items)
+
+                        accepted = 0
+
+                        for item in provider_items[:MAX_ITEMS_PER_SOURCE]:
+                            if len(extracted_items) >= MAX_TOTAL_EXTRACTED_ITEMS:
+                                break
+
+                            key = self._item_key(item)
+                            if not key or key in seen_items:
+                                continue
+
+                            seen_items.add(key)
+                            extracted_items.append(item)
+                            accepted += 1
+
+                        if accepted > 0:
+                            sources_used += 1
+
+                        logger.info(
+                            "menu_orchestrator.provider_complete place_id=%s provider=%s accepted=%s",
+                            place_id,
+                            _provider,
+                            accepted,
+                        )
+
+                except Exception as exc:
+                    logger.debug(
+                        "menu_orchestrator.provider_extraction_failed place_id=%s error=%s",
+                        place_id,
+                        exc,
+                    )
+
+                # -- HTML heuristic fallback (no known provider, or provider yielded 0 items) --
+                if not extracted_items:
+                    try:
+                        html_items = extract_html_menu(_html, source_url=website) or []
+                        html_items = validate_extracted_items(html_items)
+
+                        accepted = 0
+
+                        for item in html_items[:MAX_ITEMS_PER_SOURCE]:
+                            if len(extracted_items) >= MAX_TOTAL_EXTRACTED_ITEMS:
+                                break
+
+                            key = self._item_key(item)
+                            if not key or key in seen_items:
+                                continue
+
+                            seen_items.add(key)
+                            extracted_items.append(item)
+                            accepted += 1
+
+                        if accepted > 0:
+                            sources_used += 1
+
+                        logger.info(
+                            "menu_orchestrator.html_fallback_complete place_id=%s accepted=%s",
+                            place_id,
+                            accepted,
+                        )
+
+                    except Exception as exc:
+                        logger.debug(
+                            "menu_orchestrator.html_fallback_failed place_id=%s error=%s",
+                            place_id,
+                            exc,
+                        )
 
         result.extracted_item_count = len(extracted_items)
         result.source_count = sources_used

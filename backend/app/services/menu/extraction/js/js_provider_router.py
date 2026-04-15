@@ -6,9 +6,12 @@ from typing import List, Optional
 from app.services.menu.contracts import ExtractedMenuItem
 from app.services.menu.extraction.provider.provider_detector import detect_provider
 
-# 🔥 provider handlers
+# provider handlers
 from app.services.menu.extraction.provider.handlers.toast import handle_toast
 from app.services.menu.extraction.provider.handlers.popmenu import handle_popmenu
+from app.services.menu.extraction.provider.handlers.clover import handle_clover
+from app.services.menu.extraction.provider.handlers.square import handle_square
+from app.services.menu.extraction.provider.handlers.chownow import handle_chownow
 
 
 logger = logging.getLogger(__name__)
@@ -64,10 +67,38 @@ def route_provider(
                 return items
 
         # ---------------------------------------------------------
+        # CLOVER
+        # ---------------------------------------------------------
+        if provider == "clover":
+            items = handle_clover(html or "", url)
+
+            if items:
+                logger.info("provider_clover_success url=%s items=%s", url, len(items))
+                return items
+
+        # ---------------------------------------------------------
+        # SQUARE
+        # ---------------------------------------------------------
+        if provider == "square":
+            items = handle_square(html or "", url)
+
+            if items:
+                logger.info("provider_square_success url=%s items=%s", url, len(items))
+                return items
+
+        # ---------------------------------------------------------
+        # CHOWNOW
+        # ---------------------------------------------------------
+        if provider == "chownow":
+            items = handle_chownow(html or "", url)
+
+            if items:
+                logger.info("provider_chownow_success url=%s items=%s", url, len(items))
+                return items
+
+        # ---------------------------------------------------------
         # FUTURE PROVIDERS
         # ---------------------------------------------------------
-        # if provider == "square":
-        #     ...
         # if provider == "olo":
         #     ...
 

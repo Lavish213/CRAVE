@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Optional
 
 
-FEED_TTL = 60
+FEED_TTL = 300  # 5 minutes — feed bucket rotates on recompute, not time
 MAP_TTL = 45
 SEARCH_TTL = 120
 PLACE_DETAIL_TTL = 300

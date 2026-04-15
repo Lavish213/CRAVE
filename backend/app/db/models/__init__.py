@@ -48,6 +48,9 @@ from .hitlist_save import HitlistSave
 from .hitlist_suggestion import HitlistSuggestion
 from .hitlist_dedup_key import HitlistDedupKey
 
+# ----- Share-to-CRAVE Layer -----
+from .crave_item import CraveItem
+
 
 # ---------------------------------------------------------
 # EXPORTS (STRICT + COMPLETE)
@@ -92,4 +95,7 @@ __all__ = [
     "HitlistSave",
     "HitlistSuggestion",
     "HitlistDedupKey",
+
+    # Share-to-CRAVE
+    "CraveItem",
 ]

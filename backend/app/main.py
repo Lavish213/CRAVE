@@ -12,6 +12,7 @@ from app.api import router as api_router
 from app.api.v1.routes.health import router as health_router
 from app.middleware.request_id import RequestIDMiddleware
 from app.core.logging_config import RequestIDFilter
+from app.scheduler import create_scheduler
 
 # ---------------------------------------------------------
 # FORCE MODEL REGISTRY LOAD (CRITICAL)
@@ -66,7 +67,16 @@ async def lifespan(app: FastAPI):
 
     _startup_validation()
 
+    # Start background pipeline scheduler
+    scheduler = create_scheduler()
+    scheduler.start()
+    logger.info("scheduler_started jobs=%s", len(scheduler.get_jobs()))
+
     yield
+
+    # Graceful scheduler shutdown — wait for running jobs to finish
+    scheduler.shutdown(wait=True)
+    logger.info("scheduler_stopped")
 
     logger.info("shutdown")
 
