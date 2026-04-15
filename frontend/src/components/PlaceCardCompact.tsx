@@ -35,7 +35,7 @@ export function PlaceCardCompact({ place, onPress, rightAction, style }: Props) 
         placeholder={{ blurhash: 'L6PZfSi_.AyE_3t7t7R**0o#DgR4' }}
       />
       <View style={styles.meta}>
-        <TierBadge tier={tier} style={{ marginBottom: 2 }} />
+        <TierBadge tier={tier} style={styles.badgeTier} />
         <Text style={styles.name} numberOfLines={1}>{place.name}</Text>
         <Text style={styles.sub} numberOfLines={1}>
           {place.category ?? 'Restaurant'}
@@ -64,4 +64,5 @@ const styles = StyleSheet.create({
   meta: { flex: 1, gap: 3 },
   name: { color: Colors.text, fontSize: 15, fontWeight: '600' },
   sub: { color: Colors.textSecondary, fontSize: 13 },
+  badgeTier: { marginBottom: 2 },
 });
