@@ -214,7 +214,7 @@ export default function FeedScreen() {
             />
           }
           ListFooterComponent={
-            loading ? <ActivityIndicator color={Colors.primary} style={{ margin: 16 }} /> : null
+            loading ? <ActivityIndicator color={Colors.primary} style={styles.listFooter} /> : null
           }
         />
       )}
@@ -232,12 +232,13 @@ export default function FeedScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
-  list: { paddingHorizontal: 12, paddingBottom: 32, gap: 10 },
+  list: { paddingHorizontal: Spacing.md, paddingBottom: Spacing.xxl, gap: Spacing.sm },
+  listFooter: { margin: Spacing.lg },
   skeletonWrap: { flex: 1, paddingHorizontal: 12, paddingTop: 10 },
   header: {
-    paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: 10,
+    paddingHorizontal: Spacing.lg,
+    paddingTop: Spacing.lg,
+    paddingBottom: Spacing.sm,
     flexDirection: 'row',
     alignItems: 'center',
   },

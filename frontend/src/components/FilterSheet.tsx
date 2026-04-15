@@ -148,7 +148,7 @@ const styles = StyleSheet.create({
     borderTopRightRadius: Radius.card,
     borderTopWidth: 1,
     borderColor: Colors.border,
-    paddingBottom: 40,
+    paddingBottom: Spacing.xxl,
     maxHeight: '75%',
   },
   handle: {
