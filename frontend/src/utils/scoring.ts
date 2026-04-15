@@ -18,28 +18,28 @@ export const TIERS: Record<TierKey, Tier> = {
     label: 'CRAVE Pick',
     color: Colors.tierCravePick,
     sectionLabel: 'CRAVE Picks',
-    sectionSubtext: 'The strongest signals in the city',
+    sectionSubtext: 'Verified by the city. Worth the trip.',
   },
   gem: {
     key: 'gem',
     label: 'Hidden Gem',
     color: Colors.tierGem,
     sectionLabel: 'Hidden Gems',
-    sectionSubtext: 'Off the beaten path, locally loved',
+    sectionSubtext: 'Off the grid. Only the city knows.',
   },
   solid: {
     key: 'solid',
     label: 'Worth Knowing',
     color: Colors.tierSolid,
     sectionLabel: 'Worth Knowing',
-    sectionSubtext: 'Solid choices with real upside',
+    sectionSubtext: 'Reliable, real, worth your time.',
   },
   new: {
     key: 'new',
     label: 'Explore',
     color: Colors.tierNew,
     sectionLabel: 'Explore',
-    sectionSubtext: 'New to CRAVE or still emerging',
+    sectionSubtext: 'Early signal. Watch this space.',
   },
 };
 

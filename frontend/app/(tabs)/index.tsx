@@ -6,15 +6,18 @@ import {
   RefreshControl,
   StyleSheet,
   Text,
+  TouchableOpacity,
   View,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
-import { fetchPlaces, fetchTrending, PlaceOut } from '../../src/api/places';
+import { fetchPlaces, PlaceOut } from '../../src/api/places';
 import { useCityStore } from '../../src/stores/cityStore';
 import { useHitlistStore } from '../../src/stores/hitlistStore';
 import { useToast } from '../../src/hooks/useToast';
-import { Colors } from '../../src/constants/colors';
+import { useTrending } from '../../src/hooks/useTrending';
+import { Colors, Spacing } from '../../src/constants/colors';
 import { getTier, TIERS, TierKey } from '../../src/utils/scoring';
 import { PlaceCard } from '../../src/components/PlaceCard';
 import { SectionHeader } from '../../src/components/SectionHeader';
@@ -56,8 +59,9 @@ export default function FeedScreen() {
   const { addSave, removeSave, isSaved } = useHitlistStore();
   const toast = useToast((s) => s.show);
 
+  const trending = useTrending();
+
   const [places, setPlaces] = useState<PlaceOut[]>([]);
-  const [trending, setTrending] = useState<PlaceOut[]>([]);
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -105,12 +109,11 @@ export default function FeedScreen() {
     loadPage(1, true);
   }, [selectedCity?.id]);
 
-  useEffect(() => {
-    if (!selectedCity) return;
-    fetchTrending(selectedCity.id).then(setTrending).catch(() => {});
-  }, [selectedCity?.id]);
-
-  const handleRefresh = () => { setRefreshing(true); loadPage(1, true); };
+  const handleRefresh = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setRefreshing(true);
+    loadPage(1, true);
+  };
   const handleEndReached = () => {
     if (!loadingRef.current && places.length < total) loadPage(page + 1);
   };
@@ -121,8 +124,16 @@ export default function FeedScreen() {
     <View style={styles.container}>
       {/* App header */}
       <View style={styles.header}>
-        <Text style={styles.title}>CRAVE</Text>
-        {selectedCity && <Text style={styles.subtitle}>{selectedCity.name}</Text>}
+        <Text style={styles.wordmark}>CRAVE</Text>
+        <View style={{ flex: 1 }} />
+        <TouchableOpacity
+          style={styles.filterBtn}
+          onPress={() => {/* filter sheet — T5 */}}
+          accessibilityLabel="Filter places"
+          accessibilityRole="button"
+        >
+          <Ionicons name="options-outline" size={20} color={Colors.textSecondary} />
+        </TouchableOpacity>
       </View>
 
       <CitySelectorStrip />
@@ -200,9 +211,8 @@ const styles = StyleSheet.create({
     paddingTop: 16,
     paddingBottom: 10,
     flexDirection: 'row',
-    alignItems: 'baseline',
-    gap: 8,
+    alignItems: 'center',
   },
-  title: { fontSize: 28, fontWeight: '900', color: Colors.primary, letterSpacing: 2 },
-  subtitle: { fontSize: 14, color: Colors.textSecondary, fontWeight: '500' },
+  wordmark: { fontSize: 26, fontWeight: '900', color: Colors.primary, letterSpacing: 3 },
+  filterBtn: { padding: Spacing.sm, minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
 });

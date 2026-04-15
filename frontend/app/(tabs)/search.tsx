@@ -1,5 +1,5 @@
 // app/(tabs)/search.tsx
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -13,7 +13,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useCityStore } from '../../src/stores/cityStore';
 import { searchPlaces } from '../../src/api/search';
-import { fetchTrending, PlaceOut } from '../../src/api/places';
+import { PlaceOut } from '../../src/api/places';
+import { useTrending } from '../../src/hooks/useTrending';
 import { Colors } from '../../src/constants/colors';
 import { PlaceCardCompact } from '../../src/components/PlaceCardCompact';
 import { ErrorState } from '../../src/components/ErrorState';
@@ -23,19 +24,15 @@ export default function SearchScreen() {
   const router = useRouter();
   const selectedCity = useCityStore((s) => s.selectedCity);
 
+  const trending = useTrending();
+
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<PlaceOut[]>([]);
-  const [trending, setTrending] = useState<PlaceOut[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
   const [searched, setSearched] = useState(false);
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(() => {
-    if (!selectedCity) return;
-    fetchTrending(selectedCity.id).then(setTrending).catch(() => {});
-  }, [selectedCity?.id]);
 
   const doSearch = useCallback(async (q: string) => {
     if (!q.trim() || !selectedCity) {
