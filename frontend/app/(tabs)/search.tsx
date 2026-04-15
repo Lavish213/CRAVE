@@ -15,7 +15,7 @@ import { useCityStore } from '../../src/stores/cityStore';
 import { searchPlaces } from '../../src/api/search';
 import { PlaceOut } from '../../src/api/places';
 import { useTrending } from '../../src/hooks/useTrending';
-import { Colors } from '../../src/constants/colors';
+import { Colors, Spacing } from '../../src/constants/colors';
 import { PlaceCardCompact } from '../../src/components/PlaceCardCompact';
 import { ErrorState } from '../../src/components/ErrorState';
 import { EmptyState } from '../../src/components/EmptyState';
@@ -124,7 +124,14 @@ export default function SearchScreen() {
           )}
           contentContainerStyle={styles.list}
           ListHeaderComponent={
-            trending.length > 0 ? <Text style={styles.sectionLabel}>TRENDING NOW</Text> : null
+            trending.length > 0 ? (
+              <>
+                <Text style={styles.browseIntro}>
+                  Discover what's moving in {selectedCity?.name ?? 'your city'}
+                </Text>
+                <Text style={styles.sectionLabel}>TRENDING NOW</Text>
+              </>
+            ) : null
           }
         />
       )}
@@ -134,7 +141,7 @@ export default function SearchScreen() {
         <EmptyState
           icon="search-outline"
           title="No results in this city"
-          body="Try a different search term or browse the feed"
+          body="Nothing matched. Try broader terms or switch cities."
         />
       )}
 
@@ -176,8 +183,14 @@ const styles = StyleSheet.create({
   cityContext: { color: Colors.textMuted, fontSize: 12, fontWeight: '500', paddingLeft: 4 },
   loadingRow: { paddingVertical: 20, alignItems: 'center' },
   list: { padding: 12, gap: 8, paddingBottom: 32 },
+  browseIntro: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: Colors.text,
+    paddingBottom: Spacing.lg,
+  },
   sectionLabel: {
-    color: Colors.textMuted,
+    color: Colors.primary,
     fontSize: 10,
     fontWeight: '800',
     letterSpacing: 1.5,

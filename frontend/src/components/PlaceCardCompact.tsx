@@ -35,10 +35,8 @@ export function PlaceCardCompact({ place, onPress, rightAction, style }: Props) 
         placeholder={{ blurhash: 'L6PZfSi_.AyE_3t7t7R**0o#DgR4' }}
       />
       <View style={styles.meta}>
-        <View style={styles.nameRow}>
-          <Text style={styles.name} numberOfLines={1}>{place.name}</Text>
-          <TierBadge tier={tier} />
-        </View>
+        <TierBadge tier={tier} style={{ marginBottom: 2 }} />
+        <Text style={styles.name} numberOfLines={1}>{place.name}</Text>
         <Text style={styles.sub} numberOfLines={1}>
           {place.category ?? 'Restaurant'}
           {place.price_tier ? '  ·  ' + '$'.repeat(place.price_tier) : ''}
@@ -64,7 +62,6 @@ const styles = StyleSheet.create({
   },
   thumb: { width: 64, height: 64, borderRadius: 8 },
   meta: { flex: 1, gap: 3 },
-  nameRow: { flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' },
-  name: { color: Colors.text, fontSize: 15, fontWeight: '600', flex: 1 },
+  name: { color: Colors.text, fontSize: 15, fontWeight: '600' },
   sub: { color: Colors.textSecondary, fontSize: 13 },
 });
