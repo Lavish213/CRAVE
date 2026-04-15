@@ -12,7 +12,7 @@ import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { useHitlistStore } from '../../src/stores/hitlistStore';
 import { useToast } from '../../src/hooks/useToast';
-import { Colors } from '../../src/constants/colors';
+import { Colors, Spacing, Radius } from '../../src/constants/colors';
 import { PlaceCardCompact } from '../../src/components/PlaceCardCompact';
 import { EmptyState } from '../../src/components/EmptyState';
 import { getCraveItems, CraveItem } from '../../src/api/crave';
@@ -22,17 +22,21 @@ export default function HitlistScreen() {
   const { saves, removeSave } = useHitlistStore();
   const toast = useToast((s) => s.show);
   const [craves, setCraves] = useState<CraveItem[]>([]);
+  const [cravesLoading, setCravesLoading] = useState(true);
 
   useEffect(() => {
-    getCraveItems().then(setCraves).catch(() => {});
+    getCraveItems()
+      .then(setCraves)
+      .catch(() => {})
+      .finally(() => setCravesLoading(false));
   }, []);
 
-  if (saves.length === 0 && craves.length === 0) {
+  if (saves.length === 0 && craves.length === 0 && !cravesLoading) {
     return (
       <EmptyState
         icon="bookmark-outline"
-        title="Your Hitlist is empty"
-        body="Tap the bookmark on any place to save it here"
+        title="Start your food memory"
+        body="Save places you want to visit. They live here, waiting for you."
       />
     );
   }
@@ -66,15 +70,21 @@ export default function HitlistScreen() {
         contentContainerStyle={styles.list}
         ListHeaderComponent={
           saves.length > 0 ? (
-            <Text style={styles.countLabel}>
-              {saves.length} {saves.length === 1 ? 'place' : 'places'} saved
-            </Text>
+            <View style={styles.screenHeader}>
+              <Text style={styles.screenTitle}>Hit List</Text>
+              <View style={styles.countBadge}>
+                <Text style={styles.countBadgeText}>{saves.length}</Text>
+              </View>
+            </View>
           ) : null
         }
         ListFooterComponent={
           craves.length > 0 ? (
             <View style={styles.cravesSection}>
-              <Text style={styles.craveSectionLabel}>CRAVES</Text>
+              <View style={styles.cravesHeader}>
+                <Text style={styles.cravesTitle}>Craves</Text>
+                <Text style={styles.cravesSub}>Places you've craved, tracked by CRAVE</Text>
+              </View>
               {craves.map((item) => (
                 <View key={item.id} style={styles.craveRow}>
                   <View style={styles.craveMeta}>
@@ -84,7 +94,7 @@ export default function HitlistScreen() {
                     <Text style={[styles.craveStatus, {
                       color: item.matched_place_id ? Colors.success : Colors.textMuted
                     }]}>
-                      {item.matched_place_id ? 'Matched' : 'Pending match'}
+                      {item.matched_place_id ? '● Matched' : 'Searching…'}
                     </Text>
                   </View>
                   {item.matched_place_id && (
@@ -94,7 +104,7 @@ export default function HitlistScreen() {
                       accessibilityRole="button"
                       accessibilityLabel={`Open matched place for ${item.parsed_place_name ?? 'this place'}`}
                     >
-                      <Ionicons name="arrow-forward" size={16} color={Colors.primary} />
+                      <Text style={styles.craveViewBtn}>View →</Text>
                     </TouchableOpacity>
                   )}
                 </View>
@@ -110,13 +120,30 @@ export default function HitlistScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
   list: { padding: 12, gap: 8, paddingBottom: 32 },
-  countLabel: {
-    color: Colors.textMuted,
+  screenHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    paddingBottom: Spacing.md,
+  },
+  screenTitle: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: Colors.text,
+  },
+  countBadge: {
+    backgroundColor: Colors.primary,
+    borderRadius: Radius.full,
+    minWidth: 22,
+    height: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: Spacing.xs,
+  },
+  countBadgeText: {
+    color: Colors.text,
     fontSize: 11,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 0.8,
-    paddingBottom: 10,
+    fontWeight: '800',
   },
   removeBtn: {
     padding: 8,
@@ -125,21 +152,27 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  cravesSection: { paddingTop: 16, paddingBottom: 8 },
-  craveSectionLabel: {
-    color: Colors.textMuted,
-    fontSize: 10,
+  cravesSection: { paddingTop: Spacing.lg, paddingBottom: Spacing.sm },
+  cravesHeader: {
+    paddingTop: Spacing.lg,
+    paddingBottom: Spacing.sm,
+  },
+  cravesTitle: {
+    fontSize: 17,
     fontWeight: '800',
-    letterSpacing: 1.5,
-    textTransform: 'uppercase',
-    paddingBottom: 10,
+    color: Colors.text,
+  },
+  cravesSub: {
+    fontSize: 12,
+    color: Colors.textMuted,
+    marginTop: Spacing.xs,
   },
   craveRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 12,
+    padding: 14,
     backgroundColor: Colors.surface,
-    borderRadius: 10,
+    borderRadius: Radius.md,
     borderWidth: 1,
     borderColor: Colors.border,
     marginBottom: 8,
@@ -147,5 +180,16 @@ const styles = StyleSheet.create({
   craveMeta: { flex: 1 },
   craveName: { color: Colors.text, fontSize: 14, fontWeight: '600' },
   craveStatus: { fontSize: 12, marginTop: 2 },
-  craveOpenBtn: { padding: 8, minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
+  craveOpenBtn: {
+    padding: 8,
+    minWidth: 44,
+    minHeight: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  craveViewBtn: {
+    color: Colors.primary,
+    fontSize: 13,
+    fontWeight: '700',
+  },
 });
