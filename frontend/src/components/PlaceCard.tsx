@@ -1,7 +1,7 @@
 // src/components/PlaceCard.tsx
-import React from 'react';
+import React, { useRef } from 'react';
 import {
-  Share, StyleSheet, Text, TouchableOpacity, View, ViewStyle,
+  Animated, Share, StyleSheet, Text, TouchableOpacity, View, ViewStyle,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
@@ -26,6 +26,15 @@ interface Props {
 export function PlaceCard({ place, onPress, onSave, saved, style }: Props) {
   const tier = getTier(place.rank_score);
   const context = getSignalContext(place);
+  const saveScale = useRef(new Animated.Value(1)).current;
+
+  const handleSave = () => {
+    Animated.sequence([
+      Animated.timing(saveScale, { toValue: 1.3, duration: 100, useNativeDriver: true }),
+      Animated.timing(saveScale, { toValue: 1, duration: 150, useNativeDriver: true }),
+    ]).start();
+    onSave();
+  };
 
   return (
     <TouchableOpacity
@@ -63,12 +72,15 @@ export function PlaceCard({ place, onPress, onSave, saved, style }: Props) {
         {/* Save — top right */}
         <TouchableOpacity
           style={styles.saveBtn}
-          onPress={onSave}
+          onPress={handleSave}
           hitSlop={SAVE_HIT_SLOP}
+          activeOpacity={0.7}
           accessibilityLabel={saved ? `Remove ${place.name} from hitlist` : `Save ${place.name} to hitlist`}
           accessibilityRole="button"
         >
-          <Ionicons name={saved ? 'bookmark' : 'bookmark-outline'} size={20} color={Colors.text} />
+          <Animated.View style={{ transform: [{ scale: saveScale }] }}>
+            <Ionicons name={saved ? 'bookmark' : 'bookmark-outline'} size={20} color={Colors.text} />
+          </Animated.View>
         </TouchableOpacity>
       </View>
 

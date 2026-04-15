@@ -1,6 +1,7 @@
 // app/(tabs)/index.tsx
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Animated,
   ActivityIndicator,
   FlatList,
   RefreshControl,
@@ -74,6 +75,7 @@ export default function FeedScreen() {
 
   const loadingRef = useRef(false);
   const cancelledRef = useRef(false);
+  const feedOpacity = useRef(new Animated.Value(0)).current;
 
   const loadPage = useCallback(async (p: number, reset = false) => {
     if (loadingRef.current) return;
@@ -109,8 +111,19 @@ export default function FeedScreen() {
     setPage(1);
     setInitialLoaded(false);
     setError(false);
+    feedOpacity.setValue(0);
     loadPage(1, true);
   }, [selectedCity?.id]);
+
+  useEffect(() => {
+    if (initialLoaded && !error) {
+      Animated.timing(feedOpacity, {
+        toValue: 1,
+        duration: 350,
+        useNativeDriver: true,
+      }).start();
+    }
+  }, [initialLoaded, error]);
 
   const handleRefresh = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -161,62 +174,66 @@ export default function FeedScreen() {
 
       {!initialLoaded ? (
         <View style={styles.skeletonWrap}><SkeletonFeed count={4} /></View>
-      ) : error ? (
-        <ErrorState message="Couldn't load places" onRetry={() => loadPage(1, true)} />
-      ) : rows.length === 0 ? (
-        <EmptyState
-          icon="search-outline"
-          title="Nothing here yet"
-          body="Try selecting a different city"
-        />
       ) : (
-        <FlatList
-          data={rows}
-          keyExtractor={(row, i) => row.kind === 'place' ? row.place.id : `header-${i}`}
-          renderItem={({ item: row }) => {
-            if (row.kind === 'header') {
-              const tier = TIERS[row.tierKey];
-              return (
-                <SectionHeader
-                  label={tier.sectionLabel}
-                  subtext={tier.sectionSubtext}
-                  count={row.count}
-                />
-              );
-            }
-            return (
-              <PlaceCard
-                place={row.place}
-                onPress={() => router.push(`/place/${row.place.id}`)}
-                onSave={() => {
-                  if (isSaved(row.place.id)) {
-                    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-                    removeSave(row.place.id);
-                    toast('Removed from Hitlist');
-                  } else {
-                    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-                    addSave(row.place);
-                    toast('Saved to Hitlist');
-                  }
-                }}
-                saved={isSaved(row.place.id)}
-              />
-            );
-          }}
-          contentContainerStyle={styles.list}
-          onEndReached={handleEndReached}
-          onEndReachedThreshold={0.3}
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={handleRefresh}
-              tintColor={Colors.primary}
+        <Animated.View style={[{ flex: 1 }, { opacity: feedOpacity }]}>
+          {error ? (
+            <ErrorState message="Couldn't load places" onRetry={() => loadPage(1, true)} />
+          ) : rows.length === 0 ? (
+            <EmptyState
+              icon="search-outline"
+              title="Nothing here yet"
+              body="Try selecting a different city"
             />
-          }
-          ListFooterComponent={
-            loading ? <ActivityIndicator color={Colors.primary} style={styles.listFooter} /> : null
-          }
-        />
+          ) : (
+            <FlatList
+              data={rows}
+              keyExtractor={(row, i) => row.kind === 'place' ? row.place.id : `header-${i}`}
+              renderItem={({ item: row }) => {
+                if (row.kind === 'header') {
+                  const tier = TIERS[row.tierKey];
+                  return (
+                    <SectionHeader
+                      label={tier.sectionLabel}
+                      subtext={tier.sectionSubtext}
+                      count={row.count}
+                    />
+                  );
+                }
+                return (
+                  <PlaceCard
+                    place={row.place}
+                    onPress={() => router.push(`/place/${row.place.id}`)}
+                    onSave={() => {
+                      if (isSaved(row.place.id)) {
+                        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+                        removeSave(row.place.id);
+                        toast('Removed from Hitlist');
+                      } else {
+                        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                        addSave(row.place);
+                        toast('Saved to Hitlist');
+                      }
+                    }}
+                    saved={isSaved(row.place.id)}
+                  />
+                );
+              }}
+              contentContainerStyle={styles.list}
+              onEndReached={handleEndReached}
+              onEndReachedThreshold={0.3}
+              refreshControl={
+                <RefreshControl
+                  refreshing={refreshing}
+                  onRefresh={handleRefresh}
+                  tintColor={Colors.primary}
+                />
+              }
+              ListFooterComponent={
+                loading ? <ActivityIndicator color={Colors.primary} style={styles.listFooter} /> : null
+              }
+            />
+          )}
+        </Animated.View>
       )}
 
       <FilterSheet

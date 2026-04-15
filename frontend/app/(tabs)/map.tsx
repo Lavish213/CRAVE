@@ -3,6 +3,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import MapView, { Marker, Region } from 'react-native-maps';
 import { useRouter } from 'expo-router';
+import * as Haptics from 'expo-haptics';
 import { fetchMapGeoJSON, GeoJSONFeature } from '../../src/api/map';
 import { useCityStore } from '../../src/stores/cityStore';
 import { Colors, Radius, Spacing } from '../../src/constants/colors';
@@ -81,13 +82,16 @@ export default function MapScreen() {
             <Marker
               key={f.properties.id}
               coordinate={{ latitude: lat, longitude: lng }}
-              onPress={() => setSelectedFeature({
-                id: f.properties.id,
-                name: f.properties.name,
-                tier,
-                image: f.properties.primary_image_url ?? undefined,
-                category: f.properties.category ?? undefined,
-              })}
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                setSelectedFeature({
+                  id: f.properties.id,
+                  name: f.properties.name,
+                  tier,
+                  image: f.properties.primary_image_url ?? undefined,
+                  category: f.properties.category ?? undefined,
+                });
+              }}
               tracksViewChanges={false}
             >
               <MapMarkerDot color={color} />

@@ -100,6 +100,7 @@ export function FilterSheet({ visible, onClose, filters, onChange, availableCate
                   key={value}
                   style={[styles.chip, active && styles.chipActive]}
                   onPress={() => togglePrice(value)}
+                  activeOpacity={0.75}
                   accessibilityRole="button"
                   accessibilityLabel={`Price tier ${label}`}
                 >
@@ -121,6 +122,7 @@ export function FilterSheet({ visible, onClose, filters, onChange, availableCate
                       key={cat}
                       style={[styles.chip, active && styles.chipActive]}
                       onPress={() => toggleCategory(cat)}
+                      activeOpacity={0.75}
                       accessibilityRole="button"
                       accessibilityLabel={cat}
                     >
