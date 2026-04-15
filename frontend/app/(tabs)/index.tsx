@@ -207,11 +207,11 @@ export default function FeedScreen() {
                       if (isSaved(row.place.id)) {
                         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
                         removeSave(row.place.id);
-                        toast('Removed from Hitlist');
+                        toast('Removed from Saves');
                       } else {
                         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
                         addSave(row.place);
-                        toast('Saved to Hitlist');
+                        toast('Saved');
                       }
                     }}
                     saved={isSaved(row.place.id)}
@@ -249,7 +249,7 @@ export default function FeedScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
-  list: { paddingHorizontal: Spacing.md, paddingBottom: Spacing.xxl, gap: Spacing.sm },
+  list: { paddingHorizontal: Spacing.md, paddingBottom: Spacing.xxl, gap: Spacing.md },
   listFooter: { margin: Spacing.lg },
   skeletonWrap: { flex: 1, paddingHorizontal: 12, paddingTop: 10 },
   header: {

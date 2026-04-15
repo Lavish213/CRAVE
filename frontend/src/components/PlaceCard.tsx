@@ -75,7 +75,7 @@ export function PlaceCard({ place, onPress, onSave, saved, style }: Props) {
           onPress={handleSave}
           hitSlop={SAVE_HIT_SLOP}
           activeOpacity={0.7}
-          accessibilityLabel={saved ? `Remove ${place.name} from hitlist` : `Save ${place.name} to hitlist`}
+          accessibilityLabel={saved ? `Remove ${place.name} from saves` : `Save ${place.name}`}
           accessibilityRole="button"
         >
           <Animated.View style={{ transform: [{ scale: saveScale }] }}>

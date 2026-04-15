@@ -55,11 +55,11 @@ export default function HitlistScreen() {
                 onPress={() => {
                   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
                   removeSave(item.id);
-                  toast('Removed from Hitlist');
+                  toast('Removed from Saves');
                 }}
                 style={styles.removeBtn}
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                accessibilityLabel={`Remove ${item.name} from hitlist`}
+                accessibilityLabel={`Remove ${item.name} from saves`}
                 accessibilityRole="button"
               >
                 <Ionicons name="close" size={18} color={Colors.textMuted} />
@@ -71,7 +71,7 @@ export default function HitlistScreen() {
         ListHeaderComponent={
           saves.length > 0 ? (
             <View style={styles.screenHeader}>
-              <Text style={styles.screenTitle}>Hit List</Text>
+              <Text style={styles.screenTitle}>Saves</Text>
               <View style={styles.countBadge}>
                 <Text style={styles.countBadgeText}>{saves.length}</Text>
               </View>
@@ -156,7 +156,7 @@ const styles = StyleSheet.create({
     paddingBottom: Spacing.sm,
   },
   cravesTitle: {
-    fontSize: 17,
+    fontSize: 20,
     fontWeight: '800',
     color: Colors.text,
   },

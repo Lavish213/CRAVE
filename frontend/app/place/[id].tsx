@@ -145,8 +145,8 @@ export default function PlaceDetailScreen() {
     Haptics.notificationAsync(
       saved ? Haptics.NotificationFeedbackType.Warning : Haptics.NotificationFeedbackType.Success,
     );
-    if (saved) { removeSave(place.id); toast('Removed from Hitlist'); }
-    else { addSave(place); toast('Saved to Hitlist'); }
+    if (saved) { removeSave(place.id); toast('Removed from Saves'); }
+    else { addSave(place); toast('Saved'); }
   };
 
   const handleDirections = () => {
@@ -186,7 +186,7 @@ export default function PlaceDetailScreen() {
         <TouchableOpacity
           style={[styles.actionBtn, saved && styles.actionBtnSaved]}
           onPress={handleSave}
-          accessibilityLabel={saved ? 'Remove from Hitlist' : 'Save to Hitlist'}
+          accessibilityLabel={saved ? 'Remove from Saves' : 'Save to Saves'}
           accessibilityRole="button"
         >
           <Ionicons
@@ -285,6 +285,7 @@ export default function PlaceDetailScreen() {
                 style={styles.expandBtn}
                 onPress={() => setMenuExpanded((v) => !v)}
                 accessibilityRole="button"
+                accessibilityLabel={menuExpanded ? 'Show fewer menu items' : `Show all ${menuItems.length} menu items`}
               >
                 <Text style={styles.expandLabel}>
                   {menuExpanded ? 'Show less' : `Show all ${menuItems.length} items`}
@@ -335,7 +336,7 @@ const styles = StyleSheet.create({
   actionLabelSaved: { color: Colors.primary },
   menuSection: { paddingHorizontal: 16, paddingTop: 8 },
   sectionTitle: {
-    fontSize: 17,
+    fontSize: 20,
     fontWeight: '800',
     color: Colors.text,
     marginBottom: 12,

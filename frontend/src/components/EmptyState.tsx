@@ -19,7 +19,7 @@ export function EmptyState({ icon = 'search-outline', title, body, ctaLabel, onC
       <Text style={styles.title}>{title}</Text>
       {body ? <Text style={styles.body}>{body}</Text> : null}
       {ctaLabel && onCta ? (
-        <TouchableOpacity style={styles.cta} onPress={onCta} activeOpacity={0.75}>
+        <TouchableOpacity style={styles.cta} onPress={onCta} activeOpacity={0.75} accessibilityRole="button" accessibilityLabel={ctaLabel}>
           <Text style={styles.ctaText}>{ctaLabel}</Text>
         </TouchableOpacity>
       ) : null}

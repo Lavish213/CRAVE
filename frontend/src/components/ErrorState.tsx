@@ -15,7 +15,7 @@ export function ErrorState({ message = 'Something went wrong', onRetry }: Props)
       <Ionicons name="cloud-offline-outline" size={40} color={Colors.textMuted} />
       <Text style={styles.message}>{message}</Text>
       {onRetry && (
-        <TouchableOpacity style={styles.retryBtn} onPress={onRetry} activeOpacity={0.75}>
+        <TouchableOpacity style={styles.retryBtn} onPress={onRetry} activeOpacity={0.75} accessibilityRole="button" accessibilityLabel="Try again">
           <Text style={styles.retryText}>Try again</Text>
         </TouchableOpacity>
       )}

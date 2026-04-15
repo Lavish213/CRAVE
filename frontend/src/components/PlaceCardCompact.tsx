@@ -7,7 +7,7 @@ import { PlaceOut } from '../api/places';
 import { getTier, getSignalContext } from '../utils/scoring';
 import { TierBadge } from './TierBadge';
 import { TrustLine } from './TrustLine';
-import { Colors } from '../constants/colors';
+import { Colors, Radius } from '../constants/colors';
 
 interface Props {
   place: PlaceOut;
@@ -53,14 +53,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 12,
     backgroundColor: Colors.surface,
-    borderRadius: 12,
+    borderRadius: Radius.card,
     overflow: 'hidden',
     alignItems: 'center',
     padding: 10,
     borderWidth: 1,
     borderColor: Colors.border,
   },
-  thumb: { width: 64, height: 64, borderRadius: 8 },
+  thumb: { width: 64, height: 64, borderRadius: Radius.sm },
   meta: { flex: 1, gap: 3 },
   name: { color: Colors.text, fontSize: 15, fontWeight: '600' },
   sub: { color: Colors.textSecondary, fontSize: 13 },
