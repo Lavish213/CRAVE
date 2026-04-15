@@ -77,7 +77,7 @@ export default function PlaceDetailScreen() {
     if (!place) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     Share.share({
-      message: `${place.name} — ${place.category ?? 'Restaurant'}. Found on CRAVE.`,
+      message: `${place.name} — ${place.category ?? 'Restaurant'} in ${place.address ? place.address.split(',').pop()?.trim() ?? 'your city' : 'your city'}. Found on CRAVE.`,
     });
   }, [place]);
 

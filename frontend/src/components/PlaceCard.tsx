@@ -1,7 +1,7 @@
 // src/components/PlaceCard.tsx
 import React from 'react';
 import {
-  StyleSheet, Text, TouchableOpacity, View, ViewStyle,
+  Share, StyleSheet, Text, TouchableOpacity, View, ViewStyle,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
@@ -34,6 +34,13 @@ export function PlaceCard({ place, onPress, onSave, saved, style }: Props) {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
         onPress();
       }}
+      onLongPress={() => {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+        Share.share({
+          message: `${place.name} — ${place.category ?? 'Restaurant'} in ${place.address ? place.address.split(',').pop()?.trim() ?? 'your city' : 'your city'}. Found on CRAVE.`,
+        }).catch(() => {});
+      }}
+      delayLongPress={400}
       activeOpacity={0.85}
       accessibilityRole="button"
       accessibilityLabel={`${place.name}, ${place.category ?? 'Restaurant'}, ${tier.label}`}
