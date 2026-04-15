@@ -81,7 +81,7 @@ export default function PlaceDetailScreen() {
     });
   }, [place]);
 
-  const load = () => {
+  const load = useCallback(() => {
     setLoading(true);
     setMenuLoading(true);
     setError(false);
@@ -98,7 +98,7 @@ export default function PlaceDetailScreen() {
         setLoading(false);
         setMenuLoading(false);
       });
-  };
+  }, [id]);
 
   useEffect(() => { if (id) load(); }, [id]);
 
@@ -249,7 +249,7 @@ export default function PlaceDetailScreen() {
       <View style={styles.menuSection}>
         <Text style={styles.sectionTitle}>Menu</Text>
         {menuLoading ? (
-          <View style={{ gap: 8 }}>
+          <View style={styles.menuSkeletonWrap}>
             {[1, 2, 3].map((i) => (
               <View key={i} style={{ height: 44, borderRadius: Radius.sm, backgroundColor: Colors.surface }} />
             ))}
@@ -371,4 +371,5 @@ const styles = StyleSheet.create({
   },
   expandBtn: { marginTop: 8, paddingVertical: 12, alignItems: 'center' },
   expandLabel: { color: Colors.primary, fontSize: 14, fontWeight: '600' },
+  menuSkeletonWrap: { gap: Spacing.sm },
 });
