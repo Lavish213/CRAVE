@@ -1,9 +1,9 @@
 // app/place/[id].tsx
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
-  ActivityIndicator,
   Linking,
   ScrollView,
+  Share,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -16,12 +16,49 @@ import { fetchPlaceDetail, PlaceOut } from '../../src/api/places';
 import { getPlaceMenu, MenuItem } from '../../src/api/menu';
 import { useHitlistStore } from '../../src/stores/hitlistStore';
 import { useToast } from '../../src/hooks/useToast';
-import { Colors } from '../../src/constants/colors';
+import { Colors, Spacing, Radius } from '../../src/constants/colors';
 import { getTier, getSignalContext, getTrustBadges } from '../../src/utils/scoring';
 import { ImageGallery } from '../../src/components/ImageGallery';
 import { TierBadge } from '../../src/components/TierBadge';
 import { TrustBadgeRow } from '../../src/components/TrustBadgeRow';
 import { ErrorState } from '../../src/components/ErrorState';
+
+const HEADER_RIGHT_BTN = {
+  marginRight: 4,
+  padding: 8,
+  minWidth: 44,
+  minHeight: 44,
+  alignItems: 'center' as const,
+  justifyContent: 'center' as const,
+};
+
+function DetailSkeleton() {
+  return (
+    <ScrollView style={{ flex: 1, backgroundColor: Colors.background }} scrollEnabled={false}>
+      {/* Hero image skeleton */}
+      <View style={{ width: '100%', height: 280, backgroundColor: Colors.surface }} />
+      {/* Identity block */}
+      <View style={{ padding: Spacing.lg, gap: Spacing.sm }}>
+        <View style={{ width: 80, height: 22, borderRadius: Radius.sm, backgroundColor: Colors.surface }} />
+        <View style={{ width: '75%', height: 28, borderRadius: Radius.sm, backgroundColor: Colors.surface }} />
+        <View style={{ width: '50%', height: 16, borderRadius: Radius.sm, backgroundColor: Colors.surface }} />
+        <View style={{ width: '60%', height: 14, borderRadius: Radius.sm, backgroundColor: Colors.surface }} />
+      </View>
+      {/* Trust badge row skeleton */}
+      <View style={{ flexDirection: 'row', gap: Spacing.sm, paddingHorizontal: Spacing.lg, paddingBottom: Spacing.md }}>
+        {[80, 100, 70].map((w, i) => (
+          <View key={i} style={{ width: w, height: 28, borderRadius: Radius.pill, backgroundColor: Colors.surface }} />
+        ))}
+      </View>
+      {/* Action row skeleton */}
+      <View style={{ flexDirection: 'row', gap: Spacing.sm, padding: Spacing.lg }}>
+        {[72, 88, 80].map((w, i) => (
+          <View key={i} style={{ width: w, height: 40, borderRadius: Radius.pill, backgroundColor: Colors.surface }} />
+        ))}
+      </View>
+    </ScrollView>
+  );
+}
 
 export default function PlaceDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -32,11 +69,21 @@ export default function PlaceDetailScreen() {
   const [place, setPlace] = useState<PlaceOut | null>(null);
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [menuLoading, setMenuLoading] = useState(true);
   const [error, setError] = useState(false);
   const [menuExpanded, setMenuExpanded] = useState(false);
 
+  const handleShare = useCallback(() => {
+    if (!place) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    Share.share({
+      message: `${place.name} — ${place.category ?? 'Restaurant'}. Found on CRAVE.`,
+    });
+  }, [place]);
+
   const load = () => {
     setLoading(true);
+    setMenuLoading(true);
     setError(false);
     Promise.all([
       fetchPlaceDetail(id!),
@@ -45,21 +92,35 @@ export default function PlaceDetailScreen() {
       .then(([p, m]) => {
         setPlace(p);
         setMenuItems(m);
-        navigation.setOptions({ title: p.name });
       })
       .catch(() => setError(true))
-      .finally(() => setLoading(false));
+      .finally(() => {
+        setLoading(false);
+        setMenuLoading(false);
+      });
   };
 
   useEffect(() => { if (id) load(); }, [id]);
 
-  if (loading) {
-    return (
-      <View style={styles.center}>
-        <ActivityIndicator color={Colors.primary} size="large" />
-      </View>
-    );
-  }
+  useEffect(() => {
+    if (place) {
+      navigation.setOptions({
+        title: place.name,
+        headerRight: () => (
+          <TouchableOpacity
+            onPress={handleShare}
+            style={HEADER_RIGHT_BTN}
+            accessibilityLabel="Share this place"
+            accessibilityRole="button"
+          >
+            <Ionicons name="share-outline" size={22} color={Colors.text} />
+          </TouchableOpacity>
+        ),
+      });
+    }
+  }, [place, handleShare]);
+
+  if (loading) return <DetailSkeleton />;
 
   if (error || !place) {
     return <ErrorState message="Couldn't load this place" onRetry={load} />;
@@ -187,9 +248,15 @@ export default function PlaceDetailScreen() {
       {/* Menu */}
       <View style={styles.menuSection}>
         <Text style={styles.sectionTitle}>Menu</Text>
-        {menuItems.length === 0 ? (
+        {menuLoading ? (
+          <View style={{ gap: 8 }}>
+            {[1, 2, 3].map((i) => (
+              <View key={i} style={{ height: 44, borderRadius: Radius.sm, backgroundColor: Colors.surface }} />
+            ))}
+          </View>
+        ) : menuItems.length === 0 ? (
           <Text style={styles.noMenu}>
-            {place.has_menu ? 'Loading menu…' : 'No menu on file yet'}
+            {place.has_menu ? 'Menu coming soon' : 'No menu on file yet'}
           </Text>
         ) : (
           <>
@@ -234,12 +301,6 @@ export default function PlaceDetailScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
   content: { paddingBottom: 40 },
-  center: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: Colors.background,
-  },
   identity: { padding: 16, gap: 5 },
   identityTop: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 },
   price: { color: Colors.textSecondary, fontSize: 13, fontWeight: '600' },
