@@ -33,6 +33,7 @@ SIGNAL_DECAY_DAYS: Dict[str, int] = {
     "creator": 30,
     "award": 365,
     "blog": 180,
+    "risk": 365,   # NEW — risk signals persist for a year
     "review": 730,
     "save": 730,
 }
@@ -179,6 +180,33 @@ def _fetch_signal_context(db: Session, place_ids: list[str]) -> SignalContext:
         )
     ).all()
 
+    # Fetch risk signals — separate query: filter by signal_class="risk"
+    # These are editorial warnings/negative mentions routed to the risk bucket.
+    risk_rows = db.execute(
+        select(PS.place_id, PS.signal_type, PS.value, PS.created_at)
+        .where(
+            PS.place_id.in_(place_ids),
+            PS.signal_class == "risk",
+        )
+    ).all()
+
+    # Compute decayed risk scores (sum, capped at 1.0)
+    risk_scores: Dict[str, float] = {}
+    now_for_risk = datetime.now(UTC)
+    for row in risk_rows:
+        created_at = row.created_at
+        if isinstance(created_at, str):
+            try:
+                created_at = datetime.fromisoformat(created_at)
+            except ValueError:
+                created_at = now_for_risk
+        if created_at.tzinfo is None:
+            created_at = created_at.replace(tzinfo=UTC)
+        days_old = max(0, (now_for_risk - created_at).days)
+        decay_factor = max(0.05, 1.0 - days_old / 365.0)
+        effective = float(row.value) * decay_factor
+        risk_scores[row.place_id] = min(1.0, risk_scores.get(row.place_id, 0.0) + effective)
+
     now = datetime.now(UTC)
     decayed = _compute_decayed_signal_scores(signal_rows, ["creator", "award", "blog"], now)
 
@@ -231,6 +259,7 @@ def _fetch_signal_context(db: Session, place_ids: list[str]) -> SignalContext:
         awards_scores=awards_scores,
         blog_scores=blog_scores,
         blog_mention_counts=blog_mention_counts,
+        risk_scores=risk_scores,
     )
 
 
@@ -315,6 +344,7 @@ def _score_batch(db: Session, places: list[Place]) -> tuple[int, Set[str]]:
             awards_score=ctx.awards_score(pid),
             blog_score=ctx.blog_score(pid),
             blog_mention_count=ctx.blog_mention_count(pid),
+            risk_score=ctx.risk_score(pid),
             city_slug=city_slug,
         )
 

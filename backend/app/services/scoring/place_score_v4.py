@@ -97,15 +97,15 @@ def _redistribute_weights(
 def _apply_blog_consensus_gate(blog_score: float, blog_mention_count: int) -> float:
     """Gate blog_score by how many distinct blog sources have featured the place.
 
-    0 sources  → 0.0   (no data)
-    1 source   → 50%   (single mention, treat as partial signal)
-    >= 2 sources → full  (multi-source consensus — ranking eligible)
+    0-1 source  → 0.0   (discovery signal only — one article doesn't make a consensus)
+    2 sources   → 40%   (weak boost — two sources, still building signal)
+    3+ sources  → full  (trusted editorial consensus)
     """
-    if blog_mention_count == 0:
+    if blog_mention_count < 2:
         return 0.0
-    if blog_mention_count == 1:
-        return blog_score * 0.5
-    return blog_score  # >= 2
+    if blog_mention_count == 2:
+        return blog_score * 0.4
+    return blog_score  # >= 3
 
 
 def _apply_consensus_gate(creator_score: float, creator_mention_count: int) -> float:
@@ -200,7 +200,7 @@ def compute_place_score_v4(
     # ------------------------------------------------------------------
     # Consensus gates — thresholds differ intentionally:
     # Creators: 3+ sources = full weight (social posts are cheap, need more signal)
-    # Blogs:    2+ sources = full weight (editorial curation is costly, 2 sources = trusted)
+    # Blogs:    3+ sources = full weight (editorial consensus); 2 = weak boost (40%)
     gated_creator = _apply_consensus_gate(
         _clamp(creator_score), creator_mention_count
     )
@@ -242,11 +242,15 @@ def compute_place_score_v4(
     weights = get_profile(city_slug)
     base_weights = _redistribute_weights(weights, base_signals)
 
-    # weights_used: base redistribution + raw authority weights + risk placeholder
+    # Risk penalty: max 8% deduction at risk_score=1.0.
+    # Sourced from PlaceSignal rows with signal_class="risk" (blog warnings, etc.).
+    risk_weight: float = 0.08
+
+    # weights_used: base redistribution + raw authority weights + risk weight
     weights_used: Dict[str, float] = {
         **base_weights,
         **{k: weights[k] for k in _AUTHORITY},
-        "risk": 0.0,  # structure present; weight activates once risk data exists
+        "risk": risk_weight,  # activated — 8% max penalty
     }
 
     # ------------------------------------------------------------------
@@ -256,8 +260,6 @@ def compute_place_score_v4(
     authenticity_val = compute_authenticity(signals, weights_used)
     authority_val   = compute_authority(signals, weights_used)
     momentum_val    = compute_momentum(signals, weights_used)
-    # risk_weight is 0.0 — no entry in city profiles yet; placeholder for future.
-    risk_weight: float = 0.0
     risk_val = compute_risk(risk_score, risk_weight)
 
     buckets: Dict[str, float] = {
