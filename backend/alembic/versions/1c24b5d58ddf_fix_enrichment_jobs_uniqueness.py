@@ -16,7 +16,7 @@ def upgrade() -> None:
     op.execute("""
         CREATE UNIQUE INDEX uq_active_job_per_place_type
         ON enrichment_jobs(place_id, job_type)
-        WHERE is_active = 1
+        WHERE is_active = true
     """)
 
 
