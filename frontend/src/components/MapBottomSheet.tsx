@@ -3,7 +3,7 @@ import React from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
-import { Colors } from '../constants/colors';
+import { Colors, Radius, Spacing } from '../constants/colors';
 import { TierBadge } from './TierBadge';
 import { TIERS } from '../utils/scoring';
 import type { TierKey } from '../utils/scoring';
@@ -14,6 +14,20 @@ const TIER_MAP: Record<string, TierKey> = {
   trusted: 'gem',
   solid:   'solid',
   default: 'new',
+};
+
+const TIER_LABELS: Record<string, string> = {
+  elite:   'CRAVE Pick',
+  trusted: 'Hidden Gem',
+  solid:   'Worth Knowing',
+  default: 'Explore',
+};
+
+const TIER_COLORS: Record<string, string> = {
+  elite:   Colors.tierCravePick,
+  trusted: Colors.tierGem,
+  solid:   Colors.tierSolid,
+  default: Colors.tierNew,
 };
 
 interface FeatureProps {
@@ -35,6 +49,7 @@ export function MapBottomSheet({ feature, onOpen, onClose }: Props) {
 
   const tierKey: TierKey = TIER_MAP[feature.tier] ?? 'new';
   const tier = TIERS[tierKey];
+  const tierColor = TIER_COLORS[feature.tier] ?? TIER_COLORS.default;
 
   return (
     <View style={styles.sheet}>
@@ -68,6 +83,9 @@ export function MapBottomSheet({ feature, onOpen, onClose }: Props) {
         <View style={styles.meta}>
           <TierBadge tier={tier} />
           <Text style={styles.name} numberOfLines={1}>{feature.name}</Text>
+          <Text style={[styles.tierLabel, { color: tierColor }]}>
+            {TIER_LABELS[feature.tier] ?? 'CRAVE'}
+          </Text>
           {feature.category ? (
             <Text style={styles.category}>{feature.category}</Text>
           ) : null}
@@ -85,10 +103,10 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     backgroundColor: Colors.surface,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    padding: 16,
-    paddingBottom: 32,
+    borderTopLeftRadius: Radius.pill,
+    borderTopRightRadius: Radius.pill,
+    padding: Spacing.lg,
+    paddingBottom: Spacing.xxl,
     borderTopWidth: 1,
     borderColor: Colors.border,
     shadowColor: '#000',
@@ -99,22 +117,23 @@ const styles = StyleSheet.create({
   },
   closeBtn: {
     position: 'absolute',
-    top: 12,
-    right: 16,
+    top: Spacing.md,
+    right: Spacing.lg,
     padding: 6,
     minWidth: 44,
     minHeight: 44,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  row: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 8 },
-  thumb: { width: 60, height: 60, borderRadius: 10 },
+  row: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md, marginTop: Spacing.sm },
+  thumb: { width: 60, height: 60, borderRadius: Radius.sm },
   thumbFallback: {
     backgroundColor: Colors.surfaceElevated,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  meta: { flex: 1, gap: 4 },
+  meta: { flex: 1, gap: Spacing.xs },
   name: { color: Colors.text, fontSize: 16, fontWeight: '700' },
+  tierLabel: { fontSize: 11, fontWeight: '700', letterSpacing: 0.5, marginTop: 2 },
   category: { color: Colors.textSecondary, fontSize: 13 },
 });

@@ -71,6 +71,7 @@ export default function MapScreen() {
         style={styles.map}
         initialRegion={initialRegion}
         mapType="mutedStandard"
+        onPress={() => setSelectedFeature(null)}
       >
         {features.map((f) => {
           const [lng, lat] = f.geometry.coordinates;
@@ -85,6 +86,7 @@ export default function MapScreen() {
                 name: f.properties.name,
                 tier,
                 image: f.properties.primary_image_url ?? undefined,
+                category: f.properties.category ?? undefined,
               })}
               tracksViewChanges={false}
             >
