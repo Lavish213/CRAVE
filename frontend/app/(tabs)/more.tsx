@@ -200,9 +200,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  rowBody: { flex: 1 },
+  rowBody: { flex: 1, gap: Spacing.xs },
   rowLabel: { fontSize: 15, fontWeight: '600', color: Colors.text },
-  rowSub: { fontSize: 12, color: Colors.textMuted, marginTop: 2 },
+  rowSub: { fontSize: 12, color: Colors.textMuted },
   divider: { height: 1, backgroundColor: Colors.border, marginLeft: 56 },
   version: { fontSize: 13, color: Colors.textMuted, fontWeight: '500' },
   footer: {
