@@ -25,8 +25,8 @@ export function SectionHeader({ label, subtext, count }: Props) {
 }
 
 const styles = StyleSheet.create({
-  container: { paddingTop: 20, paddingBottom: 10, paddingHorizontal: 4 },
-  accentRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, marginBottom: 4 },
+  container: { paddingTop: Spacing.xl, paddingBottom: Spacing.sm, paddingHorizontal: Spacing.xs },
+  accentRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, marginBottom: Spacing.xs },
   accentBar: {
     width: 2,
     height: 18,
@@ -36,5 +36,5 @@ const styles = StyleSheet.create({
   top: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, flex: 1 },
   label: { fontSize: 18, fontWeight: '800', color: Colors.text, letterSpacing: 0.3, flex: 1 },
   count: { fontSize: 13, color: Colors.textMuted, fontWeight: '500' },
-  subtext: { fontSize: 12, color: Colors.textMuted, fontWeight: '400', paddingLeft: 10 },
+  subtext: { fontSize: 12, color: Colors.textMuted, fontWeight: '400', paddingLeft: Spacing.sm },
 });

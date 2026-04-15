@@ -12,6 +12,9 @@ import { TierBadge } from './TierBadge';
 import { TrustLine } from './TrustLine';
 import { Colors, Spacing, Radius } from '../constants/colors';
 
+const SAVE_HIT_SLOP = { top: 8, bottom: 8, left: 8, right: 8 } as const;
+const IMAGE_HEIGHT = 220;
+
 interface Props {
   place: PlaceOut;
   onPress: () => void;
@@ -54,7 +57,7 @@ export function PlaceCard({ place, onPress, onSave, saved, style }: Props) {
         <TouchableOpacity
           style={styles.saveBtn}
           onPress={onSave}
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          hitSlop={SAVE_HIT_SLOP}
           accessibilityLabel={saved ? `Remove ${place.name} from hitlist` : `Save ${place.name} to hitlist`}
           accessibilityRole="button"
         >
@@ -83,7 +86,7 @@ const styles = StyleSheet.create({
     borderColor: Colors.border,
   },
   imageContainer: { position: 'relative' },
-  image: { width: '100%', height: 220 },
+  image: { width: '100%', height: IMAGE_HEIGHT },
   // Two-layer gradient scrim: transparent top half fading to dark at bottom
   scrimTop: {
     position: 'absolute',
@@ -104,13 +107,13 @@ const styles = StyleSheet.create({
   tierBadge: { position: 'absolute', top: Spacing.sm, left: Spacing.sm },
   saveBtn: {
     position: 'absolute',
-    top: 6,
+    top: 6, // intentional: midpoint between xs(4) and sm(8)
     right: Spacing.sm,
-    padding: 6,
+    padding: 6, // intentional: midpoint between xs(4) and sm(8)
     backgroundColor: 'rgba(0,0,0,0.45)',
     borderRadius: Radius.pill,
   },
-  body: { padding: Spacing.lg, paddingTop: Spacing.md, gap: 4 },
+  body: { padding: Spacing.lg, paddingTop: Spacing.md, gap: Spacing.xs },
   name: { fontSize: 18, fontWeight: '800', color: Colors.text },
   meta: { fontSize: 13, color: Colors.textSecondary },
 });
