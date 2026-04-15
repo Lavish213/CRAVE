@@ -13,6 +13,7 @@ class SignalContext:
     creator_mention_counts: Dict[str, int] = field(default_factory=dict)
     awards_scores: Dict[str, float] = field(default_factory=dict)
     blog_scores: Dict[str, float] = field(default_factory=dict)
+    blog_mention_counts: Dict[str, int] = field(default_factory=dict)
 
     def image_count(self, place_id: str) -> int:
         return self.image_counts.get(place_id, 0)
@@ -37,3 +38,6 @@ class SignalContext:
 
     def blog_score(self, place_id: str) -> float:
         return self.blog_scores.get(place_id, 0.0)
+
+    def blog_mention_count(self, place_id: str) -> int:
+        return self.blog_mention_counts.get(place_id, 0)

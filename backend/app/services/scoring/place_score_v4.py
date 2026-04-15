@@ -94,6 +94,20 @@ def _redistribute_weights(
 # Consensus gate for creator signal (v4 new)
 # ---------------------------------------------------------------------------
 
+def _apply_blog_consensus_gate(blog_score: float, blog_mention_count: int) -> float:
+    """Gate blog_score by how many distinct blog sources have featured the place.
+
+    0 sources  → 0.0   (no data)
+    1 source   → 50%   (single mention, treat as partial signal)
+    >= 2 sources → full  (multi-source consensus — ranking eligible)
+    """
+    if blog_mention_count == 0:
+        return 0.0
+    if blog_mention_count == 1:
+        return blog_score * 0.5
+    return blog_score  # >= 2
+
+
 def _apply_consensus_gate(creator_score: float, creator_mention_count: int) -> float:
     """Gate creator_score by how many distinct creators have mentioned the place.
 
@@ -177,14 +191,21 @@ def compute_place_score_v4(
     blog_score: float = 0.0,
     # v4 new parameters
     creator_mention_count: int = 0,
+    blog_mention_count: int = 0,
     risk_score: float = 0.0,
     city_slug: Optional[str] = None,
 ) -> ScoreV4Result:
     # ------------------------------------------------------------------
     # 1. Build raw signals (same normalization as v3)
     # ------------------------------------------------------------------
+    # Consensus gates — thresholds differ intentionally:
+    # Creators: 3+ sources = full weight (social posts are cheap, need more signal)
+    # Blogs:    2+ sources = full weight (editorial curation is costly, 2 sources = trusted)
     gated_creator = _apply_consensus_gate(
         _clamp(creator_score), creator_mention_count
+    )
+    gated_blog = _apply_blog_consensus_gate(
+        _clamp(blog_score), blog_mention_count
     )
 
     signals: Dict[str, float] = {
@@ -202,7 +223,7 @@ def compute_place_score_v4(
         # effective contribution, not the raw input.
         "creator_score":      gated_creator,
         "awards_score":       _clamp(awards_score),
-        "blog_score":         _clamp(blog_score),
+        "blog_score":         _clamp(gated_blog),
     }
 
     # ------------------------------------------------------------------

@@ -186,11 +186,21 @@ def _fetch_signal_context(db: Session, place_ids: list[str]) -> SignalContext:
     awards_scores: Dict[str, float] = decayed.get("award", {})
     blog_scores: Dict[str, float] = decayed.get("blog", {})
 
-    # Count distinct creator signal rows per place (for consensus gate in v4)
-    creator_mention_counts: Dict[str, int] = {}
+    # Count distinct creator SOURCES per place (for consensus gate in v4).
+    # Deduplicate by provider so a single source with multiple rows still counts as 1.
+    _creator_sources: Dict[str, set] = {}
     for row in signal_rows:
         if row.signal_type == "creator":
-            creator_mention_counts[row.place_id] = creator_mention_counts.get(row.place_id, 0) + 1
+            _creator_sources.setdefault(row.place_id, set()).add(row.provider)
+    creator_mention_counts: Dict[str, int] = {pid: len(s) for pid, s in _creator_sources.items()}
+
+    # Count distinct blog SOURCES per place (for blog consensus gate in v4).
+    # Same provider-dedup logic: one blog source = one mention regardless of row count.
+    _blog_sources: Dict[str, set] = {}
+    for row in signal_rows:
+        if row.signal_type == "blog":
+            _blog_sources.setdefault(row.place_id, set()).add(row.provider)
+    blog_mention_counts: Dict[str, int] = {pid: len(s) for pid, s in _blog_sources.items()}
 
     # Weak creator_score baseline: detect social platform URLs in place.website.
     # This gives 0.30 to places whose website IS a social profile, indicating
@@ -220,6 +230,7 @@ def _fetch_signal_context(db: Session, place_ids: list[str]) -> SignalContext:
         creator_mention_counts=creator_mention_counts,
         awards_scores=awards_scores,
         blog_scores=blog_scores,
+        blog_mention_counts=blog_mention_counts,
     )
 
 
@@ -303,6 +314,7 @@ def _score_batch(db: Session, places: list[Place]) -> tuple[int, Set[str]]:
             creator_mention_count=ctx.creator_mention_count(pid),
             awards_score=ctx.awards_score(pid),
             blog_score=ctx.blog_score(pid),
+            blog_mention_count=ctx.blog_mention_count(pid),
             city_slug=city_slug,
         )
 
