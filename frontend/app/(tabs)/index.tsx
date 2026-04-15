@@ -125,7 +125,7 @@ export default function FeedScreen() {
       {/* App header */}
       <View style={styles.header}>
         <Text style={styles.wordmark}>CRAVE</Text>
-        <View style={{ flex: 1 }} />
+        <View style={styles.spacer} />
         <TouchableOpacity
           style={styles.filterBtn}
           onPress={() => {/* filter sheet — T5 */}}
@@ -215,4 +215,5 @@ const styles = StyleSheet.create({
   },
   wordmark: { fontSize: 26, fontWeight: '900', color: Colors.primary, letterSpacing: 3 },
   filterBtn: { padding: Spacing.sm, minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
+  spacer: { flex: 1 },
 });
