@@ -17,7 +17,7 @@ from app.db.models.place import Place
 from app.db.models.place_image import PlaceImage
 from app.db.models.place_signal import PlaceSignal
 from app.services.scoring.signal_context import SignalContext
-from app.services.scoring.place_score_v3 import compute_place_score_v3
+from app.services.scoring.place_score_v4 import compute_place_score_v4
 from app.services.cache.response_cache import response_cache
 from app.services.cache.cache_keys import _norm
 from app.services.feed.feed_bucket_store import invalidate_bucket
@@ -186,6 +186,12 @@ def _fetch_signal_context(db: Session, place_ids: list[str]) -> SignalContext:
     awards_scores: Dict[str, float] = decayed.get("award", {})
     blog_scores: Dict[str, float] = decayed.get("blog", {})
 
+    # Count distinct creator signal rows per place (for consensus gate in v4)
+    creator_mention_counts: Dict[str, int] = {}
+    for row in signal_rows:
+        if row.signal_type == "creator":
+            creator_mention_counts[row.place_id] = creator_mention_counts.get(row.place_id, 0) + 1
+
     # Weak creator_score baseline: detect social platform URLs in place.website.
     # This gives 0.30 to places whose website IS a social profile, indicating
     # creator-driven discovery. Overridden by any higher signal from PlaceSignal.
@@ -211,6 +217,7 @@ def _fetch_signal_context(db: Session, place_ids: list[str]) -> SignalContext:
         menu_item_counts=menu_counts,
         hitlist_scores=hitlist_scores,
         creator_scores=creator_scores,
+        creator_mention_counts=creator_mention_counts,
         awards_scores=awards_scores,
         blog_scores=blog_scores,
     )
@@ -278,7 +285,7 @@ def _score_batch(db: Session, places: list[Place]) -> tuple[int, Set[str]]:
         if city:
             city_slug = getattr(city, "slug", None) or getattr(city, "name", None)
 
-        result = compute_place_score_v3(
+        result = compute_place_score_v4(
             place_id=pid,
             name=place.name or "",
             lat=place.lat,
@@ -293,6 +300,7 @@ def _score_batch(db: Session, places: list[Place]) -> tuple[int, Set[str]]:
             menu_item_count=ctx.menu_item_count(pid),
             hitlist_score=ctx.hitlist_score(pid),
             creator_score=ctx.creator_score(pid),
+            creator_mention_count=ctx.creator_mention_count(pid),
             awards_score=ctx.awards_score(pid),
             blog_score=ctx.blog_score(pid),
             city_slug=city_slug,

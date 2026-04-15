@@ -90,6 +90,15 @@ class PlaceSignal(Base):
         index=True,
     )
 
+    # signal_class: routing class for this signal
+    # Valid values: "discovery" | "enrichment" | "ranking" | "risk"
+    # None = unclassified (legacy / pre-routing signals)
+    signal_class: Mapped[str | None] = mapped_column(
+        String(20),
+        nullable=True,
+        index=True,
+    )
+
     # -----------------------------------------------------
     # VALUE
     # -----------------------------------------------------
@@ -141,6 +150,7 @@ class PlaceSignal(Base):
         value: float,
         raw_value: str | None = None,
         external_event_id: str | None = None,
+        signal_class: str | None = None,
     ):
         if not place_id:
             raise ValueError("PlaceSignal requires place_id")
@@ -162,6 +172,7 @@ class PlaceSignal(Base):
         self.value = normalized_value
         self.raw_value = raw_value
         self.external_event_id = external_event_id
+        self.signal_class = signal_class
 
     # -----------------------------------------------------
     # IMMUTABILITY GUARD (APPEND-ONLY)

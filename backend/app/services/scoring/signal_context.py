@@ -10,6 +10,7 @@ class SignalContext:
     has_primary: Set[str] = field(default_factory=set)
     hitlist_scores: Dict[str, float] = field(default_factory=dict)
     creator_scores: Dict[str, float] = field(default_factory=dict)
+    creator_mention_counts: Dict[str, int] = field(default_factory=dict)
     awards_scores: Dict[str, float] = field(default_factory=dict)
     blog_scores: Dict[str, float] = field(default_factory=dict)
 
@@ -27,6 +28,9 @@ class SignalContext:
 
     def creator_score(self, place_id: str) -> float:
         return self.creator_scores.get(place_id, 0.0)
+
+    def creator_mention_count(self, place_id: str) -> int:
+        return self.creator_mention_counts.get(place_id, 0)
 
     def awards_score(self, place_id: str) -> float:
         return self.awards_scores.get(place_id, 0.0)
