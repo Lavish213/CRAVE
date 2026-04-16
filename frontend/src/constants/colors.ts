@@ -1,7 +1,7 @@
 // src/constants/colors.ts
 export const Colors = {
   // UI chrome
-  primary:         '#4A90E2',
+  primary:         '#FF3B30',
   background:      '#0A0A0A',
   surface:         '#1A1A1A',
   surfaceElevated: '#252525',

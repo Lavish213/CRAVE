@@ -4,6 +4,12 @@ import { GeoJSONFeature } from './map';
 
 export function normalizePlaceOut(raw: unknown): PlaceOut {
   const p = (raw ?? {}) as Record<string, unknown>;
+  const firstImage = Array.isArray(p.images) && typeof p.images[0] === 'string' ? p.images[0] : null;
+  const primaryImageUrl =
+    (typeof p.primary_image_url === 'string' ? p.primary_image_url : null) ||
+    (typeof p.primary_image === 'string' ? p.primary_image : null) ||
+    firstImage ||
+    null;
   return {
     id: String(p.id ?? ''),
     name: String(p.name ?? 'Unknown'),
@@ -14,12 +20,7 @@ export function normalizePlaceOut(raw: unknown): PlaceOut {
     address: typeof p.address === 'string' ? p.address : null,
     lat: typeof p.lat === 'number' ? p.lat : null,
     lng: typeof p.lng === 'number' ? p.lng : null,
-    primary_image_url:
-      typeof p.primary_image_url === 'string'
-        ? p.primary_image_url
-        : typeof p.primary_image === 'string'
-        ? p.primary_image
-        : null,
+    primary_image_url: primaryImageUrl,
     images: Array.isArray(p.images) ? (p.images as string[]) : [],
     website: typeof p.website === 'string' ? p.website : null,
     grubhub_url: typeof p.grubhub_url === 'string' ? p.grubhub_url : null,
@@ -61,6 +62,16 @@ export function normalizeMapFeatures(raw: unknown): GeoJSONFeature[] {
     const feat = f as Record<string, unknown>;
     const geo = feat?.geometry as Record<string, unknown> | null;
     const coords = geo?.coordinates;
-    return Array.isArray(coords) && typeof coords[0] === 'number' && typeof coords[1] === 'number';
+    if (!Array.isArray(coords)) return false;
+    const lng = coords[0];
+    const lat = coords[1];
+    return (
+      typeof lng === 'number' &&
+      typeof lat === 'number' &&
+      isFinite(lng) &&
+      isFinite(lat) &&
+      lat >= -90 && lat <= 90 &&
+      lng >= -180 && lng <= 180
+    );
   }) as GeoJSONFeature[];
 }
