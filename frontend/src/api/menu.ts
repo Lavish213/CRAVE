@@ -1,4 +1,3 @@
-// src/api/menu.ts
 import { client } from './client';
 
 export interface MenuItem {
@@ -9,7 +8,11 @@ export interface MenuItem {
   category: string | null;
 }
 
+interface MenuResponse {
+  items: MenuItem[];
+}
+
 export async function getPlaceMenu(placeId: string): Promise<MenuItem[]> {
-  const { data } = await client.get<MenuItem[]>(`/api/v1/places/${placeId}/menu`);
-  return data;
+  const { data } = await client.get<MenuResponse>(`/api/v1/places/${placeId}/menu`);
+  return Array.isArray(data?.items) ? data.items : [];
 }

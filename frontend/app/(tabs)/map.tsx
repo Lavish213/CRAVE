@@ -50,7 +50,11 @@ export default function MapScreen() {
   useEffect(() => {
     if (!selectedCity) return;
     setMapError(false);
-    fetchMapGeoJSON({ city_id: selectedCity.id })
+    fetchMapGeoJSON({
+        city_id: selectedCity.id,
+        lat: selectedCity.lat ?? 37.8044,
+        lng: selectedCity.lng ?? -122.2712,
+      })
       .then((fc) => setFeatures(fc.features))
       .catch(() => setMapError(true));
   }, [selectedCity?.id]);

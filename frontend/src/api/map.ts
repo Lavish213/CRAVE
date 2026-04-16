@@ -21,8 +21,11 @@ export interface GeoJSONFeatureCollection {
 
 export async function fetchMapGeoJSON(params: {
   city_id: string;
+  lat: number;
+  lng: number;
   category?: string;
 }): Promise<GeoJSONFeatureCollection> {
   const { data } = await client.get<GeoJSONFeatureCollection>('/api/v1/map/geojson', { params });
-  return data;
+  const features = Array.isArray(data?.features) ? data.features : [];
+  return { type: 'FeatureCollection', features };
 }

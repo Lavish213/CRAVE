@@ -43,7 +43,7 @@ export default function SearchScreen() {
     setLoading(true);
     setError(false);
     try {
-      const data = await searchPlaces({ q, city_id: selectedCity.id, limit: 30 });
+      const data = await searchPlaces({ query: q, city_id: selectedCity.id, limit: 30 });
       setResults(data);
       setSearched(true);
     } catch {

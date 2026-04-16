@@ -2,34 +2,18 @@ import { useEffect } from 'react';
 import { View } from 'react-native';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { fetchCities } from '../src/api/cities';
 import { useCityStore } from '../src/stores/cityStore';
 import { useAuthStore } from '../src/stores/authStore';
 import { Colors } from '../src/constants/colors';
 import { ToastContainer } from '../src/components/Toast';
-import { useToast } from '../src/hooks/useToast';
 
 export default function RootLayout() {
-  const setCities = useCityStore((s) => s.setCities);
-  const selectCity = useCityStore((s) => s.selectCity);
-  const selectedCity = useCityStore((s) => s.selectedCity);
-  const toast = useToast((s) => s.show);
+  const initCities = useCityStore((s) => s.initCities);
   const initAuth = useAuthStore((s) => s.init);
 
-  useEffect(() => { initAuth(); }, []);
-
   useEffect(() => {
-    fetchCities()
-      .then((cities) => {
-        setCities(cities);
-        // Auto-select first city if none selected
-        if (!selectedCity && cities.length > 0) {
-          selectCity(cities[0]);
-        }
-      })
-      .catch(() => {
-        toast('Could not load cities. Check your connection.');
-      });
+    initAuth();
+    initCities();
   }, []);
 
   return (
