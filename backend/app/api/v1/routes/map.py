@@ -205,6 +205,10 @@ def map_places_geojson(
             category_id=_clean_str(category_id),
         )
         payload = GeoJSONFeatureCollection.model_validate(result)
+        logger.info(
+            "API_RESPONSE endpoint=/map/geojson city_id=%s lat=%s lng=%s count=%s",
+            _clean_str(city_id), lat_v, lng_v, len(payload.features),
+        )
     except Exception as exc:
         logger.error("map_geojson_failed lat=%s lng=%s error=%s", lat_v, lng_v, exc)
         return GeoJSONFeatureCollection(features=[])

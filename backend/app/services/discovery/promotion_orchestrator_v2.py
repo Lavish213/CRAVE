@@ -74,12 +74,12 @@ def promote_ready_candidates_v2(
             if place_id:
                 promoted_count += 1
 
+            # Commit after each successful promotion to isolate failures.
+            db.commit()
+
         except Exception:
-            # isolate failure — do not kill batch
+            # Rollback only undoes the current candidate's changes.
             db.rollback()
             continue
-
-    if promoted_count > 0:
-        db.commit()
 
     return promoted_count

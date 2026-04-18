@@ -33,7 +33,7 @@ def search_places(
     db: Session,
     *,
     query: str,
-    city_id: str,
+    city_id: Optional[str] = None,
     category_id: Optional[str] = None,
     price_tier: Optional[int] = None,
     limit: int = DEFAULT_LIMIT,
@@ -51,10 +51,12 @@ def search_places(
     search_term = f"%{query}%"
 
     stmt = select(Place).where(
-        Place.city_id == city_id,
         Place.is_active.is_(True),
         Place.name.ilike(search_term),
     )
+
+    if city_id:
+        stmt = stmt.where(Place.city_id == city_id)
 
     if category_id:
         stmt = (

@@ -40,28 +40,32 @@ def _load_region_file(path: Path) -> List[str]:
 
         return []
 
-    if not isinstance(data, dict):
-
+    # Support both {"cities": [...]} and plain array formats.
+    if isinstance(data, list):
+        city_entries = data
+    elif isinstance(data, dict):
+        city_entries = data.get("cities") or []
+    else:
         logger.warning("city_loader_invalid_format path=%s", path)
-
         return []
 
-    cities = data.get("cities")
-
-    if not isinstance(cities, list):
-
+    if not isinstance(city_entries, list):
         logger.warning("city_loader_missing_cities path=%s", path)
-
         return []
 
     normalized: List[str] = []
 
-    for city in cities:
+    for city in city_entries:
 
         if not city:
             continue
 
-        slug = str(city).strip().lower()
+        # Support both plain string slugs and {name: "..."}  dicts.
+        if isinstance(city, dict):
+            name = city.get("name") or city.get("slug") or ""
+            slug = name.strip().lower().replace(" ", "_")
+        else:
+            slug = str(city).strip().lower().replace(" ", "_")
 
         if slug:
             normalized.append(slug)
@@ -220,6 +224,56 @@ def validate_against_registry(registry_cities: List[str]) -> None:
             "city_loader_registry_not_in_regions cities=%s",
             sorted(missing_regions),
         )
+
+
+# ---------------------------------------------------------
+# Load Cities With Coordinates
+# ---------------------------------------------------------
+
+def load_cities_with_coords() -> List[Dict]:
+    """
+    Return list of {slug, name, lat, lng} for all cities that have coordinates.
+    City JSON files must be arrays of {name, lat, lng, ...} objects.
+    """
+
+    cities: List[Dict] = []
+
+    if not CITY_DATA_DIR.exists():
+        return cities
+
+    for path in sorted(CITY_DATA_DIR.glob("*.json")):
+        try:
+            with path.open("r", encoding="utf-8") as f:
+                data = json.load(f)
+        except Exception as exc:
+            logger.warning("city_loader_coords_failed path=%s error=%s", path, exc)
+            continue
+
+        if isinstance(data, list):
+            entries = data
+        elif isinstance(data, dict):
+            entries = data.get("cities", [])
+        else:
+            logger.warning("city_loader_unexpected_format path=%s type=%s", path, type(data).__name__)
+            entries = []
+
+        for entry in entries:
+            if not isinstance(entry, dict):
+                continue
+            name = str(entry.get("name") or "").strip()
+            lat = entry.get("lat")
+            lng = entry.get("lng")
+            if not name or lat is None or lng is None:
+                continue
+            try:
+                lat = float(lat)
+                lng = float(lng)
+            except (TypeError, ValueError):
+                continue
+            slug = name.lower().replace(" ", "_")
+            cities.append({"slug": slug, "name": name, "lat": lat, "lng": lng})
+
+    return cities
 
 
 # ---------------------------------------------------------

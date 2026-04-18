@@ -55,6 +55,12 @@ class Settings(BaseSettings):
     secret_key: str = "change-me-in-production"
 
     # --------------------------------------------------
+    # EXTERNAL APIS
+    # --------------------------------------------------
+
+    google_places_api_key: str = ""
+
+    # --------------------------------------------------
     # DERIVED PROPERTIES
     # --------------------------------------------------
 

@@ -9,6 +9,7 @@ from app.db.models.place import Place
 from app.db.models.place_image import PlaceImage
 from app.db.models.place_categories import place_categories
 from app.services.geo.bounding_box import bounding_box
+from app.services.query.place_image_query import _to_proxy_url
 
 
 DEFAULT_RADIUS_KM = 5.0
@@ -271,7 +272,7 @@ def fetch_places_for_map_geojson(
                 "tier": _assign_tier(p.get("rank_score", 0.0), thresholds),
                 "rank_score": p.get("rank_score", 0.0),
                 "price_tier": p.get("price_tier"),
-                "primary_image_url": p.get("primary_image_url"),
+                "primary_image_url": _to_proxy_url(p.get("primary_image_url")),
                 "has_menu": False,
             },
         })

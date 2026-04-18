@@ -25,42 +25,131 @@ _CATEGORY_ALIASES = {
     "burger": "burgers",
     "burgers": "burgers",
     "pizza": "pizza",
+    "pizza_restaurant": "pizza",
     "mexican": "mexican",
     "taqueria": "mexican",
     "tacos": "mexican",
+    "tex-mex": "mexican",
+    "tex_mex": "mexican",
+    "mexican_restaurant": "mexican",
     "chinese": "chinese",
+    "chinese_restaurant": "chinese",
+    "dim_sum": "chinese",
+    "dim sum": "chinese",
+    "cantonese": "chinese",
+    "szechuan": "chinese",
     "japanese": "japanese",
     "sushi": "japanese",
+    "ramen": "japanese",
+    "japanese_restaurant": "japanese",
+    "sushi_restaurant": "japanese",
+    "ramen_restaurant": "japanese",
     "thai": "thai",
+    "thai_restaurant": "thai",
     "vietnamese": "vietnamese",
     "pho": "vietnamese",
+    "vietnamese_restaurant": "vietnamese",
     "indian": "indian",
+    "indian_restaurant": "indian",
+    "curry": "indian",
     "mediterranean": "mediterranean",
     "middle eastern": "mediterranean",
+    "middle_eastern": "mediterranean",
     "kebab": "mediterranean",
-    "bbq": "barbecue",
-    "barbecue": "barbecue",
+    "greek": "mediterranean",
+    "turkish": "mediterranean",
+    "lebanese": "mediterranean",
+    "falafel": "mediterranean",
+    "mediterranean_restaurant": "mediterranean",
+    "french": "mediterranean",
+    "french_restaurant": "mediterranean",
+    "spanish": "mediterranean",
+    "peruvian": "mediterranean",
+    "ethiopian": "mediterranean",
+    "african": "mediterranean",
+    "bbq": "bbq",
+    "barbecue": "bbq",
+    "barbecue_restaurant": "bbq",
+    "smokehouse": "bbq",
     "seafood": "seafood",
-    "steak": "steakhouse",
-    "steakhouse": "steakhouse",
+    "seafood_restaurant": "seafood",
+    "fish": "seafood",
+    "fish_and_chips": "seafood",
+    "steak": "american",
+    "steakhouse": "american",
+    "american": "american",
+    "american_restaurant": "american",
+    "diner": "american",
+    "sandwich": "american",
+    "sandwich_shop": "american",
+    "hot_dog": "american",
+    "wings": "american",
+    "caribbean": "american",
+    "soul_food": "american",
+    "southern": "american",
     "cafe": "cafe",
-    "coffee": "cafe",
+    "coffee": "coffee",
+    "coffee_shop": "coffee",
+    "tea": "coffee",
+    "tea_house": "coffee",
+    "bubble_tea": "coffee",
+    "cafe_restaurant": "cafe",
     "bakery": "bakery",
+    "pastry": "bakery",
+    "patisserie": "bakery",
     "dessert": "desserts",
     "desserts": "desserts",
+    "ice_cream": "desserts",
     "ice cream": "desserts",
-    "food truck": "food trucks",
-    "food trucks": "food trucks",
-    "restaurant": "restaurants",
-    "restaurants": "restaurants",
-    "fast food": "fast food",
+    "frozen_yogurt": "desserts",
+    "donut": "desserts",
+    "donuts": "desserts",
+    "dessert_shop": "desserts",
+    "food truck": "restaurant",
+    "food trucks": "restaurant",
+    "food_truck": "restaurant",
+    "restaurant": "restaurant",
+    "restaurants": "restaurant",
+    "fast food": "fast casual",
+    "fast_food": "fast casual",
+    "fast_food_restaurant": "fast casual",
+    "meal_takeaway": "fast casual",
+    "fast casual": "fast casual",
+    "fast_casual": "fast casual",
+    "korean": "korean",
+    "korean_restaurant": "korean",
+    "bulgogi": "korean",
+    "italian": "italian",
+    "italian_restaurant": "italian",
+    "pasta": "italian",
+    "brunch": "breakfast",
+    "breakfast": "breakfast",
+    "breakfast_restaurant": "breakfast",
+    "brunch_restaurant": "breakfast",
+    "vegan": "vegan",
+    "vegetarian": "vegan",
+    "vegetarian_restaurant": "vegan",
+    "vegan_restaurant": "vegan",
+    "bar": "bar",
+    "pub": "bar",
+    "wine_bar": "bar",
+    "sports_bar": "bar",
+    "night_club": "bar",
+    "cocktail_bar": "bar",
+    "beer_garden": "bar",
+    "biergarten": "bar",
+    "halal": "halal",
+    "kosher": "kosher",
+    "fine_dining": "fine dining",
+    "fine dining": "fine dining",
+    "upscale": "fine dining",
+    "bistro": "fine dining",
 }
 
 
 def _clean(value: Any) -> Optional[str]:
     if value is None:
         return None
-
     try:
         cleaned = str(value).strip()
         return cleaned or None
@@ -71,7 +160,6 @@ def _clean(value: Any) -> Optional[str]:
 def _safe_float(value: Any) -> Optional[float]:
     if value is None or value == "":
         return None
-
     try:
         return float(value)
     except Exception:
@@ -80,16 +168,12 @@ def _safe_float(value: Any) -> Optional[float]:
 
 def _clamp_confidence(value: Any) -> float:
     parsed = _safe_float(value)
-
     if parsed is None:
         return DEFAULT_CONFIDENCE
-
     if parsed < 0.0:
         return 0.0
-
     if parsed > 1.0:
         return 1.0
-
     return parsed
 
 
@@ -97,7 +181,6 @@ def _normalize_name(name: Any) -> Optional[str]:
     cleaned = _clean(name)
     if not cleaned:
         return None
-
     cleaned = re.sub(r"\s+", " ", cleaned).strip()
     return cleaned or None
 
@@ -115,11 +198,7 @@ def _tokenize(value: str) -> list[str]:
     return [part for part in value.split() if part]
 
 
-def _best_city_from_address(
-    *,
-    db: Session,
-    address: Optional[str],
-) -> Optional[City]:
+def _best_city_from_address(*, db: Session, address: Optional[str]) -> Optional[City]:
     if not address:
         return None
 
@@ -132,7 +211,6 @@ def _best_city_from_address(
     for city in cities:
         name = _clean(getattr(city, "name", None))
         slug = _clean(getattr(city, "slug", None))
-
         score = 0.0
 
         if name and name.lower() in lowered:
@@ -153,29 +231,17 @@ def _best_city_from_address(
     return None
 
 
-def _distance_score(
-    city_lat: Optional[float],
-    city_lng: Optional[float],
-    lat: float,
-    lng: float,
-) -> float:
+def _distance_score(city_lat, city_lng, lat, lng) -> float:
     if city_lat is None or city_lng is None:
         return float("inf")
-
     return math.sqrt((city_lat - lat) ** 2 + (city_lng - lng) ** 2)
 
 
-def _nearest_city_from_coords(
-    *,
-    db: Session,
-    lat: Optional[float],
-    lng: Optional[float],
-) -> Optional[City]:
+def _nearest_city_from_coords(*, db: Session, lat: Optional[float], lng: Optional[float]) -> Optional[City]:
     if lat is None or lng is None:
         return None
 
     cities = db.query(City).all()
-
     best_city: Optional[City] = None
     best_distance = float("inf")
 
@@ -183,7 +249,6 @@ def _nearest_city_from_coords(
         city_lat = _safe_float(getattr(city, "lat", None))
         city_lng = _safe_float(getattr(city, "lng", None))
         distance = _distance_score(city_lat, city_lng, lat, lng)
-
         if distance < best_distance:
             best_distance = distance
             best_city = city
@@ -220,10 +285,9 @@ def _resolve_city(
 
     clean_city_name = _clean(city_name)
     if clean_city_name:
-        normalized_name = clean_city_name.lower()
         city = (
             db.query(City)
-            .filter(func.lower(City.name) == normalized_name)
+            .filter(func.lower(City.name) == clean_city_name.lower())
             .one_or_none()
         )
         if city:
@@ -252,8 +316,13 @@ def _resolve_category(
     if not clean_hint:
         return None
 
-    hint = clean_hint.lower()
-    alias_target = _CATEGORY_ALIASES.get(hint)
+    hint = clean_hint.lower().strip()
+
+    alias_target = (
+        _CATEGORY_ALIASES.get(hint)
+        or _CATEGORY_ALIASES.get(hint.replace("-", "_").replace(" ", "_"))
+        or _CATEGORY_ALIASES.get(hint.replace("_", " ").replace("-", " "))
+    )
 
     candidate_strings = [hint]
     if alias_target and alias_target not in candidate_strings:
@@ -268,7 +337,6 @@ def _resolve_category(
     for category in categories:
         name = _clean(getattr(category, "name", None)) or ""
         slug = _clean(getattr(category, "slug", None)) or ""
-
         haystack = f"{name} {slug}".lower()
         score = -1
 
@@ -277,11 +345,13 @@ def _resolve_category(
                 score = max(score, 100)
             elif candidate and candidate in haystack:
                 score = max(score, 80)
+            elif haystack and haystack in candidate:
+                score = max(score, 60)
 
         category_tokens = set(_tokenize(haystack))
         overlap = len(set(hint_tokens) & category_tokens)
         if overlap > 0:
-            score = max(score, overlap)
+            score = max(score, overlap * 10)
 
         if score > best_score:
             best_score = score

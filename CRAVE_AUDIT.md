@@ -1,6 +1,7 @@
 # CRAVE DATA RECOVERY AUDIT
 
-Generated: 2026-04-16
+Generated: 2026-04-16  
+Last updated: 2026-04-16
 
 ---
 
@@ -26,92 +27,88 @@ Generated: 2026-04-16
 
 ## ENDPOINT MISMATCH TABLE
 
-| Endpoint | URL | Actual response shape | Frontend expects | Mismatch | Bug |
-|----------|-----|----------------------|-----------------|---------|-----|
-| cities | GET /api/v1/cities | `[{id, name, slug, lat, lng}]` | `CityOut[]` | ✅ match | none |
-| feed | GET /api/v1/places?city_id=X | `{total, page, page_size, items:[PlaceOut]}` | `PlacesResponse` | ✅ match | none if city selected |
-| trending | GET /api/v1/trending?city_id=X | `{total, page, page_size, items:[PlaceOut]}` | `{items:PlaceOut[]}` → `.items` | ✅ match (unwrapped correctly) | none |
-| place detail | GET /api/v1/place/{id} | `{id,name,images:[url],primary_image_url,...}` | `PlaceOut` | ✅ match | none |
-| menu | GET /api/v1/places/{id}/menu | `{items:[]}` (object) | `MenuItem[]` (array) | ❌ SHAPE MISMATCH | menuItems.slice crash |
-| map geojson | GET /api/v1/map/geojson | requires `lat`,`lng`,`city_id` | called with `city_id` only | ❌ MISSING REQUIRED PARAMS | 422 → map error banner |
-| search | GET /api/v1/search | requires `query`, returns `{total,page,page_size,items}` | sends `q`, expects `PlaceOut[]` | ❌ TWO MISMATCHES | 422 on search |
-| search items | (in search response) | field: `primary_image` | field: `primary_image_url` | ❌ FIELD NAME MISMATCH | no images in search |
+| Endpoint | URL | Actual response shape | Frontend expects | Mismatch | Status |
+|----------|-----|----------------------|-----------------|---------|--------|
+| cities | GET /api/v1/cities | `[{id, name, slug, lat, lng}]` | `CityOut[]` | ✅ match | fixed |
+| feed | GET /api/v1/places?city_id=X | `{total, page, page_size, items:[PlaceOut]}` | `PlacesResponse` | ✅ match | fixed |
+| trending | GET /api/v1/trending?city_id=X | `{total, page, page_size, items:[PlaceOut]}` | `{items:PlaceOut[]}` | ✅ match | fixed |
+| place detail | GET /api/v1/place/{id} | `{id,name,images:[url],primary_image_url,...}` | `PlaceOut` | ✅ match | fixed |
+| menu | GET /api/v1/places/{id}/menu | `{items:[]}` (object) | `MenuItem[]` (array) | ❌ SHAPE MISMATCH → fixed | fixed — unwrapped `data.items` |
+| map geojson | GET /api/v1/map/geojson | requires `lat`,`lng`,`city_id` | called with `city_id` only | ❌ MISSING REQUIRED PARAMS → fixed | fixed — sends `lat`/`lng` |
+| search | GET /api/v1/search | requires `query`, returns `{total,page,page_size,items}` | sent `q`, expected `PlaceOut[]` | ❌ TWO MISMATCHES → fixed | fixed — `q→query`, unwrap `.items` |
+| search items | (in search response) | field: `primary_image` | field: `primary_image_url` | ❌ FIELD NAME MISMATCH → fixed | fixed — normalizePlaceOut handles both |
 
 ---
 
 ## ROOT CAUSES
 
 ### 1. Feed empty on first install
-**Classification: FILTER_MISMATCH**
+**Classification: FILTER_MISMATCH** — FIXED  
 - `selectedCity` is null on first install (no city persisted to AsyncStorage)
-- `fetchPlaces` only fires when `selectedCity != null` (index.tsx)
-- Feed shows empty skeleton indefinitely
-- Fix: auto-select first city after cities load if nothing persisted
+- `fetchPlaces` only fires when `selectedCity != null`
+- Fix: `initCities()` auto-selects SF (fallback: first city) if `selectedCity` is null; `index.tsx` calls `initCities()` when city is null before returning
 
 ### 2. Map "Could not load places"
-**Classification: REQUEST_FAILURE**
-- File: `src/api/map.ts:22`
-- `fetchMapGeoJSON({ city_id })` sends no `lat`/`lng`
-- Backend: `map.py` — both `lat: float = Query(...)` and `lng: float = Query(...)` are required
-- FastAPI returns 422 before function runs
-- Map screen catch at `map.tsx:54` sets `mapError = true`
-- Fix: pass `selectedCity.lat` / `selectedCity.lng` in the request
+**Classification: REQUEST_FAILURE** — FIXED  
+- `fetchMapGeoJSON({ city_id })` sent no `lat`/`lng` → backend 422
+- Fix: passes `selectedCity.lat` / `selectedCity.lng`; returns `NormalizedMapFeature[]`; coordinate extracted as `{ lat: coords[1], lng: coords[0] }`
 
 ### 3. menuItems.slice crash
-**Classification: PARSING_FAILURE**
-- File: `src/api/menu.ts:12` — typed as returning `MenuItem[]` but API returns `{items: MenuItem[]}`
-- File: `app/place/[id].tsx:134` — `menuItems.slice(0, 5)` crashes when `menuItems` is object
-- Axios returns `{items:[]}` as `data`, frontend stores it as `menuItems` (object not array)
-- `menuItems.slice` → TypeError: not a function
-- Also: DB has 0 menu items — even after fix, menu is empty
-- Fix: unwrap `data.items` in `getPlaceMenu`
+**Classification: PARSING_FAILURE** — FIXED  
+- API returns `{items: MenuItem[]}`, frontend stored as `menuItems` (object), `.slice()` crashed
+- Fix: `getPlaceMenu` unwraps `data.items`; DB has 0 menu items so menu section stays empty but no crash
 
 ### 4. Search never returns results
-**Classification: REQUEST_FAILURE + PARSING_FAILURE (two bugs)**
-- Bug A: `src/api/search.ts:7` — sends `q` param, backend expects `query` → 422 every search
-- Bug B: `src/api/search.ts:10` — typed as `PlaceOut[]` but API returns `{total,page,page_size,items}`
-- Bug C: search `PlaceCardOut` uses field `primary_image`, frontend `PlaceOut` has `primary_image_url`
-- Fix: rename `q` → `query`, unwrap `.items`, remap image field
+**Classification: REQUEST_FAILURE + PARSING_FAILURE** — FIXED  
+- Bug A: sent `q` param, backend expects `query` → 422
+- Bug B: expected `PlaceOut[]` but API returns `{total,page,page_size,items}`
+- Bug C: search returns `primary_image`, normalization expected `primary_image_url`
+- Fix: `query` param, unwrap `.items`, `normalizePlaceOut` handles both field names
 
-### 5. City mismatch
-**Classification: FILTER_MISMATCH**
-- City IDs are UUIDs from DB — correctly used everywhere as `selectedCity.id`
-- No slug/name mismatch in queries
-- Root issue is just null selectedCity on first load (see #1)
+### 5. Images not rendering
+**Classification: NORMALIZATION MISSING** — FIXED (code-level)  
+- `normalizePlaceOut` was created but never wired into `fetchPlaces`, `fetchTrending`, `fetchPlaceDetail`
+- All UI components used different field names (`primary_image_url`, `primary_image`, `images[0]`)
+- Fix: canonical `image` field on `PlaceOut` with fallback chain; all components use `place.image`
+
+### 6. City auto-select / first load
+**Classification: STORE MISSING ACTION** — FIXED (code-level)  
+- No `initCities()` — cities never fetched on first install, `selectedCity` stayed null forever
+- Fix: `initCities()` added to `cityStore`, called from `_layout.tsx` and `index.tsx`
 
 ---
 
-## PHASE 3 — CANONICAL MODELS
+## CANONICAL MODELS (as implemented)
 
 ```typescript
-NormalizedPlace {
+PlaceOut {
   id: string
   name: string
   city_id: string
-  lat: number | null
-  lng: number | null
   rank_score: number
-  price_tier: number | null
-  primary_image_url: string | null
-  images: string[]
-  category: string
+  category: string | null
   categories: string[]
   address: string | null
+  lat: number | null
+  lng: number | null
+  image: string | null              // canonical — primary_image_url || primary_image || images[0]
+  primary_image_url: string | null  // kept for compat (equals image)
+  images: string[]
   website: string | null
   grubhub_url: string | null
   has_menu: boolean
+  price_tier: number | null
 }
 
-NormalizedMenuItem {
+NormalizedMapFeature {
   id: string
   name: string
-  price: number | null
-  description: string | null
-  category: string | null
-}
-
-NormalizedMenuResponse {
-  items: NormalizedMenuItem[]
+  coordinate: { lat: number; lng: number }
+  tier: 'elite' | 'trusted' | 'solid' | 'default'
+  rank_score: number
+  price_tier: number | null
+  image: string | null
+  has_menu: boolean
 }
 
 NormalizedCity {
@@ -122,54 +119,52 @@ NormalizedCity {
   lng: number | null
 }
 
-NormalizedMapFeature {
+MenuItem {
   id: string
   name: string
-  coordinate: { latitude: number; longitude: number }
-  tier: string
-  rank_score: number
-  primary_image_url: string | null
+  price: number | null
+  description: string | null
+  category: string | null
 }
 ```
 
 ---
 
-## PHASE 4 — FIX PLAN
+## PHASE STATUS
 
-Priority order: menu crash → search fix → map fix → city auto-select → normalization layer
-
-### Fix 1: `src/api/menu.ts`
-- Unwrap `data.items` instead of returning `data` directly
-- API returns `{ items: MenuItem[] }` not `MenuItem[]`
-
-### Fix 2: `src/api/search.ts`
-- Rename param `q` → `query`
-- Unwrap `data.items` from paginated response
-- Add `primary_image` → `primary_image_url` remap
-
-### Fix 3: `src/api/map.ts`
-- `fetchMapGeoJSON` must accept `lat` and `lng`
-- Map screen passes `selectedCity.lat` / `selectedCity.lng`
-
-### Fix 4: `src/stores/cityStore.ts` + init
-- Auto-select first city after cities load if `selectedCity` is null
-- Add `initCities` action that fetches + auto-selects
-
-### Fix 5: Normalization layer
-- New file: `src/api/normalize.ts`
-- `normalizePlaceOut`, `normalizeMenuItems`, `normalizeMapFeatures`
-
-### Fix 6: Color
-- `src/constants/colors.ts` — change `primary` from red to eye-friendly blue
-- Research: #4A90D9 (soft medium blue, low saturation, comfortable for long use)
+| Phase | Description | Status |
+|-------|-------------|--------|
+| 1 | Audit | ✅ complete |
+| 2 | Backend migration (SQLite → PostgreSQL) | ✅ complete |
+| 3 | Canonical models | ✅ complete |
+| 4 | Fix plan | ✅ complete |
+| 5 | React Query migration (feed/map/search/detail) | 🔴 open |
+| 6 | API contract fixes (menu, search, map, normalization wiring) | ✅ complete |
+| 7 | Rendering + state fixes (feed first load, images, map markers) | ⚠️ code complete — not runtime verified |
+| 8–9 | Honest empty/error/loading states + dev diagnostics | 🔴 open |
+| 10 | Normalization tests | 🔴 open |
 
 ---
 
-## PHASE 5 — SUCCESS CRITERIA
+## CURRENT VERIFIED RUNTIME STATUS
 
-- [ ] Feed shows real restaurants after city auto-selected
-- [ ] Map loads pins without error
-- [ ] Search returns results with correct param name
-- [ ] Place detail never crashes on menu
-- [ ] Images show in search results
-- [ ] All data goes through normalization
+> Code-level fixes applied. Runtime verification not yet performed (app not launched against production backend during this session).
+
+| Screen | Code Fix Applied | Runtime Verified |
+|--------|-----------------|-----------------|
+| Feed | ✅ initCities wired, normalizePlaceOut wired | ❌ not verified |
+| Map | ✅ lat/lng sent, NormalizedMapFeature used | ❌ not verified |
+| Search | ✅ query param fixed, normalizePlaceOut wired | ❌ not verified |
+| Detail | ✅ allImages uses place.image, menu unwrapped | ❌ not verified |
+| Saves | ✅ no contract changes required | ❌ not verified |
+
+---
+
+## PHASE 7 SUCCESS CRITERIA
+
+- [ ] Feed shows real restaurants after cold launch with no persisted city
+- [ ] Map loads pins without error banner
+- [ ] Search returns results for a real query (e.g. "pizza")
+- [ ] Place detail opens without crash, menu section empty but no TypeError
+- [ ] Images render in feed cards, search results, and detail gallery
+- [ ] All data confirmed flowing through normalizePlaceOut

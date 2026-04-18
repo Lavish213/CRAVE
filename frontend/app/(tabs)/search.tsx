@@ -1,5 +1,5 @@
 // app/(tabs)/search.tsx
-import React, { useCallback, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -11,8 +11,10 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import { useQuery } from '@tanstack/react-query';
 import { useCityStore } from '../../src/stores/cityStore';
 import { searchPlaces } from '../../src/api/search';
+import { useLocation } from '../../src/hooks/useLocation';
 import { PlaceOut } from '../../src/api/places';
 import { useTrending } from '../../src/hooks/useTrending';
 import { Colors, Spacing } from '../../src/constants/colors';
@@ -23,51 +25,52 @@ import { EmptyState } from '../../src/components/EmptyState';
 export default function SearchScreen() {
   const router = useRouter();
   const selectedCity = useCityStore((s) => s.selectedCity);
+  const userLocation = useLocation();
 
   const trending = useTrending();
 
   const [query, setQuery] = useState('');
-  const [results, setResults] = useState<PlaceOut[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(false);
-  const [searched, setSearched] = useState(false);
+  const [debouncedQuery, setDebouncedQuery] = useState('');
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const doSearch = useCallback(async (q: string) => {
-    if (!q.trim() || !selectedCity) {
-      setResults([]);
-      setSearched(false);
-      return;
-    }
-    setLoading(true);
-    setError(false);
-    try {
-      const data = await searchPlaces({ query: q, city_id: selectedCity.id, limit: 30 });
-      setResults(data);
-      setSearched(true);
-    } catch {
-      setError(true);
-    } finally {
-      setLoading(false);
-    }
-  }, [selectedCity]);
+  const { data: searchData, isLoading: searchLoading, isError: searchError } = useQuery({
+    queryKey: ['search', debouncedQuery, selectedCity?.id, userLocation],
+    queryFn: () => searchPlaces({
+      query: debouncedQuery,
+      city_id: selectedCity?.id,
+      lat: userLocation?.lat,
+      lng: userLocation?.lng,
+      limit: 30,
+    }),
+    enabled: debouncedQuery.length >= 2,
+    staleTime: 60 * 1000,  // 1 min
+  });
+
+  const results = searchData ?? [];
+  const searched = debouncedQuery.length >= 2 && !searchLoading && searchData !== undefined;
+
+  if (__DEV__ && searchData) {
+    console.log('[SEARCH] RENDER_INPUT', { query: debouncedQuery, count: results.length, sample: results[0] ? { id: results[0].id, category: results[0].category } : null });
+  }
 
   const handleChange = (text: string) => {
     setQuery(text);
     if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => doSearch(text), 350);
+    if (!text.trim()) {
+      setDebouncedQuery('');
+      return;
+    }
+    debounceRef.current = setTimeout(() => setDebouncedQuery(text), 350);
   };
 
   const handleClear = () => {
     setQuery('');
-    setResults([]);
-    setSearched(false);
-    setError(false);
+    setDebouncedQuery('');
   };
 
-  const showTrending = !searched && !loading && query.length === 0;
-  const showNoResults = searched && !loading && results.length === 0 && !error;
+  const showTrending = !searched && !searchLoading && query.length === 0;
+  const showNoResults = searched && results.length === 0 && !searchError;
 
   return (
     <View style={styles.container}>
@@ -82,7 +85,7 @@ export default function SearchScreen() {
             value={query}
             onChangeText={handleChange}
             returnKeyType="search"
-            onSubmitEditing={() => doSearch(query)}
+            onSubmitEditing={() => setDebouncedQuery(query)}
             autoCorrect={false}
             accessibilityLabel="Search input"
           />
@@ -97,21 +100,21 @@ export default function SearchScreen() {
             </TouchableOpacity>
           )}
         </View>
-        {selectedCity && (
-          <Text style={styles.cityContext}>Searching in {selectedCity.name}</Text>
-        )}
+        <Text style={styles.cityContext}>
+          {selectedCity ? `Searching in ${selectedCity.name}` : 'Searching everywhere'}
+        </Text>
       </View>
 
       {/* Loading */}
-      {loading && (
+      {searchLoading && (
         <View style={styles.loadingRow}>
           <ActivityIndicator color={Colors.primary} size="small" />
         </View>
       )}
 
       {/* Error */}
-      {error && !loading && (
-        <ErrorState message="Search failed" onRetry={() => doSearch(query)} />
+      {searchError && !searchLoading && (
+        <ErrorState message="Search failed" onRetry={() => setDebouncedQuery(query)} />
       )}
 
       {/* Trending empty state */}
@@ -140,13 +143,13 @@ export default function SearchScreen() {
       {showNoResults && (
         <EmptyState
           icon="search-outline"
-          title="No results in this city"
-          body="Nothing matched. Try broader terms or switch cities."
+          title="No results"
+          body="Nothing matched. Try broader terms."
         />
       )}
 
       {/* Results */}
-      {!showTrending && !showNoResults && !error && results.length > 0 && (
+      {!showTrending && !showNoResults && !searchError && results.length > 0 && (
         <FlatList
           data={results}
           keyExtractor={(p) => p.id}

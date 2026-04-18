@@ -13,14 +13,19 @@ def execute_search(
     db: Session,
     *,
     query: str,
-    city_id: str,
+    city_id: Optional[str] = None,
     category_id: Optional[str] = None,
     price_tier: Optional[int] = None,
+    lat: Optional[float] = None,
+    lng: Optional[float] = None,
     limit: int = 20,
     offset: int = 0,
 ) -> Tuple[List[Place], int]:
     """
     Execute a place search and apply post-query ranking.
+
+    When lat/lng provided, proximity is incorporated into ranking so
+    nearby relevant results surface above distant ones of equal quality.
 
     Returns (places, total_count).
     """
@@ -35,6 +40,6 @@ def execute_search(
         offset=offset,
     )
 
-    ranked = rank_search_results(list(places), query=query)
+    ranked = rank_search_results(list(places), query=query, lat=lat, lng=lng)
 
     return ranked, total

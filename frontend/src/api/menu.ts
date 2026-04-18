@@ -1,4 +1,5 @@
 import { client } from './client';
+import { normalizeMenuItems } from './normalize';
 
 export interface MenuItem {
   id: string;
@@ -14,5 +15,5 @@ interface MenuResponse {
 
 export async function getPlaceMenu(placeId: string): Promise<MenuItem[]> {
   const { data } = await client.get<MenuResponse>(`/api/v1/places/${placeId}/menu`);
-  return Array.isArray(data?.items) ? data.items : [];
+  return normalizeMenuItems(data);
 }

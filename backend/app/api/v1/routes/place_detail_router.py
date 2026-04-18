@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import logging
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import select
 from sqlalchemy.orm import Session
+
+logger = logging.getLogger(__name__)
 
 from app.db.session import get_db
 from app.core.rate_limit import rate_limit
@@ -16,6 +19,7 @@ from app.db.models.place_categories import place_categories
 from app.services.cache.response_cache import response_cache
 from app.services.cache.cache_keys import place_detail_key
 from app.services.cache.cache_ttl import place_detail_ttl
+from app.services.query.place_image_query import _to_proxy_url
 
 
 router = APIRouter(
@@ -80,14 +84,15 @@ def get_place_detail(
     image_urls: List[str] = []
 
     for img in images:
-        if not img.url or img.url in seen:
+        raw = img.url
+        if not raw or raw in seen:
             continue
-        seen.add(img.url)
-        image_urls.append(img.url)
+        seen.add(raw)
+        proxied = _to_proxy_url(raw)
+        if proxied:
+            image_urls.append(proxied)
 
-    # fallback (prevents empty UI cards)
-    if not image_urls:
-        image_urls = ["https://via.placeholder.com/800x600?text=No+Image"]
+    # No image = null; UI handles gracefully
 
     # --------------------------------------------------
     # Categories (stable + dedup)
@@ -100,22 +105,28 @@ def get_place_detail(
             place_categories.c.category_id == Category.id,
         )
         .where(place_categories.c.place_id == place_id)
-        .order_by(
-            Category.name.asc(),
-            Category.id.asc(),
-        )
+        .order_by(Category.name.asc(), Category.id.asc())
     )
 
     categories = db.execute(cat_stmt).scalars().all()
 
-    seen_cat = set()
-    category_names: List[str] = []
+    _GENERIC = {"restaurant", "restaurants", "bar", "bars", "other", "others"}
+    seen_cat: set = set()
+    specific_names: List[str] = []
+    generic_names: List[str] = []
 
     for c in categories:
-        if not c.name or c.name in seen_cat:
+        name = (c.name or "").strip()
+        if not name or name in seen_cat:
             continue
-        seen_cat.add(c.name)
-        category_names.append(c.name)
+        seen_cat.add(name)
+        if name.lower() in _GENERIC:
+            generic_names.append(name)
+        else:
+            specific_names.append(name)
+
+    # Specific categories first; fall back to generic if nothing specific
+    category_names = specific_names or generic_names
 
     # --------------------------------------------------
     # Response
@@ -145,6 +156,11 @@ def get_place_detail(
         "created_at": place.created_at,
         "updated_at": place.updated_at,
     }
+
+    logger.info(
+        "API_RESPONSE endpoint=/place/%s name=%s categories=%s images=%s lat=%s lng=%s",
+        place_id, place.name, category_names, len(image_urls), place.lat, place.lng,
+    )
 
     # --------------------------------------------------
     # Cache

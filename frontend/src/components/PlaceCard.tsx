@@ -1,4 +1,3 @@
-// src/components/PlaceCard.tsx
 import React, { useRef } from 'react';
 import {
   Animated, Share, StyleSheet, Text, TouchableOpacity, View, ViewStyle,
@@ -7,9 +6,9 @@ import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { PlaceOut } from '../api/places';
-import { getTier, getSignalContext } from '../utils/scoring';
+import { getTier, formatPrice, getBadges } from '../utils/scoring';
+// formatPrice imported for fallback; normalized places already have place.price
 import { TierBadge } from './TierBadge';
-import { TrustLine } from './TrustLine';
 import { Colors, Spacing, Radius } from '../constants/colors';
 
 const SAVE_HIT_SLOP = { top: 8, bottom: 8, left: 8, right: 8 } as const;
@@ -25,7 +24,8 @@ interface Props {
 
 export function PlaceCard({ place, onPress, onSave, saved, style }: Props) {
   const tier = getTier(place.rank_score);
-  const context = getSignalContext(place);
+  const price = place.price ?? formatPrice(place);
+  const badges = getBadges(place);
   const saveScale = useRef(new Animated.Value(1)).current;
 
   const handleSave = () => {
@@ -35,6 +35,14 @@ export function PlaceCard({ place, onPress, onSave, saved, style }: Props) {
     ]).start();
     onSave();
   };
+
+  const categoryLabel = place.category ?? null;
+  const distanceLabel = place.distance_miles != null
+    ? place.distance_miles < 0.1 ? 'Here'
+    : place.distance_miles < 10 ? `${place.distance_miles.toFixed(1)} mi`
+    : `${Math.round(place.distance_miles)} mi`
+    : null;
+  const metaParts = [categoryLabel, price, distanceLabel].filter(Boolean);
 
   return (
     <TouchableOpacity
@@ -46,30 +54,35 @@ export function PlaceCard({ place, onPress, onSave, saved, style }: Props) {
       onLongPress={() => {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
         Share.share({
-          message: `${place.name} — ${place.category ?? 'Restaurant'} in ${place.address ? place.address.split(',').pop()?.trim() ?? 'your city' : 'your city'}. Found on CRAVE.`,
+          message: `${place.name} — ${categoryLabel ?? 'Restaurant'} in ${place.address ? place.address.split(',').pop()?.trim() ?? 'your city' : 'your city'}. Found on CRAVE.`,
         }).catch(() => {});
       }}
       delayLongPress={400}
       activeOpacity={0.85}
       accessibilityRole="button"
-      accessibilityLabel={`${place.name}, ${place.category ?? 'Restaurant'}, ${tier.label}`}
+      accessibilityLabel={`${place.name}, ${categoryLabel ?? 'Restaurant'}, ${tier.label}`}
     >
       <View style={styles.imageContainer}>
-        <Image
-          source={place.primary_image_url ?? undefined}
-          style={styles.image}
-          contentFit="cover"
-          placeholder={{ blurhash: 'L6PZfSi_.AyE_3t7t7R**0o#DgR4' }}
-          transition={200}
-        />
-        {/* gradient scrim — two-layer opacity fallback (expo-linear-gradient not installed) */}
-        <View style={styles.scrimTop} />
+        {place.image ? (
+          <Image
+            source={place.image}
+            style={styles.image}
+            contentFit="cover"
+            placeholder={{ blurhash: 'L6PZfSi_.AyE_3t7t7R**0o#DgR4' }}
+            transition={200}
+          />
+        ) : (
+          <View style={styles.imageFallback}>
+            <Text style={styles.imageFallbackInitial}>
+              {(place.name || '?')[0].toUpperCase()}
+            </Text>
+            {categoryLabel && (
+              <Text style={styles.imageFallbackCategory}>{categoryLabel}</Text>
+            )}
+          </View>
+        )}
         <View style={styles.scrimBottom} />
-
-        {/* Tier badge — top left */}
         <TierBadge tier={tier} style={styles.tierBadge} />
-
-        {/* Save — top right */}
         <TouchableOpacity
           style={styles.saveBtn}
           onPress={handleSave}
@@ -86,11 +99,20 @@ export function PlaceCard({ place, onPress, onSave, saved, style }: Props) {
 
       <View style={styles.body}>
         <Text style={styles.name} numberOfLines={1}>{place.name}</Text>
-        <Text style={styles.meta} numberOfLines={1}>
-          {place.category ?? 'Restaurant'}
-          {place.price_tier ? '  ·  ' + '$'.repeat(place.price_tier) : ''}
-        </Text>
-        <TrustLine text={context} color={tier.color} />
+        {metaParts.length > 0 && (
+          <Text style={styles.meta} numberOfLines={1}>
+            {metaParts.join('  ·  ')}
+          </Text>
+        )}
+        {badges.length > 0 && (
+          <View style={styles.badgeRow}>
+            {badges.map((b) => (
+              <View key={b.label} style={styles.chip}>
+                <Text style={styles.chipText}>{b.emoji} {b.label}</Text>
+              </View>
+            ))}
+          </View>
+        )}
       </View>
     </TouchableOpacity>
   );
@@ -106,15 +128,6 @@ const styles = StyleSheet.create({
   },
   imageContainer: { position: 'relative' },
   image: { width: '100%', height: IMAGE_HEIGHT },
-  // Two-layer gradient scrim: transparent top half fading to dark at bottom
-  scrimTop: {
-    position: 'absolute',
-    bottom: 50,
-    left: 0,
-    right: 0,
-    height: 50,
-    backgroundColor: 'rgba(0,0,0,0)',
-  },
   scrimBottom: {
     position: 'absolute',
     bottom: 0,
@@ -126,13 +139,42 @@ const styles = StyleSheet.create({
   tierBadge: { position: 'absolute', top: Spacing.sm, left: Spacing.sm },
   saveBtn: {
     position: 'absolute',
-    top: 6, // intentional: midpoint between xs(4) and sm(8)
+    top: 6,
     right: Spacing.sm,
-    padding: 6, // intentional: midpoint between xs(4) and sm(8)
+    padding: 6,
     backgroundColor: 'rgba(0,0,0,0.45)',
     borderRadius: Radius.pill,
   },
   body: { padding: Spacing.lg, paddingTop: Spacing.md, gap: Spacing.xs },
   name: { fontSize: 18, fontWeight: '800', color: Colors.text },
   meta: { fontSize: 13, color: Colors.textSecondary },
+  badgeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 2 },
+  chip: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    backgroundColor: Colors.border,
+    borderRadius: Radius.pill,
+  },
+  chipText: { fontSize: 12, color: Colors.textSecondary },
+  imageFallback: {
+    width: '100%',
+    height: IMAGE_HEIGHT,
+    backgroundColor: Colors.surfaceElevated,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  imageFallbackInitial: {
+    fontSize: 64,
+    fontWeight: '800',
+    color: Colors.textMuted,
+    lineHeight: 72,
+  },
+  imageFallbackCategory: {
+    fontSize: 13,
+    color: Colors.textMuted,
+    fontWeight: '500',
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+  },
 });

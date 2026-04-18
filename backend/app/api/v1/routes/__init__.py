@@ -16,9 +16,13 @@ from app.api.v1.routes.enrichment import router as enrichment_router
 from app.api.v1.routes.enrichment import router_coverage as coverage_router
 from app.api.v1.routes.share import router as share_router
 from app.api.v1.routes.craves import router as craves_router
+from app.api.v1.routes.image import router as image_router
+from app.api.v1.routes.saves import router as saves_router
 
 router = APIRouter()
 
+router.include_router(image_router)
+router.include_router(saves_router)
 router.include_router(places_router)
 router.include_router(menus_router)
 router.include_router(search_router)

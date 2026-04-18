@@ -28,5 +28,12 @@ export const useAuthStore = create<AuthStore>((set) => ({
   signOut: async () => {
     await supabase.auth.signOut();
     set({ user: null });
+    // Clear persisted saves so the next user doesn't see them
+    try {
+      const { useHitlistStore } = await import('./hitlistStore');
+      useHitlistStore.getState().clearSaves();
+    } catch (err) {
+      console.warn('[signOut] Failed to clear saves:', err);
+    }
   },
 }));

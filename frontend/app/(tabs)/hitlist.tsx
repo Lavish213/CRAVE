@@ -1,6 +1,7 @@
 // app/(tabs)/hitlist.tsx
 import React, { useEffect, useState } from 'react';
 import {
+  ActivityIndicator,
   FlatList,
   StyleSheet,
   Text,
@@ -15,27 +16,48 @@ import { useToast } from '../../src/hooks/useToast';
 import { Colors, Spacing, Radius } from '../../src/constants/colors';
 import { PlaceCardCompact } from '../../src/components/PlaceCardCompact';
 import { EmptyState } from '../../src/components/EmptyState';
+import { ErrorState } from '../../src/components/ErrorState';
 import { getCraveItems, CraveItem } from '../../src/api/crave';
 import { useAuthStore } from '../../src/stores/authStore';
 import { AuthSheet } from '../../src/components/AuthSheet';
 
 export default function HitlistScreen() {
   const router = useRouter();
-  const { saves, removeSave } = useHitlistStore();
+  const { saves, loading: savesLoading, error: savesError, loadSaves, removeSave } = useHitlistStore();
   const toast = useToast((s) => s.show);
   const user = useAuthStore((s) => s.user);
+
   const [craves, setCraves] = useState<CraveItem[]>([]);
-  const [cravesLoading, setCravesLoading] = useState(true);
+  const [cravesLoading, setCravesLoading] = useState(false);
+  const [cravesError, setCravesError] = useState(false);
   const [authVisible, setAuthVisible] = useState(false);
 
+  // Load backend saves whenever user changes
   useEffect(() => {
-    getCraveItems()
-      .then(setCraves)
-      .catch(() => {})
-      .finally(() => setCravesLoading(false));
-  }, []);
+    if (!user) return;
+    loadSaves(user.id);
+  }, [user?.id]);
 
-  // Not signed in — show auth prompt
+  // Load craves whenever user changes
+  useEffect(() => {
+    if (!user) return;
+    setCravesLoading(true);
+    setCravesError(false);
+    getCraveItems()
+      .then((items) => {
+        if (__DEV__) console.log('[HITLIST] CRAVES_LOADED', { count: items.length });
+        setCraves(items);
+      })
+      .catch((err) => {
+        if (__DEV__) console.log('[HITLIST] CRAVES_ERROR', err?.response?.status, err?.message);
+        setCravesError(true);
+      })
+      .finally(() => setCravesLoading(false));
+  }, [user?.id]);
+
+  if (__DEV__) console.log('[HITLIST] RENDER', { user: !!user, saves: saves.length, savesLoading, savesError, craves: craves.length });
+
+  // Not signed in
   if (!user) {
     return (
       <>
@@ -51,6 +73,26 @@ export default function HitlistScreen() {
     );
   }
 
+  // Loading initial saves
+  if (savesLoading && saves.length === 0) {
+    return (
+      <View style={styles.centered}>
+        <ActivityIndicator color={Colors.primary} size="large" />
+      </View>
+    );
+  }
+
+  // Error loading saves (and no cached data)
+  if (savesError && saves.length === 0) {
+    return (
+      <ErrorState
+        message="Couldn't load your saves"
+        onRetry={() => loadSaves(user.id)}
+      />
+    );
+  }
+
+  // True empty
   if (saves.length === 0 && craves.length === 0 && !cravesLoading) {
     return (
       <EmptyState
@@ -72,10 +114,14 @@ export default function HitlistScreen() {
             onPress={() => router.push(`/place/${item.id}`)}
             rightAction={
               <TouchableOpacity
-                onPress={() => {
+                onPress={async () => {
                   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                  removeSave(item.id);
-                  toast('Removed from Saves');
+                  const err = await removeSave(item.id, user.id);
+                  if (err) {
+                    toast(err);
+                  } else {
+                    toast('Removed from Saves');
+                  }
                 }}
                 style={styles.removeBtn}
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -99,7 +145,15 @@ export default function HitlistScreen() {
           ) : null
         }
         ListFooterComponent={
-          craves.length > 0 ? (
+          cravesLoading ? (
+            <View style={styles.cravesSection}>
+              <ActivityIndicator color={Colors.primary} style={{ marginVertical: 16 }} />
+            </View>
+          ) : cravesError ? (
+            <View style={styles.cravesSection}>
+              <Text style={styles.cravesSub}>Couldn't load Craves right now.</Text>
+            </View>
+          ) : craves.length > 0 ? (
             <View style={styles.cravesSection}>
               <View style={styles.cravesHeader}>
                 <Text style={styles.cravesTitle}>Craves</Text>
@@ -137,6 +191,7 @@ export default function HitlistScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
+  centered: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: Colors.background },
   list: { padding: Spacing.md, gap: Spacing.sm, paddingBottom: Spacing.xxl },
   screenHeader: {
     flexDirection: 'row',

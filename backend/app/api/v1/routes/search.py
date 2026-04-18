@@ -68,9 +68,11 @@ def _clean_str(value: Optional[str]) -> Optional[str]:
 )
 def search(
     query: str = Query(..., min_length=1),
-    city_id: str = Query(...),
+    city_id: Optional[str] = Query(None, description="Optional city scope — omit for global search"),
     category_id: Optional[str] = Query(None),
     price_tier: Optional[int] = Query(None, ge=1, le=4),
+    lat: Optional[float] = Query(None, description="User latitude for proximity ranking"),
+    lng: Optional[float] = Query(None, description="User longitude for proximity ranking"),
     page: int = Query(DEFAULT_PAGE, ge=1),
     page_size: int = Query(DEFAULT_PAGE_SIZE, ge=1, le=MAX_PAGE_SIZE),
     db: Session = Depends(get_db),
@@ -84,16 +86,11 @@ def search(
     page_size = _clamp_page_size(page_size)
 
     query = _clean_str(query)
-    city_id = _clean_str(city_id)
+    city_id = _clean_str(city_id)  # may be None → global search
     category_id = _clean_str(category_id)
 
-    if not query or not city_id:
-        return SearchResponse(
-            total=0,
-            page=page,
-            page_size=page_size,
-            items=[],
-        )
+    if not query:
+        return SearchResponse(total=0, page=page, page_size=page_size, items=[])
 
     # -----------------------------
     # Cache read (safe)
@@ -126,6 +123,8 @@ def search(
             city_id=city_id,
             category_id=category_id,
             price_tier=price_tier,
+            lat=lat,
+            lng=lng,
             limit=page_size,
             offset=offset,
         )
@@ -154,7 +153,9 @@ def search(
 
     for p in results:
         try:
-            p.primary_image = image_urls.get(getattr(p, "id", None))
+            img = image_urls.get(getattr(p, "id", None))
+            p.primary_image_url = img
+            p.primary_image = img
             items.append(
                 PlaceCardOut.model_validate(p, from_attributes=True)
             )
@@ -170,6 +171,11 @@ def search(
         page=page,
         page_size=page_size,
         items=items,
+    )
+
+    logger.info(
+        "API_RESPONSE endpoint=/search query_len=%s city_id=%s count=%s total=%s",
+        len(query) if query else 0, city_id, len(items), total,
     )
 
     # -----------------------------

@@ -27,7 +27,8 @@ SOURCE = "health"
 # ---------------------------------------------------------
 
 def _project_root() -> Path:
-    return Path(__file__).resolve().parents[3]
+    # scripts/ingest/promote_health_places.py → parents[2] = backend/
+    return Path(__file__).resolve().parents[2]
 
 
 def _raw_dir() -> Path:

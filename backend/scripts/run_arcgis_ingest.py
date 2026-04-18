@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import sys
 import tempfile
 import time
@@ -190,6 +191,16 @@ def _slugify_for_id(value: str) -> str:
 # Row Extraction
 # ---------------------------------------------------------
 
+def _web_mercator_to_lat(y: float) -> float:
+    """Convert Web Mercator northing (EPSG:3857) to WGS84 latitude."""
+    return math.degrees(2 * math.atan(math.exp(y / 6378137.0)) - math.pi / 2)
+
+
+def _web_mercator_to_lng(x: float) -> float:
+    """Convert Web Mercator easting (EPSG:3857) to WGS84 longitude."""
+    return math.degrees(x / 6378137.0)
+
+
 def _get_lat(row: Dict[str, Any], config: Any) -> Optional[float]:
 
     fields = [
@@ -211,8 +222,14 @@ def _get_lat(row: Dict[str, Any], config: Any) -> Optional[float]:
 
         value = _safe_float(row.get(field))
 
-        if value is not None:
-            return value
+        if value is None:
+            continue
+
+        # Detect Web Mercator northing (typical range ±20,037,508 meters)
+        if abs(value) > 90:
+            value = _web_mercator_to_lat(value)
+
+        return value
 
     return None
 
@@ -240,8 +257,14 @@ def _get_lng(row: Dict[str, Any], config: Any) -> Optional[float]:
 
         value = _safe_float(row.get(field))
 
-        if value is not None:
-            return value
+        if value is None:
+            continue
+
+        # Detect Web Mercator easting (typical range ±20,037,508 meters)
+        if abs(value) > 180:
+            value = _web_mercator_to_lng(value)
+
+        return value
 
     return None
 
@@ -641,7 +664,6 @@ def run_arcgis_ingest(city_slug: str) -> None:
         base_url=base_url,
         where=getattr(config, "where", "1=1"),
         limit=getattr(config, "page_limit", None) or getattr(config, "limit", None),
-        max_pages=getattr(config, "max_pages", None),
         use_cache=getattr(config, "use_cache", True),
         force_refresh=getattr(config, "force_refresh", False),
     )

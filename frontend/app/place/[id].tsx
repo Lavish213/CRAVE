@@ -12,15 +12,16 @@ import {
 import { useLocalSearchParams, useNavigation } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import { useQuery } from '@tanstack/react-query';
 import { fetchPlaceDetail, PlaceOut } from '../../src/api/places';
 import { getPlaceMenu, MenuItem } from '../../src/api/menu';
 import { useHitlistStore } from '../../src/stores/hitlistStore';
+import { useAuthStore } from '../../src/stores/authStore';
 import { useToast } from '../../src/hooks/useToast';
 import { Colors, Spacing, Radius } from '../../src/constants/colors';
-import { getTier, getSignalContext, getTrustBadges } from '../../src/utils/scoring';
+import { getTier, getBadges, formatPrice } from '../../src/utils/scoring';
 import { ImageGallery } from '../../src/components/ImageGallery';
 import { TierBadge } from '../../src/components/TierBadge';
-import { TrustBadgeRow } from '../../src/components/TrustBadgeRow';
 import { ErrorState } from '../../src/components/ErrorState';
 
 const HEADER_RIGHT_BTN = {
@@ -64,14 +65,29 @@ export default function PlaceDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const navigation = useNavigation();
   const { addSave, removeSave, isSaved } = useHitlistStore();
+  const user = useAuthStore((s) => s.user);
   const toast = useToast((s) => s.show);
 
-  const [place, setPlace] = useState<PlaceOut | null>(null);
+  const { data: place, isLoading, isError, refetch } = useQuery({
+    queryKey: ['place', id],
+    queryFn: () => fetchPlaceDetail(id!),
+    staleTime: 5 * 60 * 1000,  // 5 min
+    enabled: !!id,
+  });
+
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
-  const [loading, setLoading] = useState(true);
   const [menuLoading, setMenuLoading] = useState(true);
-  const [error, setError] = useState(false);
   const [menuExpanded, setMenuExpanded] = useState(false);
+
+  // Fetch menu separately (not worth a useQuery for this small side-load)
+  useEffect(() => {
+    if (!id) return;
+    setMenuLoading(true);
+    getPlaceMenu(id)
+      .then((m) => setMenuItems(m))
+      .catch(() => setMenuItems([]))
+      .finally(() => setMenuLoading(false));
+  }, [id]);
 
   const handleShare = useCallback(() => {
     if (!place) return;
@@ -80,27 +96,6 @@ export default function PlaceDetailScreen() {
       message: `${place.name} — ${place.category ?? 'Restaurant'} in ${place.address ? place.address.split(',').pop()?.trim() ?? 'your city' : 'your city'}. Found on CRAVE.`,
     });
   }, [place]);
-
-  const load = useCallback(() => {
-    setLoading(true);
-    setMenuLoading(true);
-    setError(false);
-    Promise.all([
-      fetchPlaceDetail(id!),
-      getPlaceMenu(id!).catch(() => [] as MenuItem[]),
-    ])
-      .then(([p, m]) => {
-        setPlace(p);
-        setMenuItems(m);
-      })
-      .catch(() => setError(true))
-      .finally(() => {
-        setLoading(false);
-        setMenuLoading(false);
-      });
-  }, [id]);
-
-  useEffect(() => { if (id) load(); }, [id]);
 
   useEffect(() => {
     if (place) {
@@ -120,17 +115,17 @@ export default function PlaceDetailScreen() {
     }
   }, [place, handleShare]);
 
-  if (loading) return <DetailSkeleton />;
+  if (isLoading) return <DetailSkeleton />;
 
-  if (error || !place) {
-    return <ErrorState message="Couldn't load this place" onRetry={load} />;
+  if (isError || !place) {
+    return <ErrorState message="Couldn't load this place" onRetry={() => refetch()} />;
   }
 
   const tier = getTier(place.rank_score);
-  const context = getSignalContext(place);
-  const badges = getTrustBadges(place);
+  const badges = getBadges(place);
+  const price = place.price ?? formatPrice(place);
   const saved = isSaved(place.id);
-  const allImages = [place.primary_image_url, ...(place.images ?? [])];
+  const allImages: string[] = place.images?.length ? place.images : (place.image ? [place.image] : []);
   const previewMenu = menuExpanded ? menuItems : menuItems.slice(0, 5);
 
   // Group menu items by category
@@ -141,12 +136,27 @@ export default function PlaceDetailScreen() {
     menuByCategory[cat].push(item);
   }
 
-  const handleSave = () => {
-    Haptics.notificationAsync(
-      saved ? Haptics.NotificationFeedbackType.Warning : Haptics.NotificationFeedbackType.Success,
-    );
-    if (saved) { removeSave(place.id); toast('Removed from Saves'); }
-    else { addSave(place); toast('Saved'); }
+  const handleSave = async () => {
+    if (!user) return;
+    if (saved) {
+      const err = await removeSave(place.id, user.id);
+      if (err) {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        toast(err);
+      } else {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+        toast('Removed from Saves');
+      }
+    } else {
+      const err = await addSave(place, user.id);
+      if (err) {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        toast(err);
+      } else {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        toast('Saved');
+      }
+    }
   };
 
   const handleDirections = () => {
@@ -166,20 +176,26 @@ export default function PlaceDetailScreen() {
       <View style={styles.identity}>
         <View style={styles.identityTop}>
           <TierBadge tier={tier} />
-          {place.price_tier ? (
-            <Text style={styles.price}>{'$'.repeat(place.price_tier)}</Text>
+          {price ? (
+            <Text style={styles.price}>{price}</Text>
           ) : null}
         </View>
         <Text style={styles.name}>{place.name}</Text>
         <Text style={styles.meta}>
-          {place.category ?? 'Restaurant'}
-          {place.address ? `  ·  ${place.address}` : ''}
+          {[place.category, place.address].filter(Boolean).join('  ·  ')}
         </Text>
-        <Text style={[styles.context, { color: tier.color }]}>{context}</Text>
       </View>
 
-      {/* Trust badges */}
-      <TrustBadgeRow badges={badges} />
+      {/* Emoji badge chips */}
+      {badges.length > 0 && (
+        <View style={styles.badgeChips}>
+          {badges.map((b) => (
+            <View key={b.label} style={styles.chip}>
+              <Text style={styles.chipText}>{b.emoji} {b.label}</Text>
+            </View>
+          ))}
+        </View>
+      )}
 
       {/* Action row */}
       <View style={styles.actions}>
@@ -307,7 +323,9 @@ const styles = StyleSheet.create({
   price: { color: Colors.textSecondary, fontSize: 13, fontWeight: '600' },
   name: { fontSize: 24, fontWeight: '800', color: Colors.text, letterSpacing: 0.2 },
   meta: { fontSize: 14, color: Colors.textSecondary },
-  context: { fontSize: 13, fontWeight: '600', marginTop: 2 },
+  badgeChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, paddingHorizontal: Spacing.lg, paddingBottom: Spacing.md },
+  chip: { paddingHorizontal: 10, paddingVertical: 4, backgroundColor: Colors.border, borderRadius: Radius.pill },
+  chipText: { fontSize: 13, color: Colors.textSecondary },
   actions: {
     flexDirection: 'row',
     flexWrap: 'wrap',

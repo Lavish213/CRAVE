@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Set
 from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
-from app.services.network.http_fetcher import fetch
+import requests as _requests
 
 logger = logging.getLogger(__name__)
 
@@ -97,7 +97,7 @@ def _detect_metadata(url: str) -> Dict[str, Any]:
             "",
         ))
 
-        r = fetch(meta_url, method="GET", timeout=30)
+        r = _requests.get(meta_url, timeout=30)
 
         if r.status_code != 200:
             return {}
@@ -152,7 +152,7 @@ def _save_cache(p, data):
 def _fetch_page(url):
     for i in range(MAX_RETRIES):
         try:
-            r = fetch(url, method="GET", timeout=REQUEST_TIMEOUT)
+            r = _requests.get(url, timeout=REQUEST_TIMEOUT)
 
             if r.status_code == 200:
                 data = r.json()

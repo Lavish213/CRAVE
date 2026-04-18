@@ -14,5 +14,6 @@ export interface CraveItem {
 
 export async function getCraveItems(): Promise<CraveItem[]> {
   const { data } = await client.get<CraveItem[]>('/api/v1/craves');
-  return data;
+  if (__DEV__) console.log('[API] CRAVES_RAW', { count: Array.isArray(data) ? data.length : 'NOT_ARRAY', sample: Array.isArray(data) ? data[0] : data });
+  return Array.isArray(data) ? data : [];
 }

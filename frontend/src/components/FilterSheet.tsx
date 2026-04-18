@@ -7,6 +7,15 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { Colors, Spacing, Radius } from '../constants/colors';
 
+const GENERIC_FILTER_CATS = new Set([
+  'restaurant', 'restaurants', 'bar', 'bars',
+  'other', 'others', 'fast casual',
+  'black owned', 'family owned', 'woman owned',
+  'kid friendly', 'gluten free', 'halal',
+  'local favorite', 'late night', 'romantic', 'michelin rated',
+  '',
+]);
+
 export interface FilterState {
   priceTiers: number[]; // empty = all, [1] = $, [1,2] = $ and $$, etc.
   categories: string[]; // empty = all
@@ -115,7 +124,7 @@ export function FilterSheet({ visible, onClose, filters, onChange, availableCate
             <>
               <Text style={[styles.sectionLabel, styles.sectionLabelSpaced]}>CUISINE</Text>
               <View style={styles.chipRow}>
-                {availableCategories.map((cat) => {
+                {availableCategories.filter(c => !GENERIC_FILTER_CATS.has(c.toLowerCase())).map((cat) => {
                   const active = filters.categories.includes(cat);
                   return (
                     <TouchableOpacity

@@ -50,6 +50,117 @@ export function getTier(score: number): Tier {
   return TIERS.new;
 }
 
+// ─── Price inference ──────────────────────────────────────────────────────────
+
+const PRICE_4_KEYWORDS = [
+  'omakase', 'tasting menu', 'prix fixe', 'michelin', 'fine dining',
+  'benu', 'atelier crenn', 'quince', 'saison', 'lazy bear', 'manresa',
+  'providence', 'n/naka', 'vespertine', 'melisse',
+];
+
+const PRICE_3_KEYWORDS = [
+  'steakhouse', 'steak house', 'chophouse', 'sushi bar', 'kappo',
+  'izakaya', 'robata', 'kaiseki', 'wine bar', 'oyster bar',
+  'rooftop', 'brasserie',
+];
+
+const PRICE_1_KEYWORDS = [
+  'taco', 'truck', 'food truck', 'stand', 'counter', 'boba', 'bubble tea',
+  'wing', 'wings', 'hot dog', 'falafel', 'shawarma', 'pupusa',
+  'food court', 'cafeteria',
+];
+
+/**
+ * Infer a price tier (1–4) from place name + category when price_tier is null.
+ * Returns null when confidence is too low to infer.
+ */
+export function inferPrice(place: PlaceOut): number | null {
+  if (place.price_tier != null) return place.price_tier;
+
+  const haystack = [place.name, place.category, ...(place.categories ?? [])]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+
+  if (PRICE_4_KEYWORDS.some((kw) => haystack.includes(kw))) return 4;
+  if (PRICE_3_KEYWORDS.some((kw) => haystack.includes(kw))) return 3;
+  if (PRICE_1_KEYWORDS.some((kw) => haystack.includes(kw))) return 1;
+
+  return null;
+}
+
+/**
+ * Format a price tier as dollar signs, or null if unknown.
+ */
+export function formatPrice(place: PlaceOut): string | null {
+  const tier = inferPrice(place);
+  if (tier == null) return null;
+  return '$'.repeat(tier);
+}
+
+// ─── Badges (emoji chips) ────────────────────────────────────────────────────
+
+export interface Badge {
+  emoji: string;
+  label: string;
+}
+
+/**
+ * Returns 0–3 contextual emoji chips for a place card.
+ * Order: quality signal → menu/order → access indicator.
+ */
+export function getBadges(place: PlaceOut): Badge[] {
+  const badges: Badge[] = [];
+
+  const tier = getTier(place.rank_score);
+
+  if (tier.key === 'crave_pick') {
+    badges.push({ emoji: '⭐', label: 'CRAVE Pick' });
+  } else if (tier.key === 'gem') {
+    badges.push({ emoji: '💎', label: 'Hidden Gem' });
+  }
+
+  if (place.has_menu && place.grubhub_url) {
+    badges.push({ emoji: '🛵', label: 'Delivery' });
+  } else if (place.has_menu) {
+    badges.push({ emoji: '📋', label: 'Menu' });
+  }
+
+  if (!place.has_menu && !place.grubhub_url && !place.website) {
+    badges.push({ emoji: '🗺️', label: 'Off the grid' });
+  }
+
+  return badges.slice(0, 3);
+}
+
+// ─── Legacy: kept for backward compat during migration ───────────────────────
+
+export interface TrustBadge {
+  label: string;
+  color: string;
+  bg: string;
+}
+
+/** @deprecated Use getBadges() instead */
+export function getTrustBadges(place: PlaceOut): TrustBadge[] {
+  const result: TrustBadge[] = [];
+  const tier = getTier(place.rank_score);
+  if (tier.key === 'crave_pick')
+    result.push({ label: 'CRAVE Pick', color: Colors.tierCravePick, bg: '#FF4D0022' });
+  if (tier.key === 'gem')
+    result.push({ label: 'Hidden Gem', color: Colors.tierGem, bg: '#FFB80022' });
+  if (place.has_menu)
+    result.push({ label: 'Full menu', color: Colors.tierSolid, bg: '#4CAF5022' });
+  if (place.grubhub_url)
+    result.push({ label: 'Order online', color: Colors.textSecondary, bg: '#88888822' });
+  if (place.website && !place.grubhub_url)
+    result.push({ label: 'Dine in only', color: Colors.textSecondary, bg: '#88888822' });
+  if (!place.has_menu && !place.grubhub_url && !place.website)
+    result.push({ label: 'Off the grid', color: Colors.tierGem, bg: '#FFB80022' });
+  return result;
+}
+
+/** @deprecated Use formatPrice() instead */
 export function getSignalContext(place: PlaceOut): string {
   const tier = getTier(place.rank_score);
   switch (tier.key) {
@@ -69,28 +180,4 @@ export function getSignalContext(place: PlaceOut): string {
     default:
       return 'New to CRAVE · Still gaining signal';
   }
-}
-
-export interface TrustBadge {
-  label: string;
-  color: string;
-  bg: string;
-}
-
-export function getTrustBadges(place: PlaceOut): TrustBadge[] {
-  const badges: TrustBadge[] = [];
-  const tier = getTier(place.rank_score);
-  if (tier.key === 'crave_pick')
-    badges.push({ label: 'CRAVE Pick', color: Colors.tierCravePick, bg: '#FF4D0022' });
-  if (tier.key === 'gem')
-    badges.push({ label: 'Hidden Gem', color: Colors.tierGem, bg: '#FFB80022' });
-  if (place.has_menu)
-    badges.push({ label: 'Full menu', color: Colors.tierSolid, bg: '#4CAF5022' });
-  if (place.grubhub_url)
-    badges.push({ label: 'Order online', color: Colors.textSecondary, bg: '#88888822' });
-  if (place.website && !place.grubhub_url)
-    badges.push({ label: 'Dine in only', color: Colors.textSecondary, bg: '#88888822' });
-  if (!place.has_menu && !place.grubhub_url && !place.website)
-    badges.push({ label: 'Off the grid', color: Colors.tierGem, bg: '#FFB80022' });
-  return badges;
 }
