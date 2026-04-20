@@ -8,8 +8,6 @@ from sqlalchemy import and_, select
 from app.db.models.place import Place
 from app.db.models.place_image import PlaceImage
 from app.db.models.place_categories import place_categories
-from app.services.geo.bounding_box import bounding_box
-from app.services.query.place_image_query import _to_proxy_url
 
 
 DEFAULT_RADIUS_KM = 5.0
@@ -37,7 +35,7 @@ def fetch_places_for_map(
 ) -> Dict[str, Any]:
 
     # ---------------------------------------------------------
-    # Input Safety (prevents silent crashes)
+    # Input Safety
     # ---------------------------------------------------------
 
     try:
@@ -55,22 +53,6 @@ def fetch_places_for_map(
         }
 
     limit = _clamp_limit(limit)
-
-    # ---------------------------------------------------------
-    # Bounding Box (safe)
-    # ---------------------------------------------------------
-
-    try:
-        bb = bounding_box(lat, lng, radius_km)
-    except Exception:
-        return {
-            "ok": False,
-            "center": {"lat": lat, "lng": lng},
-            "radius_km": radius_km,
-            "limit": limit,
-            "count": 0,
-            "places": [],
-        }
 
     # ---------------------------------------------------------
     # Primary Image Subquery
@@ -93,7 +75,7 @@ def fetch_places_for_map(
     )
 
     # ---------------------------------------------------------
-    # Query (fully safe)
+    # CORE QUERY
     # ---------------------------------------------------------
 
     try:
@@ -110,15 +92,8 @@ def fetch_places_for_map(
             )
             .filter(
                 Place.is_active.is_(True),
-
-                # CRITICAL: prevent NULL comparison crashes
                 Place.lat.isnot(None),
                 Place.lng.isnot(None),
-
-                Place.lat >= bb.min_lat,
-                Place.lat <= bb.max_lat,
-                Place.lng >= bb.min_lng,
-                Place.lng <= bb.max_lng,
             )
         )
 
@@ -146,7 +121,6 @@ def fetch_places_for_map(
         rows = list(q.all())
 
     except Exception:
-        # HARD FAIL SAFE → prevents API crash
         return {
             "ok": False,
             "center": {"lat": lat, "lng": lng},
@@ -157,12 +131,66 @@ def fetch_places_for_map(
         }
 
     # ---------------------------------------------------------
-    # Mapping (safe casting)
+    # FALLBACK (ONLY IF EMPTY)
+    # ---------------------------------------------------------
+
+    if not rows:
+        try:
+            from app.services.feed.feed_builder import build_feed
+
+            feed = build_feed(
+                db=db,
+                lat=lat,
+                lng=lng,
+                radius_km=radius_km,
+                limit=limit,
+            )
+
+            feed_places = feed.get("places", [])
+
+            items = []
+            for p in feed_places:
+                if p.get("lat") is None or p.get("lng") is None:
+                    continue
+
+                try:
+                    items.append(
+                        {
+                            "id": p.get("id"),
+                            "name": p.get("name"),
+                            "lat": float(p.get("lat")),
+                            "lng": float(p.get("lng")),
+                            "city_id": p.get("city_id"),
+                            "price_tier": p.get("price_tier"),
+                            "rank_score": float(p.get("rank_score") or 0),
+                            "primary_image_url": p.get("primary_image_url"),
+                        }
+                    )
+                except Exception:
+                    continue
+
+            return {
+                "ok": True,
+                "center": {"lat": lat, "lng": lng},
+                "radius_km": radius_km,
+                "limit": limit,
+                "count": len(items),
+                "places": items,
+            }
+
+        except Exception:
+            pass
+
+    # ---------------------------------------------------------
+    # Mapping
     # ---------------------------------------------------------
 
     items: List[Dict[str, Any]] = []
 
     for r in rows:
+        if r.lat is None or r.lng is None:
+            continue
+
         try:
             items.append(
                 {
@@ -177,7 +205,7 @@ def fetch_places_for_map(
                 }
             )
         except Exception:
-            continue  # skip bad rows safely
+            continue
 
     return {
         "ok": True,
@@ -190,91 +218,3 @@ def fetch_places_for_map(
 
 
 get_map_places = fetch_places_for_map
-
-
-# --- GeoJSON / Mapbox support ---
-
-def _compute_tier_thresholds(scores: list) -> dict:
-    """
-    Compute percentile-based tier thresholds from the scores in this result set.
-    elite = top 5%, trusted = next 15%, solid = next 30%, default = bottom 50%.
-    """
-    if not scores:
-        return {"elite": float("inf"), "trusted": float("inf"), "solid": float("inf")}
-
-    sorted_scores = sorted(scores)
-    n = len(sorted_scores)
-
-    elite_idx   = max(0, int(n * 0.95))
-    trusted_idx = max(0, int(n * 0.80))
-    solid_idx   = max(0, int(n * 0.50))
-
-    return {
-        "elite":   sorted_scores[elite_idx],
-        "trusted": sorted_scores[trusted_idx],
-        "solid":   sorted_scores[solid_idx],
-    }
-
-
-def _assign_tier(score: float, thresholds: dict) -> str:
-    if score >= thresholds["elite"]:
-        return "elite"
-    if score >= thresholds["trusted"]:
-        return "trusted"
-    if score >= thresholds["solid"]:
-        return "solid"
-    return "default"
-
-
-def fetch_places_for_map_geojson(
-    db,
-    *,
-    lat: float,
-    lng: float,
-    radius_km: float = None,
-    limit: int = None,
-    city_id=None,
-    category_id=None,
-) -> dict:
-    """
-    Returns a Mapbox-compatible GeoJSON FeatureCollection dict.
-    Wraps fetch_places_for_map — same query, same cache eligibility.
-    Tiers are percentile-based within this result set.
-    """
-    # Build kwargs — only pass params that fetch_places_for_map accepts
-    kwargs = {"db": db, "lat": lat, "lng": lng}
-    if radius_km is not None:
-        kwargs["radius_km"] = radius_km
-    if limit is not None:
-        kwargs["limit"] = limit
-    if city_id is not None:
-        kwargs["city_id"] = city_id
-    if category_id is not None:
-        kwargs["category_id"] = category_id
-
-    result = fetch_places_for_map(**kwargs)
-    places = result.get("places", [])
-    scores = [p.get("rank_score", 0.0) for p in places]
-    thresholds = _compute_tier_thresholds(scores)
-
-    features = []
-    for p in places:
-        features.append({
-            "type": "Feature",
-            "geometry": {
-                "type": "Point",
-                "coordinates": [p.get("lng"), p.get("lat")],
-            },
-            "properties": {
-                "id": p.get("id"),
-                "name": p.get("name"),
-                "city_id": p.get("city_id"),
-                "tier": _assign_tier(p.get("rank_score", 0.0), thresholds),
-                "rank_score": p.get("rank_score", 0.0),
-                "price_tier": p.get("price_tier"),
-                "primary_image_url": _to_proxy_url(p.get("primary_image_url")),
-                "has_menu": False,
-            },
-        })
-
-    return {"type": "FeatureCollection", "features": features}
