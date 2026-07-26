@@ -85,8 +85,16 @@ def test_menu_score_normalized():
     assert result_capped.signals["menu_score"] == 1.0
 
 def test_image_score_normalized():
+    # Normalized against 5 images (see place_score_v3.py): 5 images = full
+    # coverage = 1.0, not the midpoint. Half coverage is 2 to 3 images.
     result = _make_score(image_count=5)
-    assert result.signals["image_score"] == 0.5
+    assert result.signals["image_score"] == 1.0
+
+    result_partial = _make_score(image_count=2)
+    assert result_partial.signals["image_score"] == pytest.approx(0.4)
+
+    result_capped = _make_score(image_count=10)
+    assert result_capped.signals["image_score"] == 1.0
 
 def test_completeness_full():
     result = _make_score(

@@ -35,3 +35,6 @@ apscheduler>=3.10.0
 
 # Utilities
 python-dotenv>=1.2.0
+
+# Object storage (Cloudflare R2 image uploads)
+boto3>=1.34.0
