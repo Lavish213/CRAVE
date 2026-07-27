@@ -1,9 +1,19 @@
 # CRAVE backend — core dependencies
 # Generated 2026-04-13
+#
+# This file mirrors backend/requirements.txt exactly. Railway's build runs
+# `pip install -r requirements.txt` from the repo root (before `cd backend`
+# in the start command), so this root copy — not backend/requirements.txt —
+# is what actually gets installed into the deployed container. It had
+# drifted out of sync: missing pyjwt (breaking Supabase JWT auth at import
+# time — ModuleNotFoundError: No module named 'jwt'), missing redis and
+# boto3, and an impossible "starlette>=1.0.0" constraint (starlette has
+# never released a 1.0 — see https://pypi.org/project/starlette/#history).
+# Keep this file and backend/requirements.txt identical.
 
 # Web framework
+starlette>=0.40.0,<1.0.0
 fastapi>=0.135.0
-starlette>=1.0.0
 uvicorn[standard]>=0.30.0
 
 # HTTP
@@ -33,5 +43,14 @@ rapidfuzz>=3.6.0
 # Scheduling
 apscheduler>=3.10.0
 
+# Auth (Supabase JWT verification)
+pyjwt>=2.8.0
+
+# Cache
+redis>=5.0.0
+
 # Utilities
 python-dotenv>=1.2.0
+
+# Object storage (Cloudflare R2 image uploads)
+boto3>=1.34.0
