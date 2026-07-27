@@ -27,7 +27,7 @@ psycopg2-binary>=2.9.0
 # Pydantic / validation
 pydantic>=2.13.0
 pydantic-settings>=2.13.0
-annotated-types>=0.7.0
+annotated-types>=0.8.0
 
 # HTML parsing
 beautifulsoup4>=4.14.0
