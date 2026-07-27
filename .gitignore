@@ -5,9 +5,17 @@ __pycache__/
 *.pyd
 .env
 venv/
+.venv/
 .env.*
 *.sqlite3
 *.db
+app.db
+
+# Backend runtime cache — currently ~49k files (rendered JS bundles for
+# menu-scraping browser fallback), regenerated automatically, never meant
+# to be committed. Previously ungitignored, so a `git status`/`git add .`
+# would pick up tens of thousands of cache files.
+backend/app/data/cache/
 
 # Node / frontend
 node_modules/
@@ -28,3 +36,7 @@ build/
 
 # Misc
 *.lock
+# Grubhub local credentials (NEVER commit)
+.grubhub_env
+.env
+.worktrees/

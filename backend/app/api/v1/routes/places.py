@@ -12,7 +12,7 @@ from app.services.query.places_query import list_places as query_list_places
 from app.services.query.proximity_query import list_places_near
 from app.services.feed.feed_bucket_manager import get_feed_places
 from app.services.feed.feed_ranker import rank_feed
-from app.services.query.place_image_query import get_primary_image_urls_bulk
+from app.services.query.place_image_visibility_query import get_primary_image_urls_bulk
 from app.api.v1.schemas.places import PlacesResponse, PlaceOut
 from app.db.models.menu_item import MenuItem
 from app.db.models.place import Place

@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import MapView, { Marker, Region } from 'react-native-maps';
 import { useRouter } from 'expo-router';
@@ -8,8 +8,17 @@ import { useCityStore } from '../../src/stores/cityStore';
 import { useLocation } from '../../src/hooks/useLocation';
 import { Colors, Radius, Spacing } from '../../src/constants/colors';
 import { CitySelectorStrip } from '../../src/components/CitySelectorStrip';
-import { MapMarkerDot } from '../../src/components/MapMarker';
+import { MapMarkerDot, MapClusterDot } from '../../src/components/MapMarker';
 import { MapBottomSheet } from '../../src/components/MapBottomSheet';
+
+// How long to wait after the user stops panning/zooming before refetching —
+// avoids firing a request on every intermediate frame of a gesture.
+const REGION_FETCH_DEBOUNCE_MS = 500;
+
+// Grid cell size clustering constants — cell size scales with the visible
+// longitude span so clustering density adapts to zoom level.
+const MIN_CLUSTER_SIZE = 3;
+const MIN_CELL_SIZE_DEG = 0.0008;
 
 const TIER_COLORS: Record<string, string> = {
   elite:   Colors.tierCravePick,
@@ -29,6 +38,18 @@ function cityToRegion(lat: number, lng: number): Region {
   return { latitude: lat, longitude: lng, latitudeDelta: 0.08, longitudeDelta: 0.08 };
 }
 
+// Approximate the on-screen search radius (km) implied by a map region's
+// current zoom level, so panning/zooming actually changes what gets fetched
+// instead of always querying the same fixed 5km box.
+function radiusKmForRegion(region: Region): number {
+  const latRad = (region.latitude * Math.PI) / 180;
+  const kmPerLngDegree = 111.32 * Math.cos(latRad);
+  const widthKm = region.longitudeDelta * kmPerLngDegree;
+  const heightKm = region.latitudeDelta * 111.32;
+  const radius = Math.max(widthKm, heightKm) / 2;
+  return Math.min(50, Math.max(0.5, radius));
+}
+
 interface SelectedFeature {
   id: string;
   name: string;
@@ -37,11 +58,63 @@ interface SelectedFeature {
   category?: string;
 }
 
+interface ClusterPoint {
+  key: string;
+  latitude: number;
+  longitude: number;
+  count: number;
+  feature?: NormalizedMapFeature;
+}
+
+// Simple grid-based clustering: bucket features into cells sized relative to
+// the current zoom level, and merge cells with 3+ points into one cluster pin.
+function buildClusters(features: NormalizedMapFeature[], region: Region): ClusterPoint[] {
+  const cellSize = Math.max(region.longitudeDelta / 40, MIN_CELL_SIZE_DEG);
+  const cells = new Map<string, NormalizedMapFeature[]>();
+
+  for (const f of features) {
+    const cellX = Math.floor(f.coordinate.lng / cellSize);
+    const cellY = Math.floor(f.coordinate.lat / cellSize);
+    const key = `${cellX}:${cellY}`;
+    const bucket = cells.get(key);
+    if (bucket) bucket.push(f);
+    else cells.set(key, [f]);
+  }
+
+  const clusters: ClusterPoint[] = [];
+  for (const [key, bucket] of cells) {
+    if (bucket.length < MIN_CLUSTER_SIZE) {
+      bucket.forEach((f, i) => {
+        clusters.push({
+          key: `${key}:${i}`,
+          latitude: f.coordinate.lat,
+          longitude: f.coordinate.lng,
+          count: 1,
+          feature: f,
+        });
+      });
+      continue;
+    }
+
+    const avgLat = bucket.reduce((sum, f) => sum + f.coordinate.lat, 0) / bucket.length;
+    const avgLng = bucket.reduce((sum, f) => sum + f.coordinate.lng, 0) / bucket.length;
+    clusters.push({ key, latitude: avgLat, longitude: avgLng, count: bucket.length });
+  }
+
+  return clusters;
+}
+
 export default function MapScreen() {
   const router = useRouter();
   const selectedCity = useCityStore((s) => s.selectedCity);
   const userLocation = useLocation();
   const mapRef = useRef<MapView>(null);
+
+  // True for the one onRegionChangeComplete event caused by our own
+  // animateToRegion call (city change / cluster tap) — lets us skip firing a
+  // redundant viewport fetch for a move the user didn't make.
+  const programmaticMoveRef = useRef(false);
+  const fetchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [features, setFeatures] = useState<NormalizedMapFeature[]>([]);
   const [selectedFeature, setSelectedFeature] = useState<SelectedFeature | null>(null);
@@ -53,29 +126,69 @@ export default function MapScreen() {
   const mapLat = selectedCity?.lat ?? userLocation?.lat ?? DEFAULT_REGION.latitude;
   const mapLng = selectedCity?.lng ?? userLocation?.lng ?? DEFAULT_REGION.longitude;
 
-  useEffect(() => {
-    setMapError(false);
-    setMapLoaded(false);
-    setMapLoading(true);
-    fetchMapGeoJSON({
-      city_id: selectedCity?.id,
-      lat: mapLat,
-      lng: mapLng,
-    })
-      .then((normalized) => {
-        if (__DEV__) console.log('[MAP] FEATURES_LOADED', { count: normalized.length, sample: normalized[0] ? { id: normalized[0].id, lat: normalized[0].coordinate.lat, lng: normalized[0].coordinate.lng, tier: normalized[0].tier } : null });
-        setFeatures(normalized);
-        setMapLoaded(true);
-      })
-      .catch(() => setMapError(true))
-      .finally(() => setMapLoading(false));
-  }, [selectedCity?.id, mapLat, mapLng]);
-
-  useEffect(() => {
-    mapRef.current?.animateToRegion(cityToRegion(mapLat, mapLng), 500);
-  }, [selectedCity?.id, mapLat, mapLng]);
-
   const initialRegion = cityToRegion(mapLat, mapLng);
+  const [mapRegion, setMapRegion] = useState<Region>(initialRegion);
+
+  const loadFeatures = useCallback(
+    (lat: number, lng: number, radiusKm: number) => {
+      setMapError(false);
+      setMapLoading(true);
+      fetchMapGeoJSON({
+        city_id: selectedCity?.id,
+        lat,
+        lng,
+        radius_km: radiusKm,
+      })
+        .then((normalized) => {
+          if (__DEV__) console.log('[MAP] FEATURES_LOADED', { count: normalized.length, radiusKm, sample: normalized[0] ? { id: normalized[0].id, lat: normalized[0].coordinate.lat, lng: normalized[0].coordinate.lng, tier: normalized[0].tier } : null });
+          setFeatures(normalized);
+          setMapLoaded(true);
+        })
+        .catch(() => setMapError(true))
+        .finally(() => setMapLoading(false));
+    },
+    [selectedCity?.id]
+  );
+
+  // Initial load + reload on city change (or GPS location resolving).
+  useEffect(() => {
+    loadFeatures(mapLat, mapLng, radiusKmForRegion(cityToRegion(mapLat, mapLng)));
+  }, [selectedCity?.id, mapLat, mapLng, loadFeatures]);
+
+  // Recenter the map on city change — flagged as programmatic so the
+  // resulting onRegionChangeComplete doesn't trigger a duplicate fetch.
+  useEffect(() => {
+    const region = cityToRegion(mapLat, mapLng);
+    programmaticMoveRef.current = true;
+    setMapRegion(region);
+    mapRef.current?.animateToRegion(region, 500);
+  }, [selectedCity?.id, mapLat, mapLng]);
+
+  // Clear any pending debounced fetch on unmount.
+  useEffect(() => {
+    return () => {
+      if (fetchDebounceRef.current) clearTimeout(fetchDebounceRef.current);
+    };
+  }, []);
+
+  const handleRegionChangeComplete = useCallback(
+    (region: Region) => {
+      setMapRegion(region);
+
+      if (programmaticMoveRef.current) {
+        programmaticMoveRef.current = false;
+        return;
+      }
+
+      if (fetchDebounceRef.current) clearTimeout(fetchDebounceRef.current);
+      fetchDebounceRef.current = setTimeout(() => {
+        loadFeatures(region.latitude, region.longitude, radiusKmForRegion(region));
+      }, REGION_FETCH_DEBOUNCE_MS);
+    },
+    [loadFeatures]
+  );
+
+  const clusters = useMemo(() => buildClusters(features, mapRegion), [features, mapRegion]);
 
   return (
     <View style={styles.container}>
@@ -85,12 +198,38 @@ export default function MapScreen() {
         initialRegion={initialRegion}
         mapType="mutedStandard"
         onPress={() => setSelectedFeature(null)}
+        onRegionChangeComplete={handleRegionChangeComplete}
       >
-        {features.map((f) => {
+        {clusters.map((c) => {
+          if (c.count > 1) {
+            return (
+              <Marker
+                key={c.key}
+                coordinate={{ latitude: c.latitude, longitude: c.longitude }}
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  const zoomed: Region = {
+                    latitude: c.latitude,
+                    longitude: c.longitude,
+                    latitudeDelta: Math.max(mapRegion.latitudeDelta / 2.5, 0.003),
+                    longitudeDelta: Math.max(mapRegion.longitudeDelta / 2.5, 0.003),
+                  };
+                  programmaticMoveRef.current = true;
+                  setMapRegion(zoomed);
+                  mapRef.current?.animateToRegion(zoomed, 300);
+                }}
+                tracksViewChanges={false}
+              >
+                <MapClusterDot count={c.count} />
+              </Marker>
+            );
+          }
+
+          const f = c.feature!;
           const color = TIER_COLORS[f.tier] ?? TIER_COLORS.default;
           return (
             <Marker
-              key={f.id}
+              key={c.key}
               coordinate={{ latitude: f.coordinate.lat, longitude: f.coordinate.lng }}
               onPress={() => {
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -99,6 +238,7 @@ export default function MapScreen() {
                   name: f.name,
                   tier: f.tier,
                   image: f.image ?? undefined,
+                  category: f.category ?? undefined,
                 });
               }}
               tracksViewChanges={false}

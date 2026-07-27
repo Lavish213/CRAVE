@@ -1,5 +1,15 @@
 from __future__ import annotations
 
+# DEPRECATED / UNUSED: superseded by app.services.discovery.pipeline_v2
+# (run_discovery_pipeline_v2), which is what app/scheduler.py's discovery job
+# and scripts/run_google_ingest.py actually call. A grep across the entire
+# backend/ tree found zero imports of app.pipeline.aoi_scan_job_runner from
+# anywhere outside this dead app/pipeline/* cluster (it is the top of a
+# self-contained chain: aoi_scan_job_runner -> ingest_runner ->
+# candidate_builder / candidate_cluster_builder / promotion_engine, none of
+# which anything else references either).
+# Kept here for reference only — not wired up. Safe to delete if no longer needed.
+
 import logging
 from typing import Dict, Iterable, List
 

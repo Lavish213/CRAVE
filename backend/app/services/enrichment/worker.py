@@ -1,5 +1,15 @@
 from __future__ import annotations
 
+# DEPRECATED / UNUSED: this file-queue-based worker (run_worker_once, reading
+# var/queue/recompute_scores.queue) is no longer wired up. app/scheduler.py's
+# _job_score_recompute now calls app.workers.recompute_scores_worker's
+# recompute_places_v4 directly on an in-memory batch of stale places, with no
+# queue involved. A grep across the entire backend/ tree found zero imports
+# of app.services.enrichment.worker (or its run_worker_once function) from
+# anywhere else, and app.services.enrichment.enqueue — the only thing that
+# ever wrote to this queue file — is equally unreferenced.
+# Kept here for reference only — not wired up. Safe to delete if no longer needed.
+
 import json
 from dataclasses import dataclass
 from pathlib import Path

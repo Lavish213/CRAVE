@@ -1,5 +1,15 @@
 from __future__ import annotations
 
+# DEPRECATED / UNUSED: nothing enqueues to this file-based queue anymore.
+# app/scheduler.py's _job_score_recompute now calls
+# app.workers.recompute_scores_worker.recompute_places_v4 directly on an
+# in-memory batch of stale places, bypassing the queue entirely. A grep
+# across the entire backend/ tree found zero imports of
+# app.services.enrichment.enqueue (or enqueue_recompute_scores) from
+# anywhere, and the matching consumer, app.services.enrichment.worker, is
+# equally unreferenced.
+# Kept here for reference only — not wired up. Safe to delete if no longer needed.
+
 import json
 from dataclasses import dataclass
 from datetime import datetime, timezone

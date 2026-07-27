@@ -4,7 +4,10 @@ import uuid
 
 from sqlalchemy import (
     String,
+    Float,
+    Integer,
     Boolean,
+    DateTime,
     ForeignKey,
     UniqueConstraint,
     Index,
@@ -14,8 +17,8 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.models.base import Base, TimestampMixin
 
-from datetime import datetime
-from typing import TYPE_CHECKING
+from datetime import datetime, timezone
+from typing import Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from app.db.models.place import Place
@@ -68,12 +71,71 @@ class MenuSource(Base, TimestampMixin):
         index=True,
     )
 
+    # provider: specific platform name (toast, square, chownow, popmenu, clover, html, grubhub)
+    # source_type: broad category (provider_api, html, aggregator)
+    provider: Mapped[str | None] = mapped_column(
+        String(32),
+        nullable=True,
+        index=True,
+    )
+
     source_type: Mapped[str] = mapped_column(
         String(64),
         nullable=False,
         default="website",
         server_default="website",
         index=True,
+    )
+
+    # confidence: discovery confidence [0.0, 1.0]
+    # Toast direct redirect = 1.0, HTML link = 0.9, JSON-LD = 0.7
+    confidence: Mapped[float] = mapped_column(
+        Float,
+        nullable=False,
+        default=0.0,
+        server_default=text("0"),
+        index=True,
+    )
+
+    # --------------------------------------------------
+    # LIFECYCLE TIMESTAMPS
+    # --------------------------------------------------
+
+    discovered_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+
+    last_verified_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+        index=True,
+    )
+
+    last_success_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+
+    # --------------------------------------------------
+    # FAILURE TRACKING
+    # --------------------------------------------------
+
+    failure_count: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=0,
+        server_default=text("0"),
+    )
+
+    invalidated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+
+    invalidation_reason: Mapped[str | None] = mapped_column(
+        String(128),
+        nullable=True,
     )
 
     # --------------------------------------------------
@@ -89,6 +151,7 @@ class MenuSource(Base, TimestampMixin):
     )
 
     last_seen_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
         nullable=False,
         index=True,
     )

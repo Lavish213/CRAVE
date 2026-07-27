@@ -251,7 +251,7 @@ def _dedupe(items: List[ExtractedMenuItem]) -> List[ExtractedMenuItem]:
     unique: List[ExtractedMenuItem] = []
 
     for item in items:
-        key = f"{(item.name or '').lower()}|{(item.price or '')}|{(item.section or '').lower()}"
+        key = f"{(item.name or '').lower()}|{(item.price_cents or '')}|{(item.section or '').lower()}"
 
         if key in seen:
             continue

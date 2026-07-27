@@ -36,7 +36,7 @@ def _dedupe(items: List[ExtractedMenuItem]) -> List[ExtractedMenuItem]:
 
         key = (
             f"{(item.name or '').strip().lower()}|"
-            f"{(item.price or '').strip()}"
+            f"{(item.price_cents or '').strip()}"
         )
 
         if key in seen:

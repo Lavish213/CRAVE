@@ -35,12 +35,20 @@ export function PlaceCardCompact({ place, onPress, rightAction, style }: Props) 
       accessibilityRole="button"
       accessibilityLabel={`${place.name}, ${categoryLabel ?? 'Restaurant'}, ${tier.label}`}
     >
-      <Image
-        source={place.image ?? undefined}
-        style={styles.thumb}
-        contentFit="cover"
-        placeholder={{ blurhash: 'L6PZfSi_.AyE_3t7t7R**0o#DgR4' }}
-      />
+      {place.image ? (
+        <Image
+          source={place.image}
+          style={styles.thumb}
+          contentFit="cover"
+          placeholder={{ blurhash: 'L6PZfSi_.AyE_3t7t7R**0o#DgR4' }}
+        />
+      ) : (
+        <View style={styles.thumbFallback}>
+          <Text style={styles.thumbFallbackInitial}>
+            {(place.name || '?')[0].toUpperCase()}
+          </Text>
+        </View>
+      )}
       <View style={styles.info}>
         <TierBadge tier={tier} style={styles.badgeTier} />
         <Text style={styles.name} numberOfLines={1}>{place.name}</Text>
@@ -77,6 +85,19 @@ const styles = StyleSheet.create({
     borderColor: Colors.border,
   },
   thumb: { width: 64, height: 64, borderRadius: Radius.sm },
+  thumbFallback: {
+    width: 64,
+    height: 64,
+    borderRadius: Radius.sm,
+    backgroundColor: Colors.surfaceElevated,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  thumbFallbackInitial: {
+    fontSize: 24,
+    fontWeight: '800',
+    color: Colors.textMuted,
+  },
   info: { flex: 1, gap: 3 },
   name: { color: Colors.text, fontSize: 15, fontWeight: '600' },
   sub: { color: Colors.textSecondary, fontSize: 13 },

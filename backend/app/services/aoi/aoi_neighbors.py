@@ -1,4 +1,11 @@
 from __future__ import annotations
+
+# DEPRECATED / UNUSED: part of the app/services/aoi/* package, written during
+# an earlier area-of-interest expansion phase and never wired into any live
+# entry point. A grep across the entire backend/ tree found zero imports of
+# app.services.aoi.aoi_neighbors or ring_cells from anywhere.
+# Kept here for reference only — not wired up. Safe to delete if no longer needed.
+
 from typing import List
 from .aoi_grid import GRID_SIZE_LAT, GRID_SIZE_LNG, latlng_to_cell, cell_id
 

@@ -16,6 +16,9 @@ SOURCE_WEIGHTS = {
 
 MIN_ACCEPTABLE_SCORE = 0.2
 
+# Max theoretical combined score: 1.0 (website) * 1.2 (2M+ px) * 1.2 (hero)
+_MAX_COMBINED_SCORE = 1.44
+
 
 class ImageScorer:
     """
@@ -91,8 +94,9 @@ class ImageScorer:
 
         score = base_score * resolution_score * context_score
 
-        if score > 1.0:
-            score = 1.0
+        # Normalize by max possible score to preserve differentiation.
+        # Do NOT clamp before combining — that kills signal at the top.
+        score = score / _MAX_COMBINED_SCORE
 
         if score < 0.0:
             score = 0.0

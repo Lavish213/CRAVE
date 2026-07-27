@@ -77,6 +77,34 @@ def _best_type_hint(types: List[str]) -> Optional[str]:
     return None
 
 
+class GoogleQuotaExhausted(RuntimeError):
+    """
+    Raised when Google Places reports OVER_QUERY_LIMIT after retries, or a
+    hard REQUEST_DENIED / INVALID_REQUEST (bad/missing key, billing disabled,
+    API not enabled, malformed request). Callers should stop scanning
+    immediately rather than burning the rest of the grid — every remaining
+    cell/type request would fail identically and (in the OVER_QUERY_LIMIT
+    case) each failed call still costs a request against the quota.
+
+    Before this existed, `_scan_cell` only checked the HTTP status code.
+    Google Places returns HTTP 200 with a JSON `status` field for quota and
+    auth errors, so a dead API key or exhausted quota silently produced zero
+    results for the entire grid with no error, log line, or way to tell that
+    apart from "there are just no restaurants here".
+    """
+
+
+# Non-fatal statuses: proceed as normal (OK) or move on (no results for this
+# page/type, not an error).
+_OK_STATUSES = frozenset({"OK", "ZERO_RESULTS"})
+
+# Transient — worth a bounded retry with backoff.
+_RETRYABLE_STATUSES = frozenset({"OVER_QUERY_LIMIT", "UNKNOWN_ERROR"})
+
+# Fatal — every subsequent call this run will fail the same way; stop now.
+_FATAL_STATUSES = frozenset({"REQUEST_DENIED", "INVALID_REQUEST", "NOT_FOUND"})
+
+
 class GooglePlacesIngest:
 
     SEARCH_TYPES = [
@@ -88,6 +116,12 @@ class GooglePlacesIngest:
 
     MAX_RESULTS_PER_CELL = 60
     PAGE_DELAY_SECONDS = 2
+
+    # Backoff for OVER_QUERY_LIMIT — Google recommends a short pause and
+    # retry since quota buckets often free up within seconds, but we cap
+    # attempts hard so one bad key/billing issue can't spin forever.
+    MAX_QUOTA_RETRIES = 3
+    QUOTA_BACKOFF_BASE_SECONDS = 2.0
 
     def __init__(self, api_key: str) -> None:
         self.api_key = api_key
@@ -122,6 +156,19 @@ class GooglePlacesIngest:
                         continue
                     seen_ids.add(ext_id)
                     records.append(r)
+            except GoogleQuotaExhausted as exc:
+                # Fatal for the whole run, not just this cell — every
+                # remaining cell would fail identically (bad key, billing
+                # disabled, or quota exhausted). Stop scanning immediately
+                # instead of burning the rest of the grid on calls that are
+                # guaranteed to fail.
+                logger.error(
+                    "google_places_scan_aborted lat=%s lon=%s reason=%s "
+                    "cells_scanned=%s cells_total=%s records_so_far=%s",
+                    cell["lat"], cell["lon"], exc,
+                    cells.index(cell), len(cells), len(records),
+                )
+                break
             except Exception as exc:
                 logger.debug(
                     "google_places_cell_failed lat=%s lon=%s error=%s",
@@ -166,41 +213,81 @@ class GooglePlacesIngest:
             next_page_token = None
 
             for _page in range(3):
-                try:
-                    params: Dict = {
-                        "location": f"{lat},{lon}",
-                        "radius": 1500,
-                        "type": place_type,
-                        "key": self.api_key,
-                    }
+                quota_retries = 0
 
-                    if next_page_token:
-                        params = {"pagetoken": next_page_token, "key": self.api_key}
+                while True:
+                    try:
+                        params: Dict = {
+                            "location": f"{lat},{lon}",
+                            "radius": 1500,
+                            "type": place_type,
+                            "key": self.api_key,
+                        }
 
-                    response = fetch(GOOGLE_PLACES_URL, method="GET", params=params)
+                        if next_page_token:
+                            params = {"pagetoken": next_page_token, "key": self.api_key}
 
-                    if response.status_code != 200:
+                        response = fetch(GOOGLE_PLACES_URL, method="GET", params=params)
+
+                        if response.status_code != 200:
+                            break
+
+                        data = response.json()
+                        status = data.get("status", "UNKNOWN_ERROR")
+
+                        if status in _FATAL_STATUSES:
+                            raise GoogleQuotaExhausted(
+                                f"google_places status={status} "
+                                f"error_message={data.get('error_message')!r}"
+                            )
+
+                        if status in _RETRYABLE_STATUSES:
+                            quota_retries += 1
+                            if quota_retries > self.MAX_QUOTA_RETRIES:
+                                raise GoogleQuotaExhausted(
+                                    f"google_places status={status} "
+                                    f"after {quota_retries - 1} retries "
+                                    f"error_message={data.get('error_message')!r}"
+                                )
+                            backoff = self.QUOTA_BACKOFF_BASE_SECONDS * (2 ** (quota_retries - 1))
+                            logger.warning(
+                                "google_places_quota_retry lat=%s lon=%s type=%s "
+                                "status=%s attempt=%s backoff=%s",
+                                lat, lon, place_type, status, quota_retries, backoff,
+                            )
+                            time.sleep(backoff)
+                            continue  # retry the same page/token, not a new page
+
+                        if status not in _OK_STATUSES:
+                            # Unrecognized status — log once and treat this
+                            # page as empty rather than guessing.
+                            logger.debug(
+                                "google_places_unknown_status lat=%s lon=%s status=%s",
+                                lat, lon, status,
+                            )
+
+                        for place in data.get("results", []):
+                            record = self._convert_place(place)
+                            if record:
+                                all_results.append(record)
+
+                        next_page_token = data.get("next_page_token")
+                        break  # move to next page (or stop, below)
+
+                    except GoogleQuotaExhausted:
+                        raise
+                    except Exception as exc:
+                        logger.debug(
+                            "google_places_query_failed lat=%s lon=%s error=%s",
+                            lat, lon, exc,
+                        )
+                        next_page_token = None
                         break
 
-                    data = response.json()
-
-                    for place in data.get("results", []):
-                        record = self._convert_place(place)
-                        if record:
-                            all_results.append(record)
-
-                    next_page_token = data.get("next_page_token")
-                    if not next_page_token:
-                        break
-
-                    time.sleep(self.PAGE_DELAY_SECONDS)
-
-                except Exception as exc:
-                    logger.debug(
-                        "google_places_query_failed lat=%s lon=%s error=%s",
-                        lat, lon, exc,
-                    )
+                if not next_page_token:
                     break
+
+                time.sleep(self.PAGE_DELAY_SECONDS)
 
         return all_results
 

@@ -70,3 +70,57 @@ def invalidate_feed(
     from app.services.cache.cache_keys import feed_key
     key = feed_key(city_id=city_id, page=page, page_size=page_size)
     response_cache.delete(key)
+
+
+def invalidate_all_image_caches() -> None:
+    """
+    Broad cache flush for image mutations that affect multiple surfaces.
+    Drops feed, map, and search caches. Use after bulk image backfills.
+    """
+    response_cache.delete_prefix("feed:")
+    response_cache.delete_prefix("map:")
+    response_cache.delete_prefix("search:")
+
+
+def invalidate_menu(place_id: str) -> None:
+    """Invalidate the place menu cache entry."""
+    from app.services.cache.cache_keys import place_menu_key
+    response_cache.delete(place_menu_key(place_id=place_id))
+
+
+def invalidate_city_feed(city_id: Optional[str]) -> None:
+    """Invalidate all feed cache entries for a city."""
+    if not city_id:
+        return
+    from app.services.cache.cache_keys import feed_city_prefix
+    response_cache.delete_prefix(feed_city_prefix(city_id=city_id))
+
+
+def invalidate_after_menu_truth(
+    *,
+    place_id: str,
+    city_id: Optional[str] = None,
+) -> None:
+    """
+    Deterministic invalidation after materialize_menu_truth commits.
+    Safe to call in any context — all cache failures are silently swallowed.
+
+    Invalidates:
+    - place detail (has_menu, menu_confidence changed)
+    - place menu (new menu items)
+    - city feed prefix (ranking/score may change due to has_menu)
+    """
+    try:
+        invalidate_place(place_id)
+    except Exception:
+        pass
+
+    try:
+        invalidate_menu(place_id)
+    except Exception:
+        pass
+
+    try:
+        invalidate_city_feed(city_id)
+    except Exception:
+        pass

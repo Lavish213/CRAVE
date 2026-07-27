@@ -1,5 +1,13 @@
 from __future__ import annotations
 
+# DEPRECATED / UNUSED: written during an earlier ingestion phase and
+# superseded by the newer truth-building pipeline (see
+# app.services.truth.truth_reader / app.workers.truth_rebuild_worker). A grep
+# across the entire backend/ tree found zero imports of
+# app.services.ingest.truth_engine from anywhere — its only matches are the
+# module's own internal log messages.
+# Kept here for reference only — not wired up. Safe to delete if no longer needed.
+
 import logging
 from typing import List
 

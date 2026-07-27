@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 
 from app.db.session import get_db
 from app.db.models.crave_item import CraveItem
+from app.core.rate_limit import rate_limit
 
 logger = logging.getLogger(__name__)
 
@@ -31,10 +32,13 @@ class CraveItemOut(BaseModel):
     status: str
     created_at: str
 
+    # submitted_by intentionally excluded — it can hold an email/handle
+    # (see share.py's ShareIntakeRequest docstring) and this endpoint has no
+    # auth, so it was leaking whatever identifier users typed in.
     model_config = {"from_attributes": True}
 
 
-@router.get("", response_model=list[CraveItemOut])
+@router.get("", response_model=list[CraveItemOut], dependencies=[Depends(rate_limit)])
 def list_craves(db: Session = Depends(get_db)) -> list[CraveItemOut]:
     """
     Return the latest 50 CraveItems ordered by created_at descending.

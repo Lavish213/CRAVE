@@ -385,6 +385,33 @@ def _invalidate_cache_for_cities(affected_cities: Set[str]) -> None:
     logger.info("cache_invalidated_after_recompute cities=%s", affected_cities)
 
 
+def recompute_places_v4(db: Session, *, places: list[Place]) -> int:
+    """
+    Public entry point for the real v4 scorer, callable directly with an
+    in-memory list of places (no queue file involved).
+
+    Mirrors the contract of app.services.scoring.recompute.recompute_place_scores:
+    no commit (caller commits), returns count of places updated. Additionally
+    invalidates feed/map response caches and feed buckets for affected cities,
+    which the Phase-1 recompute_place_scores never did.
+
+    Wired into app/scheduler.py's `_job_score_recompute` in place of the
+    Phase-1 placeholder — see that module for context. The queue-based
+    `run_worker_once()` below is legacy/unused (nothing enqueues to
+    QUEUE_FILE anymore) and is left as-is.
+    """
+    places = list(places)
+    if not places:
+        return 0
+
+    updated, city_ids = _score_batch(db, places)
+
+    if city_ids:
+        _invalidate_cache_for_cities(city_ids)
+
+    return updated
+
+
 def run_worker_once() -> int:
     jobs = _read_jobs()
     if not jobs:

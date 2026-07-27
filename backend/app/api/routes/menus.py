@@ -1,5 +1,13 @@
 from __future__ import annotations
 
+# DEPRECATED / UNUSED: this router is no longer registered (see
+# app/api/v1/routes/__init__.py). The live "/places/{place_id}/menu" route is
+# defined in app/api/v1/routes/places.py, which reads directly from the
+# MenuItem table. This file previously collided with that route (both bound
+# to the same path) and was silently shadowed since places_router is
+# registered first. Kept here for reference only — not wired up. Safe to
+# delete along with app/api/schemas/menu.py if no longer needed.
+
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException

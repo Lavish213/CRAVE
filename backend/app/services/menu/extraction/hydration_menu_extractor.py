@@ -118,7 +118,8 @@ def _safe_load_json(raw: str) -> Optional[Any]:
 # Price normalization
 # ---------------------------------------------------------
 
-def _normalize_price(value: Any) -> Optional[str]:
+def _normalize_price(value: Any) -> Optional[int]:
+    """Return price as integer cents, or None if unparseable."""
 
     if value is None:
         return None
@@ -126,17 +127,23 @@ def _normalize_price(value: Any) -> Optional[str]:
     try:
 
         if isinstance(value, str):
-
-            value = value.replace("$", "").strip()
-
-            return value
+            value = value.replace("$", "").replace(",", "").strip()
+            if not value:
+                return None
+            f = float(value)
+            # If value looks like it's already in cents (>= 100 and no decimal)
+            # keep as-is; otherwise treat as dollars.
+            if f >= 100 and "." not in str(value):
+                return int(f)
+            return int(round(f * 100))
 
         if isinstance(value, (int, float)):
-
-            if value > 100:
-                value = value / 100
-
-            return str(round(value, 2))
+            f = float(value)
+            # Heuristic: raw int > 100 with no fractional part → already cents
+            if isinstance(value, int) and value >= 100:
+                return value
+            # float or small int → dollars
+            return int(round(f * 100))
 
     except Exception:
         pass
@@ -202,7 +209,8 @@ def _extract_name(obj: Dict[str, Any]) -> Optional[str]:
     return value
 
 
-def _extract_price(obj: Dict[str, Any]) -> Optional[str]:
+def _extract_price(obj: Dict[str, Any]) -> Optional[int]:
+    """Return price as integer cents, or None."""
 
     for key in ("price", "basePrice", "amount", "cost"):
 
@@ -321,12 +329,11 @@ def _scan(
                 ExtractedMenuItem(
 
                     name=name,
-                    price=_extract_price(data),
+                    price_cents=_extract_price(data),
                     section=_extract_section(data, next_section),
                     currency="USD",
                     description=_extract_description(data),
                     source_type="hydration",
-                    confidence=0.75,
                 )
             )
 
@@ -357,7 +364,7 @@ def _dedupe(items: List[ExtractedMenuItem]) -> List[ExtractedMenuItem]:
 
         key = (
             f"{(item.name or '').strip().lower()}|"
-            f"{(item.price or '').strip()}|"
+            f"{item.price_cents if item.price_cents is not None else ''}|"
             f"{(item.section or '').strip().lower()}"
         )
 

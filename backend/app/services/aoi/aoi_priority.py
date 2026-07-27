@@ -1,5 +1,12 @@
 from __future__ import annotations
 
+# DEPRECATED / UNUSED: part of the app/services/aoi/* package, written during
+# an earlier area-of-interest expansion phase and never wired into any live
+# entry point. A grep across the entire backend/ tree found the only importer
+# of this module to be its sibling app/services/aoi/aoi_expansion_engine.py,
+# which is itself unreferenced by anything outside app/services/aoi/*.
+# Kept here for reference only — not wired up. Safe to delete if no longer needed.
+
 WEIGHT_DENSITY_GAP = 0.45
 WEIGHT_SAVE_VELOCITY = 0.35
 WEIGHT_GAP_SCORE = 0.20

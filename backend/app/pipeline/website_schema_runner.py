@@ -1,5 +1,12 @@
 from __future__ import annotations
 
+# DEPRECATED / UNUSED: leftover from the old app/pipeline/* candidate
+# pipeline, superseded by app.services.discovery.pipeline_v2. A grep across
+# the entire backend/ tree found zero imports of
+# app.pipeline.website_schema_runner anywhere, including from its own former
+# pipeline siblings.
+# Kept here for reference only — not wired up. Safe to delete if no longer needed.
+
 import logging
 from typing import Dict, Iterable, List
 

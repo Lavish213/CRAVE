@@ -11,6 +11,10 @@ from pydantic import BaseModel
 class PlaceImageOut(BaseModel):
     url: str
     is_primary: bool
+    visibility_status: str = "gallery_only"
+    confidence: float = 0.5
+    quality_score: Optional[float] = None
+    content_type: Optional[str] = None
 
     class Config:
         from_attributes = True

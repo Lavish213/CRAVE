@@ -1,6 +1,6 @@
 import React from 'react';
 import {
-  Linking, ScrollView, StyleSheet, Text, TouchableOpacity, View,
+  Alert, Linking, ScrollView, StyleSheet, Text, TouchableOpacity, View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
@@ -100,8 +100,13 @@ export default function MoreScreen() {
         <Row
           icon="star-outline"
           label="Rate CRAVE"
-          sublabel="Tell us what you think"
-          onPress={() => { /* App Store link placeholder */ }}
+          sublabel="Coming soon"
+          tint={Colors.textMuted}
+          // No App Store / Play Store listing exists yet (app isn't
+          // published) — this used to open Linking.openURL to a placeholder
+          // that did nothing when tapped, with no indication why. Matches
+          // the "Notifications" row's non-interactive "Coming soon" pattern
+          // until there's a real store URL to wire in.
         />
       </View>
 
@@ -112,7 +117,17 @@ export default function MoreScreen() {
           icon="information-circle-outline"
           label="How CRAVE Works"
           sublabel="Our discovery engine explained"
-          onPress={() => { /* onboarding modal placeholder */ }}
+          onPress={() =>
+            Alert.alert(
+              'How CRAVE Works',
+              "CRAVE ranks restaurants from real signals — menus, reviews, " +
+                'local blogs, and how people actually eat — instead of paid ' +
+                'placements. The S/A/B/C tier badge reflects that blended ' +
+                'score. See a place on social media? Share it to CRAVE and ' +
+                "it'll show up in your Craves, matched to the real place " +
+                'automatically.',
+            )
+          }
         />
         <Divider />
         <Row

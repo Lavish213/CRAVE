@@ -20,11 +20,13 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.auth import require_api_key
+from app.core.user_auth import get_current_user_id
+from app.core.rate_limit import rate_limit
 from app.db.session import get_db
 from app.db.models.hitlist_save import HitlistSave
 from app.db.models.place import Place
 from app.api.v1.schemas.places import PlaceOut, PlacesResponse
-from app.services.query.place_image_query import get_primary_image_urls_bulk
+from app.services.query.place_image_visibility_query import get_primary_image_urls_bulk
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +44,10 @@ def _dedup_key(user_id: str, place_id: str) -> str:
 # -------------------------------------------------------
 
 class SaveRequest(BaseModel):
-    user_id: str = Field(..., min_length=1, max_length=128)
+    # user_id intentionally NOT a field here — it comes from the verified
+    # bearer token (get_current_user_id), never from the client. Accepting
+    # it from the request body was the app's core IDOR bug: any caller could
+    # save/delete/list on behalf of any other user by passing their UUID.
     place_id: str = Field(..., min_length=1, max_length=36)
 
 
@@ -50,25 +55,26 @@ class SaveRequest(BaseModel):
 # POST /saves — create save
 # -------------------------------------------------------
 
-@router.post("", status_code=201)
+@router.post("", status_code=201, dependencies=[Depends(rate_limit)])
 def create_save(
     payload: SaveRequest,
     db: Session = Depends(get_db),
+    user_id: str = Depends(get_current_user_id),
     _: None = Depends(require_api_key),
 ) -> dict:
-    dedup = _dedup_key(payload.user_id, payload.place_id)
+    dedup = _dedup_key(user_id, payload.place_id)
 
     # Idempotent: already saved → return existing
     existing = (
         db.query(HitlistSave)
         .filter(
-            HitlistSave.user_id == payload.user_id,
+            HitlistSave.user_id == user_id,
             HitlistSave.dedup_key == dedup,
         )
         .one_or_none()
     )
     if existing:
-        logger.debug("save_already_exists user_id=%s place_id=%s", payload.user_id, payload.place_id)
+        logger.debug("save_already_exists user_id=%s place_id=%s", user_id, payload.place_id)
         return {"status": "already_saved", "id": existing.id}
 
     # Verify place exists and is active
@@ -84,7 +90,7 @@ def create_save(
 
     save = HitlistSave(
         id=str(uuid.uuid4()),
-        user_id=payload.user_id,
+        user_id=user_id,
         place_name=place.name,
         place_id=payload.place_id,
         resolution_status="resolved",
@@ -93,7 +99,7 @@ def create_save(
     db.add(save)
     db.commit()
 
-    logger.info("save_created user_id=%s place_id=%s place_name=%s", payload.user_id, payload.place_id, place.name)
+    logger.info("save_created user_id=%s place_id=%s place_name=%s", user_id, payload.place_id, place.name)
     return {"status": "saved", "id": save.id}
 
 
@@ -101,11 +107,11 @@ def create_save(
 # DELETE /saves/{place_id} — remove save
 # -------------------------------------------------------
 
-@router.delete("/{place_id}", status_code=200)
+@router.delete("/{place_id}", status_code=200, dependencies=[Depends(rate_limit)])
 def delete_save(
     place_id: str,
-    user_id: str = Query(..., min_length=1, max_length=128),
     db: Session = Depends(get_db),
+    user_id: str = Depends(get_current_user_id),
     _: None = Depends(require_api_key),
 ) -> dict:
     dedup = _dedup_key(user_id, place_id)
@@ -133,11 +139,11 @@ def delete_save(
 # GET /saves — list saved places
 # -------------------------------------------------------
 
-@router.get("", response_model=PlacesResponse)
+@router.get("", response_model=PlacesResponse, dependencies=[Depends(rate_limit)])
 def list_saves(
-    user_id: str = Query(..., min_length=1, max_length=128),
     limit: int = Query(200, ge=1, le=500),
     db: Session = Depends(get_db),
+    user_id: str = Depends(get_current_user_id),
     _: None = Depends(require_api_key),
 ) -> PlacesResponse:
     """

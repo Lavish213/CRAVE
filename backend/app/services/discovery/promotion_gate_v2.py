@@ -1,5 +1,13 @@
 from __future__ import annotations
 
+# DEPRECATED / UNUSED: despite the "_v2" name, this module was never wired
+# into the live discovery path — promotion in app.services.discovery.pipeline_v2
+# goes through promote_service_v2.py / promotion_orchestrator_v2.py instead.
+# A grep across the entire backend/ tree found zero imports of
+# app.services.discovery.promotion_gate_v2 or explain_promotion_gate_v2 from
+# anywhere outside this file's own internal self-reference.
+# Kept here for reference only — not wired up. Safe to delete if no longer needed.
+
 from typing import Dict, Any, Tuple
 
 

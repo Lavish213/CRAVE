@@ -115,7 +115,7 @@ def extract_with_browser(url: str) -> List[ExtractedMenuItem]:
 
                     key = (
                         f"{(item.name or '').lower()}|"
-                        f"{item.price or ''}|"
+                        f"{item.price_cents or ''}|"
                         f"{item.section or ''}"
                     )
 

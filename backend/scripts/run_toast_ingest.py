@@ -16,7 +16,7 @@ from app.services.ingest.toast_ingest import (
 )
 
 from app.services.ingest.toast_menu_extractor import extract_menu_from_toast_payloads
-from app.services.menu.menu_writer import MenuWriter
+from app.services.menu.processing.menu_orchestrator import MenuOrchestrator
 
 
 logging.basicConfig(level=logging.INFO)
@@ -125,17 +125,25 @@ def run(url: str, city_id: str):
         # ----------------------------------------
         # STEP 5: WRITE MENU (CRITICAL)
         # ----------------------------------------
-        writer = MenuWriter()
+        orchestrator = MenuOrchestrator()
 
-        inserted = writer.write(
+        orch_result = orchestrator.run_with_items(
+            db=db,
             place_id=place.id,
             items=items,
+            source="toast_ingest_script",
         )
 
+        db.commit()
+
+        inserted = orch_result.extracted_item_count
+
         logger.info(
-            "toast_menu_written place_id=%s items=%s",
+            "toast_menu_written place_id=%s extracted=%s claims=%s materialized=%s",
             place.id,
-            inserted,
+            orch_result.extracted_item_count,
+            orch_result.emitted_claim_count,
+            orch_result.materialized,
         )
 
     finally:

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-from typing import List, Dict, Any
 
 from sqlalchemy.orm import Session
 
@@ -16,29 +15,18 @@ def ingest_menu_items(
     *,
     db: Session,
     place_id: str,
-    items: List[Dict[str, Any]] | None = None,  # kept for compatibility
-    force_refresh: bool = True,
+    items=None,           # legacy compat — ignored, orchestrator handles sourcing
+    force_refresh: bool = True,  # legacy compat — ignored
 ) -> bool:
     """
-    Modern ingestion entrypoint.
+    Modern ingestion entrypoint. Resolves place and triggers MenuOrchestrator.
 
-    Responsibilities:
-    • Resolve place
-    • Trigger orchestrator
-    • Ensure pipeline consistency
-
-    NOTE:
-    • `items` is ignored (legacy compatibility)
-    • All ingestion is now orchestrator-driven
+    NOTE: `items` and `force_refresh` are kept for call-site compatibility but
+    are no longer used. All extraction is orchestrator-driven.
 
     Returns:
-        bool → success
+        bool → True if menu was successfully materialized
     """
-
-    # -----------------------------------------------------
-    # VALIDATION
-    # -----------------------------------------------------
-
     if not place_id:
         raise ValueError("MISSING_PLACE_ID")
 
@@ -52,25 +40,15 @@ def ingest_menu_items(
         logger.error("menu_ingest_place_not_found place_id=%s", place_id)
         return False
 
-    if not place.website:
-        logger.warning(
-            "menu_ingest_no_website place_id=%s",
-            place_id,
-        )
+    if not place.website and not place.menu_source_url and not place.grubhub_url:
+        logger.warning("menu_ingest_no_source place_id=%s", place_id)
         return False
-
-    # -----------------------------------------------------
-    # EXECUTION
-    # -----------------------------------------------------
 
     try:
         orchestrator = MenuOrchestrator()
 
-        result = orchestrator.run_for_place(
-            db=db,
-            place=place,
-            force_refresh=force_refresh,
-        )
+        # run_for_place signature: (self, *, db, place) — no extra kwargs
+        result = orchestrator.run_for_place(db=db, place=place)
 
         success = bool(result.materialized)
 
@@ -86,9 +64,5 @@ def ingest_menu_items(
         return success
 
     except Exception as exc:
-        logger.exception(
-            "menu_ingest_failed place_id=%s error=%s",
-            place_id,
-            exc,
-        )
+        logger.exception("menu_ingest_failed place_id=%s error=%s", place_id, exc)
         return False

@@ -340,7 +340,7 @@ def _extract_section_name(
 def _item_key(item: ExtractedMenuItem) -> str:
     return (
         f"{(item.name or '').strip().lower()}|"
-        f"{(item.price or '').strip()}|"
+        f"{(item.price_cents or '').strip()}|"
         f"{(item.section or '').strip().lower()}"
     )
 

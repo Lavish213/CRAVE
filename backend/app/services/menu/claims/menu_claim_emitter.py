@@ -86,6 +86,23 @@ def emit_menu_claims(
         )
         return []
 
+    # Pre-load existing claim keys for this place to prevent IntegrityError on re-run.
+    # PlaceClaim has unique(place_id, field, claim_key) — blind db.add() would fail.
+    # Skipping here avoids IntegrityError without needing savepoints or rollback.
+    try:
+        existing_keys: Set[str] = set(
+            row[0]
+            for row in db.query(PlaceClaim.claim_key)
+            .filter(
+                PlaceClaim.place_id == place_id,
+                PlaceClaim.field == "menu_item",
+            )
+            .all()
+        )
+    except Exception as exc:
+        logger.warning("claims_preload_failed place=%s error=%s", place_id, exc)
+        existing_keys = set()
+
     emitted: List[PlaceClaim] = []
     batch_keys: Set[str] = set()
 
@@ -125,8 +142,8 @@ def emit_menu_claims(
                 failed_items += 1
                 continue
 
-            # 🔥 batch-level dedupe
-            if claim_key in batch_keys:
+            # 🔥 batch-level dedupe + DB-level dedupe (prevents IntegrityError on re-run)
+            if claim_key in batch_keys or claim_key in existing_keys:
                 skipped_duplicates += 1
                 continue
 
@@ -201,19 +218,18 @@ def emit_menu_claims(
             )
 
     except IntegrityError as exc:
-        db.rollback()
-
+        # DO NOT rollback — would kill caller's entire transaction.
+        # pre-load existing_keys above should prevent this entirely.
+        # If it still fires (race condition), log and return empty.
         logger.warning(
             "claims_integrity_error place=%s error=%s",
             place_id,
             exc,
         )
-
-        # 🔥 DO NOT kill pipeline — return partial success
-        return emitted
+        return []
 
     except Exception as exc:
-        db.rollback()
+        # DO NOT rollback — same reason. Caller owns the transaction.
         logger.exception("claim_flush_failed place=%s error=%s", place_id, exc)
         return []
 

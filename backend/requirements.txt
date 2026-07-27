@@ -2,8 +2,13 @@
 # Generated 2026-04-13
 
 # Web framework
+# NOTE: starlette has never released a 1.0 (latest as of writing is the
+# 0.5x series — see https://pypi.org/project/starlette/#history). The
+# previous "starlette>=1.0.0" here is an impossible constraint: no version
+# satisfies it, so `pip install -r requirements.txt` would fail to resolve
+# outright. Pinned to the actual current release line instead.
 fastapi>=0.135.0
-starlette>=1.0.0
+starlette>=0.40.0,<1.0.0
 uvicorn[standard]>=0.30.0
 
 # HTTP
@@ -32,6 +37,12 @@ rapidfuzz>=3.6.0
 
 # Scheduling
 apscheduler>=3.10.0
+
+# Auth (Supabase JWT verification)
+pyjwt>=2.8.0
+
+# Cache
+redis>=5.0.0
 
 # Utilities
 python-dotenv>=1.2.0

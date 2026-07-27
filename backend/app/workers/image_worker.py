@@ -8,8 +8,10 @@ from sqlalchemy import exists, func, not_, or_, select, update
 from sqlalchemy.orm import Session
 
 from app.db.models.place import Place
-from app.db.models.place_image import PlaceImage
+from app.db.models.place_image import PlaceImage, VISIBILITY_HIDDEN
 from app.services.images.image_ingest_service import ImageIngestService
+from app.services.images.place_image_invariant_service import PlaceImageInvariantService
+from app.services.cache.cache_helpers import invalidate_place, invalidate_all_image_caches
 
 
 logger = logging.getLogger(__name__)
@@ -48,8 +50,10 @@ class ImageWorker:
         self,
         *,
         ingest_service: Optional[ImageIngestService] = None,
+        invariant_service: Optional[PlaceImageInvariantService] = None,
     ) -> None:
         self.ingest_service = ingest_service or ImageIngestService()
+        self.invariant_service = invariant_service or PlaceImageInvariantService()
 
     # ---------------------------------------------------------
     # Worker entrypoint
@@ -169,7 +173,25 @@ class ImageWorker:
                     )
             elif not attempt_failed:
                 # Commit succeeded path (images returned)
+                # Run invariant repair before commit to keep DB consistent
+                if place_id:
+                    try:
+                        self.invariant_service.repair(db=db, place_id=place_id)
+                    except Exception:
+                        logger.debug(
+                            "image_worker_invariant_repair_failed place_id=%s",
+                            place_id,
+                        )
                 db.commit()
+                if place_id:
+                    try:
+                        invalidate_place(place_id)
+                        invalidate_all_image_caches()
+                    except Exception:
+                        logger.debug(
+                            "image_worker_cache_invalidate_failed place_id=%s",
+                            place_id,
+                        )
 
         result = {
             "processed": processed,
@@ -250,10 +272,20 @@ class ImageWorker:
             )
         )
 
+        # Re-process places whose current primary is hidden (invariant violation)
+        hidden_primary_clause = exists(
+            select(PlaceImage.id).where(
+                PlaceImage.place_id == Place.id,
+                PlaceImage.is_primary.is_(True),
+                PlaceImage.visibility_status == VISIBILITY_HIDDEN,
+            )
+        )
+
         return or_(
             not_(any_images_clause),
             total_images_subquery < MIN_IMAGE_COUNT,
             not_(primary_exists_clause),
+            hidden_primary_clause,
         )
 
     # ---------------------------------------------------------

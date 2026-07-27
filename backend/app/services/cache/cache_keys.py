@@ -89,3 +89,50 @@ def categories_cache_key() -> str:
 
 def cities_cache_key() -> str:
     return "cities:all"
+
+
+def place_menu_key(
+    *,
+    place_id: str,
+) -> str:
+    return f"menu:{place_id}"
+
+
+def feed_city_prefix(
+    *,
+    city_id: str,
+) -> str:
+    """Prefix for all feed keys belonging to a city. Used for prefix invalidation."""
+    return f"feed:{_norm(city_id)}:"
+
+
+def provider_probe_negative_key(
+    *,
+    url: str,
+) -> str:
+    """
+    Negative-result cache key for a probed URL.
+    A hit means: this URL is confirmed blocked/dead — skip fetch.
+    """
+    import hashlib
+    url_hash = hashlib.sha256((url or "").strip().encode()).hexdigest()[:20]
+    return f"neg:probe:{url_hash}"
+
+
+def blocked_domain_key(
+    *,
+    domain: str,
+) -> str:
+    """Negative-result cache key for a domain confirmed blocked/dead."""
+    return f"neg:domain:{(domain or '').strip().lower()}"
+
+
+def extraction_result_key(
+    *,
+    place_id: str,
+) -> str:
+    """
+    Short-lived cache for successful extraction results.
+    Prevents redundant re-extraction within the same batch window.
+    """
+    return f"extract:{place_id}"

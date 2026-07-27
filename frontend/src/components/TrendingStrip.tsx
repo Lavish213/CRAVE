@@ -4,7 +4,7 @@ import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-nati
 import * as Haptics from 'expo-haptics';
 import { PlaceOut } from '../api/places';
 import { getTier } from '../utils/scoring';
-import { Colors } from '../constants/colors';
+import { Colors, Radius, Spacing } from '../constants/colors';
 
 interface Props {
   places: PlaceOut[];
@@ -39,25 +39,25 @@ export function TrendingStrip({ places, onPress }: Props) {
 }
 
 const styles = StyleSheet.create({
-  container: { marginBottom: 4 },
+  container: { marginBottom: Spacing.xs },
   heading: {
     fontSize: 10,
     fontWeight: '800',
     color: Colors.textMuted,
     letterSpacing: 1.5,
-    paddingHorizontal: 16,
-    paddingTop: 8,
-    paddingBottom: 4,
+    paddingHorizontal: Spacing.lg,
+    paddingTop: Spacing.sm,
+    paddingBottom: Spacing.xs,
   },
-  scroll: { paddingHorizontal: 12, gap: 8, paddingBottom: 4 },
+  scroll: { paddingHorizontal: Spacing.md, gap: Spacing.sm, paddingBottom: Spacing.xs },
   chip: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
     backgroundColor: Colors.surface,
-    borderRadius: 20,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    borderRadius: Radius.pill,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
     borderWidth: 1,
     borderColor: Colors.border,
     minHeight: 36,

@@ -26,11 +26,15 @@ def _job_discovery() -> None:
     from contextlib import suppress
     from app.db.session import SessionLocal
     from app.services.discovery.pipeline_v2 import run_discovery_pipeline_v2
+    from app.core.job_run_tracker import track_job_run
 
     db = SessionLocal()
     try:
-        result = run_discovery_pipeline_v2(db=db, limit=50)
-        logger.info("scheduler_discovery_complete promoted=%s", result.get("promoted", 0))
+        with track_job_run("discovery") as run:
+            result = run_discovery_pipeline_v2(db=db, limit=50)
+            promoted = result.get("promoted", 0)
+            logger.info("scheduler_discovery_complete promoted=%s", promoted)
+            run.set_summary(f"promoted={promoted}")
     except Exception as exc:
         logger.exception("scheduler_discovery_failed error=%s", exc)
         with suppress(Exception):
@@ -46,10 +50,13 @@ def _job_menu_enrichment() -> None:
     # internally — it opens a SessionLocal() per batch iteration and closes it
     # in a try/finally block, so no explicit session management is needed here.
     from app.services.workers.menu_worker import run_menu_worker
+    from app.core.job_run_tracker import track_job_run
 
     try:
-        run_menu_worker()
-        logger.info("scheduler_menu_complete")
+        with track_job_run("menu_enrichment") as run:
+            run_menu_worker()
+            logger.info("scheduler_menu_complete")
+            run.set_summary("completed")
     except Exception as exc:
         logger.exception("scheduler_menu_failed error=%s", exc)
 
@@ -59,26 +66,34 @@ def _job_score_recompute() -> None:
     from contextlib import suppress
     from app.db.session import SessionLocal
     from app.db.models.place import Place
-    from app.services.scoring.recompute import recompute_place_scores
+    from app.workers.recompute_scores_worker import recompute_places_v4
+    from app.core.job_run_tracker import track_job_run
     from sqlalchemy import or_
 
     db = SessionLocal()
     try:
-        places = (
-            db.query(Place)
-            .filter(Place.is_active.is_(True))
-            .filter(
-                or_(Place.rank_score == 0, Place.last_scored_at.is_(None))
+        with track_job_run("score_recompute") as run:
+            places = (
+                db.query(Place)
+                .filter(Place.is_active.is_(True))
+                .filter(
+                    or_(Place.rank_score == 0, Place.last_scored_at.is_(None))
+                )
+                .limit(500)
+                .all()
             )
-            .limit(500)
-            .all()
-        )
-        if places:
-            updated = recompute_place_scores(db, places=places)
-            db.commit()
-            logger.info("scheduler_recompute_complete updated=%s", updated)
-        else:
-            logger.debug("scheduler_recompute_noop no_stale_places")
+            if places:
+                # Real v4 scorer (signal decay, image/menu/hitlist/creator/award/
+                # blog/risk signals, cache invalidation) — previously this called
+                # the Phase-1 placeholder in app/services/scoring/recompute.py,
+                # which never read any of that signal data.
+                updated = recompute_places_v4(db, places=places)
+                db.commit()
+                logger.info("scheduler_recompute_complete updated=%s", updated)
+                run.set_summary(f"updated={updated}")
+            else:
+                logger.debug("scheduler_recompute_noop no_stale_places")
+                run.set_summary("no_stale_places")
     except Exception as exc:
         logger.exception("scheduler_recompute_failed error=%s", exc)
         with suppress(Exception):
@@ -93,11 +108,14 @@ def _job_ranking_update() -> None:
     from contextlib import suppress
     from app.db.session import SessionLocal
     from app.workers.ranking_worker import run_ranking_cycle
+    from app.core.job_run_tracker import track_job_run
 
     db = SessionLocal()
     try:
-        run_ranking_cycle(db)
-        logger.info("scheduler_ranking_complete")
+        with track_job_run("ranking_update") as run:
+            run_ranking_cycle(db)
+            logger.info("scheduler_ranking_complete")
+            run.set_summary("completed")
     except Exception as exc:
         logger.exception("scheduler_ranking_failed error=%s", exc)
         with suppress(Exception):
@@ -107,21 +125,59 @@ def _job_ranking_update() -> None:
             db.close()
 
 
+def _job_image_ingestion() -> None:
+    """
+    Image ingestion: backfill/refresh place photos via Google Places.
+
+    ImageWorker was fully built (retry-attempt capping, image_blocked after
+    repeated failures, invariant repair, primary-image re-election, cache
+    invalidation) but was previously only reachable through
+    app/workers/master_worker.py — a `while True` process nothing launched.
+    This was the entire reason images never refreshed automatically.
+    """
+    from contextlib import suppress
+    from app.db.session import SessionLocal
+    from app.workers.image_worker import ImageWorker
+    from app.core.job_run_tracker import track_job_run
+
+    db = SessionLocal()
+    try:
+        with track_job_run("image_ingestion") as run:
+            result = ImageWorker().run(db=db, limit=50)
+            logger.info("scheduler_image_ingestion_complete %s", result)
+            run.set_summary(str(result)[:500])
+    except Exception as exc:
+        logger.exception("scheduler_image_ingestion_failed error=%s", exc)
+        with suppress(Exception):
+            db.rollback()
+    finally:
+        with suppress(Exception):
+            db.close()
+
+
 def _job_share_parser() -> None:
     """Share parser: process pending CraveItem share URLs."""
+    from app.core.job_run_tracker import track_job_run
+
     try:
-        from app.workers.share_parser_worker import run_share_parser
-        result = run_share_parser()  # opens/closes its own session when db=None
-        if result["processed"]:
-            logger.info(
-                "scheduler_share_parser_complete processed=%s matched=%s unmatched=%s error=%s",
-                result["processed"],
-                result["matched"],
-                result["unmatched"],
-                result["error"],
-            )
-        else:
-            logger.debug("scheduler_share_parser_noop no_pending_items")
+        with track_job_run("share_parser") as run:
+            from app.workers.share_parser_worker import run_share_parser
+            result = run_share_parser()  # opens/closes its own session when db=None
+            if result["processed"]:
+                logger.info(
+                    "scheduler_share_parser_complete processed=%s matched=%s unmatched=%s error=%s",
+                    result["processed"],
+                    result["matched"],
+                    result["unmatched"],
+                    result["error"],
+                )
+                run.set_summary(
+                    f"processed={result['processed']} matched={result['matched']} "
+                    f"unmatched={result['unmatched']}"
+                )
+            else:
+                logger.debug("scheduler_share_parser_noop no_pending_items")
+                run.set_summary("no_pending_items")
     except Exception as exc:
         logger.exception("scheduler_share_parser_failed error=%s", exc)
 
@@ -188,6 +244,15 @@ def create_scheduler() -> BackgroundScheduler:
         minutes=2,
         id="share_parser",
         name="CRAVE share parser",
+    )
+
+    # image ingestion — every 20 minutes
+    scheduler.add_job(
+        _job_image_ingestion,
+        trigger="interval",
+        minutes=20,
+        id="image_ingestion",
+        name="CRAVE image ingestion",
     )
 
     return scheduler

@@ -24,17 +24,31 @@ TOAST_GUID_PATTERN = re.compile(
 # PRICE
 # ---------------------------------------------------------
 
-def _parse_price(value: Any) -> Optional[str]:
+def _parse_price(value: Any) -> Optional[int]:
+    """Convert Toast price value to cents (int).
+
+    Toast API returns prices as integers in cents (e.g. 1299 = $12.99)
+    or occasionally as floats (e.g. 12.99). Normalize to cents.
+    """
     if value is None:
         return None
 
     try:
-        if isinstance(value, (int, float)):
-            if value > 100:
-                value = value / 100
-            return f"{value:.2f}"
+        if isinstance(value, int):
+            # Already cents if >= 100, else assume dollars
+            return value if value >= 100 else int(value * 100)
 
-        return str(value)
+        if isinstance(value, float):
+            # Assume dollars if < 100 (e.g. 12.99), else cents
+            if value < 100:
+                return round(value * 100)
+            return int(value)
+
+        # String — strip currency symbols, convert
+        s = str(value).strip().lstrip("$").replace(",", "")
+        f = float(s)
+        return round(f * 100) if f < 100 else int(f)
+
     except Exception:
         return None
 
@@ -48,9 +62,12 @@ def _dedupe(items: List[ExtractedMenuItem]) -> List[ExtractedMenuItem]:
     out: List[ExtractedMenuItem] = []
 
     for item in items:
+        # price_cents is int|None — cannot call .strip() on int.
+        # Use empty string for None, str() for any integer value (including 0).
+        _price_key = "" if item.price_cents is None else str(item.price_cents)
         key = (
             f"{(item.name or '').strip().lower()}|"
-            f"{(item.price or '').strip()}|"
+            f"{_price_key}|"
             f"{(item.section or '').strip().lower()}"
         )
 
@@ -85,6 +102,20 @@ def _is_probably_toast(url: Optional[str], html: Optional[str]) -> bool:
 # GUID / SLUG (FIXED 🔥)
 # ---------------------------------------------------------
 
+_URL_GUID_PATTERN = re.compile(
+    r"/r-([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})",
+    re.IGNORECASE,
+)
+
+
+def _extract_guid_from_url(url: Optional[str]) -> Optional[str]:
+    """Extract GUID from URL path — e.g. /local/slug/r-{uuid}."""
+    if not url:
+        return None
+    match = _URL_GUID_PATTERN.search(url)
+    return match.group(1) if match else None
+
+
 def _extract_guid(html: Optional[str]) -> Optional[str]:
     if not html:
         return None
@@ -94,23 +125,57 @@ def _extract_guid(html: Optional[str]) -> Optional[str]:
 
 
 def _extract_slug(url: Optional[str]) -> Optional[str]:
+    """
+    Extract the usable restaurant slug from Toast URL variants:
+      /local/<slug>                    → slug
+      /local/<slug>/r-<guid>           → slug (not the trailing GUID)
+      /online/<slug>                   → slug
+      toasttab.com/<slug>              → slug
+    """
     if not url:
         return None
 
     try:
-        parts = url.split("/")
-        parts = [p for p in parts if p and "http" not in p]
+        import re as _re
+        clean = url.split("?")[0].split("#")[0].rstrip("/")
+        parts = [
+            p for p in clean.split("/")
+            if p and "." not in p and "http" not in p.lower()
+        ]
 
         if not parts:
             return None
 
+        # Remove trailing "order-online" segment
         if parts[-1] == "order-online":
             parts = parts[:-1]
 
         if not parts:
             return None
 
-        return parts[-1]
+        # /local/<slug>  or  /local/<slug>/r-<guid>
+        if "local" in parts:
+            idx = parts.index("local")
+            if idx + 1 < len(parts):
+                return parts[idx + 1]  # slug, not the trailing GUID
+
+        # /online/<slug>
+        if "online" in parts:
+            idx = parts.index("online")
+            if idx + 1 < len(parts):
+                return parts[idx + 1]
+
+        # Direct: toasttab.com/<slug>  — single meaningful segment
+        last = parts[-1]
+        # Skip raw GUIDs: r-xxxxxxxx-... or full UUID
+        if _re.match(r"r-[a-f0-9]{8}-", last) or _re.fullmatch(
+            r"[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}", last
+        ):
+            if len(parts) >= 2:
+                return parts[-2]
+            return None
+
+        return last
 
     except Exception:
         return None
@@ -127,7 +192,7 @@ def _build_api_candidates(
 
     candidates: List[str] = []
 
-    guid = _extract_guid(html)
+    guid = _extract_guid(html) or _extract_guid_from_url(url)
     slug = _extract_slug(url)
 
     # GUID (best)
@@ -202,13 +267,24 @@ def _parse_groups(groups, section, depth: int = 0):
             if not name:
                 continue
 
+            # Toast API items may carry an imageUrl (item-level food photo)
+            image_url = (
+                item.get("imageUrl")
+                or item.get("image_url")
+                or item.get("image")
+                or None
+            )
+            if image_url and not isinstance(image_url, str):
+                image_url = None
+
             items.append(
                 ExtractedMenuItem(
                     name=str(name),
-                    price=_parse_price(item.get("price")),
+                    price_cents=_parse_price(item.get("price")),
                     section=section_name,
                     currency="USD",
                     description=item.get("description"),
+                    image_url=image_url,
                     provider="toast",
                     source_type="provider",
                 )

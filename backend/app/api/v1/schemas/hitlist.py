@@ -6,7 +6,8 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class HitlistSaveRequest(BaseModel):
-    user_id: str = Field(..., min_length=1, max_length=128)
+    # user_id comes from the verified bearer token (get_current_user_id), not
+    # the client — see app/core/user_auth.py.
     place_name: str = Field(..., min_length=1, max_length=256)
     source_url: Optional[str] = Field(None, max_length=1024)
     lat: Optional[float] = Field(None, ge=-90, le=90)
@@ -14,7 +15,6 @@ class HitlistSaveRequest(BaseModel):
 
 
 class HitlistSuggestRequest(BaseModel):
-    user_id: str = Field(..., min_length=1, max_length=128)
     place_name: str = Field(..., min_length=1, max_length=256)
     source_url: Optional[str] = Field(None, max_length=1024)
     city_hint: Optional[str] = Field(None, max_length=128)

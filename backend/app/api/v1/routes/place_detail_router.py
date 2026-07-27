@@ -12,7 +12,6 @@ logger = logging.getLogger(__name__)
 from app.db.session import get_db
 from app.core.rate_limit import rate_limit
 from app.db.models.place import Place
-from app.db.models.place_image import PlaceImage
 from app.db.models.category import Category
 from app.db.models.place_categories import place_categories
 
@@ -20,6 +19,7 @@ from app.services.cache.response_cache import response_cache
 from app.services.cache.cache_keys import place_detail_key
 from app.services.cache.cache_ttl import place_detail_ttl
 from app.services.query.place_image_query import _to_proxy_url
+from app.services.query.place_image_visibility_query import get_public_gallery
 
 
 router = APIRouter(
@@ -65,25 +65,15 @@ def get_place_detail(
         )
 
     # --------------------------------------------------
-    # Images (dedup + safe)
+    # Images — visibility-gated, centralized query
     # --------------------------------------------------
 
-    img_stmt = (
-        select(PlaceImage)
-        .where(PlaceImage.place_id == place_id)
-        .order_by(
-            PlaceImage.is_primary.desc(),  # 🔥 primary first
-            PlaceImage.created_at.desc(),
-            PlaceImage.id.asc(),
-        )
-    )
-
-    images = db.execute(img_stmt).scalars().all()
+    gallery = get_public_gallery(db, place_id=place_id, limit=9)
 
     seen = set()
     image_urls: List[str] = []
 
-    for img in images:
+    for img in gallery:
         raw = img.url
         if not raw or raw in seen:
             continue

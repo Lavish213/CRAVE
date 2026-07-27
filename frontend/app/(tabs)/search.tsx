@@ -3,6 +3,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
+  RefreshControl,
   StyleSheet,
   Text,
   TextInput,
@@ -16,8 +17,8 @@ import { useCityStore } from '../../src/stores/cityStore';
 import { searchPlaces } from '../../src/api/search';
 import { useLocation } from '../../src/hooks/useLocation';
 import { PlaceOut } from '../../src/api/places';
-import { useTrending } from '../../src/hooks/useTrending';
-import { Colors, Spacing } from '../../src/constants/colors';
+import { useTrendingWithRefresh } from '../../src/hooks/useTrending';
+import { Colors, Radius, Spacing } from '../../src/constants/colors';
 import { PlaceCardCompact } from '../../src/components/PlaceCardCompact';
 import { ErrorState } from '../../src/components/ErrorState';
 import { EmptyState } from '../../src/components/EmptyState';
@@ -27,21 +28,21 @@ export default function SearchScreen() {
   const selectedCity = useCityStore((s) => s.selectedCity);
   const userLocation = useLocation();
 
-  const trending = useTrending();
+  const [trending, trendingRefreshing, refreshTrending] = useTrendingWithRefresh();
 
   const [query, setQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const { data: searchData, isLoading: searchLoading, isError: searchError } = useQuery({
+  const { data: searchData, isLoading: searchLoading, isError: searchError, refetch: refetchSearch, isRefetching: searchRefetching } = useQuery({
     queryKey: ['search', debouncedQuery, selectedCity?.id, userLocation],
     queryFn: () => searchPlaces({
       query: debouncedQuery,
       city_id: selectedCity?.id,
       lat: userLocation?.lat,
       lng: userLocation?.lng,
-      limit: 30,
+      page_size: 30,
     }),
     enabled: debouncedQuery.length >= 2,
     staleTime: 60 * 1000,  // 1 min
@@ -126,6 +127,13 @@ export default function SearchScreen() {
             <PlaceCardCompact place={item} onPress={() => router.push(`/place/${item.id}`)} />
           )}
           contentContainerStyle={styles.list}
+          refreshControl={
+            <RefreshControl
+              refreshing={trendingRefreshing}
+              onRefresh={refreshTrending}
+              tintColor={Colors.primary}
+            />
+          }
           ListHeaderComponent={
             trending.length > 0 ? (
               <>
@@ -157,6 +165,13 @@ export default function SearchScreen() {
             <PlaceCardCompact place={item} onPress={() => router.push(`/place/${item.id}`)} />
           )}
           contentContainerStyle={styles.list}
+          refreshControl={
+            <RefreshControl
+              refreshing={searchRefetching}
+              onRefresh={() => refetchSearch()}
+              tintColor={Colors.primary}
+            />
+          }
           ListHeaderComponent={
             <Text style={styles.resultCount}>{results.length} result{results.length !== 1 ? 's' : ''}</Text>
           }
@@ -168,24 +183,24 @@ export default function SearchScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
-  bar: { padding: 12, paddingBottom: 4, gap: 4 },
+  bar: { padding: Spacing.md, paddingBottom: Spacing.xs, gap: Spacing.xs },
   inputRow: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: Colors.surface,
-    borderRadius: 12,
+    borderRadius: Radius.md,
     borderWidth: 1,
     borderColor: Colors.border,
-    paddingHorizontal: 12,
+    paddingHorizontal: Spacing.md,
     paddingVertical: 10,
-    gap: 8,
+    gap: Spacing.sm,
     minHeight: 46,
   },
   searchIcon: { marginRight: 2 },
   input: { flex: 1, color: Colors.text, fontSize: 15 },
-  cityContext: { color: Colors.textMuted, fontSize: 12, fontWeight: '500', paddingLeft: 4 },
+  cityContext: { color: Colors.textMuted, fontSize: 12, fontWeight: '500', paddingLeft: Spacing.xs },
   loadingRow: { paddingVertical: 20, alignItems: 'center' },
-  list: { padding: 12, gap: 8, paddingBottom: 32 },
+  list: { padding: Spacing.md, gap: Spacing.sm, paddingBottom: Spacing.xxl },
   browseIntro: {
     fontSize: 22,
     fontWeight: '800',

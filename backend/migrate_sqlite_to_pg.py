@@ -27,7 +27,7 @@ BOOL_COLS = {
     "place_claims": {"is_verified_source", "is_user_submitted"},
     "menu_sources": {"is_active"},
     "menu_snapshots": {"is_current"},
-    "menu_items": {"is_available"},
+    "menu_items": {"is_available", "is_active"},
     "discovery_candidates": {"resolved", "blocked"},
     "city_place_rankings": set(),
     "place_categories": set(),
@@ -103,8 +103,14 @@ def main():
 
     # Widen place_images.url to accommodate longer Google URLs
     pg_cur.execute("ALTER TABLE place_images ALTER COLUMN url TYPE VARCHAR(1024)")
+    # Widen discovery_candidates.website to accommodate long URLs in source data
+    pg_cur.execute("ALTER TABLE discovery_candidates ALTER COLUMN website TYPE VARCHAR(512)")
+    # Widen menu_items.description to accommodate long descriptions in source data
+    pg_cur.execute("ALTER TABLE menu_items ALTER COLUMN description TYPE VARCHAR(2000)")
     pg_conn.commit()
-    print("  Widened place_images.url to VARCHAR(1024)\n")
+    print("  Widened place_images.url to VARCHAR(1024)")
+    print("  Widened discovery_candidates.website to VARCHAR(512)")
+    print("  Widened menu_items.description to VARCHAR(2000)\n")
 
     for table in TABLE_ORDER:
         try:

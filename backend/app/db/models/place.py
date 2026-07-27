@@ -145,7 +145,6 @@ class Place(Base, TimestampMixin):
         index=True,
     )
 
-    # ✅ FIXED: properly indented
     has_menu: Mapped[bool] = mapped_column(
         Boolean,
         nullable=False,
@@ -157,6 +156,31 @@ class Place(Base, TimestampMixin):
     last_menu_updated_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
         nullable=True,
+    )
+
+    # menu_confidence: confidence of the best menu source [0.0, 1.0]
+    # Set by materialize_menu_truth(). Used in V4 scoring.
+    menu_confidence: Mapped[float] = mapped_column(
+        Float,
+        nullable=False,
+        default=0.0,
+        server_default=text("0"),
+    )
+
+    # menu_extraction_attempted_at: last time extraction was attempted
+    # Used for exponential backoff — don't retry places that just failed.
+    menu_extraction_attempted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+
+    # menu_extraction_failure_count: consecutive extraction failures
+    # Progressive backoff: 1=1h, 2=4h, 3=24h, 4+=72h
+    menu_extraction_failure_count: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=0,
+        server_default=text("0"),
     )
 
     score_version: Mapped[int] = mapped_column(

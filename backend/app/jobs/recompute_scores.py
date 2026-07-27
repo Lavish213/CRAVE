@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.db.session import SessionLocal
 from app.db.models.place import Place
-from app.services.scoring.recompute import recompute_place_scores
+from app.workers.recompute_scores_worker import recompute_places_v4
 
 
 # =========================================================
@@ -168,7 +168,7 @@ def _process_batch(
     """
 
     try:
-        updated = recompute_place_scores(db, places=places)
+        updated = recompute_places_v4(db, places=places)
 
         if dry_run:
             db.rollback()

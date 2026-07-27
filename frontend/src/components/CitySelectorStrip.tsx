@@ -3,7 +3,7 @@ import React from 'react';
 import { ScrollView, StyleSheet, Text, TouchableOpacity } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { useCityStore } from '../stores/cityStore';
-import { Colors } from '../constants/colors';
+import { Colors, Radius, Spacing } from '../constants/colors';
 
 export function CitySelectorStrip() {
   const cities = useCityStore((s) => s.cities);
@@ -44,11 +44,11 @@ export function CitySelectorStrip() {
 
 const styles = StyleSheet.create({
   strip: { flexGrow: 0 },
-  content: { paddingHorizontal: 12, paddingVertical: 8, gap: 8 },
+  content: { paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm, gap: Spacing.sm },
   pill: {
     paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 20,
+    paddingVertical: Spacing.sm,
+    borderRadius: Radius.pill,
     borderWidth: 1,
     borderColor: Colors.border,
     backgroundColor: Colors.surface,

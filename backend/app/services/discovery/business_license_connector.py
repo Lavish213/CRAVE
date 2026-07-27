@@ -1,5 +1,12 @@
 from __future__ import annotations
 
+# DEPRECATED / UNUSED: written during an earlier discovery-source phase and
+# never wired into app.services.discovery.pipeline_v2, which is the discovery
+# path app/scheduler.py actually calls. A grep across the entire backend/
+# tree found zero imports of app.services.discovery.business_license_connector
+# or BusinessLicenseConnector from anywhere.
+# Kept here for reference only — not wired up. Safe to delete if no longer needed.
+
 import logging
 from typing import Dict, Iterable, List
 

@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import and_, select
 
 from app.db.models.place import Place
-from app.db.models.place_image import PlaceImage
+from app.db.models.place_image import PlaceImage, VISIBILITY_HIDDEN
 from app.db.models.place_categories import place_categories
 from app.services.geo.bounding_box import bounding_box
 from app.services.query.place_image_query import _to_proxy_url
@@ -83,6 +83,7 @@ def fetch_places_for_map(
             and_(
                 PlaceImage.place_id == Place.id,
                 PlaceImage.is_primary.is_(True),
+                PlaceImage.visibility_status != VISIBILITY_HIDDEN,
             )
         )
         .order_by(

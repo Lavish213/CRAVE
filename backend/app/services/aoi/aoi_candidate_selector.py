@@ -1,5 +1,14 @@
 from __future__ import annotations
 
+# DEPRECATED / UNUSED: the entire app/services/aoi/* package was written
+# during an earlier area-of-interest expansion phase and never wired into any
+# live entry point. A grep across the entire backend/ tree found zero
+# imports of app.services.aoi.aoi_candidate_selector from anywhere outside
+# this package (and nothing outside this package imports any aoi/* module —
+# the only cross-references are internal: aoi_expansion_engine ->
+# aoi_priority, aoi_neighbors -> aoi_grid).
+# Kept here for reference only — not wired up. Safe to delete if no longer needed.
+
 import logging
 from typing import List
 

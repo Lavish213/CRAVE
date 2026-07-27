@@ -1,5 +1,13 @@
 from __future__ import annotations
 
+# DEPRECATED / UNUSED: part of the old app/pipeline/* candidate pipeline,
+# superseded by app.services.discovery.pipeline_v2 (run_discovery_pipeline_v2)
+# which is what app/scheduler.py actually calls for discovery. A grep across
+# the entire backend/ tree found the only importer of this module to be
+# app/pipeline/ingest_runner.py — itself part of this same dead chain and not
+# referenced by anything outside app/pipeline/*.
+# Kept here for reference only — not wired up. Safe to delete if no longer needed.
+
 import logging
 from typing import Dict, List, Tuple, Optional
 

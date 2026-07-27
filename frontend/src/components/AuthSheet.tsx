@@ -10,8 +10,54 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import * as AuthSession from 'expo-auth-session';
+import * as QueryParams from 'expo-auth-session/build/QueryParams';
+import * as WebBrowser from 'expo-web-browser';
 import { supabase } from '../lib/supabase';
 import { Colors, Spacing, Radius } from '../constants/colors';
+
+// Required so that when the OAuth browser tab redirects back into the app,
+// the pending WebBrowser.openAuthSessionAsync() promise actually resolves
+// (otherwise the browser closes but the app never sees the redirect).
+WebBrowser.maybeCompleteAuthSession();
+
+// Deep link the OAuth provider redirects back to — must match app.json's
+// "scheme" ("crave") and whatever redirect URL is allow-listed in the
+// Supabase project's Auth > URL Configuration settings.
+const OAUTH_REDIRECT_TO = AuthSession.makeRedirectUri({ scheme: 'crave' });
+
+async function createSessionFromUrl(url: string) {
+  const { params, errorCode } = QueryParams.getQueryParams(url);
+  if (errorCode) throw new Error(errorCode);
+
+  const { access_token, refresh_token } = params;
+  if (!access_token || !refresh_token) return null;
+
+  const { data, error } = await supabase.auth.setSession({
+    access_token,
+    refresh_token,
+  });
+  if (error) throw error;
+  return data.session;
+}
+
+async function performOAuth(provider: 'google' | 'apple') {
+  const { data, error } = await supabase.auth.signInWithOAuth({
+    provider,
+    options: {
+      redirectTo: OAUTH_REDIRECT_TO,
+      skipBrowserRedirect: true,
+    },
+  });
+  if (error) throw error;
+  if (!data?.url) throw new Error('No OAuth URL returned from Supabase');
+
+  const result = await WebBrowser.openAuthSessionAsync(data.url, OAUTH_REDIRECT_TO);
+  if (result.type === 'success' && result.url) {
+    return createSessionFromUrl(result.url);
+  }
+  return null;
+}
 
 interface Props {
   visible: boolean;
@@ -42,7 +88,10 @@ export function AuthSheet({ visible, onClose, reason = 'default' }: Props) {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setLoading('google');
     try {
-      await supabase.auth.signInWithOAuth({ provider: 'google' });
+      const session = await performOAuth('google');
+      if (session) onClose();
+    } catch (err) {
+      if (__DEV__) console.log('[AUTH] google_oauth_failed', err);
     } finally {
       setLoading(null);
     }
@@ -52,7 +101,10 @@ export function AuthSheet({ visible, onClose, reason = 'default' }: Props) {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setLoading('apple');
     try {
-      await supabase.auth.signInWithOAuth({ provider: 'apple' });
+      const session = await performOAuth('apple');
+      if (session) onClose();
+    } catch (err) {
+      if (__DEV__) console.log('[AUTH] apple_oauth_failed', err);
     } finally {
       setLoading(null);
     }

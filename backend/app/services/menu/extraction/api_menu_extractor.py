@@ -255,7 +255,7 @@ def extract_api_menu(api_url: str, referer: Optional[str] = None) -> List[Extrac
         final = []
 
         for item in items:
-            key = f"{item.name}|{item.price}|{item.section}"
+            key = f"{item.name}|{item.price_cents}|{item.section}"
 
             if key in seen:
                 continue

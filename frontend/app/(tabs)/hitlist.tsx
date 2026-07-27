@@ -3,6 +3,7 @@ import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
+  RefreshControl,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -32,18 +33,10 @@ export default function HitlistScreen() {
   const [cravesError, setCravesError] = useState(false);
   const [authVisible, setAuthVisible] = useState(false);
 
-  // Load backend saves whenever user changes
-  useEffect(() => {
-    if (!user) return;
-    loadSaves(user.id);
-  }, [user?.id]);
-
-  // Load craves whenever user changes
-  useEffect(() => {
-    if (!user) return;
+  const loadCraves = React.useCallback(() => {
     setCravesLoading(true);
     setCravesError(false);
-    getCraveItems()
+    return getCraveItems()
       .then((items) => {
         if (__DEV__) console.log('[HITLIST] CRAVES_LOADED', { count: items.length });
         setCraves(items);
@@ -53,7 +46,30 @@ export default function HitlistScreen() {
         setCravesError(true);
       })
       .finally(() => setCravesLoading(false));
+  }, []);
+
+  // Load backend saves whenever user changes
+  useEffect(() => {
+    if (!user) return;
+    loadSaves(user.id);
   }, [user?.id]);
+
+  // Load craves whenever user changes
+  useEffect(() => {
+    if (!user) return;
+    loadCraves();
+  }, [user?.id, loadCraves]);
+
+  const [pullRefreshing, setPullRefreshing] = useState(false);
+  const handlePullRefresh = React.useCallback(async () => {
+    if (!user) return;
+    setPullRefreshing(true);
+    try {
+      await Promise.all([loadSaves(user.id), loadCraves()]);
+    } finally {
+      setPullRefreshing(false);
+    }
+  }, [user, loadSaves, loadCraves]);
 
   if (__DEV__) console.log('[HITLIST] RENDER', { user: !!user, saves: saves.length, savesLoading, savesError, craves: craves.length });
 
@@ -82,11 +98,29 @@ export default function HitlistScreen() {
     );
   }
 
+  // Session expired/invalid — retrying the same request would just fail
+  // the same way again. Previously this fell through to the generic
+  // ErrorState below, showing an infinite "retry" loop with no way out.
+  if (savesError === 'auth_required' && saves.length === 0) {
+    return (
+      <>
+        <EmptyState
+          icon="person-circle-outline"
+          title="Your session expired"
+          body="Sign in again to see your saved places."
+          ctaLabel="Sign in"
+          onCta={() => setAuthVisible(true)}
+        />
+        <AuthSheet visible={authVisible} onClose={() => setAuthVisible(false)} reason="hitlist" />
+      </>
+    );
+  }
+
   // Error loading saves (and no cached data)
   if (savesError && saves.length === 0) {
     return (
       <ErrorState
-        message="Couldn't load your saves"
+        message={savesError}
         onRetry={() => loadSaves(user.id)}
       />
     );
@@ -108,6 +142,13 @@ export default function HitlistScreen() {
       <FlatList
         data={saves}
         keyExtractor={(p) => p.id}
+        refreshControl={
+          <RefreshControl
+            refreshing={pullRefreshing}
+            onRefresh={handlePullRefresh}
+            tintColor={Colors.primary}
+          />
+        }
         renderItem={({ item }) => (
           <PlaceCardCompact
             place={item}

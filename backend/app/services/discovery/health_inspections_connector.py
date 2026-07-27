@@ -1,5 +1,14 @@
 from __future__ import annotations
 
+# DEPRECATED / UNUSED: written during an earlier discovery-source phase and
+# never wired into app.services.discovery.pipeline_v2, which is the discovery
+# path app/scheduler.py actually calls (the live health-inspection connectors
+# are health_connector.py / health_parser.py / health_normalizer.py /
+# health_geocoder.py / health_writer.py in this same directory). A grep
+# across the entire backend/ tree found zero imports of
+# app.services.discovery.health_inspections_connector from anywhere.
+# Kept here for reference only — not wired up. Safe to delete if no longer needed.
+
 import logging
 import hashlib
 from typing import Dict, Iterable, List

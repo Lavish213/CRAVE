@@ -18,7 +18,7 @@ from app.services.cache.cache_ttl import search_ttl
 
 from app.api.v1.schemas.search import SearchResponse
 from app.api.v1.schemas.place_card import PlaceCardOut
-from app.services.query.place_image_query import get_primary_image_urls_bulk
+from app.services.query.place_image_visibility_query import get_primary_image_urls_bulk
 
 
 logger = logging.getLogger(__name__)

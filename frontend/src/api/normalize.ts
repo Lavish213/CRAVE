@@ -14,6 +14,7 @@ export interface NormalizedMapFeature {
   rank_score: number;
   price_tier: number | null;
   image: string | null;
+  category: string | null;
   has_menu: boolean;
 }
 
@@ -164,6 +165,9 @@ export function normalizeMapFeatures(raw: unknown): NormalizedMapFeature[] {
         resolveImageUrl(props.primary_image_url) ||
         resolveImageUrl(props.primary_image) ||
         null,
+      category: typeof props.category === 'string' && props.category.trim()
+        ? props.category
+        : null,
       has_menu: Boolean(props.has_menu),
     });
   }

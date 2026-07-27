@@ -32,6 +32,20 @@ _PRICE_FIRST_RE = re.compile(
 _DESCRIPTION_RE = re.compile(r"([A-Za-z].{10,})")
 
 
+def _price_str_to_cents(price_str: Optional[str]) -> Optional[int]:
+    """Convert normalized price string (e.g. '8.99') to integer cents (899)."""
+    if not price_str:
+        return None
+    try:
+        cleaned = price_str.replace("$", "").replace(",", "").strip()
+        val = float(cleaned)
+        if val <= 0:
+            return None
+        return int(round(val * 100))
+    except (ValueError, TypeError):
+        return None
+
+
 # ---------------------------------------------------------
 # CLEAN
 # ---------------------------------------------------------
@@ -42,8 +56,10 @@ def _clean_item_name(name: str) -> str:
     return value.strip()
 
 
-def _build_item_key(name: str, price: str | None, section: str | None) -> str:
-    return f"{(name or '').strip().lower()}|{(price or '').strip()}|{(section or '').strip().lower()}"
+def _build_item_key(name: str, price: str | int | None, section: str | None) -> str:
+    # Use '' for None but str(price) for 0 — preserves free-item identity (price=0 ≠ no-price)
+    _price_key = "" if price is None else str(price)
+    return f"{(name or '').strip().lower()}|{_price_key}|{(section or '').strip().lower()}"
 
 
 def _normalize_price(price: str | None) -> Optional[str]:
@@ -113,7 +129,7 @@ def _make_item(
 
     return ExtractedMenuItem(
         name=clean_name,
-        price=_normalize_price(price),
+        price_cents=_price_str_to_cents(_normalize_price(price)),
         section=clean_text(section) or None,
         currency="USD",
         description=clean_text(description) or None,
@@ -172,7 +188,7 @@ def _extract_json_ld_items(
             if not item:
                 continue
 
-            key = _build_item_key(item.name, item.price, item.section)
+            key = _build_item_key(item.name, item.price_cents, item.section)
 
             if key in seen:
                 continue
@@ -221,7 +237,7 @@ def _extract_table_items(
             if not item:
                 continue
 
-            key = _build_item_key(item.name, item.price, item.section)
+            key = _build_item_key(item.name, item.price_cents, item.section)
 
             if key in seen:
                 continue
@@ -271,7 +287,7 @@ def _extract_list_items(
         if not item:
             continue
 
-        key = _build_item_key(item.name, item.price, item.section)
+        key = _build_item_key(item.name, item.price_cents, item.section)
 
         if key in seen:
             continue
@@ -374,7 +390,7 @@ def _extract_heuristic_items(
             if not item:
                 continue
 
-            key = _build_item_key(item.name, item.price, item.section)
+            key = _build_item_key(item.name, item.price_cents, item.section)
 
             if key in seen:
                 continue

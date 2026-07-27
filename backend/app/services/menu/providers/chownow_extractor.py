@@ -50,25 +50,40 @@ def _safe_json_load(raw: str) -> Optional[Any]:
         return None
 
 
-def _safe_price(value: Any) -> Optional[str]:
+def _safe_price_cents(value: Any) -> Optional[int]:
+    """Convert ChowNow price value to integer cents.
 
+    ChowNow API encodes prices as:
+      - int > 100  → already cents (e.g. 1299 = $12.99)
+      - int <= 100 → dollars (e.g. 12 = $12.00)
+      - float      → dollars (e.g. 12.99)
+      - str        → dollar string (e.g. "12.99" or "$12.99")
+    """
     if value is None:
         return None
 
     try:
+        if isinstance(value, bool):
+            return None
 
-        if isinstance(value, (int, float)):
+        if isinstance(value, int):
+            if value < 0:
+                return None
+            return value if value > 100 else value * 100
 
-            if value > 100:
-                return str(round(value / 100, 2))
-
-            return str(value)
+        if isinstance(value, float):
+            if value < 0:
+                return None
+            return int(round(value * 100))
 
         if isinstance(value, str):
-
-            value = value.replace("$", "").strip()
-
-            return value
+            cleaned = value.replace("$", "").replace(",", "").strip()
+            if not cleaned:
+                return None
+            f = float(cleaned)
+            if f < 0:
+                return None
+            return int(round(f * 100))
 
     except Exception:
         pass
@@ -95,10 +110,11 @@ def _dedupe(items: List[ExtractedMenuItem]) -> List[ExtractedMenuItem]:
     unique: List[ExtractedMenuItem] = []
 
     for item in items:
-
+        # price_cents is int|None — use str(int) or '' for None; never call .strip() on int
+        _price_key = "" if item.price_cents is None else str(item.price_cents)
         key = (
             f"{(item.name or '').strip().lower()}|"
-            f"{(item.price or '').strip()}|"
+            f"{_price_key}|"
             f"{(item.section or '').strip().lower()}"
         )
 
@@ -218,13 +234,13 @@ def _scan(
 
         if name:
 
-            price = _safe_price(data.get("price") or data.get("amount"))
+            price_cents = _safe_price_cents(data.get("price") or data.get("amount"))
             description = data.get("description")
 
             items.append(
                 ExtractedMenuItem(
                     name=name,
-                    price=price,
+                    price_cents=price_cents,
                     section=section,
                     currency="USD",
                     description=description,

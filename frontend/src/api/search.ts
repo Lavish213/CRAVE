@@ -14,7 +14,7 @@ export async function searchPlaces(params: {
   city_id?: string;
   lat?: number;
   lng?: number;
-  limit?: number;
+  page_size?: number;
 }): Promise<PlaceOut[]> {
   const { data } = await client.get<SearchResponse>('/api/v1/search', { params });
   if (__DEV__) console.log('[API] SEARCH_RAW', { query: params.query, total: data?.total, count: data?.items?.length, sample: data?.items?.[0] });

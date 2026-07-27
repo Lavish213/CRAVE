@@ -5,10 +5,11 @@ import re
 from urllib.parse import quote
 
 import requests
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
 
 from app.config.settings import settings
+from app.core.rate_limit import rate_limit
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +23,7 @@ _TIMEOUT = 10
 _PHOTO_REF_RE = re.compile(r'^places/[A-Za-z0-9_\-]+/photos/[A-Za-z0-9_\-]+$')
 
 
-@router.get("/image")
+@router.get("/image", dependencies=[Depends(rate_limit)])
 def proxy_image(ref: str = Query(..., description="Google Places photo_name")) -> Response:
     if not _PHOTO_REF_RE.match(ref):
         raise HTTPException(status_code=400, detail="Invalid photo reference")

@@ -16,20 +16,6 @@ const TIER_MAP: Record<string, TierKey> = {
   default: 'new',
 };
 
-const TIER_LABELS: Record<string, string> = {
-  elite:   'CRAVE Pick',
-  trusted: 'Hidden Gem',
-  solid:   'Worth Knowing',
-  default: 'Explore',
-};
-
-const TIER_COLORS: Record<string, string> = {
-  elite:   Colors.tierCravePick,
-  trusted: Colors.tierGem,
-  solid:   Colors.tierSolid,
-  default: Colors.tierNew,
-};
-
 interface FeatureProps {
   id: string;
   name: string;
@@ -49,7 +35,6 @@ export function MapBottomSheet({ feature, onOpen, onClose }: Props) {
 
   const tierKey: TierKey = TIER_MAP[feature.tier] ?? 'new';
   const tier = TIERS[tierKey];
-  const tierColor = TIER_COLORS[feature.tier] ?? TIER_COLORS.default;
 
   return (
     <View style={styles.sheet}>
@@ -83,9 +68,6 @@ export function MapBottomSheet({ feature, onOpen, onClose }: Props) {
         <View style={styles.meta}>
           <TierBadge tier={tier} />
           <Text style={styles.name} numberOfLines={1}>{feature.name}</Text>
-          <Text style={[styles.tierLabel, { color: tierColor }]}>
-            {TIER_LABELS[feature.tier] ?? 'CRAVE'}
-          </Text>
           {feature.category ? (
             <Text style={styles.category}>{feature.category}</Text>
           ) : null}
@@ -134,6 +116,5 @@ const styles = StyleSheet.create({
   },
   meta: { flex: 1, gap: Spacing.xs },
   name: { color: Colors.text, fontSize: 16, fontWeight: '700' },
-  tierLabel: { fontSize: 11, fontWeight: '700', letterSpacing: 0.5, marginTop: 2 },
   category: { color: Colors.textSecondary, fontSize: 13 },
 });

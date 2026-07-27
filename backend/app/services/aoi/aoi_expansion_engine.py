@@ -1,4 +1,13 @@
 from __future__ import annotations
+
+# DEPRECATED / UNUSED: part of the app/services/aoi/* package, written during
+# an earlier area-of-interest expansion phase and never wired into any live
+# entry point. A grep across the entire backend/ tree found the only importer
+# of this module to be its own sibling aoi_priority.py's function
+# (compute_aoi_priority is imported here, not the other direction) — nothing
+# outside app/services/aoi/* imports rank_cells or this module.
+# Kept here for reference only — not wired up. Safe to delete if no longer needed.
+
 from typing import List, Dict
 from .aoi_priority import compute_aoi_priority
 

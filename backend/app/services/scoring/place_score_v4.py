@@ -324,6 +324,7 @@ def compute_place_score_v4(
     image_count: int,
     has_primary_image: bool,
     menu_item_count: int,
+    menu_confidence: float = 1.0,
     hitlist_score: float = 0.0,
     hitlist_count: int = 0,
     creator_score: float = 0.0,
@@ -338,7 +339,11 @@ def compute_place_score_v4(
     # 1. Normalize raw inputs into [0, 1] signals
     # ------------------------------------------------------------------
     image_score        = _clamp(min(image_count / 5.0, 1.0))
-    menu_score         = _clamp(min(menu_item_count / 50.0, 1.0))
+    # menu_confidence weights the item-count signal — a 0.97-confidence Toast menu
+    # at 30 items ranks higher than a 0.35-confidence HTML-scraped menu at 30 items.
+    # Floor at 0.3 so any verified menu gets at least partial credit.
+    _menu_conf = max(_clamp(menu_confidence), 0.3) if menu_item_count > 0 else 1.0
+    menu_score         = _clamp(min(menu_item_count / 50.0, 1.0)) * _menu_conf
     completeness_score = _completeness(
         name=name, lat=lat, lng=lng,
         has_image=has_primary_image,

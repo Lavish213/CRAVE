@@ -30,6 +30,7 @@ def get_primary_image_url(
     *,
     place_id: str,
 ) -> Optional[str]:
+    # DEPRECATED: does not filter hidden images. Use place_image_visibility_query instead.
 
     if not place_id:
         return None
@@ -56,6 +57,7 @@ def get_primary_image_urls_bulk(
     *,
     place_ids: List[str],
 ) -> Dict[str, str]:
+    # DEPRECATED: does not filter hidden images. Use place_image_visibility_query instead.
 
     if not place_ids:
         return {}

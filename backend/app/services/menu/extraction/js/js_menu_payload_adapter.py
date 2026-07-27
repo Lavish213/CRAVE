@@ -46,7 +46,8 @@ def _find_value(obj: Dict, keys: set) -> Optional[Any]:
     return None
 
 
-def _normalize_price(value: Any) -> Optional[str]:
+def _normalize_price(value: Any) -> Optional[int]:
+    """Return price in integer cents, or None."""
 
     if value is None:
         return None
@@ -63,14 +64,14 @@ def _normalize_price(value: Any) -> Optional[str]:
         if isinstance(value, (int, float)):
             num = float(value)
 
-            # 🔥 FIX: handle cents (e.g., 599 → 5.99)
+            # handle cents (e.g., 599 → $5.99) vs dollars (e.g., 5.99 → $5.99)
             if num > 100:
-                num = num / 100
+                # already in cents
+                cents = int(num)
+            else:
+                cents = int(round(num * 100))
 
-            if num <= 0:
-                return None
-
-            return f"{num:.2f}"
+            return cents if cents > 0 else None
 
         text = str(value)
 
@@ -80,16 +81,14 @@ def _normalize_price(value: Any) -> Optional[str]:
             return None
 
         number = match.group(0).replace(",", ".")
-
         num = float(number)
 
         if num > 100:
-            num = num / 100
+            cents = int(num)
+        else:
+            cents = int(round(num * 100))
 
-        if num <= 0:
-            return None
-
-        return f"{num:.2f}"
+        return cents if cents > 0 else None
 
     except Exception:
         return None
@@ -180,10 +179,10 @@ def _build_item(node: Dict, section: Optional[str]) -> Optional[ExtractedMenuIte
     try:
         return ExtractedMenuItem(
             name=name,
-            price=price,
+            price_cents=price,
             description=description,
             section=_clean_text(section),
-            image=image,
+            image_url=image if image and image.startswith("http") else None,
         )
     except Exception:
         return None
@@ -221,7 +220,7 @@ def convert_payload_to_menu_items(
 
             key = (
                 f"{item.name.lower()}|"
-                f"{item.price or ''}|"
+                f"{item.price_cents or ''}|"
                 f"{item.section or ''}"
             )
 

@@ -21,9 +21,18 @@ from app.db.models.place_image import PlaceImage
 from app.db.models.place_claim import PlaceClaim
 from app.db.models.place_signal import PlaceSignal
 from app.db.models.hitlist_save import HitlistSave
+from app.core.auth import require_api_key
+from app.core.rate_limit import rate_limit
 
 logger = logging.getLogger(__name__)
-router = APIRouter(prefix="/enrichment", tags=["enrichment"])
+# Internal ops/analytics endpoints — not called by the shipped app, so they
+# get the API-key guard rather than user auth. They were previously fully
+# public, exposing catalog-gap data to anyone.
+router = APIRouter(
+    prefix="/enrichment",
+    tags=["enrichment"],
+    dependencies=[Depends(require_api_key), Depends(rate_limit)],
+)
 
 UTC = timezone.utc
 
@@ -156,7 +165,11 @@ class CoverageSummaryResponse(BaseModel):
     enrichment_gap_pct: float  # % of places missing at least one high-value signal
 
 
-router_coverage = APIRouter(prefix="/coverage", tags=["coverage"])
+router_coverage = APIRouter(
+    prefix="/coverage",
+    tags=["coverage"],
+    dependencies=[Depends(require_api_key), Depends(rate_limit)],
+)
 
 
 @router_coverage.get("/summary", response_model=CoverageSummaryResponse)

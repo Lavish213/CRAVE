@@ -4,7 +4,6 @@ import logging
 from datetime import datetime, timezone
 from typing import Optional
 
-from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.db.models.place import Place
@@ -12,6 +11,7 @@ from app.db.models.category import Category
 from app.db.models.discovery_candidate import DiscoveryCandidate
 from app.db.models.place_claim import PlaceClaim
 from app.services.discovery.nominatim_client import search_place
+from app.services.entity.entity_matcher import entity_match
 from app.services.truth.claim_normalizer_v2 import normalize_claim
 from app.services.truth.truth_resolver_v2 import resolve_place_truths_v2
 
@@ -37,6 +37,64 @@ def _geocode_from_candidate(candidate: DiscoveryCandidate) -> tuple[Optional[flo
     except Exception as exc:
         logger.debug("nominatim_geocode_failed candidate_id=%s error=%s", candidate.id, exc)
     return None, None
+
+
+def _place_match_dict(place: Place) -> dict:
+    return {
+        "name": place.name,
+        "address": place.address,
+        "lat": place.lat,
+        "lng": place.lng,
+        "website": place.website,
+    }
+
+
+def _candidate_match_dict(candidate: DiscoveryCandidate, lat, lng) -> dict:
+    return {
+        "name": candidate.name,
+        "address": candidate.address,
+        "lat": lat,
+        "lng": lng,
+        "website": candidate.website,
+    }
+
+
+def _find_matching_place(
+    db: Session,
+    *,
+    candidate: DiscoveryCandidate,
+    lat: Optional[float],
+    lng: Optional[float],
+) -> Optional[Place]:
+    """
+    Real entity-resolution dedup — name (required) plus address, website
+    domain, or ~110m geo-proximity as corroborating signal (app.services.
+    entity.entity_matcher.entity_match).
+
+    Replaces the previous check, which was an exact case-insensitive name
+    match scoped to city and nothing else. That silently merged distinct
+    locations of the same chain in one city into a single Place, and would
+    equally fail to catch near-duplicate spellings of the same restaurant
+    that a real matcher (fuzzy name + address/geo corroboration) catches.
+
+    Scoped to active places in the candidate's city — same scope the old
+    query used. Iterates every place in that city per candidate (fine at
+    current per-city catalogue sizes; if a city's catalogue grows into the
+    tens of thousands, pre-filter by a geo bounding box before matching).
+    """
+    candidate_dict = _candidate_match_dict(candidate, lat, lng)
+
+    existing_places = (
+        db.query(Place)
+        .filter(Place.city_id == candidate.city_id, Place.is_active.is_(True))
+        .all()
+    )
+
+    for place in existing_places:
+        if entity_match(candidate_dict, _place_match_dict(place)):
+            return place
+
+    return None
 
 
 def promote_candidate_v2(
@@ -78,14 +136,7 @@ def promote_candidate_v2(
             )
             return None
 
-    place = (
-        db.query(Place)
-        .filter(
-            Place.city_id == candidate.city_id,
-            func.lower(Place.name) == candidate.name.lower(),
-        )
-        .one_or_none()
-    )
+    place = _find_matching_place(db, candidate=candidate, lat=lat, lng=lng)
 
     if not place:
         place = Place(

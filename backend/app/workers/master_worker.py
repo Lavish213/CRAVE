@@ -32,20 +32,30 @@ _ranking_cycle_counter = 0
 # =========================================================
 
 def _run_recompute_safe(db) -> None:
-    """Recompute scores for all unscored or stale places (rank_score=0 or last_scored_at IS NULL)."""
+    """Recompute scores for places that need it:
+    - never scored (rank_score=0 or last_scored_at IS NULL)
+    - explicitly flagged (needs_recompute=True) — set by materialize_menu_truth
+    """
     try:
         from sqlalchemy import or_
         places = (
             db.query(Place)
             .filter(Place.is_active.is_(True))
             .filter(
-                or_(Place.rank_score == 0, Place.last_scored_at.is_(None))
+                or_(
+                    Place.rank_score == 0,
+                    Place.last_scored_at.is_(None),
+                    Place.needs_recompute.is_(True),
+                )
             )
             .limit(500)
             .all()
         )
         if places:
             updated = recompute_place_scores(db, places=places)
+            # Clear needs_recompute flags after scoring
+            for p in places:
+                p.needs_recompute = False
             db.commit()
             logger.info("master_recompute_complete updated=%s", updated)
     except Exception as exc:

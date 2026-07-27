@@ -19,6 +19,7 @@ _URL_PATTERNS = [
     ("chownow", re.compile(r"ordering\.chownow\.com", re.I)),
     ("clover", re.compile(r"clover\.com/online-ordering", re.I)),
     ("square", re.compile(r"squareup\.com", re.I)),
+    ("square", re.compile(r"square\.site", re.I)),
     ("olo", re.compile(r"olo\.com", re.I)),
     ("grubhub", re.compile(r"grubhub\.com", re.I)),
     ("doordash", re.compile(r"doordash\.com", re.I)),
@@ -31,11 +32,11 @@ _URL_PATTERNS = [
 # ---------------------------------------------------------
 
 _HTML_SIGNALS = [
-    ("toast", re.compile(r"toasttab|toast-tab|__TOAST__", re.I)),
+    ("toast", re.compile(r"toasttab\.com|__TOAST__", re.I)),
     ("popmenu", re.compile(r"popmenu|pop-menu", re.I)),
     ("chownow", re.compile(r"chownow", re.I)),
     ("clover", re.compile(r"clover\.com", re.I)),
-    ("square", re.compile(r"squareup|square-menu", re.I)),
+    ("square", re.compile(r"squareup|square-menu|square\.site|__BOOTSTRAP_STATE__", re.I)),
 ]
 
 

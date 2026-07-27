@@ -37,8 +37,8 @@ def _build_engine() -> Engine:
             future=True,
             echo=settings.debug,
             pool_pre_ping=True,   # validate connections before use (handles stale connections)
-            pool_size=5,
-            max_overflow=10,
+            pool_size=20,
+            max_overflow=40,
             pool_recycle=1800,    # recycle connections every 30 min
             pool_timeout=30,
         )

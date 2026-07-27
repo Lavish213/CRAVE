@@ -80,6 +80,7 @@ class GeoJSONProperties(BaseModel):
     rank_score: float = Field(..., ge=0.0)
     price_tier: Optional[int] = Field(default=None, ge=1, le=4)
     primary_image_url: Optional[str] = None
+    category: Optional[str] = None
     has_menu: bool = False
 
 

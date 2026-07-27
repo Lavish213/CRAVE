@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 from typing import Dict, Optional
 
+from app.config.settings import settings
 from app.services.network.http_fetcher import fetch
 
 
@@ -10,6 +11,31 @@ logger = logging.getLogger(__name__)
 
 
 NOMINATIM_URL = "https://nominatim.openstreetmap.org"
+
+# Rate limiting: every call to fetch() passes through
+# app.services.network.domain_rate_limiter.wait_for_domain(), which enforces
+# a minimum 2.0s gap between requests to any domain not given a faster
+# explicit rule (see domain_rate_limiter._DOMAIN_RULES) — nominatim.
+# openstreetmap.org has no override, so it gets that 2.0s floor. That
+# already satisfies (and is stricter than) Nominatim's documented "max 1
+# request per second" policy, so no additional per-call throttling is
+# needed here. What Nominatim's policy also requires — and what was
+# actually missing — is an identifying User-Agent with real contact info;
+# see _user_agent() below.
+
+
+def _user_agent() -> str:
+    contact = (settings.nominatim_contact or "").strip()
+    if contact:
+        return f"CraveApp/1.0 ({contact})"
+    # No contact configured — still identify the app, but this does not
+    # meet Nominatim's policy and may get silently blocked. Set
+    # NOMINATIM_CONTACT in the environment (see app/config/settings.py).
+    logger.warning(
+        "nominatim_contact_unset using non-compliant User-Agent — "
+        "set NOMINATIM_CONTACT to an email or contact URL"
+    )
+    return "CraveApp/1.0 (contact not configured)"
 
 
 def reverse_geocode(
@@ -34,7 +60,7 @@ def reverse_geocode(
             method="GET",
             params=params,
             headers={
-                "User-Agent": "restaurant-discovery-engine"
+                "User-Agent": _user_agent()
             },
         )
 
@@ -82,7 +108,7 @@ def search_place(
             method="GET",
             params=params,
             headers={
-                "User-Agent": "restaurant-discovery-engine"
+                "User-Agent": _user_agent()
             },
         )
 

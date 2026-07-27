@@ -8,7 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db.models.place import Place
-from app.db.models.place_image import PlaceImage
+from app.db.models.place_image import PlaceImage, VISIBILITY_GALLERY_ONLY
 
 
 logger = logging.getLogger(__name__)
@@ -91,6 +91,9 @@ class MaterializeImageTruth:
                         url=url,
                         is_primary=(url == primary_url),
                         confidence=score,
+                        # Ingest pipeline has already filtered; safe for gallery.
+                        # Phase 3 heuristics will promote to candidate_primary/showcase.
+                        visibility_status=VISIBILITY_GALLERY_ONLY,
                     )
 
                     db.add(new_image)

@@ -28,6 +28,20 @@ interface HitlistStore {
 
 const _pendingSaves = new Set<string>();
 
+// Previously every failure (network error, 500, 429, expired session) was
+// collapsed into one of two hardcoded strings, so a user hitting the rate
+// limiter (see backend app/core/rate_limit.py) saw the exact same message
+// as a genuine server crash, and an expired/invalid session ('auth_required')
+// was set but never actually checked by any screen — so a signed-in user
+// with a stale token just saw an infinite "retry" loop with no way out.
+function _classifyError(err: any, fallback: string): string {
+  const status = err?.response?.status;
+  if (status === 401) return 'auth_required';
+  if (status === 429) return "You're doing that too fast — wait a moment and try again.";
+  if (!err?.response) return "Can't reach CRAVE — check your connection.";
+  return fallback;
+}
+
 export const useHitlistStore = create<HitlistStore>()(
   persist(
     (set, get) => ({
@@ -42,9 +56,7 @@ export const useHitlistStore = create<HitlistStore>()(
           if (__DEV__) console.log('[HITLIST_STORE] loadSaves', { count: items.length });
           set({ saves: items, loading: false });
         } catch (err: any) {
-          const msg = err?.response?.status === 401
-            ? 'auth_required'
-            : 'Failed to load saves';
+          const msg = _classifyError(err, 'Failed to load saves');
           if (__DEV__) console.log('[HITLIST_STORE] loadSaves_error', msg, err?.response?.status);
           set({ loading: false, error: msg });
         }
@@ -66,7 +78,7 @@ export const useHitlistStore = create<HitlistStore>()(
         } catch (err: any) {
           // Rollback
           set({ saves: get().saves.filter((s) => s.id !== place.id) });
-          const msg = "Couldn't save. Try again.";
+          const msg = _classifyError(err, "Couldn't save. Try again.");
           if (__DEV__) console.log('[HITLIST_STORE] addSave_error', err?.response?.status, err?.message);
           return msg;
         } finally {
@@ -85,7 +97,7 @@ export const useHitlistStore = create<HitlistStore>()(
         } catch (err: any) {
           // Rollback
           set({ saves: prev });
-          const msg = "Couldn't remove. Try again.";
+          const msg = _classifyError(err, "Couldn't remove. Try again.");
           if (__DEV__) console.log('[HITLIST_STORE] removeSave_error', err?.response?.status, err?.message);
           return msg;
         }

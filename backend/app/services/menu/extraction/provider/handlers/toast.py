@@ -18,12 +18,61 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------
 
 def _extract_slug(url: str) -> Optional[str]:
+    """
+    Extract usable slug from Toast URL variants:
+      /local/<slug>                  → slug
+      /local/<slug>/r-<guid>         → slug (not guid)
+      /online/<slug>                 → slug
+      toasttab.com/<slug>            → slug (direct path)
+    """
     try:
-        parts = url.rstrip("/").split("/")
+        # Strip query string and fragment
+        clean = url.split("?")[0].split("#")[0].rstrip("/")
+        parts = [p for p in clean.split("/") if p and p not in ("https:", "http:", "")]
 
-        # expected: /local/<slug>
-        if "local" in parts:
-            return parts[-1]
+        # Remove domain part
+        domain_parts = []
+        path_parts = []
+        for p in parts:
+            if "." in p:
+                domain_parts.append(p)
+            else:
+                path_parts.append(p)
+
+        if not path_parts:
+            return None
+
+        # /local/<slug>  or  /local/<slug>/r-<guid>
+        if "local" in path_parts:
+            idx = path_parts.index("local")
+            if idx + 1 < len(path_parts):
+                slug = path_parts[idx + 1]
+                # Skip GUIDs (r-xxxxxxxx-...)
+                if not slug.startswith("r-") or "-" not in slug[2:]:
+                    return slug
+                # If next is a GUID, slug is still the one after "local"
+                return slug
+
+        # /online/<slug>
+        if "online" in path_parts:
+            idx = path_parts.index("online")
+            if idx + 1 < len(path_parts):
+                return path_parts[idx + 1]
+
+        # toasttab.com/<slug>/v3 or toasttab.com/<slug>/online
+        for marker in ("v3", "online"):
+            if marker in path_parts:
+                idx = path_parts.index(marker)
+                if idx > 0:
+                    return path_parts[idx - 1]
+
+        # Direct: toasttab.com/<slug>  (single path segment, not a GUID)
+        if len(path_parts) == 1:
+            candidate = path_parts[0]
+            # Skip raw GUIDs
+            if re.fullmatch(r"[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}", candidate):
+                return None
+            return candidate
 
         return None
 
@@ -61,6 +110,48 @@ def _extract_embedded_json(html: str) -> List[Any]:
 
 
 # ---------------------------------------------------------
+# PLAYWRIGHT FALLBACK
+# ---------------------------------------------------------
+
+def _fetch_with_playwright(url: str) -> Optional[str]:
+    """Render via headless Chromium to bypass CAPTCHA/thin-shell."""
+    try:
+        from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
+
+        with sync_playwright() as p:
+            browser = p.chromium.launch(
+                headless=True,
+                args=["--no-sandbox", "--disable-blink-features=AutomationControlled"],
+            )
+            context = browser.new_context(
+                user_agent=(
+                    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/123.0.0.0 Safari/537.36"
+                ),
+                viewport={"width": 1280, "height": 800},
+            )
+            page = context.new_page()
+            try:
+                page.goto(url, timeout=15000)
+                page.wait_for_load_state("domcontentloaded", timeout=8000)
+                page.wait_for_timeout(2000)  # brief wait for Apollo state hydration
+            except PWTimeout:
+                pass
+            html = page.content()
+            browser.close()
+
+        if html and len(html) > 1000:
+            logger.debug("toast_playwright_ok url=%s len=%s", url, len(html))
+            return html
+    except ImportError:
+        pass
+    except Exception as exc:
+        logger.debug("toast_playwright_failed url=%s error=%s", url, exc)
+    return None
+
+
+# ---------------------------------------------------------
 # HANDLER (FINAL)
 # ---------------------------------------------------------
 
@@ -85,16 +176,27 @@ def handle_toast(
             page_url,
             method="GET",
             headers={
-                "User-Agent": "Mozilla/5.0",
-                "Accept": "text/html",
-                "Referer": "https://www.toasttab.com/",
+                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                              "AppleWebKit/537.36 (KHTML, like Gecko) "
+                              "Chrome/123.0.0.0 Safari/537.36",
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                "Accept-Language": "en-US,en;q=0.9",
+                "Referer": "https://www.google.com/",
             },
         )
 
         if response.status_code != 200:
             return _fail(f"bad_status_{response.status_code}", url)
 
-        html = response.text
+        html = response.text or ""
+
+        # If CAPTCHA or thin shell, escalate to Playwright
+        _is_captcha = "captcha" in html.lower() or "cf-challenge" in html.lower()
+        _is_thin = len(html) < 2000 or "__APOLLO_STATE__" not in html
+        if _is_captcha or _is_thin:
+            pw_html = _fetch_with_playwright(page_url)
+            if pw_html:
+                html = pw_html
 
         if not html:
             return _fail("empty_html", url)

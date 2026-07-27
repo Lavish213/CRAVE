@@ -88,6 +88,9 @@ class _NormalizedRow:
     currency: str
     fingerprint: str
     confidence: float
+    image_url: Optional[str] = None
+    provider: Optional[str] = None
+    source_type: Optional[str] = None
 
 
 def process_extracted_menu(
@@ -142,12 +145,16 @@ def process_extracted_menu(
     for row in normalized_rows:
         grouped[row.section].append(
             CanonicalMenuItem(
+                fingerprint=row.fingerprint,
                 name=row.name,
                 section=row.section,
                 price_cents=row.price_cents,
                 currency=row.currency,
                 description=row.description,
-                confidence=row.confidence,
+                confidence_score=row.confidence,
+                image_url=row.image_url,
+                provider=row.provider,
+                source_type=row.source_type,
             )
         )
 
@@ -274,6 +281,13 @@ def _normalize_extracted_item(
         currency=currency,
     )
 
+    # Preserve image_url, provider, source_type for CanonicalMenuItem lineage
+    raw_image = getattr(item, "image_url", None)
+    image_url = raw_image if isinstance(raw_image, str) and raw_image.strip() else None
+
+    provider = _clean_text(getattr(item, "provider", None), max_length=64)
+    source_type = _clean_text(getattr(item, "source_type", None), max_length=64)
+
     return _NormalizedRow(
         name=name,
         section=section,
@@ -282,6 +296,9 @@ def _normalize_extracted_item(
         currency=currency,
         fingerprint=fingerprint,
         confidence=confidence,
+        image_url=image_url,
+        provider=provider,
+        source_type=source_type,
     )
 
 
@@ -467,15 +484,10 @@ def _fingerprint(
     *,
     name: str,
     section: str,
-    price_cents: Optional[int],
+    price_cents: Optional[int],  # kept for signature compat, NOT used in hash
     currency: str,
 ) -> str:
-    raw = "|".join(
-        [
-            name.lower(),
-            section.lower(),
-            "" if price_cents is None else str(price_cents),
-            currency.upper(),
-        ]
-    )
-    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+    # IMPORTANT: price excluded intentionally — identity must survive price changes.
+    # This matches build_menu_fingerprint() in normalization/fingerprint.py.
+    from app.services.menu.normalization.fingerprint import build_menu_fingerprint
+    return build_menu_fingerprint(name=name, section=section, currency=currency)

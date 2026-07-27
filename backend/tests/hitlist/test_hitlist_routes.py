@@ -32,9 +32,14 @@ def test_save_dedup_returns_same_id():
     assert r1.json()["id"] == r2.json()["id"]
 
 def test_get_hitlist():
+    # Route was GET /{user_id} (a client-supplied, unverified path param —
+    # anyone could read anyone else's hitlist) and was renamed to /me once
+    # the id started coming from the verified auth token instead. This test
+    # predated that fix and still called the old path, so it would 404
+    # against the current router (see app/api/v1/routes/hitlist.py).
     user_id = "user-get-1"
     client.post("/api/v1/hitlist/save", json={"user_id": user_id, "place_name": "Test Place"})
-    resp = client.get(f"/api/v1/hitlist/{user_id}")
+    resp = client.get("/api/v1/hitlist/me")
     assert resp.status_code == 200
     data = resp.json()
     assert "items" in data

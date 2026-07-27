@@ -285,7 +285,7 @@ def _serialize_menu(menu: CanonicalMenu, previous_menu: Optional[dict]) -> dict:
                         "price_cents": item.price_cents,
                         "currency": item.currency or DEFAULT_CURRENCY,
                         "description": item.description,
-                        "confidence_score": item.confidence_score,
+                        "confidence": item.confidence_score,
                         "fingerprint": item.fingerprint,
                     }
                     for item in section.items
@@ -346,10 +346,17 @@ def materialize_menu_truth(
     if previous_menu and previous_menu.get("menu_hash") == serialized.get("menu_hash"):
         return menu
 
+    # Max confidence from winning items — used to update place.menu_confidence
+    max_confidence = max(
+        (item.confidence_score for s in menu.sections for item in s.items if hasattr(item, "confidence_score")),
+        default=0.0,
+    )
+
     try:
         if truth:
             truth.truth_value = "menu"
             truth.sources_json = serialized
+            truth.confidence = max_confidence
         else:
             db.add(
                 PlaceTruth(
@@ -357,8 +364,34 @@ def materialize_menu_truth(
                     truth_type=TRUTH_TYPE,
                     truth_value="menu",
                     sources_json=serialized,
+                    confidence=max_confidence,
                 )
             )
+
+        # ── Update Place truth fields — single atomic commit ──────────
+        from app.db.models.place import Place
+        place = (
+            db.query(Place)
+            .filter(Place.id == place_id)
+            .with_for_update()
+            .one_or_none()
+        )
+        if place is None:
+            # Place deleted between truth write and lock — roll back the
+            # staged PlaceTruth to avoid orphaned truth with stale has_menu.
+            logger.warning(
+                "materialize_no_place place_id=%s — rolling back truth write",
+                place_id,
+            )
+            db.rollback()
+            return None
+
+        place.has_menu = True
+        place.last_menu_updated_at = datetime.now(timezone.utc)
+        place.menu_confidence = max_confidence
+        place.needs_recompute = True
+        # Reset failure counter on success
+        place.menu_extraction_failure_count = 0
 
         db.commit()
 
@@ -367,6 +400,21 @@ def materialize_menu_truth(
         logger.exception("truth_write_failed place_id=%s error=%s", place_id, exc)
         return None
 
-    logger.info("truth_materialized place_id=%s items=%s", place_id, menu.item_count)
+    logger.info(
+        "truth_materialized place_id=%s items=%s confidence=%.3f",
+        place_id, menu.item_count, max_confidence,
+    )
+
+    # ── Cache invalidation — after commit, never crashes pipeline ─────
+    try:
+        from app.services.cache.cache_helpers import invalidate_after_menu_truth
+        invalidate_after_menu_truth(
+            place_id=place_id,
+            city_id=getattr(place, "city_id", None),
+        )
+    except Exception as inv_exc:
+        logger.warning(
+            "cache_invalidation_failed place_id=%s error=%s", place_id, inv_exc
+        )
 
     return menu

@@ -11,11 +11,6 @@ from app.api.v1.routes.map import router as map_router
 from app.api.v1.routes.place_detail_router import router as place_detail_router
 from app.api.v1.routes.categories import router as categories_router
 from app.api.v1.routes.cities import router as cities_router
-from app.api.routes.menus import router as menus_router
-
-# -------------------------
-# Feature Routes
-# -------------------------
 from app.api.v1.routes.hitlist import router as hitlist_router
 from app.api.v1.routes.trending import router as trending_router
 from app.api.v1.routes.signals import router as signals_router
@@ -42,7 +37,6 @@ router = APIRouter()
 # Register Routes
 # -------------------------
 router.include_router(places_router)
-router.include_router(menus_router)
 router.include_router(search_router)
 router.include_router(map_router)
 router.include_router(place_detail_router)

@@ -41,7 +41,7 @@ const styles = StyleSheet.create({
     bottom: 96,
     left: 24,
     right: 24,
-    backgroundColor: '#2A2A2AEE',
+    backgroundColor: Colors.border + 'EE', // Colors.border is '#2A2A2A' — same color, translucent
     borderRadius: 12,
     paddingHorizontal: 18,
     paddingVertical: 13,

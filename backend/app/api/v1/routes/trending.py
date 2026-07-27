@@ -22,7 +22,7 @@ from app.db.models.place import Place
 from app.db.models.hitlist_save import HitlistSave
 from app.api.v1.schemas.places import PlaceOut, PlacesResponse
 from app.services.cache.response_cache import response_cache
-from app.services.query.place_image_query import get_primary_image_urls_bulk
+from app.services.query.place_image_visibility_query import get_primary_image_urls_bulk
 from app.core.rate_limit import rate_limit
 
 logger = logging.getLogger(__name__)

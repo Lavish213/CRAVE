@@ -7,7 +7,8 @@ export async function fetchMapGeoJSON(params: {
   city_id?: string;
   lat: number;
   lng: number;
-  category?: string;
+  radius_km?: number;
+  category_id?: string;
 }): Promise<NormalizedMapFeature[]> {
   const { data } = await client.get('/api/v1/map/geojson', { params });
   if (__DEV__) console.log('[API] MAP_RAW', { type: (data as any)?.type, feature_count: (data as any)?.features?.length, sample_coords: (data as any)?.features?.[0]?.geometry?.coordinates });

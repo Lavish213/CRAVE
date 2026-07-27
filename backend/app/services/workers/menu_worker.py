@@ -4,6 +4,7 @@ import logging
 import time
 from typing import List
 
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.db.session import SessionLocal
@@ -11,7 +12,7 @@ from app.db.models.place import Place
 from app.db.models.place_truth import PlaceTruth
 
 from app.services.menu.processing.menu_orchestrator import MenuOrchestrator
-from app.services.scoring.recompute import recompute_place_scores
+from app.workers.recompute_scores_worker import recompute_places_v4
 
 
 logger = logging.getLogger(__name__)
@@ -67,7 +68,7 @@ class MenuWorker:
                         # Set has_menu flag and recompute score after successful materialization
                         if materialized:
                             place.has_menu = True
-                            recompute_place_scores(db, places=[place])
+                            recompute_places_v4(db, places=[place])
 
                         logger.info(
                             "menu_worker_place_complete place_id=%s sources=%s extracted=%s claims=%s materialized=%s",
@@ -116,6 +117,10 @@ class MenuWorker:
         db: Session,
     ) -> List[Place]:
 
+        # Was: only Place.website IS NOT NULL. That silently skipped every
+        # place whose only menu source is a delivery-platform URL (Grubhub)
+        # or a directly-discovered menu_source_url without a general website
+        # on file — a real and common case, not an edge case.
         query = (
             db.query(Place)
             .outerjoin(
@@ -124,8 +129,11 @@ class MenuWorker:
                 & (PlaceTruth.truth_type == MENU_TRUTH_TYPE),
             )
             .filter(
-                Place.website.isnot(None),
-                Place.website != "",
+                or_(
+                    (Place.website.isnot(None)) & (Place.website != ""),
+                    (Place.grubhub_url.isnot(None)) & (Place.grubhub_url != ""),
+                    (Place.menu_source_url.isnot(None)) & (Place.menu_source_url != ""),
+                ),
                 PlaceTruth.id.is_(None),
             )
             .order_by(

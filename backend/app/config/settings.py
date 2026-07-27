@@ -49,16 +49,41 @@ class Settings(BaseSettings):
     database_url: str | None = None
 
     # --------------------------------------------------
+    # CACHE
+    # --------------------------------------------------
+
+    # Redis URL for shared cache. Leave blank to disable Redis (in-memory only).
+    # Format: redis://[:password@]host[:port][/db]
+    redis_url: str = ""
+
+    # --------------------------------------------------
     # SECURITY
     # --------------------------------------------------
 
     secret_key: str = "change-me-in-production"
+
+    # Supabase project's JWT secret (Project Settings > API > JWT Settings >
+    # JWT Secret). Required in prod — used to verify the Authorization: Bearer
+    # token the frontend sends, so the backend knows who's actually calling
+    # instead of trusting a client-supplied user_id. See app/core/user_auth.py.
+    supabase_jwt_secret: str = ""
+
+    # CORS — comma-separated list of allowed origins. Leave blank in native-app
+    # only deployments (no browser client); set explicitly if a web client is
+    # ever added. "*" is rejected in prod (see app/main.py startup check).
+    cors_allow_origins: str = ""
 
     # --------------------------------------------------
     # EXTERNAL APIS
     # --------------------------------------------------
 
     google_places_api_key: str = ""
+
+    # Nominatim's usage policy (https://operations.osmfoundation.org/policies/nominatim/)
+    # requires a genuinely identifying User-Agent (app name + a way to contact
+    # you — email or URL). A generic User-Agent can be blocked without warning.
+    # Set to e.g. "hello@yourcompany.com" or "https://yourapp.com/contact".
+    nominatim_contact: str = ""
 
     # --------------------------------------------------
     # DERIVED PROPERTIES

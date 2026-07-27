@@ -20,6 +20,7 @@ from sqlalchemy.orm import Session
 
 from app.db.session import get_db
 from app.db.models.crave_item import CraveItem
+from app.core.rate_limit import rate_limit
 
 logger = logging.getLogger(__name__)
 
@@ -72,7 +73,7 @@ class ShareIntakeResponse(BaseModel):
     message: str
 
 
-@router.post("", response_model=ShareIntakeResponse, status_code=202)
+@router.post("", response_model=ShareIntakeResponse, status_code=202, dependencies=[Depends(rate_limit)])
 def share_intake(
     body: ShareIntakeRequest,
     db: Session = Depends(get_db),
