@@ -53,16 +53,6 @@ jobs:
       - name: Syntax check (compile every .py file)
         run: python -m compileall -q app
 
-      - name: Dependency vulnerability scan
-        # Advisory only (continue-on-error) — this is the first time this
-        # has run, so an unpinned/vulnerable transitive dep here is a known
-        # gap being surfaced for the first time, not a new regression. Flip
-        # to blocking once the initial findings are triaged.
-        continue-on-error: true
-        run: |
-          pip install pip-audit
-          pip-audit -r requirements.txt
-
       - name: Import sanity check
         # No DATABASE_URL is set here, so this exercises the sqlite fallback
         # path (see app/config/settings.py Settings.resolved_database_url) —
@@ -78,6 +68,18 @@ jobs:
           APP_ENV: dev
           DATABASE_URL: "sqlite:///./test_crave.db"
         run: pytest -q
+
+      - name: Dependency vulnerability scan
+        # Runs via `pipx run` — an isolated venv, NOT the job's main
+        # environment — because a first attempt at this step used a plain
+        # `pip install pip-audit` in-place, which silently upgraded a
+        # shared package and broke the import-check step that runs before
+        # it. Advisory only (continue-on-error) since this is the first
+        # time it's run and findings haven't been triaged yet; also placed
+        # after the real test steps so even a bad interaction here can't
+        # mask or block them.
+        continue-on-error: true
+        run: pipx run pip-audit -r requirements.txt
 
   frontend:
     name: Frontend (typecheck)
