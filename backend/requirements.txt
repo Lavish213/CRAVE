@@ -17,7 +17,7 @@ httpx>=0.28.0
 curl_cffi>=0.15.0
 
 # SSL (macOS native trust store support)
-truststore>=0.10.0
+truststore>=0.10.4
 
 # Database
 sqlalchemy>=2.0.0
