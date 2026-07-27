@@ -5,10 +5,11 @@ import httpx
 from app.services.menu.discovery.website_provider_probe import (
     probe_website,
     ProbeResult,
-    _provider_from_url,
-    _should_skip,
+    _score_url,
+    _is_hard_blocked,
+    _normalize_url,
     _normalize_website,
-    MIN_CONFIDENCE,
+    MIN_SCORE,
 )
 
 
@@ -22,56 +23,95 @@ def _mock_response(*, status_code=200, text="", url="https://example.com"):
 
 # ── Helper unit tests ─────────────────────────────────────────────────────────
 
-def test_provider_from_url_toast():
-    assert _provider_from_url("https://www.toasttab.com/horn-bbq") == "toast"
+def test_score_url_toast():
+    assert _score_url("https://www.toasttab.com/horn-bbq") == (100, "toast")
 
-def test_provider_from_url_clover():
-    assert _provider_from_url("https://clover.com/online-ordering/foo") == "clover"
+def test_score_url_toast_homepage_rejected():
+    # Marketing/homepage paths are excluded, not just any toasttab.com URL
+    assert _score_url("https://www.toasttab.com") == (0, None)
+    assert _score_url("https://www.toasttab.com/about") == (0, None)
 
-def test_provider_from_url_popmenu():
-    assert _provider_from_url("https://order.popmenu.com/some-restaurant") == "popmenu"
+def test_score_url_clover_is_hard_blocked_not_a_provider():
+    # clover.com is a hard block (homepage only, no restaurant-specific path) —
+    # it no longer scores as a valid provider.
+    assert _score_url("https://clover.com/online-ordering/foo") == (0, None)
 
-def test_provider_from_url_square():
-    assert _provider_from_url("https://some-place.square.site/order") == "square"
+def test_score_url_popmenu():
+    assert _score_url("https://order.popmenu.com/some-restaurant") == (90, "popmenu")
 
-def test_provider_from_url_unknown():
-    assert _provider_from_url("https://hornbbq.com/menu") is None
+def test_score_url_popmenu_homepage_rejected():
+    assert _score_url("https://popmenu.com/pricing") == (0, None)
 
-def test_should_skip_yelp():
-    assert _should_skip("https://www.yelp.com/biz/place") is True
+def test_score_url_square_site():
+    assert _score_url("https://some-place.square.site/order") == (80, "square")
 
-def test_should_skip_tripadvisor():
-    assert _should_skip("https://tripadvisor.com/Restaurant_Review-foo") is True
+def test_score_url_squareup_requires_store_path():
+    assert _score_url("https://squareup.com/us/en") == (0, None)
+    assert _score_url("https://squareup.com/store/some-place") == (80, "square")
 
-def test_should_skip_real_site():
-    assert _should_skip("https://hornbbq.com") is False
+def test_score_url_chownow():
+    assert _score_url("https://www.chownow.com/order/some-place") == (70, "chownow")
 
-def test_normalize_adds_scheme():
+def test_score_url_olo():
+    assert _score_url("https://www.olo.com/order/some-place") == (60, "olo")
+
+def test_score_url_unknown_domain():
+    assert _score_url("https://hornbbq.com/menu") == (0, None)
+
+def test_score_url_empty_string():
+    assert _score_url("") == (0, None)
+
+
+def test_is_hard_blocked_yelp():
+    assert _is_hard_blocked("https://www.yelp.com/biz/place") is True
+
+def test_is_hard_blocked_tripadvisor():
+    assert _is_hard_blocked("https://tripadvisor.com/Restaurant_Review-foo") is True
+
+def test_is_hard_blocked_clover():
+    assert _is_hard_blocked("https://clover.com/online-ordering/foo") is True
+
+def test_is_hard_blocked_real_site():
+    assert _is_hard_blocked("https://hornbbq.com") is False
+
+
+def test_normalize_url_adds_scheme():
+    assert _normalize_url("hornbbq.com") == "https://hornbbq.com"
+
+def test_normalize_url_strips_trailing_slash():
+    assert _normalize_url("https://hornbbq.com/menu/") == "https://hornbbq.com/menu"
+
+def test_normalize_url_strips_query_and_fragment():
+    assert _normalize_url("https://hornbbq.com/menu?utm=1#top") == "https://hornbbq.com/menu"
+
+
+def test_normalize_website_adds_scheme():
     assert _normalize_website("hornbbq.com") == "https://hornbbq.com"
 
-def test_normalize_strips_trailing_slash():
+def test_normalize_website_strips_trailing_slash():
     assert _normalize_website("https://hornbbq.com/") == "https://hornbbq.com"
 
-def test_normalize_preserves_https():
+def test_normalize_website_preserves_https():
     assert _normalize_website("https://hornbbq.com") == "https://hornbbq.com"
 
-def test_probe_result_found_true_when_high_confidence():
-    r = ProbeResult(menu_source_url="https://toasttab.com/foo", provider="toast", confidence=1.0)
+
+def test_probe_result_found_true_when_score_at_or_above_min():
+    r = ProbeResult(menu_source_url="https://toasttab.com/foo", provider="toast", score=100, confidence=1.0)
     assert r.found is True
 
-def test_probe_result_found_false_when_low_confidence():
-    r = ProbeResult(menu_source_url="https://example.com/menu", provider="jsonld", confidence=0.5)
+def test_probe_result_found_false_when_score_below_min():
+    r = ProbeResult(menu_source_url="https://example.com/somepage", provider=None, score=20, confidence=0.2)
     assert r.found is False
 
 def test_probe_result_found_false_when_no_url():
-    r = ProbeResult(menu_source_url=None, provider=None, confidence=0.9)
+    r = ProbeResult(menu_source_url=None, provider=None, score=90, confidence=0.9)
     assert r.found is False
 
 
 # ── probe_website integration tests (mocked fetch) ───────────────────────────
 
 def test_probe_toast_redirect():
-    """Direct redirect to toasttab.com → confidence=1.0, stops immediately"""
+    """Direct redirect to toasttab.com → score=100, confidence=1.0, stops immediately"""
     res = _mock_response(
         url="https://www.toasttab.com/horn-barbecue/v3/menu",
         text="",
@@ -86,20 +126,20 @@ def test_probe_toast_redirect():
 
 
 def test_probe_provider_link_in_html():
-    """HTML contains clover.com link → confidence=0.9"""
-    html = '<a href="https://www.clover.com/online-ordering/some-place">Order</a>'
+    """HTML contains a chownow.com link → score=70, confidence=0.7"""
+    html = '<a href="https://www.chownow.com/order/some-place">Order</a>'
     res = _mock_response(text=html, url="https://example.com/menu")
 
     with patch("app.services.menu.discovery.website_provider_probe.fetch", return_value=res):
         result = probe_website("https://example.com")
 
     assert result.found is True
-    assert result.provider == "clover"
-    assert result.confidence == 0.9
+    assert result.provider == "chownow"
+    assert result.confidence == 0.7
 
 
 def test_probe_jsonld_menu():
-    """HTML contains JSON-LD Menu type → confidence=0.7"""
+    """HTML contains JSON-LD Menu type, no provider link → score=40 (MIN_SCORE), confidence=0.4"""
     html = '<script type="application/ld+json">{"@type": "Menu"}</script>'
     res = _mock_response(text=html, url="https://example.com/menu")
 
@@ -108,7 +148,7 @@ def test_probe_jsonld_menu():
 
     assert result.found is True
     assert result.provider == "jsonld"
-    assert result.confidence == 0.7
+    assert result.confidence == 0.4
 
 
 def test_probe_no_signals():
@@ -120,11 +160,11 @@ def test_probe_no_signals():
         result = probe_website("https://example.com")
 
     assert result.found is False
-    assert result.confidence < MIN_CONFIDENCE
+    assert result.confidence == 0.0
 
 
 def test_probe_skips_aggregator_without_fetch():
-    """Aggregator domains skip all HTTP calls"""
+    """Aggregator/hard-blocked domains skip all HTTP calls"""
     with patch("app.services.menu.discovery.website_provider_probe.fetch") as mock_fetch:
         result = probe_website("https://www.yelp.com/biz/some-place")
 
@@ -133,10 +173,11 @@ def test_probe_skips_aggregator_without_fetch():
 
 
 def test_probe_prefers_redirect_over_html_link():
-    """First path redirects to provider → returns immediately at confidence=1.0"""
+    """First path redirects straight to toast (score=100, the max) → early-stops
+    before any HTML link scan even happens"""
     redirect_res = _mock_response(url="https://www.toasttab.com/foo")
     html_res = _mock_response(
-        text='<a href="https://clover.com/order/bar">Order</a>',
+        text='<a href="https://www.chownow.com/order/bar">Order</a>',
         url="https://example.com/menu",
     )
     with patch(
@@ -150,7 +191,7 @@ def test_probe_prefers_redirect_over_html_link():
 
 
 def test_probe_fetch_failure_returns_not_found():
-    """Network failure → not found, no exception propagates"""
+    """Network failure on every path → not found, no exception propagates"""
     with patch(
         "app.services.menu.discovery.website_provider_probe.fetch",
         side_effect=Exception("connect timeout"),
@@ -168,8 +209,6 @@ def test_probe_non_200_status_continues_to_next_path():
         text='<a href="https://www.toasttab.com/some-place">Order</a>',
         url="https://example.com/menu",
     )
-    # html_res contains a toast link which causes `continue` after updating `best`
-    # subsequent paths return plain HTML (no signals) until loop exhausts
     plain = _mock_response(text="<html><body></body></html>", url="https://example.com/order")
     with patch(
         "app.services.menu.discovery.website_provider_probe.fetch",
@@ -182,8 +221,10 @@ def test_probe_non_200_status_continues_to_next_path():
 
 
 def test_probe_html_provider_unknown_falls_through_to_jsonld():
-    """When HTML has a provider URL not in _PROVIDER_DOMAINS, JSON-LD is still checked"""
-    # doordash.com is detected by discover_provider_urls but not in _PROVIDER_DOMAINS
+    """When HTML has a provider URL that's hard-blocked (not a real provider),
+    JSON-LD is still checked as a fallback"""
+    # doordash.com is detected by discover_provider_urls's raw scan but is hard-
+    # blocked in website_provider_probe, so it scores 0 and doesn't win.
     html = (
         '<a href="https://doordash.com/store/some-place">Order</a>'
         '<script type="application/ld+json">{"@type": "Menu"}</script>'
@@ -193,7 +234,7 @@ def test_probe_html_provider_unknown_falls_through_to_jsonld():
     with patch("app.services.menu.discovery.website_provider_probe.fetch", return_value=res):
         result = probe_website("https://example.com")
 
-    # Should fall through to JSON-LD since doordash isn't in _PROVIDER_DOMAINS
+    # Should fall through to JSON-LD since doordash is hard-blocked, not scored
     assert result.found is True
     assert result.provider == "jsonld"
-    assert result.confidence == 0.7
+    assert result.confidence == 0.4

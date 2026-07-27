@@ -10,6 +10,12 @@ with no corresponding migration — every write via `MenuSnapshotWriter.write()`
 app/services/menu/menu_extraction_router.py) was failing against a missing
 table, silently caught and logged. This migration creates the table to match
 the model exactly, including its five indexes.
+
+NOTE: this repo's migration history was formed by merging two independently
+-evolved lineages. In one of them (the "994c7522912e_init" baseline), this
+table was already present from day one. In the other, it was missing until
+this migration added it. Guarded with an existence check so it's a no-op on
+either lineage instead of failing with "table already exists".
 """
 from __future__ import annotations
 
@@ -24,6 +30,11 @@ depends_on = None
 
 
 def upgrade() -> None:
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
+    if "menu_snapshots" in inspector.get_table_names():
+        return
+
     op.create_table(
         "menu_snapshots",
         sa.Column("id", sa.String(36), primary_key=True),
@@ -98,6 +109,11 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
+    if "menu_snapshots" not in inspector.get_table_names():
+        return
+
     op.drop_index("ix_menu_snapshots_created_at", table_name="menu_snapshots")
     op.drop_index("ix_menu_snapshots_source_url", table_name="menu_snapshots")
     op.drop_index("ix_menu_snapshots_lookup", table_name="menu_snapshots")
