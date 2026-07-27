@@ -25,6 +25,7 @@ from app.db.session import get_db
 from app.db.models.place import Place
 from app.db.models.place_signal import PlaceSignal
 from app.core.auth import require_api_key
+from app.core.rate_limit import rate_limit
 from app.services.social.platform_detect import detect_platform
 from app.services.social.url_normalize import normalize_url
 from app.services.social.extractors.tiktok import extract_from_tiktok
@@ -69,7 +70,7 @@ class SignalIntakeResponse(BaseModel):
     message: str
 
 
-@router.post("/intake", response_model=SignalIntakeResponse, status_code=201)
+@router.post("/intake", response_model=SignalIntakeResponse, status_code=201, dependencies=[Depends(rate_limit)])
 def intake_signal(
     body: SignalIntakeRequest,
     db: Session = Depends(get_db),
@@ -175,7 +176,7 @@ class SocialIntakeResponse(BaseModel):
     pipeline_result: dict
 
 
-@router.post("/social-intake", response_model=SocialIntakeResponse, status_code=202)
+@router.post("/social-intake", response_model=SocialIntakeResponse, status_code=202, dependencies=[Depends(rate_limit)])
 def social_intake(
     body: SocialIntakeRequest,
     db: Session = Depends(get_db),

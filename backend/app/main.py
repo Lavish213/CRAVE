@@ -64,6 +64,17 @@ def _validate_prod_config() -> None:
     if settings.cors_allow_origins.strip() == "*":
         problems.append("CORS_ALLOW_ORIGINS is '*' — not allowed in prod")
 
+    if not settings.database_url:
+        problems.append(
+            "DATABASE_URL is unset — will silently boot on ephemeral SQLite and lose all data on restart"
+        )
+
+    import os as _os
+    if not _os.environ.get("API_KEY", "").strip():
+        problems.append(
+            "API_KEY is unset — all write endpoints are open to unauthenticated requests"
+        )
+
     if problems:
         for p in problems:
             logger.critical("startup_validation_failed prod_config=%s", p)
