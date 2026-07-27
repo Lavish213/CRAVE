@@ -22,7 +22,7 @@ truststore>=0.10.0
 # Database
 sqlalchemy>=2.0.0
 alembic>=1.18.0
-psycopg2-binary>=2.9.0
+psycopg2-binary>=2.9.12
 
 # Pydantic / validation
 pydantic>=2.13.0
