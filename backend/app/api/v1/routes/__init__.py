@@ -16,6 +16,16 @@ from app.api.v1.routes.trending import router as trending_router
 from app.api.v1.routes.signals import router as signals_router
 
 # -------------------------
+# User content (were fully built + JWT-secured but never registered here —
+# the frontend has been calling /api/v1/saves (saves.ts) and /api/v1/craves
+# (crave.ts) since before this fix, so those two were live 404s in prod)
+# -------------------------
+from app.api.v1.routes.saves import router as saves_router
+from app.api.v1.routes.craves import router as craves_router
+from app.api.v1.routes.share import router as share_router
+from app.api.v1.routes.image import router as image_router
+
+# -------------------------
 # Enrichment
 # -------------------------
 from app.api.v1.routes.enrichment import router as enrichment_router
@@ -46,6 +56,11 @@ router.include_router(cities_router)
 router.include_router(hitlist_router)
 router.include_router(trending_router)
 router.include_router(signals_router)
+
+router.include_router(saves_router)
+router.include_router(craves_router)
+router.include_router(share_router)
+router.include_router(image_router)
 
 router.include_router(enrichment_router)
 router.include_router(coverage_router)

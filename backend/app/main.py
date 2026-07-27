@@ -15,6 +15,24 @@ from app.middleware.request_id import RequestIDMiddleware
 from app.core.logging_config import RequestIDFilter
 from app.scheduler import create_scheduler
 
+# ============================================================
+# Error monitoring (Sentry) — no-op if SENTRY_DSN is unset. Previously the
+# service ran crashed in prod for two months with nothing to notice; this
+# closes that gap the moment a DSN is configured, no code change needed.
+# ============================================================
+if settings.sentry_dsn:
+    import sentry_sdk
+    from sentry_sdk.integrations.fastapi import FastApiIntegration
+    from sentry_sdk.integrations.starlette import StarletteIntegration
+
+    sentry_sdk.init(
+        dsn=settings.sentry_dsn,
+        environment=settings.app_env,
+        integrations=[StarletteIntegration(), FastApiIntegration()],
+        traces_sample_rate=0.1,
+        send_default_pii=False,
+    )
+
 # ---------------------------------------------------------
 # FORCE MODEL REGISTRY LOAD (CRITICAL)
 # ---------------------------------------------------------
@@ -231,6 +249,10 @@ app.add_middleware(RequestIDMiddleware)
 async def global_exception_handler(request: Request, exc: Exception):
 
     logger.exception("unhandled_error path=%s", request.url.path)
+
+    if settings.sentry_dsn:
+        import sentry_sdk
+        sentry_sdk.capture_exception(exc)
 
     return JSONResponse(
         status_code=500,

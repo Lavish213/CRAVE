@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Body, Depends, HTTPException
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
@@ -18,23 +19,41 @@ router = APIRouter(prefix="/upload", tags=["upload"])
 
 
 # -------------------------
+# Request/response bodies
+# -------------------------
+# NOTE: these were previously bare scalar function params (place_id: str,
+# content_type: str, file_size_mb: float), which FastAPI treats as required
+# *query* params for any non-path, non-Pydantic argument — regardless of
+# HTTP method. The frontend (frontend/src/api/upload.ts) sends a JSON body,
+# matching every other POST route in this app, so every upload request was
+# guaranteed to 422 before this fix, independent of R2 config.
+
+class UploadRequestBody(BaseModel):
+    place_id: str
+    content_type: str
+    file_size_mb: float
+
+
+class UploadConfirmBody(BaseModel):
+    image_id: str
+
+
+# -------------------------
 # Request Upload URL
 # -------------------------
 
 @router.post("/request", dependencies=[Depends(rate_limit), Depends(require_api_key)])
 def request_upload(
-    place_id: str,
-    content_type: str,
-    file_size_mb: float,
+    payload: UploadRequestBody = Body(...),
     db: Session = Depends(get_db),
     user_id: str = Depends(get_current_user_id),
 ):
     try:
         result = create_upload_slot(
             db=db,
-            place_id=place_id,
-            content_type=content_type,
-            file_size_mb=file_size_mb,
+            place_id=payload.place_id,
+            content_type=payload.content_type,
+            file_size_mb=payload.file_size_mb,
         )
         return result
     except ValueError as e:
@@ -47,21 +66,21 @@ def request_upload(
 
 @router.post("/confirm", dependencies=[Depends(rate_limit), Depends(require_api_key)])
 def confirm_upload_endpoint(
-    image_id: str,
     background_tasks: BackgroundTasks,
+    payload: UploadConfirmBody = Body(...),
     db: Session = Depends(get_db),
     user_id: str = Depends(get_current_user_id),
 ):
     try:
         confirm_upload(
             db=db,
-            image_id=image_id,
+            image_id=payload.image_id,
         )
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
 
     # Non-blocking — returns immediately, processing happens after response
-    background_tasks.add_task(process_image_upload, image_id)
+    background_tasks.add_task(process_image_upload, payload.image_id)
 
     return {"ok": True}
 

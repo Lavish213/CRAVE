@@ -73,6 +73,10 @@ class Settings(BaseSettings):
     # ever added. "*" is rejected in prod (see app/main.py startup check).
     cors_allow_origins: str = ""
 
+    # Sentry DSN — error monitoring. Leave blank to disable (local dev default).
+    # Get one from sentry.io > Project Settings > Client Keys (DSN).
+    sentry_dsn: str = ""
+
     # --------------------------------------------------
     # EXTERNAL APIS
     # --------------------------------------------------

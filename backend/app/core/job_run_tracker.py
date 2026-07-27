@@ -65,9 +65,16 @@ def track_job_run(job_name: str):
     try:
         yield handle
         run.success = True
-    except Exception:
+    except Exception as exc:
         run.success = False
         run.error = traceback.format_exc()[-4000:]
+        try:
+            from app.config.settings import settings
+            if settings.sentry_dsn:
+                import sentry_sdk
+                sentry_sdk.capture_exception(exc)
+        except Exception:
+            pass
         raise
     finally:
         run.finished_at = datetime.now(timezone.utc)
