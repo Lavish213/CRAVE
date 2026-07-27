@@ -53,6 +53,16 @@ jobs:
       - name: Syntax check (compile every .py file)
         run: python -m compileall -q app
 
+      - name: Dependency vulnerability scan
+        # Advisory only (continue-on-error) — this is the first time this
+        # has run, so an unpinned/vulnerable transitive dep here is a known
+        # gap being surfaced for the first time, not a new regression. Flip
+        # to blocking once the initial findings are triaged.
+        continue-on-error: true
+        run: |
+          pip install pip-audit
+          pip-audit -r requirements.txt
+
       - name: Import sanity check
         # No DATABASE_URL is set here, so this exercises the sqlite fallback
         # path (see app/config/settings.py Settings.resolved_database_url) —
