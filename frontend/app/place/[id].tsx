@@ -1,6 +1,7 @@
 // app/place/[id].tsx
 import React, { useCallback, useEffect, useState } from 'react';
 import {
+  ActivityIndicator,
   Linking,
   ScrollView,
   Share,
@@ -18,6 +19,9 @@ import { getPlaceMenu, MenuItem } from '../../src/api/menu';
 import { useHitlistStore } from '../../src/stores/hitlistStore';
 import { useAuthStore } from '../../src/stores/authStore';
 import { useToast } from '../../src/hooks/useToast';
+import { useImagePicker } from '../../src/hooks/useImagePicker';
+import { useUploadImage } from '../../src/hooks/useUploadImage';
+import { useImageStatusPoll } from '../../src/hooks/useImageStatusPoll';
 import { Colors, Spacing, Radius } from '../../src/constants/colors';
 import { getTier, getBadges, formatPrice } from '../../src/utils/scoring';
 import { ImageGallery } from '../../src/components/ImageGallery';
@@ -67,6 +71,8 @@ export default function PlaceDetailScreen() {
   const { addSave, removeSave, isSaved } = useHitlistStore();
   const user = useAuthStore((s) => s.user);
   const toast = useToast((s) => s.show);
+  const { pick } = useImagePicker();
+  const { upload } = useUploadImage();
 
   const { data: place, isLoading, isError, refetch } = useQuery({
     queryKey: ['place', id],
@@ -74,6 +80,22 @@ export default function PlaceDetailScreen() {
     staleTime: 5 * 60 * 1000,  // 5 min
     enabled: !!id,
   });
+
+  const [isAddingPhoto, setIsAddingPhoto] = useState(false);
+  const [pendingImageId, setPendingImageId] = useState<string | undefined>();
+  const { status: uploadStatus, error: uploadError } = useImageStatusPoll(pendingImageId);
+
+  useEffect(() => {
+    if (!pendingImageId || !uploadStatus) return;
+    if (uploadStatus === 'ready') {
+      toast('Photo added');
+      setPendingImageId(undefined);
+      refetch();
+    } else if (uploadStatus === 'failed') {
+      toast(uploadError ?? 'Photo failed to process');
+      setPendingImageId(undefined);
+    }
+  }, [uploadStatus, uploadError, pendingImageId, toast, refetch]);
 
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [menuLoading, setMenuLoading] = useState(true);
@@ -156,6 +178,28 @@ export default function PlaceDetailScreen() {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         toast('Saved');
       }
+    }
+  };
+
+  const handleAddPhoto = async () => {
+    if (!user) {
+      toast('Sign in to add photos');
+      return;
+    }
+    try {
+      const image = await pick();
+      if (!image) return; // user canceled
+
+      setIsAddingPhoto(true);
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      const imageId = await upload(image, place.id);
+      setPendingImageId(imageId);
+      toast('Uploading photo…');
+    } catch (err) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      toast(err instanceof Error ? err.message : 'Could not upload photo');
+    } finally {
+      setIsAddingPhoto(false);
     }
   };
 
@@ -259,6 +303,23 @@ export default function PlaceDetailScreen() {
             <Text style={styles.actionLabel}>Directions</Text>
           </TouchableOpacity>
         ) : null}
+
+        <TouchableOpacity
+          style={styles.actionBtn}
+          onPress={handleAddPhoto}
+          disabled={isAddingPhoto || !!pendingImageId}
+          accessibilityLabel="Add a photo"
+          accessibilityRole="button"
+        >
+          {isAddingPhoto || pendingImageId ? (
+            <ActivityIndicator size="small" color={Colors.text} />
+          ) : (
+            <Ionicons name="camera-outline" size={18} color={Colors.text} />
+          )}
+          <Text style={styles.actionLabel}>
+            {pendingImageId ? 'Processing…' : isAddingPhoto ? 'Uploading…' : 'Add photo'}
+          </Text>
+        </TouchableOpacity>
       </View>
 
       {/* Menu */}
