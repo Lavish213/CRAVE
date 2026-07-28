@@ -28,6 +28,7 @@ def create_upload_slot(
     place_id: str,
     content_type: str,
     file_size_mb: float,
+    uploaded_by: str | None = None,
 ) -> Dict:
     """
     Creates:
@@ -79,6 +80,7 @@ def create_upload_slot(
         status="pending",
         processing_version=1,
         is_approved=True,
+        uploaded_by=uploaded_by,
     )
 
     db.add(image)

@@ -54,6 +54,7 @@ def request_upload(
             place_id=payload.place_id,
             content_type=payload.content_type,
             file_size_mb=payload.file_size_mb,
+            uploaded_by=user_id,
         )
         return result
     except ValueError as e:

@@ -8,7 +8,7 @@ from PIL import Image
 from app.db.session import SessionLocal
 from app.db.models.place_image import PlaceImage
 
-from app.services.upload.r2_client import _get_s3_client, R2_BUCKET
+from app.services.upload.r2_client import _get_s3_client, R2_BUCKET, generate_public_url
 from app.utils.image_pipeline import process_image, process_thumbnail, save_jpeg
 from app.utils.hash import generate_phash
 from app.services.upload.dedup import is_duplicate_image
@@ -121,6 +121,11 @@ def process_image_upload(image_id: str) -> None:
         # Final DB update
         # -------------------------
 
+        # Existing gallery/read paths (get_public_gallery,
+        # get_primary_image_urls_bulk, primary_image_url_subquery) all read
+        # `.url` directly — derive it here so uploaded photos show up
+        # through those unchanged, same as legacy scraped images.
+        image.url = generate_public_url(image.processed_key)
         image.phash = phash
         image.status = "ready"
         image.processing_version = CURRENT_PROCESSING_VERSION

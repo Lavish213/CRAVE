@@ -8,6 +8,7 @@ from sqlalchemy import (
     Float,
     ForeignKey,
     Index,
+    Integer,
     String,
     text,
 )
@@ -81,9 +82,13 @@ class PlaceImage(Base, TimestampMixin):
     # IMAGE DATA
     # --------------------------------------------------
 
-    url: Mapped[str] = mapped_column(
+    # Nullable: legacy scraped images have a url from ingest time. User
+    # uploads (see app/services/upload/) don't have one until the background
+    # worker finishes processing and derives it from processed_key — see
+    # image_processing_worker.py.
+    url: Mapped[str | None] = mapped_column(
         String(512),
-        nullable=False,
+        nullable=True,
     )
 
     # --------------------------------------------------
@@ -132,6 +137,49 @@ class PlaceImage(Base, TimestampMixin):
         nullable=True,
         default=None,
     )
+
+    # --------------------------------------------------
+    # USER UPLOAD PIPELINE
+    # --------------------------------------------------
+    # These back app/services/upload/upload_service.py and
+    # app/workers/image_processing_worker.py. Only populated for
+    # user-submitted photos (place_id images ingested from Google Places
+    # never set these — they use `url` directly instead).
+    #
+    # We never store full URLs for uploaded images (see key_builder.py) —
+    # only R2 object keys. The worker derives `url` from processed_key once
+    # processing succeeds, so existing url-based read paths (gallery query,
+    # primary_image_url_subquery, etc.) keep working unchanged.
+
+    orig_key: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    processed_key: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    thumb_key: Mapped[str | None] = mapped_column(String(512), nullable=True)
+
+    # pending -> processing -> ready | failed
+    status: Mapped[str] = mapped_column(
+        String(32),
+        nullable=False,
+        default="ready",
+        server_default=text("'ready'"),
+        index=True,
+    )
+
+    processing_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    is_approved: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=True,
+        server_default=text("1"),
+    )
+
+    phash: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+
+    error_message: Mapped[str | None] = mapped_column(String(500), nullable=True)
+
+    # Supabase user id of the uploader. Nullable — legacy/scraped images have
+    # no uploader. Not exposed on any public API response.
+    uploaded_by: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
 
     # --------------------------------------------------
     # ORDERING (PostgreSQL migration safety)
