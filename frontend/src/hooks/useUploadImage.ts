@@ -1,5 +1,6 @@
 import {
   ALLOWED_UPLOAD_TYPES,
+  PhotoType,
   UploadContentType,
   confirmUpload,
   requestUpload,
@@ -21,7 +22,11 @@ function resolveContentType(mimeType?: string): UploadContentType {
 }
 
 export const useUploadImage = () => {
-  const upload = async (image: LocalImage, place_id: string): Promise<string> => {
+  const upload = async (
+    image: LocalImage,
+    place_id: string,
+    photo_type: PhotoType = 'food',
+  ): Promise<string> => {
     if (!image.fileSize) {
       throw new Error('Missing file size');
     }
@@ -35,6 +40,7 @@ export const useUploadImage = () => {
         place_id,
         content_type,
         file_size_mb: fileSizeMb,
+        photo_type,
       });
 
       // 2. Upload directly to R2

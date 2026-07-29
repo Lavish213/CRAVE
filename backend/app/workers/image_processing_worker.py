@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from io import BytesIO
 
 from sqlalchemy.orm import Session
@@ -13,6 +14,8 @@ from app.utils.image_pipeline import process_image, process_thumbnail, save_jpeg
 from app.utils.hash import generate_phash
 from app.services.upload.dedup import is_duplicate_image
 
+
+logger = logging.getLogger(__name__)
 
 CURRENT_PROCESSING_VERSION = 1
 
@@ -132,6 +135,25 @@ def process_image_upload(image_id: str) -> None:
         image.error_message = None
 
         db.commit()
+
+        # Menu photos get a second, best-effort pass: OCR the text off the
+        # photo and feed it into the normal menu ingestion pipeline. Never
+        # let a failure here affect the photo itself — it's already saved
+        # and marked ready above.
+        if image.content_type == "menu":
+            try:
+                from app.services.menu.ocr.menu_photo_ocr import process_menu_photo
+                process_menu_photo(
+                    db=db,
+                    image_id=image.id,
+                    place_id=image.place_id,
+                    image_url=image.url,
+                )
+            except Exception as exc:
+                logger.warning(
+                    "menu_ocr_failed image_id=%s place_id=%s error=%s",
+                    image.id, image.place_id, exc,
+                )
 
     except Exception as e:
         try:

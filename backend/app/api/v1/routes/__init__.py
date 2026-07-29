@@ -24,6 +24,7 @@ from app.api.v1.routes.saves import router as saves_router
 from app.api.v1.routes.craves import router as craves_router
 from app.api.v1.routes.share import router as share_router
 from app.api.v1.routes.image import router as image_router
+from app.api.v1.routes.nearby import router as nearby_router
 
 # -------------------------
 # Enrichment
@@ -61,6 +62,7 @@ router.include_router(saves_router)
 router.include_router(craves_router)
 router.include_router(share_router)
 router.include_router(image_router)
+router.include_router(nearby_router)
 
 router.include_router(enrichment_router)
 router.include_router(coverage_router)

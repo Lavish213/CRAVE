@@ -126,6 +126,67 @@ class GooglePlacesIngest:
     def __init__(self, api_key: str) -> None:
         self.api_key = api_key
 
+    def search_nearby(self, *, lat: float, lng: float, radius_m: int = 150) -> List[Dict]:
+        """
+        Single, unpaginated Nearby Search centered on an exact point — for
+        live "what's around me right now" lookups (e.g. a user confirming a
+        new spot from their GPS location), as opposed to scan_grid()'s
+        multi-cell, multi-page city-wide sweep. A 150m radius is small
+        enough that pagination essentially never applies.
+
+        Returns the same record shape as scan_grid() (via _convert_place),
+        deduplicated by external_id (Google place_id) across the searched
+        types.
+        """
+        results: List[Dict] = []
+        seen_ids: Set[str] = set()
+
+        for place_type in self.SEARCH_TYPES:
+            try:
+                params: Dict = {
+                    "location": f"{lat},{lng}",
+                    "radius": radius_m,
+                    "type": place_type,
+                    "key": self.api_key,
+                }
+                response = fetch(GOOGLE_PLACES_URL, method="GET", params=params)
+
+                if response.status_code != 200:
+                    continue
+
+                data = response.json()
+                status = data.get("status", "UNKNOWN_ERROR")
+
+                if status in _FATAL_STATUSES:
+                    raise GoogleQuotaExhausted(
+                        f"google_places status={status} "
+                        f"error_message={data.get('error_message')!r}"
+                    )
+
+                if status not in _OK_STATUSES:
+                    continue
+
+                for place in data.get("results", []):
+                    record = self._convert_place(place)
+                    if not record:
+                        continue
+                    ext_id = record.get("external_id")
+                    if ext_id and ext_id in seen_ids:
+                        continue
+                    if ext_id:
+                        seen_ids.add(ext_id)
+                    results.append(record)
+
+            except GoogleQuotaExhausted:
+                raise
+            except Exception as exc:
+                logger.debug(
+                    "google_places_nearby_failed lat=%s lng=%s type=%s error=%s",
+                    lat, lng, place_type, exc,
+                )
+
+        return results
+
     def scan_grid(
         self,
         *,

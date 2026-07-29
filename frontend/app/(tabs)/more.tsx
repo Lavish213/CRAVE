@@ -4,6 +4,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import { useRouter } from 'expo-router';
 import { Colors, Spacing, Radius } from '../../src/constants/colors';
 import { useCityStore } from '../../src/stores/cityStore';
 import { useAuthStore } from '../../src/stores/authStore';
@@ -61,6 +62,7 @@ function Divider() {
 }
 
 export default function MoreScreen() {
+  const router = useRouter();
   const selectedCity = useCityStore((s) => s.selectedCity);
   const user = useAuthStore((s) => s.user);
   const signOut = useAuthStore((s) => s.signOut);
@@ -85,6 +87,14 @@ export default function MoreScreen() {
             <Text style={styles.rowSub}>{selectedCity?.name ?? 'None selected'}</Text>
           </View>
         </View>
+        <Divider />
+        <Row
+          icon="add-circle-outline"
+          label="Add a new spot"
+          sublabel="Found somewhere CRAVE doesn't have yet?"
+          tint={Colors.primary}
+          onPress={() => router.push('/add-spot')}
+        />
       </View>
 
       {/* App */}

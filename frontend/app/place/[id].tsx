@@ -2,6 +2,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
+  Image,
   Linking,
   ScrollView,
   Share,
@@ -16,6 +17,7 @@ import * as Haptics from 'expo-haptics';
 import { useQuery } from '@tanstack/react-query';
 import { fetchPlaceDetail, PlaceOut } from '../../src/api/places';
 import { getPlaceMenu, MenuItem } from '../../src/api/menu';
+import { CraveItem, getCravesForPlace } from '../../src/api/crave';
 import { useHitlistStore } from '../../src/stores/hitlistStore';
 import { useAuthStore } from '../../src/stores/authStore';
 import { useToast } from '../../src/hooks/useToast';
@@ -111,6 +113,18 @@ export default function PlaceDetailScreen() {
       .finally(() => setMenuLoading(false));
   }, [id]);
 
+  const [craves, setCraves] = useState<CraveItem[]>([]);
+
+  // Matched shares for this place — "seen on TikTok/YouTube" social proof.
+  // Public endpoint, no auth needed, silently empty on failure (this is
+  // supplementary content, not worth an error state of its own).
+  useEffect(() => {
+    if (!id) return;
+    getCravesForPlace(id)
+      .then((items) => setCraves(items))
+      .catch(() => setCraves([]));
+  }, [id]);
+
   const handleShare = useCallback(() => {
     if (!place) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -181,7 +195,7 @@ export default function PlaceDetailScreen() {
     }
   };
 
-  const handleAddPhoto = async () => {
+  const handleAddPhoto = async (photoType: 'food' | 'menu' = 'food') => {
     if (!user) {
       toast('Sign in to add photos');
       return;
@@ -192,9 +206,9 @@ export default function PlaceDetailScreen() {
 
       setIsAddingPhoto(true);
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-      const imageId = await upload(image, place.id);
+      const imageId = await upload(image, place.id, photoType);
       setPendingImageId(imageId);
-      toast('Uploading photo…');
+      toast(photoType === 'menu' ? 'Uploading menu photo…' : 'Uploading photo…');
     } catch (err) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       toast(err instanceof Error ? err.message : 'Could not upload photo');
@@ -306,7 +320,7 @@ export default function PlaceDetailScreen() {
 
         <TouchableOpacity
           style={styles.actionBtn}
-          onPress={handleAddPhoto}
+          onPress={() => handleAddPhoto('food')}
           disabled={isAddingPhoto || !!pendingImageId}
           accessibilityLabel="Add a photo"
           accessibilityRole="button"
@@ -319,6 +333,17 @@ export default function PlaceDetailScreen() {
           <Text style={styles.actionLabel}>
             {pendingImageId ? 'Processing…' : isAddingPhoto ? 'Uploading…' : 'Add photo'}
           </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.actionBtn}
+          onPress={() => handleAddPhoto('menu')}
+          disabled={isAddingPhoto || !!pendingImageId}
+          accessibilityLabel="Add a photo of the menu"
+          accessibilityRole="button"
+        >
+          <Ionicons name="restaurant-outline" size={18} color={Colors.text} />
+          <Text style={styles.actionLabel}>Add menu photo</Text>
         </TouchableOpacity>
       </View>
 
@@ -372,6 +397,45 @@ export default function PlaceDetailScreen() {
           </>
         )}
       </View>
+
+      {/* Seen on social — matched TikTok/YouTube/IG shares. Tapping opens
+          the original post; true inline playback would need react-native-webview,
+          not currently a dependency, so this links out instead. */}
+      {craves.length > 0 && (
+        <View style={styles.socialSection}>
+          <Text style={styles.sectionTitle}>Seen on social</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.socialRow}>
+            {craves.map((item) => (
+              <TouchableOpacity
+                key={item.id}
+                style={styles.socialCard}
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  Linking.openURL(item.url);
+                }}
+                accessibilityRole="link"
+                accessibilityLabel={`Open ${item.source_type} post${item.author_name ? ` by ${item.author_name}` : ''}`}
+              >
+                {item.thumbnail_url ? (
+                  <Image source={{ uri: item.thumbnail_url }} style={styles.socialThumb} />
+                ) : (
+                  <View style={[styles.socialThumb, styles.socialThumbFallback]}>
+                    <Ionicons name="play-circle-outline" size={28} color={Colors.textMuted} />
+                  </View>
+                )}
+                <View style={styles.socialPlatformChip}>
+                  <Text style={styles.socialPlatformChipText}>
+                    {item.source_type === 'tiktok' ? 'TikTok' : item.source_type === 'youtube' ? 'YouTube' : item.source_type === 'instagram' ? 'Instagram' : 'Link'}
+                  </Text>
+                </View>
+                {item.author_name ? (
+                  <Text style={styles.socialAuthor} numberOfLines={1}>@{item.author_name}</Text>
+                ) : null}
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
+      )}
     </ScrollView>
   );
 }
@@ -452,4 +516,25 @@ const styles = StyleSheet.create({
   expandBtn: { marginTop: 8, paddingVertical: 12, alignItems: 'center' },
   expandLabel: { color: Colors.primary, fontSize: 14, fontWeight: '600' },
   menuSkeletonWrap: { gap: Spacing.sm },
+  socialSection: { paddingTop: 20, paddingLeft: 16 },
+  socialRow: { gap: Spacing.sm, paddingRight: 16, paddingTop: 4 },
+  socialCard: { width: 120 },
+  socialThumb: {
+    width: 120,
+    height: 120,
+    borderRadius: Radius.md,
+    backgroundColor: Colors.surface,
+  },
+  socialThumbFallback: { alignItems: 'center', justifyContent: 'center' },
+  socialPlatformChip: {
+    position: 'absolute',
+    top: 8,
+    left: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: Radius.pill,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+  },
+  socialPlatformChipText: { color: '#fff', fontSize: 10, fontWeight: '700' },
+  socialAuthor: { color: Colors.textSecondary, fontSize: 12, marginTop: 6 },
 });

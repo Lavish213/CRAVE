@@ -99,6 +99,28 @@ class CraveItem(Base):
     )
 
     # ------------------------------------------------------------------
+    # EMBED DATA (from oEmbed — TikTok/YouTube only, see oembed_client.py)
+    # ------------------------------------------------------------------
+
+    thumbnail_url: Mapped[str | None] = mapped_column(
+        String(1024),
+        nullable=True,
+        doc="oEmbed thumbnail_url — preview image for this share",
+    )
+
+    embed_html: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+        doc="oEmbed html blob — stored for a future inline-player pass, not yet rendered",
+    )
+
+    author_name: Mapped[str | None] = mapped_column(
+        String(255),
+        nullable=True,
+        doc="oEmbed author_name — creator handle/display name",
+    )
+
+    # ------------------------------------------------------------------
     # PLACE MATCH
     # ------------------------------------------------------------------
 

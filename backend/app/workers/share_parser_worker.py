@@ -33,6 +33,8 @@ from app.db.session import SessionLocal
 from app.db.models.crave_item import CraveItem
 from app.db.models.place import Place
 from app.db.models.place_signal import PlaceSignal
+from app.services.social.oembed_client import get_oembed_data
+from app.services.discovery.discovery_service import ingest_candidate_v2
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +42,14 @@ BATCH_SIZE = 10
 CONFIDENCE_THRESHOLD = 0.7
 HTTP_TIMEOUT = 10.0
 INTERVAL_SECONDS = 60
+
+# Confidence assigned to a DiscoveryCandidate created from a single unmatched
+# share — deliberately low. One person sharing one TikTok about a place isn't
+# enough to promote it on its own (MIN_CONFIDENCE_THRESHOLD is 0.72); it takes
+# multiple independent shares/signals converging on the same place before the
+# scheduler's discovery job promotes it automatically. See
+# app/services/discovery/promotion_orchestrator_v2.py.
+UNMATCHED_SHARE_CANDIDATE_CONFIDENCE = 0.3
 
 _HEADERS = {
     "User-Agent": (
@@ -169,23 +179,48 @@ def _process_item(db: Session, item: CraveItem) -> None:
     """Fetch, parse, match, and persist results for one CraveItem."""
     now = datetime.now(timezone.utc)
 
-    try:
-        with httpx.Client(timeout=HTTP_TIMEOUT, headers=_HEADERS, follow_redirects=True) as client:
-            response = client.get(item.url)
-            response.raise_for_status()
-            html = response.text
-    except Exception as exc:
-        logger.warning("share_fetch_failed id=%s url=%s error=%s", item.id, item.url, exc)
-        item.status = "error"
-        item.processed_at = now
-        db.commit()
-        return
+    # oEmbed first for platforms that publish it (TikTok, YouTube — Instagram
+    # once INSTAGRAM_OEMBED_ACCESS_TOKEN is configured). This is real caption
+    # text from the platform's own API, not a guess at scraped HTML — a
+    # plain GET against a JS-rendered app like TikTok/Instagram usually just
+    # returns a login-wall shell with no usable title. Also pulls
+    # thumbnail_url/embed_html/author_name, previously discarded entirely —
+    # without these there was no way to show "seen on TikTok" content
+    # anywhere in the app, only a bare matched/unmatched status.
+    oembed = get_oembed_data(item.source_type, item.url)
 
-    # Store raw snippet (first 4000 chars to keep the column lean)
-    item.raw_content = html[:4000]
+    place_name: Optional[str] = None
+    city_hint: Optional[str] = item.parsed_city_hint
 
-    place_name = _extract_place_name_from_html(html, item.url)
-    city_hint = item.parsed_city_hint or _extract_city_hint_from_html(html)
+    if oembed:
+        if oembed.get("thumbnail_url"):
+            item.thumbnail_url = oembed["thumbnail_url"][:1024]
+        if oembed.get("html"):
+            item.embed_html = oembed["html"]
+        if oembed.get("author_name"):
+            item.author_name = oembed["author_name"][:255]
+
+        oembed_text = oembed.get("title")
+        item.raw_content = oembed_text[:4000] if oembed_text else None
+        place_name = oembed_text
+    else:
+        try:
+            with httpx.Client(timeout=HTTP_TIMEOUT, headers=_HEADERS, follow_redirects=True) as client:
+                response = client.get(item.url)
+                response.raise_for_status()
+                html = response.text
+        except Exception as exc:
+            logger.warning("share_fetch_failed id=%s url=%s error=%s", item.id, item.url, exc)
+            item.status = "error"
+            item.processed_at = now
+            db.commit()
+            return
+
+        # Store raw snippet (first 4000 chars to keep the column lean)
+        item.raw_content = html[:4000]
+
+        place_name = _extract_place_name_from_html(html, item.url)
+        city_hint = city_hint or _extract_city_hint_from_html(html)
 
     item.parsed_place_name = place_name
     if city_hint:
@@ -238,6 +273,34 @@ def _process_item(db: Session, item: CraveItem) -> None:
         )
     else:
         item.status = "unmatched"
+
+        # No existing place matched — this is likely a genuinely new spot,
+        # not just a bad name guess. Feed it into the discovery-candidate
+        # pipeline instead of dead-ending here (previously it just sat as
+        # "unmatched" forever with no further action). Low confidence,
+        # since a single scraped/oEmbed'd caption is weak, unverified
+        # evidence — see UNMATCHED_SHARE_CANDIDATE_CONFIDENCE. If enough
+        # independent shares (or GPS confirmations, or hitlist suggestions)
+        # converge on the same place, it crosses the promotion threshold on
+        # its own via the scheduler's discovery job — no extra logic needed
+        # here.
+        try:
+            ingest_candidate_v2(
+                db=db,
+                name=place_name[:160],
+                city_name=city_hint,
+                source="user_share",
+                confidence=UNMATCHED_SHARE_CANDIDATE_CONFIDENCE,
+                raw_payload={"crave_item_id": item.id, "url": item.url, "source_type": item.source_type},
+            )
+        except ValueError as exc:
+            # Most commonly: no city could be resolved from a bare caption
+            # with no location info. Not an error — just not enough to work
+            # with yet.
+            logger.debug("share_candidate_skip id=%s reason=%s", item.id, exc)
+        except Exception as exc:
+            logger.warning("share_candidate_failed id=%s error=%s", item.id, exc)
+
         db.commit()
         logger.info(
             "share_unmatched id=%s name=%r confidence=%.2f",

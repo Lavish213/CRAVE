@@ -16,6 +16,7 @@ from app.db.models.place_image import PlaceImage
 
 ALLOWED_TYPES = {"image/jpeg", "image/png", "image/webp"}
 MAX_FILE_SIZE_MB = 15
+ALLOWED_PHOTO_TYPES = {"food", "menu"}
 
 
 # -------------------------
@@ -29,6 +30,7 @@ def create_upload_slot(
     content_type: str,
     file_size_mb: float,
     uploaded_by: str | None = None,
+    photo_type: str = "food",
 ) -> Dict:
     """
     Creates:
@@ -47,6 +49,9 @@ def create_upload_slot(
 
     if file_size_mb > MAX_FILE_SIZE_MB:
         raise ValueError("File too large")
+
+    if photo_type not in ALLOWED_PHOTO_TYPES:
+        raise ValueError("Unsupported photo type")
 
     # -------------------------
     # IDs + Keys
@@ -81,6 +86,7 @@ def create_upload_slot(
         processing_version=1,
         is_approved=True,
         uploaded_by=uploaded_by,
+        content_type=photo_type,
     )
 
     db.add(image)

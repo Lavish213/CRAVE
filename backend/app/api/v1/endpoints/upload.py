@@ -32,6 +32,11 @@ class UploadRequestBody(BaseModel):
     place_id: str
     content_type: str
     file_size_mb: float
+    # Semantic label for what the photo shows — "food" (default, general
+    # gallery) or "menu" (triggers OCR extraction, see
+    # app/services/menu/ocr/menu_photo_ocr.py). Distinct from `content_type`
+    # above, which is the MIME type of the file being uploaded.
+    photo_type: str = "food"
 
 
 class UploadConfirmBody(BaseModel):
@@ -55,6 +60,7 @@ def request_upload(
             content_type=payload.content_type,
             file_size_mb=payload.file_size_mb,
             uploaded_by=user_id,
+            photo_type=payload.photo_type,
         )
         return result
     except ValueError as e:

@@ -1,0 +1,47 @@
+name: CodeQL
+
+# Static analysis (SAST) — scans CRAVE's own code for injection, auth, and
+# data-flow bugs. Distinct from the pip-audit step in ci.yml, which only
+# checks whether third-party dependencies have known CVEs; this looks at the
+# code actually written in this repo. Free for public repos.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Weekly sweep catches new query rules CodeQL adds over time, even on
+    # weeks with no pushes.
+    - cron: "0 6 * * 1"
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - language: python
+            build-mode: none
+          - language: javascript-typescript
+            build-mode: none
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
+
+      - name: Perform CodeQL analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:${{ matrix.language }}"

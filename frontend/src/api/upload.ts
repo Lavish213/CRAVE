@@ -17,10 +17,16 @@ export const MAX_UPLOAD_MB = 15;
 
 export type UploadStatus = 'pending' | 'processing' | 'ready' | 'failed';
 
+// What the photo shows. "menu" triggers OCR extraction on the backend
+// (see backend/app/services/menu/ocr/menu_photo_ocr.py) instead of just
+// adding it to the general gallery.
+export type PhotoType = 'food' | 'menu';
+
 export interface UploadRequestPayload {
   place_id: string;
   content_type: UploadContentType;
   file_size_mb: number;
+  photo_type?: PhotoType;
 }
 
 export interface UploadRequestResponse {

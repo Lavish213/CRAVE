@@ -10,7 +10,13 @@ Rules enforced:
 
 Provider precedence (higher = more trusted):
     toast=10, popmenu=9, square=8, chownow=8, clover=7, olo=6,
-    direct_html=3, grubhub=2, aggregator=1
+    user_photo_ocr=4, direct_html=3, grubhub=2, aggregator=1
+
+user_photo_ocr sits above scraped HTML but below verified POS providers: a
+real photo of the physical menu is more trustworthy than guessing at
+arbitrary website markup, but OCR + heuristic line-parsing on it is less
+reliable than a direct provider integration. See
+app/services/menu/ocr/menu_photo_ocr.py.
 """
 from __future__ import annotations
 
@@ -38,6 +44,7 @@ PROVIDER_PRECEDENCE: dict[str, int] = {
     "chownow":     8,
     "clover":      7,
     "olo":         6,
+    "user_photo_ocr": 4,
     "direct_html": 3,
     "grubhub":     2,
     "aggregator":  1,

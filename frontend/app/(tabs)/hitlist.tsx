@@ -3,6 +3,7 @@ import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
+  Image,
   RefreshControl,
   StyleSheet,
   Text,
@@ -21,6 +22,7 @@ import { ErrorState } from '../../src/components/ErrorState';
 import { getCraveItems, CraveItem } from '../../src/api/crave';
 import { useAuthStore } from '../../src/stores/authStore';
 import { AuthSheet } from '../../src/components/AuthSheet';
+import { ShareLinkSheet } from '../../src/components/ShareLinkSheet';
 
 export default function HitlistScreen() {
   const router = useRouter();
@@ -32,6 +34,7 @@ export default function HitlistScreen() {
   const [cravesLoading, setCravesLoading] = useState(false);
   const [cravesError, setCravesError] = useState(false);
   const [authVisible, setAuthVisible] = useState(false);
+  const [shareVisible, setShareVisible] = useState(false);
 
   const loadCraves = React.useCallback(() => {
     setCravesLoading(true);
@@ -126,14 +129,41 @@ export default function HitlistScreen() {
     );
   }
 
+  const shareBtn = (
+    <TouchableOpacity
+      style={styles.shareBtn}
+      onPress={() => {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        setShareVisible(true);
+      }}
+      accessibilityRole="button"
+      accessibilityLabel="Share a link"
+    >
+      <Ionicons name="link-outline" size={16} color={Colors.primary} />
+      <Text style={styles.shareBtnText}>Share a link</Text>
+    </TouchableOpacity>
+  );
+
   // True empty
   if (saves.length === 0 && craves.length === 0 && !cravesLoading) {
     return (
-      <EmptyState
-        icon="bookmark-outline"
-        title="Start your food memory"
-        body="Save places you want to visit. They live here, waiting for you."
-      />
+      <>
+        <EmptyState
+          icon="bookmark-outline"
+          title="Start your food memory"
+          body="Save places you want to visit, or share a TikTok/Instagram link and we'll find the place."
+          ctaLabel="Share a link"
+          onCta={() => setShareVisible(true)}
+        />
+        <ShareLinkSheet
+          visible={shareVisible}
+          onClose={() => setShareVisible(false)}
+          onSubmitted={() => {
+            toast("Got it — we'll match this to a place shortly.");
+            loadCraves();
+          }}
+        />
+      </>
     );
   }
 
@@ -176,14 +206,17 @@ export default function HitlistScreen() {
         )}
         contentContainerStyle={styles.list}
         ListHeaderComponent={
-          saves.length > 0 ? (
-            <View style={styles.screenHeader}>
+          <View style={styles.screenHeader}>
+            <View style={styles.screenHeaderLeft}>
               <Text style={styles.screenTitle}>Saves</Text>
-              <View style={styles.countBadge}>
-                <Text style={styles.countBadgeText}>{saves.length}</Text>
-              </View>
+              {saves.length > 0 ? (
+                <View style={styles.countBadge}>
+                  <Text style={styles.countBadgeText}>{saves.length}</Text>
+                </View>
+              ) : null}
             </View>
-          ) : null
+            {shareBtn}
+          </View>
         }
         ListFooterComponent={
           cravesLoading ? (
@@ -202,12 +235,16 @@ export default function HitlistScreen() {
               </View>
               {craves.map((item) => (
                 <View key={item.id} style={styles.craveRow}>
+                  {item.thumbnail_url ? (
+                    <Image source={{ uri: item.thumbnail_url }} style={styles.craveThumb} />
+                  ) : null}
                   <View style={styles.craveMeta}>
                     <Text style={styles.craveName} numberOfLines={1}>
                       {item.parsed_place_name ?? item.url}
                     </Text>
                     <Text style={item.matched_place_id ? styles.craveStatusMatched : styles.craveStatusPending}>
                       {item.matched_place_id ? '● Matched' : 'Searching…'}
+                      {item.author_name ? `  ·  @${item.author_name}` : ''}
                     </Text>
                   </View>
                   {item.matched_place_id && (
@@ -226,6 +263,14 @@ export default function HitlistScreen() {
           ) : null
         }
       />
+      <ShareLinkSheet
+        visible={shareVisible}
+        onClose={() => setShareVisible(false)}
+        onSubmitted={() => {
+          toast("Got it — we'll match this to a place shortly.");
+          loadCraves();
+        }}
+      />
     </View>
   );
 }
@@ -237,9 +282,26 @@ const styles = StyleSheet.create({
   screenHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: Spacing.sm,
+    justifyContent: 'space-between',
     paddingBottom: Spacing.md,
   },
+  screenHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  shareBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: Radius.pill,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    backgroundColor: Colors.surface,
+  },
+  shareBtnText: { fontSize: 13, fontWeight: '700', color: Colors.primary },
   screenTitle: {
     fontSize: 22,
     fontWeight: '800',
@@ -284,12 +346,19 @@ const styles = StyleSheet.create({
   craveRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: Spacing.sm,
     padding: Spacing.md,
     backgroundColor: Colors.surface,
     borderRadius: Radius.md,
     borderWidth: 1,
     borderColor: Colors.border,
     marginBottom: Spacing.sm,
+  },
+  craveThumb: {
+    width: 40,
+    height: 40,
+    borderRadius: Radius.sm,
+    backgroundColor: Colors.surfaceElevated,
   },
   craveMeta: { flex: 1 },
   craveName: { color: Colors.text, fontSize: 14, fontWeight: '600' },

@@ -29,6 +29,11 @@ on:
   pull_request:
     branches: [main]
 
+# Default GITHUB_TOKEN to read-only — neither job here needs to write
+# anything (no PR comments, no releases, no pushes back to the repo).
+permissions:
+  contents: read
+
 jobs:
   backend:
     name: Backend (syntax + import check)
