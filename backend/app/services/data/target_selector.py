@@ -207,7 +207,7 @@ class SmartTargetSelector:
                 FROM menu_items
                 GROUP BY place_id
             ) mi ON mi.place_id = p.id
-            WHERE p.is_active = 1
+            WHERE p.is_active = TRUE
               AND (mi.cnt IS NULL OR mi.cnt = 0)
             ORDER BY p.master_score DESC
         """

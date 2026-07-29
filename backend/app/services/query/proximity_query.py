@@ -61,7 +61,7 @@ def list_places_near(
         SELECT id,
                ((:lat - lat) * (:lat - lat) + (:lng - lng) * (:lng - lng)) AS dist2
         FROM places
-        WHERE is_active = 1
+        WHERE is_active = TRUE
           AND lat BETWEEN :min_lat AND :max_lat
           AND lng BETWEEN :min_lng AND :max_lng
         ORDER BY dist2 ASC, rank_score DESC
@@ -71,7 +71,7 @@ def list_places_near(
     count_stmt = text("""
         SELECT COUNT(*)
         FROM places
-        WHERE is_active = 1
+        WHERE is_active = TRUE
           AND lat BETWEEN :min_lat AND :max_lat
           AND lng BETWEEN :min_lng AND :max_lng
     """)

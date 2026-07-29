@@ -24,7 +24,7 @@ import { Colors, Spacing, Radius } from '../../src/constants/colors';
 import { PlaceCardCompact } from '../../src/components/PlaceCardCompact';
 import { EmptyState } from '../../src/components/EmptyState';
 import { ErrorState } from '../../src/components/ErrorState';
-import { getCraveItems, CraveItem } from '../../src/api/crave';
+import { getCraveItems, CraveItem, getMyPlaceSaves, PlaceSaveItem } from '../../src/api/crave';
 import { useAuthStore } from '../../src/stores/authStore';
 import { AuthSheet } from '../../src/components/AuthSheet';
 import { ShareLinkSheet } from '../../src/components/ShareLinkSheet';
@@ -38,6 +38,7 @@ export default function CravesScreen() {
   const [craves, setCraves] = useState<CraveItem[]>([]);
   const [cravesLoading, setCravesLoading] = useState(false);
   const [cravesError, setCravesError] = useState(false);
+  const [placeSaves, setPlaceSaves] = useState<PlaceSaveItem[]>([]);
   const [authVisible, setAuthVisible] = useState(false);
   const [shareVisible, setShareVisible] = useState(false);
 
@@ -56,28 +57,38 @@ export default function CravesScreen() {
       .finally(() => setCravesLoading(false));
   }, []);
 
+  // "Just the name" adds — separate list from CraveItems (which come from
+  // shared links), fetched and shown alongside so a manual add doesn't
+  // vanish into a black hole after submitting.
+  const loadPlaceSaves = React.useCallback(() => {
+    return getMyPlaceSaves()
+      .then((items) => setPlaceSaves(items))
+      .catch(() => setPlaceSaves([]));
+  }, []);
+
   // Load backend saves whenever user changes
   useEffect(() => {
     if (!user) return;
     loadSaves(user.id);
   }, [user?.id]);
 
-  // Load craves whenever user changes
+  // Load craves + manual place-saves whenever user changes
   useEffect(() => {
     if (!user) return;
     loadCraves();
-  }, [user?.id, loadCraves]);
+    loadPlaceSaves();
+  }, [user?.id, loadCraves, loadPlaceSaves]);
 
   const [pullRefreshing, setPullRefreshing] = useState(false);
   const handlePullRefresh = React.useCallback(async () => {
     if (!user) return;
     setPullRefreshing(true);
     try {
-      await Promise.all([loadSaves(user.id), loadCraves()]);
+      await Promise.all([loadSaves(user.id), loadCraves(), loadPlaceSaves()]);
     } finally {
       setPullRefreshing(false);
     }
-  }, [user, loadSaves, loadCraves]);
+  }, [user, loadSaves, loadCraves, loadPlaceSaves]);
 
   if (__DEV__) console.log('[CRAVES] RENDER', { user: !!user, saves: saves.length, savesLoading, savesError, craves: craves.length });
 
@@ -149,8 +160,14 @@ export default function CravesScreen() {
     </TouchableOpacity>
   );
 
+  const handleShareSubmitted = () => {
+    toast("Got it — we'll match this to a place shortly.");
+    loadCraves();
+    loadPlaceSaves();
+  };
+
   // True empty
-  if (saves.length === 0 && craves.length === 0 && !cravesLoading) {
+  if (saves.length === 0 && craves.length === 0 && placeSaves.length === 0 && !cravesLoading) {
     return (
       <>
         <EmptyState
@@ -163,10 +180,7 @@ export default function CravesScreen() {
         <ShareLinkSheet
           visible={shareVisible}
           onClose={() => setShareVisible(false)}
-          onSubmitted={() => {
-            toast("Got it — we'll match this to a place shortly.");
-            loadCraves();
-          }}
+          onSubmitted={handleShareSubmitted}
         />
       </>
     );
@@ -224,57 +238,87 @@ export default function CravesScreen() {
           </View>
         }
         ListFooterComponent={
-          cravesLoading ? (
-            <View style={styles.cravesSection}>
-              <ActivityIndicator color={Colors.primary} style={{ marginVertical: 16 }} />
-            </View>
-          ) : cravesError ? (
-            <View style={styles.cravesSection}>
-              <Text style={styles.cravesSub}>Couldn't load Craves right now.</Text>
-            </View>
-          ) : craves.length > 0 ? (
-            <View style={styles.cravesSection}>
-              <View style={styles.cravesHeader}>
-                <Text style={styles.cravesTitle}>Craves</Text>
-                <Text style={styles.cravesSub}>Places you've craved, tracked by CRAVE</Text>
+          <>
+            {cravesLoading ? (
+              <View style={styles.cravesSection}>
+                <ActivityIndicator color={Colors.primary} style={{ marginVertical: 16 }} />
               </View>
-              {craves.map((item) => (
-                <View key={item.id} style={styles.craveRow}>
-                  {item.thumbnail_url ? (
-                    <Image source={{ uri: item.thumbnail_url }} style={styles.craveThumb} />
-                  ) : null}
-                  <View style={styles.craveMeta}>
-                    <Text style={styles.craveName} numberOfLines={1}>
-                      {item.parsed_place_name ?? item.url}
-                    </Text>
-                    <Text style={item.matched_place_id ? styles.craveStatusMatched : styles.craveStatusPending}>
-                      {item.matched_place_id ? '● Matched' : 'Searching…'}
-                      {item.author_name ? `  ·  @${item.author_name}` : ''}
-                    </Text>
-                  </View>
-                  {item.matched_place_id && (
-                    <TouchableOpacity
-                      style={styles.craveOpenBtn}
-                      onPress={() => router.push(`/place/${item.matched_place_id!}`)}
-                      accessibilityRole="button"
-                      accessibilityLabel={`Open matched place for ${item.parsed_place_name ?? 'this place'}`}
-                    >
-                      <Text style={styles.craveViewBtn}>View →</Text>
-                    </TouchableOpacity>
-                  )}
+            ) : cravesError ? (
+              <View style={styles.cravesSection}>
+                <Text style={styles.cravesSub}>Couldn't load Craves right now.</Text>
+              </View>
+            ) : craves.length > 0 ? (
+              <View style={styles.cravesSection}>
+                <View style={styles.cravesHeader}>
+                  <Text style={styles.cravesTitle}>Craves</Text>
+                  <Text style={styles.cravesSub}>Places you've craved, tracked by CRAVE</Text>
                 </View>
-              ))}
-            </View>
-          ) : null
+                {craves.map((item) => (
+                  <View key={item.id} style={styles.craveRow}>
+                    {item.thumbnail_url ? (
+                      <Image source={{ uri: item.thumbnail_url }} style={styles.craveThumb} />
+                    ) : null}
+                    <View style={styles.craveMeta}>
+                      <Text style={styles.craveName} numberOfLines={1}>
+                        {item.parsed_place_name ?? item.url}
+                      </Text>
+                      <Text style={item.matched_place_id ? styles.craveStatusMatched : styles.craveStatusPending}>
+                        {item.matched_place_id ? '● Matched' : 'Searching…'}
+                        {item.author_name ? `  ·  @${item.author_name}` : ''}
+                      </Text>
+                    </View>
+                    {item.matched_place_id && (
+                      <TouchableOpacity
+                        style={styles.craveOpenBtn}
+                        onPress={() => router.push(`/place/${item.matched_place_id!}`)}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Open matched place for ${item.parsed_place_name ?? 'this place'}`}
+                      >
+                        <Text style={styles.craveViewBtn}>View →</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                ))}
+              </View>
+            ) : null}
+
+            {placeSaves.length > 0 ? (
+              <View style={styles.cravesSection}>
+                <View style={styles.cravesHeader}>
+                  <Text style={styles.cravesTitle}>Added</Text>
+                  <Text style={styles.cravesSub}>Places you typed in by name</Text>
+                </View>
+                {placeSaves.map((item) => (
+                  <View key={item.id} style={styles.craveRow}>
+                    <View style={styles.craveMeta}>
+                      <Text style={styles.craveName} numberOfLines={1}>
+                        {item.place_name}
+                      </Text>
+                      <Text style={item.place_id ? styles.craveStatusMatched : styles.craveStatusPending}>
+                        {item.place_id ? '● Matched' : 'Searching…'}
+                      </Text>
+                    </View>
+                    {item.place_id && (
+                      <TouchableOpacity
+                        style={styles.craveOpenBtn}
+                        onPress={() => router.push(`/place/${item.place_id!}`)}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Open matched place for ${item.place_name}`}
+                      >
+                        <Text style={styles.craveViewBtn}>View →</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                ))}
+              </View>
+            ) : null}
+          </>
         }
       />
       <ShareLinkSheet
         visible={shareVisible}
         onClose={() => setShareVisible(false)}
-        onSubmitted={() => {
-          toast("Got it — we'll match this to a place shortly.");
-          loadCraves();
-        }}
+        onSubmitted={handleShareSubmitted}
       />
     </View>
   );

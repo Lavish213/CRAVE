@@ -1,6 +1,3 @@
-// Requires the `expo-image-picker` dependency, which is not yet installed
-// in frontend/package.json. Run `npx expo install expo-image-picker` to add
-// it at the SDK-54-compatible version before this hook will resolve/build.
 import * as ImagePicker from 'expo-image-picker';
 
 export interface LocalImage {

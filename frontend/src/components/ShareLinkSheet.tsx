@@ -22,13 +22,16 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { Colors, Spacing, Radius } from '../constants/colors';
-import { detectSourceType, submitShare } from '../api/crave';
+import { detectSourceType, submitPlaceSave, submitShare } from '../api/crave';
+import { useLocation } from '../hooks/useLocation';
 
 interface Props {
   visible: boolean;
   onClose: () => void;
   onSubmitted?: () => void;
 }
+
+type Mode = 'link' | 'name';
 
 const PLATFORM_LABEL: Record<string, string> = {
   tiktok: 'TikTok',
@@ -40,25 +43,35 @@ const PLATFORM_LABEL: Record<string, string> = {
 };
 
 export function ShareLinkSheet({ visible, onClose, onSubmitted }: Props) {
+  const [mode, setMode] = useState<Mode>('link');
   const [url, setUrl] = useState('');
+  const [name, setName] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Cached/shared location hook — no fresh GPS prompt, just attaches
+  // whatever CRAVE already has on hand to raise the candidate's confidence
+  // a bit. Never blocks submission if unavailable.
+  const location = useLocation();
+
   const trimmed = url.trim();
+  const trimmedName = name.trim();
   const detected = trimmed.length > 10 ? detectSourceType(trimmed) : null;
 
   const reset = () => {
     setUrl('');
+    setName('');
     setError(null);
   };
 
   const handleClose = () => {
     if (submitting) return;
     reset();
+    setMode('link');
     onClose();
   };
 
-  const handleSubmit = async () => {
+  const handleSubmitLink = async () => {
     if (trimmed.length < 10) {
       setError('Paste a link to a restaurant video or post');
       return;
@@ -92,6 +105,36 @@ export function ShareLinkSheet({ visible, onClose, onSubmitted }: Props) {
     }
   };
 
+  const handleSubmitName = async () => {
+    if (trimmedName.length < 2) {
+      setError('Enter the name of the place');
+      return;
+    }
+
+    setSubmitting(true);
+    setError(null);
+    try {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      await submitPlaceSave(trimmedName, { lat: location?.lat, lng: location?.lng });
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      reset();
+      onSubmitted?.();
+      onClose();
+    } catch (err: any) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      const status = err?.response?.status;
+      if (status === 401) {
+        setError('Sign in to add a place');
+      } else if (status === 429) {
+        setError("You're doing that too fast — wait a moment and try again.");
+      } else {
+        setError("Couldn't submit that. Try again.");
+      }
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   return (
     <Modal
       visible={visible}
@@ -115,45 +158,89 @@ export function ShareLinkSheet({ visible, onClose, onSubmitted }: Props) {
         </TouchableOpacity>
 
         <View style={styles.identity}>
-          <Text style={styles.title}>Share a link</Text>
+          <Text style={styles.title}>{mode === 'link' ? 'Share a link' : 'Add a place'}</Text>
           <Text style={styles.body}>
-            Paste a TikTok, Instagram, YouTube, or article link about a
-            restaurant. We'll match it to the place automatically.
+            {mode === 'link'
+              ? "Paste a TikTok, Instagram, YouTube, or article link about a restaurant. We'll match it to the place automatically."
+              : "No link? Just tell us the name — we'll do the rest."}
           </Text>
         </View>
 
-        <View style={styles.inputWrap}>
-          <TextInput
-            style={styles.input}
-            placeholder="https://..."
-            placeholderTextColor={Colors.textMuted}
-            value={url}
-            onChangeText={(v) => {
-              setUrl(v);
-              if (error) setError(null);
+        <View style={styles.modeToggle}>
+          <TouchableOpacity
+            style={[styles.modeBtn, mode === 'link' && styles.modeBtnActive]}
+            onPress={() => {
+              setMode('link');
+              setError(null);
             }}
-            autoCapitalize="none"
-            autoCorrect={false}
-            keyboardType="url"
-            editable={!submitting}
-            accessibilityLabel="Link URL"
-          />
-          {detected ? (
-            <View style={styles.platformChip}>
-              <Text style={styles.platformChipText}>{PLATFORM_LABEL[detected]}</Text>
-            </View>
-          ) : null}
+            accessibilityRole="button"
+            accessibilityLabel="Switch to link mode"
+          >
+            <Text style={[styles.modeBtnText, mode === 'link' && styles.modeBtnTextActive]}>Link</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.modeBtn, mode === 'name' && styles.modeBtnActive]}
+            onPress={() => {
+              setMode('name');
+              setError(null);
+            }}
+            accessibilityRole="button"
+            accessibilityLabel="Switch to just-the-name mode"
+          >
+            <Text style={[styles.modeBtnText, mode === 'name' && styles.modeBtnTextActive]}>Just the name</Text>
+          </TouchableOpacity>
         </View>
+
+        {mode === 'link' ? (
+          <View style={styles.inputWrap}>
+            <TextInput
+              style={styles.input}
+              placeholder="https://..."
+              placeholderTextColor={Colors.textMuted}
+              value={url}
+              onChangeText={(v) => {
+                setUrl(v);
+                if (error) setError(null);
+              }}
+              autoCapitalize="none"
+              autoCorrect={false}
+              keyboardType="url"
+              editable={!submitting}
+              accessibilityLabel="Link URL"
+            />
+            {detected ? (
+              <View style={styles.platformChip}>
+                <Text style={styles.platformChipText}>{PLATFORM_LABEL[detected]}</Text>
+              </View>
+            ) : null}
+          </View>
+        ) : (
+          <View style={styles.inputWrap}>
+            <TextInput
+              style={styles.input}
+              placeholder="Restaurant name"
+              placeholderTextColor={Colors.textMuted}
+              value={name}
+              onChangeText={(v) => {
+                setName(v);
+                if (error) setError(null);
+              }}
+              autoCapitalize="words"
+              editable={!submitting}
+              accessibilityLabel="Place name"
+            />
+          </View>
+        )}
 
         {error ? <Text style={styles.error}>{error}</Text> : null}
 
         <TouchableOpacity
           style={[styles.submitBtn, submitting && styles.submitBtnDisabled]}
-          onPress={handleSubmit}
+          onPress={mode === 'link' ? handleSubmitLink : handleSubmitName}
           disabled={submitting}
           activeOpacity={0.85}
           accessibilityRole="button"
-          accessibilityLabel="Submit link"
+          accessibilityLabel="Submit"
         >
           {submitting ? (
             <ActivityIndicator color={Colors.background} size="small" />
@@ -201,6 +288,25 @@ const styles = StyleSheet.create({
   },
   title: { fontSize: 22, fontWeight: '800', color: Colors.text, marginBottom: Spacing.sm },
   body: { fontSize: 14, color: Colors.textSecondary, lineHeight: 20 },
+  modeToggle: {
+    flexDirection: 'row',
+    marginHorizontal: Spacing.xl,
+    marginBottom: Spacing.md,
+    backgroundColor: Colors.surfaceElevated,
+    borderRadius: Radius.pill,
+    padding: 3,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  modeBtn: {
+    flex: 1,
+    paddingVertical: 8,
+    alignItems: 'center',
+    borderRadius: Radius.pill,
+  },
+  modeBtnActive: { backgroundColor: Colors.primary },
+  modeBtnText: { fontSize: 13, fontWeight: '700', color: Colors.textSecondary },
+  modeBtnTextActive: { color: Colors.background },
   inputWrap: { paddingHorizontal: Spacing.xl, gap: Spacing.sm },
   input: {
     height: 52,

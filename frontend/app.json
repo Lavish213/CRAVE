@@ -36,6 +36,12 @@
         {
           "locationWhenInUsePermission": "CRAVE uses your location to show nearby restaurants and personalize the map."
         }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "CRAVE needs access to your photos so you can share pictures of food and menus with a place."
+        }
       ]
     ]
   }

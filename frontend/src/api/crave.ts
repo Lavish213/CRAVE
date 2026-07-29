@@ -62,3 +62,40 @@ export async function submitShare(url: string, sourceType?: SourceType): Promise
   });
   return data;
 }
+
+// The no-link counterpart to submitShare — "I know the name of a place, I
+// just don't have a video/post about it." Hits the backend's /hitlist/save
+// endpoint (an older internal module name; the user-facing feature is still
+// just Craves) which feeds the same discovery-candidate pipeline as
+// everything else. lat/lng are optional but meaningfully raise confidence
+// when present — pass the device's last-known location if you have it.
+export interface PlaceSaveItem {
+  id: string;
+  place_name: string;
+  source_platform: string | null;
+  source_url: string | null;
+  place_id: string | null;
+  lat: number | null;
+  lng: number | null;
+  resolution_status: string;
+  created_at: string | null;
+  resolved_at: string | null;
+}
+
+export async function submitPlaceSave(
+  placeName: string,
+  opts?: { sourceUrl?: string; lat?: number; lng?: number },
+): Promise<{ status: string; id: string; dedup_key: string }> {
+  const { data } = await client.post('/api/v1/hitlist/save', {
+    place_name: placeName.trim(),
+    source_url: opts?.sourceUrl,
+    lat: opts?.lat,
+    lng: opts?.lng,
+  });
+  return data;
+}
+
+export async function getMyPlaceSaves(): Promise<PlaceSaveItem[]> {
+  const { data } = await client.get<{ items: PlaceSaveItem[]; total: number }>('/api/v1/hitlist/me');
+  return Array.isArray(data?.items) ? data.items : [];
+}

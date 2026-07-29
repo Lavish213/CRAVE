@@ -72,7 +72,7 @@ def check_score_distribution(db: Session) -> Dict[str, Any]:
             ELSE '0.9+'
           END as bucket,
           COUNT(*) as cnt
-        FROM places WHERE is_active=1
+        FROM places WHERE is_active = TRUE
         GROUP BY 1 ORDER BY 1
         """)
     ).all()
