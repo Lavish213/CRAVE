@@ -50,7 +50,7 @@ def upgrade() -> None:
             "success",
             sa.Boolean(),
             nullable=False,
-            server_default=sa.text("1"),
+            server_default=sa.text("true"),
         ),
         sa.Column(
             "item_count",

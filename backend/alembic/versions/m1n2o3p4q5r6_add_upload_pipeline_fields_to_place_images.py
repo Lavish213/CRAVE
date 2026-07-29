@@ -56,7 +56,7 @@ def upgrade() -> None:
                 "is_approved",
                 sa.Boolean(),
                 nullable=False,
-                server_default=sa.text("1"),
+                server_default=sa.text("true"),
             )
         )
         batch_op.add_column(sa.Column("phash", sa.String(length=64), nullable=True))
