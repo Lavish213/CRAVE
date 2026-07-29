@@ -22,7 +22,7 @@ const API_BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:8000';
 
 function resolveImageUrl(url: unknown): string | null {
   if (!url || typeof url !== 'string') return null;
-  if (url.startsWith('/api/image')) return `${API_BASE}${url}`;
+  if (url.startsWith('/api/')) return `${API_BASE}${url}`;
   return url;
 }
 

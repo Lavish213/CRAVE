@@ -18,10 +18,10 @@ def _to_proxy_url(url: Optional[str]) -> Optional[str]:
     if not url:
         return None
     if url.startswith("places/"):
-        return f"/api/image?ref={url}"
+        return f"/api/v1/image?ref={url}"
     m = _GOOGLE_PHOTO_RE.search(url)
     if m:
-        return f"/api/image?ref={m.group(1)}"
+        return f"/api/v1/image?ref={m.group(1)}"
     return url
 
 
