@@ -101,7 +101,7 @@ class DiscoveryCandidate(Base, TimestampMixin):
     )
 
     website: Mapped[str | None] = mapped_column(
-        String(255),
+        String(512),
         nullable=True,
     )
 

@@ -84,7 +84,7 @@ class MenuItem(Base, TimestampMixin):
     )
 
     description: Mapped[str | None] = mapped_column(
-        String(1000),
+        String(2000),
         nullable=True,
     )
 

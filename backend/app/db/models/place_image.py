@@ -87,7 +87,7 @@ class PlaceImage(Base, TimestampMixin):
     # worker finishes processing and derives it from processed_key — see
     # image_processing_worker.py.
     url: Mapped[str | None] = mapped_column(
-        String(512),
+        String(1024),
         nullable=True,
     )
 
