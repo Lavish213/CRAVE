@@ -4,7 +4,6 @@ import {
   ActivityIndicator,
   FlatList,
   RefreshControl,
-  ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -34,13 +33,9 @@ import { FilterSheet, FilterState, EMPTY_FILTERS, hasActiveFilters } from '../..
 import { useAuthStore } from '../../src/stores/authStore';
 import { AuthSheet } from '../../src/components/AuthSheet';
 
-const RADIUS_PRESETS = [
-  { label: 'Walking', miles: 0.5 },
-  { label: 'Biking', miles: 2 },
-  { label: 'Close', miles: 5 },
-  { label: 'Worth It', miles: 20 },
-  { label: 'Road Trip', miles: 50 },
-] as const;
+// Radius is fixed for now — UI controls removed until we know what's
+// actually useful to users (was: Walking 0.5mi / Biking 2mi / Close 5mi /
+// Worth It 20mi / Road Trip 50mi presets). Revisit once we have signal.
 
 type FeedRow =
   | { kind: 'header'; tierKey: TierKey; count: number }
@@ -79,7 +74,7 @@ export default function FeedScreen() {
 
   const [filterVisible, setFilterVisible] = useState(false);
   const [filters, setFilters] = useState<FilterState>(EMPTY_FILTERS);
-  const [radiusMiles, setRadiusMiles] = useState(20);
+  const radiusMiles = 20;
   const [availableCategories, setAvailableCategories] = useState<string[]>([]);
   const [authVisible, setAuthVisible] = useState(false);
   const user = useAuthStore((s) => s.user);
@@ -189,35 +184,6 @@ export default function FeedScreen() {
       </View>
 
       <CitySelectorStrip />
-      {userLocation && !selectedCity && (
-        <View style={styles.radiusRow}>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.radiusScrollContent}
-          >
-            {RADIUS_PRESETS.map((preset) => {
-              const active = radiusMiles === preset.miles;
-              return (
-                <TouchableOpacity
-                  key={preset.label}
-                  style={[styles.radiusChip, active ? styles.radiusChipActive : styles.radiusChipInactive]}
-                  onPress={() => {
-                    setRadiusMiles(preset.miles);
-                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  }}
-                  accessibilityRole="button"
-                  accessibilityLabel={`${preset.label} radius`}
-                >
-                  <Text style={[styles.radiusChipText, active ? styles.radiusChipTextActive : styles.radiusChipTextInactive]}>
-                    {preset.label}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </ScrollView>
-        </View>
-      )}
       <TrendingStrip places={trending} onPress={(id) => router.push(`/place/${id}`)} />
 
       {!initialLoaded ? (
@@ -319,12 +285,4 @@ const styles = StyleSheet.create({
   wordmark: { fontSize: 26, fontWeight: '900', color: Colors.primary, letterSpacing: 3 },
   filterBtn: { padding: Spacing.sm, minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
   spacer: { flex: 1 },
-  radiusRow: { paddingVertical: Spacing.xs },
-  radiusScrollContent: { paddingHorizontal: Spacing.md, gap: 8 },
-  radiusChip: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: Radius.pill, borderWidth: 1 },
-  radiusChipActive: { backgroundColor: Colors.primary, borderColor: Colors.primary },
-  radiusChipInactive: { backgroundColor: 'transparent', borderColor: Colors.border },
-  radiusChipText: { fontSize: 12, fontWeight: '600' },
-  radiusChipTextActive: { color: Colors.text },
-  radiusChipTextInactive: { color: Colors.textSecondary },
 });
