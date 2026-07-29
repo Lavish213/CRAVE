@@ -1,4 +1,9 @@
-// app/(tabs)/hitlist.tsx
+// app/(tabs)/craves.tsx
+//
+// Renamed from hitlist.tsx — "Hitlist" was never this app's actual name for
+// this feature; the tab bar label was "Saves" and "Hitlist" was informal
+// drift. This screen (and the whole tab) is called Craves: bookmarked
+// places plus shared TikTok/Instagram/YouTube links working toward a match.
 import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
@@ -13,7 +18,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
-import { useHitlistStore } from '../../src/stores/hitlistStore';
+import { useCravesStore } from '../../src/stores/cravesStore';
 import { useToast } from '../../src/hooks/useToast';
 import { Colors, Spacing, Radius } from '../../src/constants/colors';
 import { PlaceCardCompact } from '../../src/components/PlaceCardCompact';
@@ -24,9 +29,9 @@ import { useAuthStore } from '../../src/stores/authStore';
 import { AuthSheet } from '../../src/components/AuthSheet';
 import { ShareLinkSheet } from '../../src/components/ShareLinkSheet';
 
-export default function HitlistScreen() {
+export default function CravesScreen() {
   const router = useRouter();
-  const { saves, loading: savesLoading, error: savesError, loadSaves, removeSave } = useHitlistStore();
+  const { saves, loading: savesLoading, error: savesError, loadSaves, removeSave } = useCravesStore();
   const toast = useToast((s) => s.show);
   const user = useAuthStore((s) => s.user);
 
@@ -41,11 +46,11 @@ export default function HitlistScreen() {
     setCravesError(false);
     return getCraveItems()
       .then((items) => {
-        if (__DEV__) console.log('[HITLIST] CRAVES_LOADED', { count: items.length });
+        if (__DEV__) console.log('[CRAVES] CRAVES_LOADED', { count: items.length });
         setCraves(items);
       })
       .catch((err) => {
-        if (__DEV__) console.log('[HITLIST] CRAVES_ERROR', err?.response?.status, err?.message);
+        if (__DEV__) console.log('[CRAVES] CRAVES_ERROR', err?.response?.status, err?.message);
         setCravesError(true);
       })
       .finally(() => setCravesLoading(false));
@@ -74,7 +79,7 @@ export default function HitlistScreen() {
     }
   }, [user, loadSaves, loadCraves]);
 
-  if (__DEV__) console.log('[HITLIST] RENDER', { user: !!user, saves: saves.length, savesLoading, savesError, craves: craves.length });
+  if (__DEV__) console.log('[CRAVES] RENDER', { user: !!user, saves: saves.length, savesLoading, savesError, craves: craves.length });
 
   // Not signed in
   if (!user) {
@@ -83,11 +88,11 @@ export default function HitlistScreen() {
         <EmptyState
           icon="person-circle-outline"
           title="Sign in to save places"
-          body="Create a free account to build your Hitlist and track Craves."
+          body="Create a free account to build your Craves — places you save or share from TikTok, Instagram, and beyond."
           ctaLabel="Sign in"
           onCta={() => setAuthVisible(true)}
         />
-        <AuthSheet visible={authVisible} onClose={() => setAuthVisible(false)} reason="hitlist" />
+        <AuthSheet visible={authVisible} onClose={() => setAuthVisible(false)} reason="craves" />
       </>
     );
   }
@@ -114,7 +119,7 @@ export default function HitlistScreen() {
           ctaLabel="Sign in"
           onCta={() => setAuthVisible(true)}
         />
-        <AuthSheet visible={authVisible} onClose={() => setAuthVisible(false)} reason="hitlist" />
+        <AuthSheet visible={authVisible} onClose={() => setAuthVisible(false)} reason="craves" />
       </>
     );
   }

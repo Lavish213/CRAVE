@@ -18,7 +18,7 @@ import { useQuery } from '@tanstack/react-query';
 import { fetchPlaceDetail, PlaceOut } from '../../src/api/places';
 import { getPlaceMenu, MenuItem } from '../../src/api/menu';
 import { CraveItem, getCravesForPlace } from '../../src/api/crave';
-import { useHitlistStore } from '../../src/stores/hitlistStore';
+import { useCravesStore } from '../../src/stores/cravesStore';
 import { useAuthStore } from '../../src/stores/authStore';
 import { useToast } from '../../src/hooks/useToast';
 import { useImagePicker } from '../../src/hooks/useImagePicker';
@@ -70,7 +70,7 @@ function DetailSkeleton() {
 export default function PlaceDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const navigation = useNavigation();
-  const { addSave, removeSave, isSaved } = useHitlistStore();
+  const { addSave, removeSave, isSaved } = useCravesStore();
   const user = useAuthStore((s) => s.user);
   const toast = useToast((s) => s.show);
   const { pick } = useImagePicker();

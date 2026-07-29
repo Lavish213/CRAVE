@@ -5,7 +5,7 @@ import { StatusBar } from 'expo-status-bar';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useCityStore } from '../src/stores/cityStore';
 import { useAuthStore } from '../src/stores/authStore';
-import { useHitlistStore } from '../src/stores/hitlistStore';
+import { useCravesStore } from '../src/stores/cravesStore';
 import { Colors, Spacing } from '../src/constants/colors';
 import { ToastContainer } from '../src/components/Toast';
 
@@ -50,7 +50,7 @@ export default function RootLayout() {
   const initCities = useCityStore((s) => s.initCities);
   const initAuth = useAuthStore((s) => s.init);
   const user = useAuthStore((s) => s.user);
-  const loadSaves = useHitlistStore((s) => s.loadSaves);
+  const loadSaves = useCravesStore((s) => s.loadSaves);
 
   useEffect(() => {
     initAuth();

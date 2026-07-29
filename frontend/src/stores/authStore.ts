@@ -30,8 +30,8 @@ export const useAuthStore = create<AuthStore>((set) => ({
     set({ user: null });
     // Clear persisted saves so the next user doesn't see them
     try {
-      const { useHitlistStore } = await import('./hitlistStore');
-      useHitlistStore.getState().clearSaves();
+      const { useCravesStore } = await import('./cravesStore');
+      useCravesStore.getState().clearSaves();
     } catch (err) {
       console.warn('[signOut] Failed to clear saves:', err);
     }

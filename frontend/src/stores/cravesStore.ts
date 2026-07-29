@@ -1,10 +1,14 @@
+// Renamed from hitlistStore.ts — "Hitlist" was never the app's actual name
+// for this feature (the tab bar label was "Saves", and the internal name
+// drifted informally). The whole tab — bookmarked places + shared links —
+// is called Craves. See app/(tabs)/craves.tsx.
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { PlaceOut } from '../api/places';
 import { fetchSaves, createSave, deleteSave } from '../api/saves';
 
-interface HitlistStore {
+interface CravesStore {
   saves: PlaceOut[];
   loading: boolean;
   error: string | null;
@@ -42,7 +46,7 @@ function _classifyError(err: any, fallback: string): string {
   return fallback;
 }
 
-export const useHitlistStore = create<HitlistStore>()(
+export const useCravesStore = create<CravesStore>()(
   persist(
     (set, get) => ({
       saves: [],
@@ -53,11 +57,11 @@ export const useHitlistStore = create<HitlistStore>()(
         set({ loading: true, error: null });
         try {
           const items = await fetchSaves(userId);
-          if (__DEV__) console.log('[HITLIST_STORE] loadSaves', { count: items.length });
+          if (__DEV__) console.log('[CRAVES_STORE] loadSaves', { count: items.length });
           set({ saves: items, loading: false });
         } catch (err: any) {
           const msg = _classifyError(err, 'Failed to load saves');
-          if (__DEV__) console.log('[HITLIST_STORE] loadSaves_error', msg, err?.response?.status);
+          if (__DEV__) console.log('[CRAVES_STORE] loadSaves_error', msg, err?.response?.status);
           set({ loading: false, error: msg });
         }
       },
@@ -73,13 +77,13 @@ export const useHitlistStore = create<HitlistStore>()(
         set({ saves: [place, ...prev] });
         try {
           await createSave(userId, place.id);
-          if (__DEV__) console.log('[HITLIST_STORE] addSave_ok', place.id);
+          if (__DEV__) console.log('[CRAVES_STORE] addSave_ok', place.id);
           return null;
         } catch (err: any) {
           // Rollback
           set({ saves: get().saves.filter((s) => s.id !== place.id) });
           const msg = _classifyError(err, "Couldn't save. Try again.");
-          if (__DEV__) console.log('[HITLIST_STORE] addSave_error', err?.response?.status, err?.message);
+          if (__DEV__) console.log('[CRAVES_STORE] addSave_error', err?.response?.status, err?.message);
           return msg;
         } finally {
           _pendingSaves.delete(place.id);
@@ -92,26 +96,26 @@ export const useHitlistStore = create<HitlistStore>()(
         set({ saves: prev.filter((s) => s.id !== placeId) });
         try {
           await deleteSave(userId, placeId);
-          if (__DEV__) console.log('[HITLIST_STORE] removeSave_ok', placeId);
+          if (__DEV__) console.log('[CRAVES_STORE] removeSave_ok', placeId);
           return null;
         } catch (err: any) {
           // Rollback
           set({ saves: prev });
           const msg = _classifyError(err, "Couldn't remove. Try again.");
-          if (__DEV__) console.log('[HITLIST_STORE] removeSave_error', err?.response?.status, err?.message);
+          if (__DEV__) console.log('[CRAVES_STORE] removeSave_error', err?.response?.status, err?.message);
           return msg;
         }
       },
 
       clearSaves: () => {
-        if (__DEV__) console.log('[HITLIST_STORE] clearSaves');
+        if (__DEV__) console.log('[CRAVES_STORE] clearSaves');
         set({ saves: [], error: null });
       },
 
       isSaved: (placeId: string) => get().saves.some((s) => s.id === placeId),
     }),
     {
-      name: 'crave-hitlist',
+      name: 'crave-saves',
       storage: createJSONStorage(() => AsyncStorage),
       // Only persist the saves array. loading/error are transient.
       partialize: (state) => ({ saves: state.saves }),

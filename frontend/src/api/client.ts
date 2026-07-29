@@ -32,7 +32,7 @@ client.interceptors.request.use(async (config) => {
   } catch (err) {
     // No/expired session — request proceeds unauthenticated and the backend
     // will 401 it if the route requires a user, which the caller already
-    // handles (see hitlistStore's _classifyError 'auth_required' path).
+    // handles (see cravesStore's _classifyError 'auth_required' path).
     if (__DEV__) console.warn('[client] failed to attach session token', err);
   }
 

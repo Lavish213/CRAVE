@@ -17,7 +17,7 @@ import { useInfiniteQuery } from '@tanstack/react-query';
 import { fetchPlaces, PlaceOut } from '../../src/api/places';
 import { fetchCategories, CategoryOut } from '../../src/api/categories';
 import { useCityStore } from '../../src/stores/cityStore';
-import { useHitlistStore } from '../../src/stores/hitlistStore';
+import { useCravesStore } from '../../src/stores/cravesStore';
 import { useToast } from '../../src/hooks/useToast';
 import { useTrending } from '../../src/hooks/useTrending';
 import { useLocation } from '../../src/hooks/useLocation';
@@ -71,7 +71,7 @@ export default function FeedScreen() {
   const router = useRouter();
   const selectedCity = useCityStore((s) => s.selectedCity);
   const initCities = useCityStore((s) => s.initCities);
-  const { addSave, removeSave, isSaved } = useHitlistStore();
+  const { addSave, removeSave, isSaved } = useCravesStore();
   const toast = useToast((s) => s.show);
 
   const userLocation = useLocation();

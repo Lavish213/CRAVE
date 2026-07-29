@@ -63,9 +63,9 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-        name="hitlist"
+        name="craves"
         options={{
-          title: 'Saves',
+          title: 'Craves',
           tabBarIcon: ({ focused }) => (
             <TabIcon focused={focused} iconFocused="bookmark" iconUnfocused="bookmark-outline" />
           ),
