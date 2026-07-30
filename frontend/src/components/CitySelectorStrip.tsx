@@ -9,6 +9,7 @@ export function CitySelectorStrip() {
   const cities = useCityStore((s) => s.cities);
   const selectedCity = useCityStore((s) => s.selectedCity);
   const selectCity = useCityStore((s) => s.selectCity);
+  const clearCity = useCityStore((s) => s.clearCity);
 
   if (cities.length === 0) return null;
 
@@ -19,6 +20,19 @@ export function CitySelectorStrip() {
       style={styles.strip}
       contentContainerStyle={styles.content}
     >
+      <TouchableOpacity
+        style={[styles.pill, !selectedCity && styles.pillActive]}
+        onPress={() => { Haptics.selectionAsync(); clearCity(); }}
+        activeOpacity={0.75}
+        hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
+        accessibilityLabel="Use my location"
+        accessibilityRole="button"
+        accessibilityState={{ selected: !selectedCity }}
+      >
+        <Text style={[styles.pillText, !selectedCity && styles.pillTextActive]}>
+          📍 Near Me
+        </Text>
+      </TouchableOpacity>
       {cities.map((city) => {
         const active = selectedCity?.id === city.id;
         return (

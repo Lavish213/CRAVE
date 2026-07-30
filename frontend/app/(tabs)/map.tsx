@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import MapView, { Marker, Region } from 'react-native-maps';
+import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { fetchMapGeoJSON, NormalizedMapFeature } from '../../src/api/map';
@@ -190,6 +191,18 @@ export default function MapScreen() {
 
   const clusters = useMemo(() => buildClusters(features, mapRegion), [features, mapRegion]);
 
+  // Snap back to GPS regardless of how far the user has panned — the map
+  // otherwise has no way back to "where I actually am" once you've explored
+  // away from it, short of switching cities.
+  const handleRecenter = useCallback(() => {
+    if (!userLocation) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    const region = cityToRegion(userLocation.lat, userLocation.lng);
+    programmaticMoveRef.current = true;
+    setMapRegion(region);
+    mapRef.current?.animateToRegion(region, 500);
+  }, [userLocation]);
+
   return (
     <View style={styles.container}>
       <MapView
@@ -271,6 +284,17 @@ export default function MapScreen() {
         </View>
       )}
 
+      {userLocation && (
+        <TouchableOpacity
+          style={styles.recenterButton}
+          onPress={handleRecenter}
+          accessibilityLabel="Recenter on my location"
+          accessibilityRole="button"
+        >
+          <Ionicons name="locate" size={22} color={Colors.text} />
+        </TouchableOpacity>
+      )}
+
       <MapBottomSheet
         feature={selectedFeature}
         onOpen={(id) => router.push(`/place/${id}`)}
@@ -300,6 +324,24 @@ const styles = StyleSheet.create({
     borderColor: Colors.border,
     paddingHorizontal: Spacing.md,
     paddingVertical: Spacing.sm,
+  },
+  recenterButton: {
+    position: 'absolute',
+    right: Spacing.md,
+    bottom: Spacing.xl,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: Colors.surface,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 4,
   },
   mapBannerText: {
     color: Colors.textSecondary,
