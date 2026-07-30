@@ -208,7 +208,12 @@ def get_place_menu(
         {
             "id": row.id,
             "name": row.name,
-            "price": row.price,
+            # MenuItem only stores price_cents (canonical integer cents) —
+            # row.price doesn't exist on the model at all, which made this
+            # 500 on every call for any place with real menu items. The
+            # frontend (app/place/[id].tsx) expects a plain dollar float
+            # and does `${item.price.toFixed(2)}`, so convert here.
+            "price": (row.price_cents / 100) if row.price_cents is not None else None,
             "description": row.description,
             "category": row.category,
         }

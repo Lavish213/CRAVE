@@ -107,7 +107,15 @@ def mix_feed(
 
             cat = _category_key(place)
 
-            if cat == last_category:
+            # `cat is not None` matters: without it, two places that both
+            # lack a resolved category (common — see discovery_service.
+            # ingest_candidate_v2's category resolution) compare equal via
+            # None == None, "streak" past the limit, and every place after
+            # the first couple silently vanishes from every feed forever
+            # (last_category never leaves None, so the streak never
+            # resets). Uncategorized places shouldn't be diversity-limited
+            # against each other in the first place.
+            if cat is not None and cat == last_category:
                 category_streak += 1
             else:
                 category_streak = 1
@@ -138,7 +146,15 @@ def mix_feed(
 
             cat = _category_key(place)
 
-            if cat == last_category:
+            # `cat is not None` matters: without it, two places that both
+            # lack a resolved category (common — see discovery_service.
+            # ingest_candidate_v2's category resolution) compare equal via
+            # None == None, "streak" past the limit, and every place after
+            # the first couple silently vanishes from every feed forever
+            # (last_category never leaves None, so the streak never
+            # resets). Uncategorized places shouldn't be diversity-limited
+            # against each other in the first place.
+            if cat is not None and cat == last_category:
                 category_streak += 1
             else:
                 category_streak = 1
