@@ -23,6 +23,34 @@ _GENERIC_TYPES = frozenset({
     "geocode",
 })
 
+# Google's Nearby Search `type` param is a loose OR-match, and Google tags
+# many non-restaurant venues with a secondary "food" or "store" type because
+# they sell food/drink items (dollar stores, gas stations, pharmacies,
+# supermarkets). That's how "Dollar General" and "Super King" (a grocery
+# chain) ended up in the catalog as if they were restaurants — nothing
+# rejected a result just because it wasn't actually a place to eat AT.
+# Any place whose `types` includes one of these is dropped outright,
+# regardless of what else is in its types list.
+_NON_RESTAURANT_TYPES = frozenset({
+    "grocery_or_supermarket",
+    "supermarket",
+    "convenience_store",
+    "department_store",
+    "discount_store",
+    "variety_store",
+    "general_contractor",
+    "gas_station",
+    "pharmacy",
+    "drugstore",
+    "liquor_store",
+    "grocery_store",
+    "wholesaler",
+    "warehouse",
+    "hardware_store",
+    "home_goods_store",
+    "supermarket_chain",
+})
+
 _TYPE_TO_HINT: Dict[str, str] = {
     "restaurant": "restaurant",
     "cafe": "cafe",
@@ -111,7 +139,12 @@ class GooglePlacesIngest:
         "restaurant",
         "cafe",
         "meal_takeaway",
-        "food",
+        # "food" deliberately removed — it's Google's broadest catch-all
+        # type and matches grocery stores, gas stations, dollar stores,
+        # pharmacies, etc. (anything that sells food items), not just
+        # restaurants. _NON_RESTAURANT_TYPES below is a second, independent
+        # layer of defense against the same problem for whatever these
+        # three narrower types still let through.
     ]
 
     MAX_RESULTS_PER_CELL = 60
@@ -363,6 +396,10 @@ class GooglePlacesIngest:
                 return None
 
             types: List[str] = place.get("types") or []
+
+            if _NON_RESTAURANT_TYPES.intersection(types):
+                return None
+
             category_hint = _best_type_hint(types)
 
             return {
