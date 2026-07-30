@@ -403,7 +403,7 @@ def run() -> None:
         city_rows = db3.execute(text("""
             SELECT c.slug, COUNT(p.id) n
             FROM cities c
-            LEFT JOIN places p ON p.city_id = c.id AND p.is_active = 1
+            LEFT JOIN places p ON p.city_id = c.id AND p.is_active = TRUE
             WHERE c.slug IN (
                 'stockton-ca','milpitas','pleasant-hill','richmond','santa-clara',
                 'santa-rosa','south-san-francisco','union-city','vallejo','walnut-creek'

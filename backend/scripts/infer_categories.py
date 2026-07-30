@@ -341,13 +341,13 @@ def run(dry_run: bool = False, limit: Optional[int] = None) -> None:
     db = SessionLocal()
     try:
         # ── Baseline ───────────────────────────────────────────────────────────
-        total = db.execute(text("SELECT COUNT(*) FROM places WHERE is_active = 1")).scalar()
+        total = db.execute(text("SELECT COUNT(*) FROM places WHERE is_active = TRUE")).scalar()
 
         before_specific = db.execute(text("""
             SELECT COUNT(DISTINCT p.id) FROM places p
             JOIN place_categories pc ON p.id = pc.place_id
             JOIN categories c ON pc.category_id = c.id
-            WHERE p.is_active = 1
+            WHERE p.is_active = TRUE
             AND LOWER(c.name) NOT IN ('restaurant','restaurants','bar','bars','other','others','')
         """)).scalar()
         logger.info("baseline: total=%s with_specific_cat=%s (%.1f%%)",
@@ -357,7 +357,7 @@ def run(dry_run: bool = False, limit: Optional[int] = None) -> None:
         eligible_rows = db.execute(text("""
             SELECT p.id, p.name, p.rank_score
             FROM places p
-            WHERE p.is_active = 1
+            WHERE p.is_active = TRUE
             GROUP BY p.id
             HAVING p.id NOT IN (
                 SELECT DISTINCT pc.place_id
@@ -457,7 +457,7 @@ def run(dry_run: bool = False, limit: Optional[int] = None) -> None:
             SELECT COUNT(DISTINCT p.id) FROM places p
             JOIN place_categories pc ON p.id = pc.place_id
             JOIN categories c ON pc.category_id = c.id
-            WHERE p.is_active = 1
+            WHERE p.is_active = TRUE
             AND LOWER(c.name) NOT IN ('restaurant','restaurants','bar','bars','other','others','')
         """)).scalar()
 

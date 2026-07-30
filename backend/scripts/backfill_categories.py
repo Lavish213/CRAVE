@@ -251,7 +251,7 @@ def run_backfill() -> None:
     try:
         # Baseline
         total = db.execute(text(
-            "SELECT COUNT(*) FROM places WHERE is_active = 1"
+            "SELECT COUNT(*) FROM places WHERE is_active = TRUE"
         )).scalar()
         with_cat = db.execute(text(
             "SELECT COUNT(DISTINCT place_id) FROM place_categories"
@@ -264,7 +264,7 @@ def run_backfill() -> None:
         eligible_query = text("""
             SELECT DISTINCT p.id as place_id
             FROM places p
-            WHERE p.is_active = 1
+            WHERE p.is_active = TRUE
             AND p.id NOT IN (
                 SELECT DISTINCT pc.place_id
                 FROM place_categories pc
@@ -290,7 +290,7 @@ def run_backfill() -> None:
             JOIN places p ON p.id = dc.resolved_place_id
             WHERE dc.resolved_place_id IS NOT NULL
             AND dc.resolved_place_id IN (
-                SELECT DISTINCT p2.id FROM places p2 WHERE p2.is_active = 1
+                SELECT DISTINCT p2.id FROM places p2 WHERE p2.is_active = TRUE
                 AND p2.id NOT IN (
                     SELECT DISTINCT pc.place_id FROM place_categories pc
                     WHERE pc.category_id != :other_id

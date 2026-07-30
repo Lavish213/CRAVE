@@ -95,7 +95,7 @@ def main(dry_run: bool, threshold: float) -> None:
                     LIMIT 1
                 ) AS primary_category
             FROM places p
-            WHERE p.is_active = 1
+            WHERE p.is_active = TRUE
               AND p.rank_score < :threshold
         """), {"threshold": threshold}).fetchall()
 
@@ -153,7 +153,7 @@ def main(dry_run: bool, threshold: float) -> None:
 
         # ── full DB tier summary ────────────────────────────────────────────
         full = conn.execute(text("""
-            SELECT rank_score FROM places WHERE is_active = 1
+            SELECT rank_score FROM places WHERE is_active = TRUE
         """)).fetchall()
 
         full_dist: Counter = Counter()
