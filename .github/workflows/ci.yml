@@ -87,7 +87,7 @@ jobs:
         run: pipx run pip-audit -r requirements.txt
 
   frontend:
-    name: Frontend (typecheck)
+    name: Frontend (typecheck + tests)
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -102,13 +102,13 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
 
       - name: Install dependencies
-        # NOTE: this requires package-lock.json to be in sync with
-        # package.json. A recent fix bumped several expo-* versions in
-        # package.json (see git history / the remediation log) but
-        # package-lock.json was NOT regenerated — no npm access was
-        # available to run it. `npm ci` will fail until someone runs
-        # `npm install` locally and commits the updated lockfile.
         run: npm ci
 
       - name: Typecheck
         run: npx tsc --noEmit
+
+      - name: Run tests
+        # jest-expo preset; see src/**/*.test.ts. First real frontend test
+        # coverage — previously there were zero test files and no test
+        # runner configured at all.
+        run: npx jest --ci
