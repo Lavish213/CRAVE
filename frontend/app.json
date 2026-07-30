@@ -15,7 +15,7 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.anonymous.crave"
+      "bundleIdentifier": "com.crave.app"
     },
     "android": {
       "adaptiveIcon": {
@@ -24,7 +24,7 @@
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
-      "package": "com.anonymous.crave"
+      "package": "com.crave.app"
     },
     "web": {
       "favicon": "./assets/favicon.png"
