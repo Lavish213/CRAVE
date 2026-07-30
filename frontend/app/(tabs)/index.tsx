@@ -125,10 +125,15 @@ export default function FeedScreen() {
     });
   }, []);
 
-  // Init cities when no city selected
+  // Always populate the city list on mount — it's never persisted (only
+  // selectedCity is), and initCities() no longer overrides an existing
+  // selection, so this is safe to run unconditionally. Previously gated on
+  // "no city selected", which meant anyone with a city already saved from
+  // a prior session would never get a populated list, hiding the whole
+  // CitySelectorStrip (including "Near Me") for good.
   useEffect(() => {
-    if (!selectedCity) initCities();
-  }, [selectedCity?.id]);
+    initCities();
+  }, []);
 
   // Fade in feed when data arrives
   useEffect(() => {
