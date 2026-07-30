@@ -126,7 +126,7 @@ def fetch_places_for_map(
             )
 
         rows = (
-            q.distinct(Place.id)
+            q.distinct()
             .order_by(
                 Place.rank_score.desc(),
                 Place.id.asc(),

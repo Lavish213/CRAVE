@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from typing import Any, Dict, List, Optional
 
 from sqlalchemy.orm import Session
@@ -11,6 +12,8 @@ from app.db.models.place_categories import place_categories
 from app.services.geo.bounding_box import bounding_box
 from app.services.query.place_image_query import _to_proxy_url
 from app.services.query.place_category_query import get_categories_for_places_bulk
+
+logger = logging.getLogger(__name__)
 
 
 DEFAULT_RADIUS_KM = 5.0
@@ -139,7 +142,14 @@ def fetch_places_for_map(
             )
 
         q = (
-            q.distinct(Place.id)
+            # Place.id is already the primary key, so a plain .distinct()
+            # (SQL "SELECT DISTINCT", not Postgres's column-specific
+            # DISTINCT ON) is enough and doesn't restrict ORDER BY — using
+            # .distinct(Place.id) here compiled to "DISTINCT ON (id) ...
+            # ORDER BY rank_score DESC, id ASC", which Postgres rejects
+            # outright ("SELECT DISTINCT ON expressions must match initial
+            # ORDER BY expressions"), silently caught below on every call.
+            q.distinct()
             .order_by(
                 Place.rank_score.desc(),
                 Place.id.asc(),
@@ -149,8 +159,12 @@ def fetch_places_for_map(
 
         rows = list(q.all())
 
-    except Exception:
+    except Exception as exc:
         # HARD FAIL SAFE → prevents API crash
+        logger.exception(
+            "map_query_failed lat=%s lng=%s city_id=%s category_id=%s error=%s",
+            lat, lng, city_id, category_id, exc,
+        )
         return {
             "ok": False,
             "center": {"lat": lat, "lng": lng},
