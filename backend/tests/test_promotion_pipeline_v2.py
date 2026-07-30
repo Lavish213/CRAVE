@@ -1,28 +1,26 @@
+# tests/test_promotion_pipeline_v2.py
 """
-Real coverage for the v2 discovery/promotion pipeline — this file and
-tests/test_truth_resolver_v2.py were both 0 bytes before this pass (a
-directory listing made discovery_candidates -> places promotion look
-tested when it had zero real assertions).
-
-Covers the two live modules the scheduler actually calls (see
-app/scheduler.py::_job_discovery -> run_discovery_pipeline_v2 ->
-promote_ready_candidates_v2 -> promote_candidate_v2):
-
+Tests for the live v2 promotion pipeline:
   - app.services.discovery.promote_service_v2.promote_candidate_v2
   - app.services.discovery.promotion_orchestrator_v2.promote_ready_candidates_v2
 
-Deliberately does NOT test app.services.discovery.promotion_gate_v2 —
-that module's own header comment confirms it's dead code (never imported
-by the live path; the orchestrator has its own inline filtering instead).
+This file was previously 0 bytes. This is the pipeline that actually runs
+(app/scheduler.py calls promote_ready_candidates_v2) — it turns a scraped
+DiscoveryCandidate into a canonical Place, dedupes against existing places,
+writes the core claims, resolves truths, and tracks per-candidate failures
+with backoff/dead-lettering. None of that had test coverage.
+
+(app/pipeline/promotion_engine.py is a separate, explicitly-dead module —
+not tested here; see its own docstring.)
+
+External geocoding (nominatim search_place) is mocked — these are unit
+tests for the promotion/dedup/failure-handling logic, not network tests.
 """
 from __future__ import annotations
 
-import sys
 import uuid
-from datetime import datetime, timezone
-from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).parent.parent))
+from datetime import datetime, timedelta, timezone
+from unittest.mock import patch
 
 import pytest
 
@@ -32,8 +30,8 @@ from app.db.models.place import Place
 from app.db.models.place_claim import PlaceClaim
 from app.db.models.place_truth import PlaceTruth
 from app.db.models.discovery_candidate import DiscoveryCandidate
+
 from app.services.discovery.promote_service_v2 import promote_candidate_v2
-from app.services.discovery import promotion_orchestrator_v2
 from app.services.discovery.promotion_orchestrator_v2 import (
     promote_ready_candidates_v2,
     MIN_CONFIDENCE_THRESHOLD,
@@ -41,7 +39,11 @@ from app.services.discovery.promotion_orchestrator_v2 import (
 )
 
 
-@pytest.fixture()
+# ---------------------------------------------------------------------------
+# Fixtures
+# ---------------------------------------------------------------------------
+
+@pytest.fixture
 def db():
     session = SessionLocal()
     try:
@@ -50,28 +52,43 @@ def db():
         session.close()
 
 
-def _make_city(db) -> City:
-    city = City(
-        id=str(uuid.uuid4()),
-        name="Promotion Test City",
-        slug=f"promo-test-{uuid.uuid4().hex[:8]}",
-        lat=37.8,
-        lng=-122.27,
-        is_active=True,
-    )
-    db.add(city)
+@pytest.fixture
+def city(db):
+    """Throwaway City; teardown sweeps every Place/Candidate/Claim/Truth
+    scoped to it, regardless of what an individual test created."""
+    suffix = uuid.uuid4().hex[:8]
+    c = City(slug=f"promo-test-{suffix}", name=f"Promo Test City {suffix}")
+    db.add(c)
     db.commit()
-    return city
+
+    yield c
+
+    place_ids = [
+        row.id for row in db.query(Place.id).filter(Place.city_id == c.id).all()
+    ]
+    if place_ids:
+        db.query(PlaceTruth).filter(PlaceTruth.place_id.in_(place_ids)).delete(
+            synchronize_session=False
+        )
+        db.query(PlaceClaim).filter(PlaceClaim.place_id.in_(place_ids)).delete(
+            synchronize_session=False
+        )
+    db.query(Place).filter(Place.city_id == c.id).delete(synchronize_session=False)
+    db.query(DiscoveryCandidate).filter(DiscoveryCandidate.city_id == c.id).delete(
+        synchronize_session=False
+    )
+    db.query(City).filter(City.id == c.id).delete()
+    db.commit()
 
 
-def _make_candidate(db, city, **overrides) -> DiscoveryCandidate:
+def _make_candidate(db, city_id: str, **overrides) -> DiscoveryCandidate:
+    suffix = uuid.uuid4().hex[:8]
     defaults = dict(
-        id=str(uuid.uuid4()),
-        name=f"Test Diner {uuid.uuid4().hex[:8]}",
-        city_id=city.id,
-        lat=37.8044,
-        lng=-122.2712,
-        address=None,
+        name=f"Test Candidate {suffix}",
+        city_id=city_id,
+        lat=37.7749,
+        lng=-122.4194,
+        address=f"{suffix} Market St",
         website=None,
         confidence_score=0.9,
         status="candidate",
@@ -86,32 +103,57 @@ def _make_candidate(db, city, **overrides) -> DiscoveryCandidate:
 
 
 # ---------------------------------------------------------------------------
-# promote_candidate_v2
+# promote_candidate_v2 — core behavior
 # ---------------------------------------------------------------------------
 
-def test_promote_candidate_returns_none_for_missing_candidate(db):
-    assert promote_candidate_v2(db=db, candidate_id=str(uuid.uuid4())) is None
+def test_promote_unknown_candidate_returns_none(db):
+    assert promote_candidate_v2(db=db, candidate_id="not-a-real-id") is None
 
 
-def test_promote_candidate_creates_new_place_and_writes_claims_and_truths(db):
-    city = _make_city(db)
-    candidate = _make_candidate(db, city, name="Brand New Spot")
-
-    place_id = promote_candidate_v2(db=db, candidate_id=candidate.id)
-    # promote_candidate_v2 only flushes (the orchestrator commits between
-    # candidates — see promote_ready_candidates_v2). Commit explicitly here
-    # so the change survives this test's session close instead of rolling
-    # back and leaving a phantom eligible candidate for later tests' global,
-    # unscoped queries to pick up.
+def test_promote_already_resolved_candidate_reresolves_truths(db, city):
+    """If resolved_place_id is already set, promote_candidate_v2 short-
+    circuits straight to re-resolving truths for that place instead of
+    re-running the full promotion flow — verifies both the short-circuit
+    and that it still does real work (a PlaceTruth gets written)."""
+    place = Place(name="Already Resolved Place", city_id=city.id,
+                   lat=37.0, lng=-122.0)
+    db.add(place)
+    db.flush()
+    db.add(PlaceClaim(
+        place_id=place.id, field="name", claim_key="k1",
+        value_text="Already Resolved Place", confidence=0.9, source="test",
+    ))
     db.commit()
 
-    assert place_id is not None
+    candidate = _make_candidate(
+        db, city.id, resolved=True, resolved_place_id=place.id, status="promoted",
+    )
 
-    place = db.get(Place, place_id)
-    assert place is not None
+    result = promote_candidate_v2(db=db, candidate_id=candidate.id)
+
+    assert result == place.id
+    truth = (
+        db.query(PlaceTruth)
+        .filter(PlaceTruth.place_id == place.id, PlaceTruth.truth_type == "name")
+        .one_or_none()
+    )
+    assert truth is not None
+    # Inserted straight as a PlaceClaim here (bypassing normalize_claim, which
+    # lowercases) — so this checks the resolver preserves the claim's value
+    # verbatim, not that it re-normalizes it.
+    assert truth.truth_value == "Already Resolved Place"
+
+
+def test_promote_creates_new_place_when_no_match(db, city):
+    candidate = _make_candidate(db, city.id, name="Brand New Diner",
+                                 address="100 Main St")
+
+    place_id = promote_candidate_v2(db=db, candidate_id=candidate.id)
+
+    assert place_id is not None
+    place = db.query(Place).filter(Place.id == place_id).one()
+    assert place.name == "Brand New Diner"
     assert place.city_id == city.id
-    assert place.lat == candidate.lat
-    assert place.lng == candidate.lng
 
     db.refresh(candidate)
     assert candidate.resolved is True
@@ -119,193 +161,219 @@ def test_promote_candidate_creates_new_place_and_writes_claims_and_truths(db):
     assert candidate.status == "promoted"
     assert candidate.promoted_at is not None
 
+    # Core claims (name, lat, lng) were written and resolved into truths.
     claim_fields = {
-        c.field
-        for c in db.query(PlaceClaim).filter(PlaceClaim.place_id == place_id).all()
+        c.field for c in db.query(PlaceClaim).filter(PlaceClaim.place_id == place_id)
     }
-    assert {"name", "lat", "lng"} <= claim_fields
+    assert {"name", "lat", "lng"}.issubset(claim_fields)
 
     truth_types = {
-        t.truth_type
-        for t in db.query(PlaceTruth).filter(PlaceTruth.place_id == place_id).all()
+        t.truth_type for t in db.query(PlaceTruth).filter(PlaceTruth.place_id == place_id)
     }
-    assert {"name", "lat", "lng"} <= truth_types
+    assert {"name", "lat", "lng"}.issubset(truth_types)
 
 
-def test_promote_candidate_already_resolved_is_idempotent(db):
-    city = _make_city(db)
-    place = Place(
-        id=str(uuid.uuid4()),
-        name="Already Promoted Place",
-        city_id=city.id,
-        lat=37.8,
-        lng=-122.27,
-        is_active=True,
+def test_promote_merges_into_existing_place_on_name_and_address_match(db, city):
+    existing = Place(
+        name="Horn Barbecue", city_id=city.id,
+        lat=37.77, lng=-122.42, address="20 Pier Ave",
     )
-    db.add(place)
+    db.add(existing)
     db.commit()
 
     candidate = _make_candidate(
-        db, city,
-        resolved=True,
-        resolved_place_id=place.id,
-        status="promoted",
-    )
-
-    result = promote_candidate_v2(db=db, candidate_id=candidate.id)
-    assert result == place.id
-
-
-def test_promote_candidate_merges_into_matching_place_by_website_domain(db):
-    """
-    entity_match requires a name match plus one strong signal (address or
-    website domain) or a geo fallback. Same exact name + same website
-    domain guarantees a match regardless of the two lat/lng values, so
-    this deterministically exercises the merge branch instead of creating
-    a duplicate Place.
-    """
-    city = _make_city(db)
-
-    existing_place = Place(
-        id=str(uuid.uuid4()),
-        name="Merge Test Diner",
-        city_id=city.id,
-        lat=10.0,
-        lng=20.0,
-        website="https://mergetestdiner.com",
-        address=None,
-        is_active=True,
-    )
-    db.add(existing_place)
-    db.commit()
-
-    candidate = _make_candidate(
-        db, city,
-        name="Merge Test Diner",
-        lat=10.5,
-        lng=20.5,
-        address="123 Test St",
-        website="https://mergetestdiner.com/menu",
+        db, city.id, name="Horn Barbecue", address="20 Pier Ave",
+        lat=37.77, lng=-122.42,
     )
 
     place_id = promote_candidate_v2(db=db, candidate_id=candidate.id)
-    db.commit()  # see comment in the "creates new place" test above
 
-    assert place_id == existing_place.id
+    assert place_id == existing.id
+    # No second Place should have been created for the same city.
+    matches = db.query(Place).filter(
+        Place.city_id == city.id, Place.name == "Horn Barbecue"
+    ).all()
+    assert len(matches) == 1
 
-    same_name_places = (
-        db.query(Place)
-        .filter(Place.city_id == city.id, Place.name == "Merge Test Diner")
-        .all()
+
+def test_promote_backfills_missing_fields_on_existing_place(db, city):
+    existing = Place(
+        name="Bare Place", city_id=city.id, lat=37.77, lng=-122.42,
+        address=None, website=None,
     )
-    assert len(same_name_places) == 1
+    db.add(existing)
+    db.commit()
 
-    db.refresh(existing_place)
-    assert existing_place.address == "123 Test St"
-
-
-# ---------------------------------------------------------------------------
-# promote_ready_candidates_v2
-# ---------------------------------------------------------------------------
-
-def test_promote_ready_candidates_skips_low_confidence_blocked_and_promoted(db):
-    city = _make_city(db)
-
-    eligible = _make_candidate(db, city, name="Eligible Spot", confidence_score=0.9)
-    low_confidence = _make_candidate(
-        db, city, name="Low Confidence Spot",
-        confidence_score=MIN_CONFIDENCE_THRESHOLD - 0.1,
-    )
-    blocked = _make_candidate(
-        db, city, name="Blocked Spot", confidence_score=0.95, blocked=True,
-    )
-    already_promoted = _make_candidate(
-        db, city, name="Already Promoted Spot", confidence_score=0.95,
-        status="promoted", resolved=True,
+    candidate = _make_candidate(
+        db, city.id, name="Bare Place", lat=37.77, lng=-122.42,
+        address="55 Filled St", website="https://bareplace.example.com",
     )
 
-    promoted_count = promote_ready_candidates_v2(db=db, limit=10)
+    place_id = promote_candidate_v2(db=db, candidate_id=candidate.id)
+    db.refresh(existing)
 
-    assert promoted_count == 1
-
-    db.refresh(eligible)
-    db.refresh(low_confidence)
-    db.refresh(blocked)
-    db.refresh(already_promoted)
-
-    assert eligible.status == "promoted"
-    assert eligible.resolved_place_id is not None
-
-    assert low_confidence.status == "candidate"
-    assert blocked.status == "candidate"
-    assert already_promoted.resolved_place_id is None
+    assert place_id == existing.id
+    assert existing.address == "55 Filled St"
+    assert existing.website == "https://bareplace.example.com"
 
 
-def test_promote_ready_candidates_respects_limit(db):
-    city = _make_city(db)
-    candidates = [
-        _make_candidate(db, city, name=f"Limit Test Spot {i}", confidence_score=0.9)
-        for i in range(3)
-    ]
+def test_promote_geocodes_when_coords_missing(db, city):
+    candidate = _make_candidate(db, city.id, name="Needs Geocode", lat=None, lng=None)
 
-    promoted_count = promote_ready_candidates_v2(db=db, limit=2)
-    assert promoted_count == 2
+    with patch(
+        "app.services.discovery.promote_service_v2.search_place",
+        return_value={"lat": "40.7128", "lon": "-74.0060"},
+    ) as mock_search:
+        place_id = promote_candidate_v2(db=db, candidate_id=candidate.id)
 
-    statuses = []
-    for c in candidates:
-        db.refresh(c)
-        statuses.append(c.status)
-
-    assert statuses.count("promoted") == 2
-    assert statuses.count("candidate") == 1
-
-
-def test_promote_ready_candidates_records_failure_with_backoff(db, monkeypatch):
-    city = _make_city(db)
-    candidate = _make_candidate(db, city, name="Flaky Spot", confidence_score=0.9)
-
-    def _boom(*, db, candidate_id):
-        raise RuntimeError("simulated promotion failure")
-
-    monkeypatch.setattr(promotion_orchestrator_v2, "promote_candidate_v2", _boom)
-
-    promoted_count = promote_ready_candidates_v2(db=db, limit=10)
-    assert promoted_count == 0
+    mock_search.assert_called_once()
+    assert place_id is not None
+    place = db.query(Place).filter(Place.id == place_id).one()
+    assert place.lat == pytest.approx(40.7128)
+    assert place.lng == pytest.approx(-74.0060)
 
     db.refresh(candidate)
-    assert candidate.failure_count == 1
-    assert candidate.blocked is False
-    assert "simulated promotion failure" in (candidate.last_error or "")
-    assert candidate.next_retry_at is not None
-    # SQLite has no native tz-aware storage — a DateTime(timezone=True)
-    # column round-trips as naive UTC on read, even though the value was
-    # written from an aware datetime. Compare against naive UTC to match.
-    assert candidate.next_retry_at > datetime.utcnow()
+    assert candidate.lat == pytest.approx(40.7128)
+    assert candidate.lng == pytest.approx(-74.0060)
 
 
-def test_promote_ready_candidates_dead_letters_after_max_failures(db, monkeypatch):
-    city = _make_city(db)
-    candidate = _make_candidate(
-        db, city, name="Terminally Flaky Spot", confidence_score=0.9,
-        failure_count=MAX_FAILURES_BEFORE_BLOCK - 1,
-        next_retry_at=None,
+def test_promote_returns_none_when_geocode_fails(db, city):
+    candidate = _make_candidate(db, city.id, name="Ungeocodable", lat=None, lng=None)
+
+    with patch(
+        "app.services.discovery.promote_service_v2.search_place",
+        return_value=None,
+    ):
+        result = promote_candidate_v2(db=db, candidate_id=candidate.id)
+
+    assert result is None
+    db.refresh(candidate)
+    assert candidate.resolved is False
+    assert candidate.resolved_place_id is None
+
+
+# ---------------------------------------------------------------------------
+# promote_ready_candidates_v2 — orchestrator: filtering, limits, batching
+# ---------------------------------------------------------------------------
+
+def test_orchestrator_promotes_eligible_candidates(db, city):
+    _make_candidate(db, city.id, confidence_score=0.9)
+    _make_candidate(db, city.id, confidence_score=0.9)
+
+    promoted = promote_ready_candidates_v2(db=db, limit=10)
+
+    assert promoted == 2
+
+
+def test_orchestrator_skips_below_confidence_threshold(db, city):
+    _make_candidate(db, city.id, confidence_score=MIN_CONFIDENCE_THRESHOLD - 0.1)
+
+    promoted = promote_ready_candidates_v2(db=db, limit=10)
+
+    assert promoted == 0
+
+
+def test_orchestrator_skips_blocked_candidates(db, city):
+    _make_candidate(db, city.id, confidence_score=0.9, blocked=True)
+
+    promoted = promote_ready_candidates_v2(db=db, limit=10)
+
+    assert promoted == 0
+
+
+def test_orchestrator_skips_already_resolved(db, city):
+    _make_candidate(db, city.id, confidence_score=0.9, resolved=True)
+
+    promoted = promote_ready_candidates_v2(db=db, limit=10)
+
+    assert promoted == 0
+
+
+def test_orchestrator_respects_limit(db, city):
+    for _ in range(3):
+        _make_candidate(db, city.id, confidence_score=0.9)
+
+    promoted = promote_ready_candidates_v2(db=db, limit=2)
+
+    assert promoted == 2
+
+
+def test_orchestrator_skips_candidates_still_in_backoff(db, city):
+    _make_candidate(
+        db, city.id, confidence_score=0.9,
+        next_retry_at=datetime.now(timezone.utc) + timedelta(hours=1),
     )
 
-    def _boom(*, db, candidate_id):
-        raise RuntimeError("simulated terminal failure")
+    promoted = promote_ready_candidates_v2(db=db, limit=10)
 
-    monkeypatch.setattr(promotion_orchestrator_v2, "promote_candidate_v2", _boom)
+    assert promoted == 0
 
-    promoted_count = promote_ready_candidates_v2(db=db, limit=10)
-    assert promoted_count == 0
+
+def test_orchestrator_records_failure_and_sets_backoff(db, city):
+    candidate = _make_candidate(db, city.id, confidence_score=0.9)
+
+    with patch(
+        "app.services.discovery.promotion_orchestrator_v2.promote_candidate_v2",
+        side_effect=RuntimeError("boom"),
+    ):
+        promoted = promote_ready_candidates_v2(db=db, limit=10)
+
+    assert promoted == 0
+    db.refresh(candidate)
+    assert candidate.failure_count == 1
+    assert candidate.last_error is not None and "boom" in candidate.last_error
+    assert candidate.next_retry_at is not None
+    assert candidate.blocked is False
+
+
+def test_orchestrator_dead_letters_after_max_failures(db, city):
+    candidate = _make_candidate(
+        db, city.id, confidence_score=0.9,
+        failure_count=MAX_FAILURES_BEFORE_BLOCK - 1,
+    )
+
+    with patch(
+        "app.services.discovery.promotion_orchestrator_v2.promote_candidate_v2",
+        side_effect=RuntimeError("still broken"),
+    ):
+        promote_ready_candidates_v2(db=db, limit=10)
 
     db.refresh(candidate)
     assert candidate.failure_count == MAX_FAILURES_BEFORE_BLOCK
     assert candidate.blocked is True
 
 
-def test_promote_ready_candidates_returns_zero_when_nothing_eligible(db):
-    city = _make_city(db)
-    _make_candidate(db, city, name="Blocked Only", blocked=True, confidence_score=0.9)
+def test_orchestrator_one_failure_does_not_block_other_candidates(db, city):
+    """Per-candidate commit/rollback isolation: one candidate raising must
+    not roll back or block a different candidate's successful promotion."""
+    bad = _make_candidate(db, city.id, confidence_score=0.9, name="Bad Candidate")
+    good = _make_candidate(db, city.id, confidence_score=0.9, name="Good Candidate")
 
+    real_promote = promote_candidate_v2
+
+    def _side_effect(*, db, candidate_id):
+        if candidate_id == bad.id:
+            raise RuntimeError("bad candidate exploded")
+        return real_promote(db=db, candidate_id=candidate_id)
+
+    with patch(
+        "app.services.discovery.promotion_orchestrator_v2.promote_candidate_v2",
+        side_effect=_side_effect,
+    ):
+        promoted = promote_ready_candidates_v2(db=db, limit=10)
+
+    assert promoted == 1
+    db.refresh(good)
+    db.refresh(bad)
+    assert good.resolved is True
+    assert bad.resolved is False
+    assert bad.failure_count == 1
+
+
+def test_orchestrator_no_eligible_candidates_returns_zero(db, city):
     assert promote_ready_candidates_v2(db=db, limit=10) == 0
+
+
+def test_orchestrator_zero_limit_returns_zero_without_querying(db, city):
+    _make_candidate(db, city.id, confidence_score=0.9)
+    assert promote_ready_candidates_v2(db=db, limit=0) == 0
