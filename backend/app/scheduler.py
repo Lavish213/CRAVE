@@ -61,6 +61,37 @@ def _job_menu_enrichment() -> None:
         logger.exception("scheduler_menu_failed error=%s", exc)
 
 
+def _job_osm_ingest() -> None:
+    """
+    OSM acquisition: fetch new candidate restaurants/cafes/bars from the
+    free public Overpass API for a rotating slice of active cities.
+
+    This is the acquisition half that was missing — _job_discovery (above)
+    only ever promoted candidates already sitting in discovery_candidates;
+    nothing scheduled fetched new ones from the outside world. Free/no API
+    key, unlike Google Places, so no budget decision is needed to run this
+    unattended.
+    """
+    from contextlib import suppress
+    from app.db.session import SessionLocal
+    from app.services.discovery.osm_ingest_job import run_osm_city_ingest
+    from app.core.job_run_tracker import track_job_run
+
+    db = SessionLocal()
+    try:
+        with track_job_run("osm_ingest") as run:
+            result = run_osm_city_ingest(db=db)
+            logger.info("scheduler_osm_ingest_complete %s", result)
+            run.set_summary(str(result)[:500])
+    except Exception as exc:
+        logger.exception("scheduler_osm_ingest_failed error=%s", exc)
+        with suppress(Exception):
+            db.rollback()
+    finally:
+        with suppress(Exception):
+            db.close()
+
+
 def _job_score_recompute() -> None:
     """Score recompute: recalculate rank_score for unscored / stale places."""
     from contextlib import suppress
@@ -208,6 +239,16 @@ def create_scheduler() -> BackgroundScheduler:
         minutes=5,
         id="discovery",
         name="CRAVE discovery cycle",
+    )
+
+    # OSM acquisition — once every 24 hours (rotates through active cities;
+    # free public API, gentle cadence matches "don't hammer a free service")
+    scheduler.add_job(
+        _job_osm_ingest,
+        trigger="interval",
+        hours=24,
+        id="osm_ingest",
+        name="CRAVE OSM acquisition",
     )
 
     # menu enrichment — every 10 minutes
