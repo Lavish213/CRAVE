@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { Image } from 'expo-image';
 import { Colors } from '../constants/colors';
+import { MAX_IMAGE_WIDTH, withImageWidth } from '../utils/imageUrl';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const GALLERY_HEIGHT = 280;
@@ -41,7 +42,9 @@ export function ImageGallery({ images }: Props) {
         {sources.map((src, i) => (
           <Image
             key={i}
-            source={src ?? require('../../assets/icon.png')}
+            // Full-bleed hero — opt up from the proxy's thumbnail-sized
+            // default, which is tuned for feed cards, not a screen-width image.
+            source={withImageWidth(src, MAX_IMAGE_WIDTH) ?? require('../../assets/icon.png')}
             style={styles.image}
             contentFit="cover"
             placeholder={{ blurhash: 'L6PZfSi_.AyE_3t7t7R**0o#DgR4' }}

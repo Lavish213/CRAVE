@@ -6,7 +6,14 @@ const API_KEY = process.env.EXPO_PUBLIC_API_KEY ?? '';
 
 export const client = axios.create({
   baseURL: BASE_URL,
-  timeout: 10000,
+  // 10s was too tight in practice and surfaced as a bare "AxiosError:
+  // timeout" banner on a cold start: Railway has to wake/warm the
+  // container and run any pending Alembic migration before the first
+  // request is served, and that alone can exceed 10s — before adding
+  // whatever round-trip latency the deploy region imposes. 25s is still
+  // short enough that a genuinely dead backend fails visibly rather
+  // than hanging the UI indefinitely.
+  timeout: 25000,
   headers: {
     'Content-Type': 'application/json',
     ...(API_KEY ? { 'x-api-key': API_KEY } : {}),
