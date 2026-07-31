@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from PIL import Image
 
 from app.db.session import SessionLocal
-from app.db.models.place_image import PlaceImage
+from app.db.models.place_image import PlaceImage, VISIBILITY_SHOWCASE
 
 from app.services.upload.r2_client import _get_s3_client, R2_BUCKET, generate_public_url
 from app.utils.image_pipeline import process_image, process_thumbnail, save_jpeg
@@ -133,6 +133,35 @@ def process_image_upload(image_id: str) -> None:
         image.status = "ready"
         image.processing_version = CURRENT_PROCESSING_VERSION
         image.error_message = None
+
+        # A user-uploaded photo defaults to is_primary=False,
+        # visibility_status="gallery_only" (PlaceImage's column defaults),
+        # so it shows in the place-detail gallery but never as the feed
+        # card / map pin thumbnail — both of those only ever query
+        # is_primary=True. Meanwhile ImageIngestService.ingest_place_images
+        # skips a place entirely (unless force_refresh=True, which the
+        # scheduled ImageWorker never passes) the moment it has *any*
+        # image at all, primary or not. Combined, a place's first-ever
+        # photo being a user upload was a dead end: it would never become
+        # primary, and its mere existence would permanently block the
+        # scheduled job from ever fetching a Google Places photo either —
+        # the card/pin would show the empty-state fallback forever despite
+        # a real photo existing in the place's own gallery.
+        #
+        # If this place has no primary image yet, this upload becomes it
+        # immediately. Doesn't touch an existing primary — replacing one
+        # automatically is a real editorial call (is a fresh diner photo
+        # actually better than what's there?) that this fix deliberately
+        # leaves alone; it only closes the dead-end where nothing was ever
+        # going to become primary at all.
+        existing_primary = (
+            db.query(PlaceImage.id)
+            .filter(PlaceImage.place_id == image.place_id, PlaceImage.is_primary.is_(True))
+            .first()
+        )
+        if existing_primary is None:
+            image.is_primary = True
+            image.visibility_status = VISIBILITY_SHOWCASE
 
         db.commit()
 
