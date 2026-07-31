@@ -33,7 +33,11 @@ from PIL import Image
 from app.db.session import SessionLocal
 from app.db.models.city import City
 from app.db.models.place import Place
-from app.db.models.place_image import PlaceImage, VISIBILITY_GALLERY_ONLY, VISIBILITY_SHOWCASE
+from app.db.models.place_image import (
+    PlaceImage,
+    VISIBILITY_CANDIDATE_PRIMARY,
+    VISIBILITY_SHOWCASE,
+)
 import app.workers.image_processing_worker as worker_module
 from app.workers.image_processing_worker import process_image_upload
 
@@ -112,6 +116,9 @@ def test_first_upload_for_a_place_becomes_primary(db, fake_s3):
     assert image.is_primary is True
     assert image.visibility_status == VISIBILITY_SHOWCASE
     assert image.url is not None
+    # A real photo of the place is higher-trust than the neutral 0.5
+    # default — see _USER_UPLOAD_CONFIDENCE's module-level comment.
+    assert image.confidence == worker_module._USER_UPLOAD_CONFIDENCE
 
 
 def test_upload_does_not_displace_an_existing_primary(db, fake_s3):
@@ -132,9 +139,12 @@ def test_upload_does_not_displace_an_existing_primary(db, fake_s3):
     db.refresh(existing_primary)
 
     assert image.status == "ready"
-    # Must not have silently taken over primary from an existing image.
+    # Must not have silently taken over primary from an existing image...
     assert image.is_primary is False
-    assert image.visibility_status == VISIBILITY_GALLERY_ONLY
+    # ...but it's a real contender for it, not generic gallery filler —
+    # marked candidate_primary rather than left at the "gallery_only" default.
+    assert image.visibility_status == VISIBILITY_CANDIDATE_PRIMARY
+    assert image.confidence == worker_module._USER_UPLOAD_CONFIDENCE
     assert existing_primary.is_primary is True
 
 
@@ -161,6 +171,26 @@ def test_second_upload_for_the_same_place_does_not_also_become_primary(db, fake_
         .count()
     )
     assert primary_count == 1
+
+
+def test_invariant_repair_failure_does_not_undo_a_successful_upload(db, fake_s3, monkeypatch):
+    place = _make_place(db)
+    image = _make_pending_upload(db, place)
+
+    monkeypatch.setattr(
+        worker_module.PlaceImageInvariantService, "repair",
+        lambda self, *, db, place_id: (_ for _ in ()).throw(RuntimeError("repair blew up")),
+    )
+
+    with patch.object(worker_module, "_get_s3_client", return_value=fake_s3):
+        process_image_upload(image.id)
+
+    db.refresh(image)
+    # The repair() call is defensive housekeeping, not load-bearing — its
+    # failure must not roll back or reclassify an upload that already
+    # committed successfully.
+    assert image.status == "ready"
+    assert image.is_primary is True
 
 
 def test_failed_upload_is_not_promoted_to_primary(db):

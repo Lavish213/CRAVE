@@ -7,17 +7,37 @@ from sqlalchemy.orm import Session
 from PIL import Image
 
 from app.db.session import SessionLocal
-from app.db.models.place_image import PlaceImage, VISIBILITY_SHOWCASE
+from app.db.models.place_image import (
+    PlaceImage,
+    VISIBILITY_CANDIDATE_PRIMARY,
+    VISIBILITY_SHOWCASE,
+)
 
 from app.services.upload.r2_client import _get_s3_client, R2_BUCKET, generate_public_url
 from app.utils.image_pipeline import process_image, process_thumbnail, save_jpeg
 from app.utils.hash import generate_phash
 from app.services.upload.dedup import is_duplicate_image
+from app.services.images.place_image_invariant_service import PlaceImageInvariantService
 
 
 logger = logging.getLogger(__name__)
 
 CURRENT_PROCESSING_VERSION = 1
+
+# app/services/images/image_scorer.py's SOURCE_WEIGHTS (used when the
+# scraped Google Places ingestion path scores its own candidates) ranks
+# sources website=1.0, provider=0.9, google=0.85 — with no entry at all
+# for user-uploaded content, which falls through to "unknown"=0.6, the
+# same tier as garbage. That scorer never actually runs on uploads (this
+# worker is a separate path from ImageIngestService), so it doesn't
+# directly gate anything here — but PlaceImageInvariantService's own
+# re-election logic (_promote_best_eligible) ranks eligible images by
+# confidence, and PlaceImage.confidence defaults to a neutral 0.5 if
+# nothing sets it. A verified, real photo of the actual place — taken
+# by an actual person — is higher-trust content than a scraped stock
+# photo, not equal to or below it, so this is set deliberately above
+# that neutral default rather than left to it.
+_USER_UPLOAD_CONFIDENCE = 0.75
 
 
 def _safe_error_message(message: str, limit: int = 500) -> str:
@@ -133,6 +153,7 @@ def process_image_upload(image_id: str) -> None:
         image.status = "ready"
         image.processing_version = CURRENT_PROCESSING_VERSION
         image.error_message = None
+        image.confidence = _USER_UPLOAD_CONFIDENCE
 
         # A user-uploaded photo defaults to is_primary=False,
         # visibility_status="gallery_only" (PlaceImage's column defaults),
@@ -149,11 +170,13 @@ def process_image_upload(image_id: str) -> None:
         # a real photo existing in the place's own gallery.
         #
         # If this place has no primary image yet, this upload becomes it
-        # immediately. Doesn't touch an existing primary — replacing one
-        # automatically is a real editorial call (is a fresh diner photo
-        # actually better than what's there?) that this fix deliberately
-        # leaves alone; it only closes the dead-end where nothing was ever
-        # going to become primary at all.
+        # immediately. If one already exists, this doesn't silently
+        # displace it (auto-replacing a primary is a real editorial call —
+        # is a fresh diner photo actually better than what's there? — not
+        # something to guess at here) but it does get marked
+        # "candidate_primary" rather than left at the generic
+        # "gallery_only" default, since a real photo of the place is a
+        # legitimate contender for primary, not just gallery filler.
         existing_primary = (
             db.query(PlaceImage.id)
             .filter(PlaceImage.place_id == image.place_id, PlaceImage.is_primary.is_(True))
@@ -162,8 +185,24 @@ def process_image_upload(image_id: str) -> None:
         if existing_primary is None:
             image.is_primary = True
             image.visibility_status = VISIBILITY_SHOWCASE
+        else:
+            image.visibility_status = VISIBILITY_CANDIDATE_PRIMARY
 
         db.commit()
+
+        # Re-run the same invariant repair every other mutator of
+        # is_primary/visibility_status calls (image_worker.py,
+        # menu_image_bridge.py) — this path never did, purely because it
+        # predates that service. Cheap defensive consistency (e.g. two
+        # uploads processed concurrently) rather than a load-bearing part
+        # of the primary-election logic above, which already handles the
+        # common case directly.
+        try:
+            PlaceImageInvariantService().repair(db=db, place_id=image.place_id)
+        except Exception:
+            logger.exception(
+                "image_upload_invariant_repair_failed place_id=%s", image.place_id,
+            )
 
         # Menu photos get a second, best-effort pass: OCR the text off the
         # photo and feed it into the normal menu ingestion pipeline. Never
