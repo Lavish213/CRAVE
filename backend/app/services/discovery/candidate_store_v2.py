@@ -39,6 +39,9 @@ def _clamp_confidence(value: float) -> float:
     return max(0.0, min(1.0, v))
 
 
+_MAX_CORROBORATION_KEYS = 50
+
+
 def upsert_discovery_candidate_v2(
     *,
     db: Session,
@@ -55,6 +58,7 @@ def upsert_discovery_candidate_v2(
     category_hint: Optional[str] = None,
     confidence_score: float = 0.0,
     raw_payload: Optional[dict] = None,
+    contributor_key: Optional[str] = None,
 ) -> DiscoveryCandidate:
     """
     V2 Candidate Upsert (FULLY CONNECTED)
@@ -139,7 +143,28 @@ def upsert_discovery_candidate_v2(
         if raw_payload and not existing.raw_payload:
             existing.raw_payload = raw_payload
 
-        if confidence_score > existing.confidence_score:
+        # contributor_key identifies "who/what independently vouched for
+        # this place" (e.g. "user_gps:<user_id>", "user_share:<item_id>").
+        # Automated/authoritative sources (OSM, Google Places, health dept)
+        # never pass one — those keep the old max() merge, since a re-scan
+        # by the same source isn't new evidence. But for user-corroboration
+        # signals, max() is the bug: GPS (0.35), share (0.3), hitlist
+        # suggestion (0.4), and hitlist save (0.45) can never sum past the
+        # 0.72 promotion threshold under max() no matter how many distinct
+        # people corroborate the same spot. A genuinely new contributor
+        # accumulates instead; the same contributor re-submitting doesn't
+        # let them single-handedly inflate confidence.
+        if contributor_key:
+            existing_keys = list(existing.corroboration_keys or [])
+            if contributor_key not in existing_keys:
+                existing_keys.append(contributor_key)
+                existing.corroboration_keys = existing_keys[-_MAX_CORROBORATION_KEYS:]
+                existing.confidence_score = _clamp_confidence(
+                    existing.confidence_score + confidence_score
+                )
+            elif confidence_score > existing.confidence_score:
+                existing.confidence_score = confidence_score
+        elif confidence_score > existing.confidence_score:
             existing.confidence_score = confidence_score
 
         existing.updated_at = _utcnow()
@@ -163,6 +188,7 @@ def upsert_discovery_candidate_v2(
         category_hint=category_hint,
         confidence_score=confidence_score,
         raw_payload=raw_payload,
+        corroboration_keys=[contributor_key] if contributor_key else None,
         status="candidate",
         resolved=False,
         blocked=False,

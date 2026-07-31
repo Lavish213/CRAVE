@@ -187,3 +187,22 @@ class DiscoveryCandidate(Base, TimestampMixin):
         nullable=True,
         index=True,
     )
+
+    # ------------------------------------------------------------------
+    # Corroboration tracking (see candidate_store_v2.upsert_discovery_candidate_v2)
+    #
+    # Distinct "someone/something independently vouched for this place"
+    # signal keys (e.g. "user_gps:<user_id>", "user_share:<crave_item_id>").
+    # Each *new* key seen accumulates confidence_score instead of the merge
+    # just taking the max of old vs new — without this, the same person
+    # re-confirming the same spot (or a second, third, fourth distinct
+    # person doing so) could never add up toward the promotion threshold.
+    # None/empty for candidates that only ever came from a single
+    # authoritative automated source (OSM, Google Places, health dept),
+    # which correctly still merge via max — a re-scan isn't new evidence.
+    # ------------------------------------------------------------------
+
+    corroboration_keys: Mapped[list | None] = mapped_column(
+        JSON,
+        nullable=True,
+    )

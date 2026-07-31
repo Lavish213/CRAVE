@@ -381,6 +381,7 @@ def ingest_candidate_v2(
     city_name: Any = None,
     external_id: Any = None,
     raw_payload: Any = None,
+    contributor_key: Any = None,
 ) -> DiscoveryCandidate:
     clean_name = _normalize_name(name)
     if not clean_name:
@@ -432,6 +433,7 @@ def ingest_candidate_v2(
         category_hint=clean_category_hint,
         confidence_score=_clamp_confidence(confidence),
         raw_payload=raw_payload if isinstance(raw_payload, dict) else None,
+        contributor_key=_clean(contributor_key),
     )
 
     db.flush()

@@ -90,6 +90,7 @@ def intake_hitlist_save(
                 "source_url": norm_url,
                 "source_platform": platform,
             },
+            contributor_key=f"user_hitlist_save:{user_id}",
         )
     except ValueError as exc:
         # No city could be resolved (no lat/lng and no other hint) — the

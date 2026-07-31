@@ -64,6 +64,7 @@ def intake_suggestion(
                 "source_url": norm_url,
                 "source_platform": platform,
             },
+            contributor_key=f"user_hitlist_suggestion:{user_id}",
         )
     except ValueError as exc:
         # No city could be resolved (no city_hint, no match) — the

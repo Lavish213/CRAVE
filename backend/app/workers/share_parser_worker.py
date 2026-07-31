@@ -292,6 +292,7 @@ def _process_item(db: Session, item: CraveItem) -> None:
                 source="user_share",
                 confidence=UNMATCHED_SHARE_CANDIDATE_CONFIDENCE,
                 raw_payload={"crave_item_id": item.id, "url": item.url, "source_type": item.source_type},
+                contributor_key=f"user_share:{item.submitted_by or item.id}",
             )
         except ValueError as exc:
             # Most commonly: no city could be resolved from a bare caption

@@ -172,6 +172,7 @@ def confirm_new_spot(
             category_hint=payload.category_hint,
             confidence=GPS_CANDIDATE_CONFIDENCE,
             raw_payload={"confirmed_by": user_id},
+            contributor_key=f"user_gps:{user_id}",
         )
         db.commit()
     except ValueError as exc:
