@@ -72,6 +72,14 @@ def _validate_prod_config() -> None:
 
     if settings.secret_key == "change-me-in-production":
         problems.append("SECRET_KEY is still the default placeholder value")
+    elif len(settings.secret_key) < 32:
+        # Now load-bearing beyond its original scope: it signs the ranking
+        # comparison-flow tokens too (see
+        # app.services.personal_ranking.ranking_service), so a short key is
+        # a real HMAC weakness, not just a lint warning.
+        problems.append(
+            "SECRET_KEY is shorter than 32 bytes — too weak for HMAC-signed tokens"
+        )
 
     if not settings.supabase_jwt_secret:
         problems.append(

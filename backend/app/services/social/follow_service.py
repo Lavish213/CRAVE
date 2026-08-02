@@ -1,0 +1,73 @@
+# app/services/social/follow_service.py
+from __future__ import annotations
+
+from typing import List
+
+from sqlalchemy.orm import Session
+
+from app.db.models.user_follow import UserFollow
+
+
+def follow_user(db: Session, *, follower_id: str, followee_id: str) -> UserFollow:
+    if follower_id == followee_id:
+        raise ValueError("cannot follow yourself")
+
+    existing = (
+        db.query(UserFollow)
+        .filter(UserFollow.follower_id == follower_id, UserFollow.followee_id == followee_id)
+        .one_or_none()
+    )
+    if existing:
+        return existing
+
+    follow = UserFollow(follower_id=follower_id, followee_id=followee_id)
+    db.add(follow)
+    db.commit()
+    return follow
+
+
+def unfollow_user(db: Session, *, follower_id: str, followee_id: str) -> bool:
+    existing = (
+        db.query(UserFollow)
+        .filter(UserFollow.follower_id == follower_id, UserFollow.followee_id == followee_id)
+        .one_or_none()
+    )
+    if not existing:
+        return False
+
+    db.delete(existing)
+    db.commit()
+    return True
+
+
+def is_following(db: Session, *, follower_id: str, followee_id: str) -> bool:
+    return (
+        db.query(UserFollow.id)
+        .filter(UserFollow.follower_id == follower_id, UserFollow.followee_id == followee_id)
+        .first()
+        is not None
+    )
+
+
+def list_following(db: Session, user_id: str, *, limit: int = 50, offset: int = 0) -> List[str]:
+    rows = (
+        db.query(UserFollow.followee_id)
+        .filter(UserFollow.follower_id == user_id)
+        .order_by(UserFollow.created_at.desc())
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
+    return [r[0] for r in rows]
+
+
+def list_followers(db: Session, user_id: str, *, limit: int = 50, offset: int = 0) -> List[str]:
+    rows = (
+        db.query(UserFollow.follower_id)
+        .filter(UserFollow.followee_id == user_id)
+        .order_by(UserFollow.created_at.desc())
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
+    return [r[0] for r in rows]

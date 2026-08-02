@@ -44,6 +44,12 @@ from app.db.models.hitlist_save import HitlistSave  # noqa: F401
 from app.db.models.hitlist_suggestion import HitlistSuggestion  # noqa: F401
 from app.db.models.hitlist_dedup_key import HitlistDedupKey  # noqa: F401
 
+# Social / Identity
+from app.db.models.user_profile import UserProfile  # noqa: F401
+from app.db.models.user_follow import UserFollow  # noqa: F401
+from app.db.models.place_ranking import PlaceRanking  # noqa: F401
+from app.db.models.activity_event import ActivityEvent  # noqa: F401
+
 
 # --------------------------------------------------
 # Alembic Config

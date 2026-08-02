@@ -54,6 +54,12 @@ from .crave_item import CraveItem
 # ----- Ops / Observability Layer -----
 from .job_run import JobRun
 
+# ----- Social / Identity Layer -----
+from .user_profile import UserProfile
+from .user_follow import UserFollow
+from .place_ranking import PlaceRanking
+from .activity_event import ActivityEvent
+
 
 # ---------------------------------------------------------
 # EXPORTS (STRICT + COMPLETE)
@@ -104,4 +110,10 @@ __all__ = [
 
     # Ops / Observability
     "JobRun",
+
+    # Social / Identity
+    "UserProfile",
+    "UserFollow",
+    "PlaceRanking",
+    "ActivityEvent",
 ]
