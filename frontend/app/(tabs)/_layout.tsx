@@ -71,10 +71,14 @@ export default function TabLayout() {
           ),
         }}
       />
+      {/* Settings used to be its own "More" tab. It now lives behind the
+          gear on Profile — the same place every comparable app puts it —
+          which frees the fifth slot for the thing people actually come
+          back for: their own list. */}
       <Tabs.Screen
-        name="more"
+        name="profile"
         options={{
-          title: 'More',
+          title: 'You',
           tabBarIcon: ({ focused }) => (
             <TabIcon focused={focused} iconFocused="person-circle" iconUnfocused="person-circle-outline" />
           ),

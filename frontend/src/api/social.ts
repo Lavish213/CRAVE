@@ -1,0 +1,236 @@
+// src/api/social.ts
+//
+// Client for the profile / follow-graph / ranking / feed / leaderboard
+// endpoints. All of these are user-scoped and rely on client.ts's
+// interceptor attaching the Supabase bearer token — an unauthenticated
+// call 401s rather than silently returning someone else's data.
+import { client } from './client';
+
+// ---------------------------------------------------------------------------
+// Profile
+// ---------------------------------------------------------------------------
+
+export interface Profile {
+  id: string;
+  username: string;
+  display_name: string | null;
+  avatar_url: string | null;
+  bio: string | null;
+  is_public: boolean;
+}
+
+export async function checkUsernameAvailable(username: string): Promise<boolean> {
+  const { data } = await client.get<{ available: boolean }>(
+    '/api/v1/profile/username-available',
+    { params: { username } },
+  );
+  return data.available;
+}
+
+export async function setupProfile(username: string, displayName?: string): Promise<Profile> {
+  const { data } = await client.post<Profile>('/api/v1/profile/setup', {
+    username,
+    display_name: displayName ?? null,
+  });
+  return data;
+}
+
+/** Returns null when the signed-in user hasn't picked a username yet (404). */
+export async function fetchMyProfile(): Promise<Profile | null> {
+  try {
+    const { data } = await client.get<Profile>('/api/v1/profile/me');
+    return data;
+  } catch (err: any) {
+    if (err?.response?.status === 404) return null;
+    throw err;
+  }
+}
+
+export async function updateMyProfile(patch: {
+  display_name?: string | null;
+  bio?: string | null;
+  avatar_url?: string | null;
+  is_public?: boolean;
+}): Promise<Profile> {
+  const { data } = await client.patch<Profile>('/api/v1/profile/me', patch);
+  return data;
+}
+
+export async function fetchProfile(userId: string): Promise<Profile> {
+  const { data } = await client.get<Profile>(`/api/v1/profile/${userId}`);
+  return data;
+}
+
+export async function requestAvatarUploadUrl(
+  contentType: string,
+): Promise<{ upload_url: string; public_url: string }> {
+  const { data } = await client.post('/api/v1/profile/avatar/upload-url', {
+    content_type: contentType,
+  });
+  return data;
+}
+
+// ---------------------------------------------------------------------------
+// Follows
+// ---------------------------------------------------------------------------
+
+export async function followUser(userId: string): Promise<void> {
+  await client.post(`/api/v1/follows/${userId}`);
+}
+
+export async function unfollowUser(userId: string): Promise<void> {
+  await client.delete(`/api/v1/follows/${userId}`);
+}
+
+export async function fetchFollowStatus(
+  userId: string,
+): Promise<{ following: boolean; followed_by: boolean }> {
+  const { data } = await client.get(`/api/v1/follows/status/${userId}`);
+  return data;
+}
+
+export async function fetchFollowing(): Promise<string[]> {
+  const { data } = await client.get<{ user_ids: string[] }>('/api/v1/follows/following');
+  return data.user_ids ?? [];
+}
+
+export async function fetchFollowers(): Promise<string[]> {
+  const { data } = await client.get<{ user_ids: string[] }>('/api/v1/follows/followers');
+  return data.user_ids ?? [];
+}
+
+// ---------------------------------------------------------------------------
+// Rankings
+// ---------------------------------------------------------------------------
+
+/** Matches PlaceRanking's tiers — see backend app/db/models/place_ranking.py. */
+export type RankTier = 'liked' | 'fine' | 'disliked';
+
+export interface Ranking {
+  place_id: string;
+  tier: RankTier;
+  rank_score: number;
+  note: string | null;
+  tags: string[] | null;
+  visited_at: string | null;
+}
+
+/**
+ * A ranking hydrated with enough of its place to render a list row without
+ * a follow-up request per item. List endpoints return this; the ranking
+ * flow's own result returns the bare `Ranking`.
+ */
+export interface RankedPlace extends Ranking {
+  name: string | null;
+  primary_image_url: string | null;
+  city_id: string | null;
+}
+
+/**
+ * Either the ranking finished immediately (first place in that tier — nothing
+ * to compare against), or the backend wants a head-to-head answered before it
+ * can place it. The caller drives the loop by POSTing the token back with a
+ * winner until `status` comes back as 'ranked'.
+ */
+export type RankingStep =
+  | { status: 'ranked'; ranking: Ranking }
+  | { status: 'comparing'; comparison_token: string; opponent_place_id: string };
+
+export async function startRanking(input: {
+  place_id: string;
+  tier: RankTier;
+  visited_at?: string | null;
+  note?: string | null;
+  tags?: string[] | null;
+}): Promise<RankingStep> {
+  const { data } = await client.post<RankingStep>('/api/v1/rankings', input);
+  return data;
+}
+
+export async function submitComparison(
+  comparisonToken: string,
+  winner: 'new' | 'opponent',
+): Promise<RankingStep> {
+  const { data } = await client.post<RankingStep>('/api/v1/rankings/compare', {
+    comparison_token: comparisonToken,
+    winner,
+  });
+  return data;
+}
+
+export async function fetchMyRankings(): Promise<RankedPlace[]> {
+  const { data } = await client.get<{ rankings: RankedPlace[] }>('/api/v1/rankings/me');
+  return data.rankings ?? [];
+}
+
+export async function fetchUserRankings(userId: string): Promise<RankedPlace[]> {
+  const { data } = await client.get<{ rankings: RankedPlace[] }>(
+    `/api/v1/rankings/user/${userId}`,
+  );
+  return data.rankings ?? [];
+}
+
+export async function deleteRanking(placeId: string): Promise<void> {
+  await client.delete(`/api/v1/rankings/${placeId}`);
+}
+
+// ---------------------------------------------------------------------------
+// Friends feed
+// ---------------------------------------------------------------------------
+
+/** Minimal identity shape the feed/leaderboard embed so rows are readable. */
+export interface ActorRef {
+  id: string;
+  username: string | null;
+  display_name: string | null;
+  avatar_url: string | null;
+}
+
+export interface ActivityEvent {
+  id: string;
+  user_id: string;
+  actor: ActorRef | null;
+  event_type: 'ranked_place' | 'followed_user';
+  place_id: string | null;
+  place_name: string | null;
+  place_image_url: string | null;
+  target_user_id: string | null;
+  target_user: ActorRef | null;
+  payload: { tier?: RankTier; score?: number } | null;
+  created_at: string;
+}
+
+export async function fetchFriendsFeed(limit = 30, offset = 0): Promise<ActivityEvent[]> {
+  const { data } = await client.get<{ events: ActivityEvent[] }>('/api/v1/feed/friends', {
+    params: { limit, offset },
+  });
+  return data.events ?? [];
+}
+
+// ---------------------------------------------------------------------------
+// Leaderboard
+// ---------------------------------------------------------------------------
+
+export interface LeaderboardRow {
+  user_id: string;
+  places_logged: number;
+  rank: number;
+  username: string | null;
+  display_name: string | null;
+  avatar_url: string | null;
+}
+
+export async function fetchLeaderboard(opts: {
+  among?: 'global' | 'friends';
+  city_slug?: string | null;
+  limit?: number;
+} = {}): Promise<LeaderboardRow[]> {
+  const { data } = await client.get<{ leaderboard: LeaderboardRow[] }>('/api/v1/leaderboard', {
+    params: {
+      among: opts.among ?? 'global',
+      ...(opts.city_slug ? { city_slug: opts.city_slug } : {}),
+      limit: opts.limit ?? 50,
+    },
+  });
+  return data.leaderboard ?? [];
+}

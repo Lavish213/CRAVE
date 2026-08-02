@@ -11,7 +11,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { useLocalSearchParams, useNavigation } from 'expo-router';
+import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useQuery } from '@tanstack/react-query';
@@ -26,6 +26,8 @@ import { useUploadImage } from '../../src/hooks/useUploadImage';
 import { useImageStatusPoll } from '../../src/hooks/useImageStatusPoll';
 import { Colors, Spacing, Radius } from '../../src/constants/colors';
 import { getTier, getBadges, formatPrice } from '../../src/utils/scoring';
+import { fetchMyRankings } from '../../src/api/social';
+import { formatScore, tierColor } from '../../src/utils/rankScore';
 import { ImageGallery } from '../../src/components/ImageGallery';
 import { TierBadge } from '../../src/components/TierBadge';
 import { ErrorState } from '../../src/components/ErrorState';
@@ -70,6 +72,7 @@ function DetailSkeleton() {
 export default function PlaceDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const navigation = useNavigation();
+  const router = useRouter();
   const { addSave, removeSave, isSaved } = useCravesStore();
   const user = useAuthStore((s) => s.user);
   const toast = useToast((s) => s.show);
@@ -82,6 +85,17 @@ export default function PlaceDetailScreen() {
     staleTime: 5 * 60 * 1000,  // 5 min
     enabled: !!id,
   });
+
+  // The whole ranked list rather than a per-place lookup: react-query
+  // caches one copy across every place screen, so this costs a single
+  // request per session instead of one per place opened.
+  const { data: myRankings } = useQuery({
+    queryKey: ['myRankings'],
+    queryFn: fetchMyRankings,
+    staleTime: 60 * 1000,
+    enabled: !!user,
+  });
+  const myRanking = myRankings?.find((r) => r.place_id === id);
 
   const [isAddingPhoto, setIsAddingPhoto] = useState(false);
   const [pendingImageId, setPendingImageId] = useState<string | undefined>();
@@ -254,6 +268,45 @@ export default function PlaceDetailScreen() {
           ))}
         </View>
       )}
+
+      {/* Primary CTA — deliberately one prominent action, visually distinct
+          from the secondary row below it, rather than a fifth equal-weight
+          icon button nobody would find. Ranking is the thing this app wants
+          you to do; saving and sharing are supporting acts. */}
+      <TouchableOpacity
+        style={[styles.rankCta, myRanking ? styles.rankCtaRanked : null]}
+        onPress={() => {
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+          if (!user) {
+            toast('Sign in to rank places');
+            return;
+          }
+          router.push(`/rank/${place.id}`);
+        }}
+        activeOpacity={0.85}
+        accessibilityRole="button"
+        accessibilityLabel={
+          myRanking
+            ? `You ranked this ${formatScore(myRanking.rank_score)} out of 10`
+            : 'I ate here — rank this place'
+        }
+      >
+        {myRanking ? (
+          <>
+            <View style={[styles.rankScoreDot, { borderColor: tierColor(myRanking.tier) }]}>
+              <Text style={[styles.rankScoreDotText, { color: tierColor(myRanking.tier) }]}>
+                {formatScore(myRanking.rank_score)}
+              </Text>
+            </View>
+            <Text style={styles.rankCtaRankedText}>Your score · tap to re-rank</Text>
+          </>
+        ) : (
+          <>
+            <Ionicons name="restaurant" size={18} color="#FFFFFF" />
+            <Text style={styles.rankCtaText}>I ate here</Text>
+          </>
+        )}
+      </TouchableOpacity>
 
       {/* Action row */}
       <View style={styles.actions}>
@@ -451,6 +504,34 @@ const styles = StyleSheet.create({
   badgeChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, paddingHorizontal: Spacing.lg, paddingBottom: Spacing.md },
   chip: { paddingHorizontal: 10, paddingVertical: 4, backgroundColor: Colors.border, borderRadius: Radius.pill },
   chipText: { fontSize: 13, color: Colors.textSecondary },
+  rankCta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    marginHorizontal: 16,
+    marginTop: 12,
+    paddingVertical: 14,
+    borderRadius: Radius.pill,
+    backgroundColor: Colors.primary,
+    minHeight: 50,
+  },
+  rankCtaText: { color: '#FFFFFF', fontSize: 15, fontWeight: '800' },
+  rankCtaRanked: {
+    backgroundColor: Colors.surface,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  rankCtaRankedText: { color: Colors.textSecondary, fontSize: 14, fontWeight: '700' },
+  rankScoreDot: {
+    minWidth: 40,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: Radius.pill,
+    borderWidth: 1.5,
+    alignItems: 'center',
+  },
+  rankScoreDotText: { fontSize: 13, fontWeight: '800' },
   actions: {
     flexDirection: 'row',
     flexWrap: 'wrap',

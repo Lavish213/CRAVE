@@ -5,9 +5,9 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useRouter } from 'expo-router';
-import { Colors, Spacing, Radius } from '../../src/constants/colors';
-import { useCityStore } from '../../src/stores/cityStore';
-import { useAuthStore } from '../../src/stores/authStore';
+import { Colors, Spacing, Radius } from '../src/constants/colors';
+import { useCityStore } from '../src/stores/cityStore';
+import { useAuthStore } from '../src/stores/authStore';
 
 // App version — hardcoded, update for each release
 const APP_VERSION = '1.0.0';

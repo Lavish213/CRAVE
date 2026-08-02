@@ -1,8 +1,22 @@
 // src/components/MapBottomSheet.tsx
-import React from 'react';
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+//
+// The map's place card. Modeled on Google Maps' persistent sheet: it sits
+// over a still-interactive map and is dismissed by dragging it down, not
+// only by hunting for a close button.
+//
+// Drag uses the threshold-gated commit pattern — past DISMISS_THRESHOLD the
+// sheet animates the rest of the way out and closes; short of it, it springs
+// back. Downward-only: there's no expanded state to drag up into, since
+// tapping the card opens the full place screen rather than growing the sheet.
+//
+// PanResponder + Animated rather than react-native-gesture-handler here:
+// this is a single-axis drag on one element, and RN's built-in responder
+// needs no GestureHandlerRootView provider at the app root to work.
+import React, { useEffect, useMemo, useRef } from 'react';
+import { Animated, PanResponder, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
 import { Colors, Radius, Spacing } from '../constants/colors';
 import { TierBadge } from './TierBadge';
 import { TIERS } from '../utils/scoring';
@@ -15,6 +29,13 @@ const TIER_MAP: Record<string, TierKey> = {
   solid:   'solid',
   default: 'new',
 };
+
+/** Drag distance past which releasing dismisses instead of springing back. */
+const DISMISS_THRESHOLD = 80;
+/** A fast flick dismisses even if it hasn't travelled the full threshold. */
+const DISMISS_VELOCITY = 0.5;
+/** Far enough to clear the sheet's own height on the way out. */
+const EXIT_DISTANCE = 400;
 
 interface FeatureProps {
   id: string;
@@ -31,21 +52,81 @@ interface Props {
 }
 
 export function MapBottomSheet({ feature, onOpen, onClose }: Props) {
+  const translateY = useRef(new Animated.Value(0)).current;
+
+  // Reset position whenever a new feature is selected — otherwise a sheet
+  // dismissed by dragging would reopen still translated off-screen.
+  useEffect(() => {
+    if (feature) translateY.setValue(0);
+  }, [feature?.id, translateY]);
+
+  const dismiss = useMemo(
+    () => () => {
+      Animated.timing(translateY, {
+        toValue: EXIT_DISTANCE,
+        duration: 180,
+        useNativeDriver: true,
+      }).start(() => onClose());
+    },
+    [translateY, onClose],
+  );
+
+  const panResponder = useMemo(
+    () =>
+      PanResponder.create({
+        // Claim the gesture only once it's clearly a deliberate downward
+        // drag, so taps on the card still reach the button underneath.
+        onMoveShouldSetPanResponder: (_evt, gesture) =>
+          gesture.dy > 4 && Math.abs(gesture.dy) > Math.abs(gesture.dx),
+        onPanResponderMove: (_evt, gesture) => {
+          if (gesture.dy > 0) translateY.setValue(gesture.dy);
+        },
+        onPanResponderRelease: (_evt, gesture) => {
+          if (gesture.dy > DISMISS_THRESHOLD || gesture.vy > DISMISS_VELOCITY) {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            dismiss();
+          } else {
+            Animated.spring(translateY, {
+              toValue: 0,
+              useNativeDriver: true,
+              bounciness: 4,
+            }).start();
+          }
+        },
+        onPanResponderTerminate: () => {
+          Animated.spring(translateY, {
+            toValue: 0,
+            useNativeDriver: true,
+            bounciness: 4,
+          }).start();
+        },
+      }),
+    [translateY, dismiss],
+  );
+
   if (!feature) return null;
 
   const tierKey: TierKey = TIER_MAP[feature.tier] ?? 'new';
   const tier = TIERS[tierKey];
 
   return (
-    <View style={styles.sheet}>
+    <Animated.View
+      style={[styles.sheet, { transform: [{ translateY }] }]}
+      {...panResponder.panHandlers}
+    >
+      {/* Grabber: the affordance that says "this can be dragged". Without
+          it the drag is undiscoverable even though it works. */}
+      <View style={styles.grabber} />
+
       <TouchableOpacity
         style={styles.closeBtn}
-        onPress={onClose}
+        onPress={dismiss}
         accessibilityLabel="Close"
         accessibilityRole="button"
       >
         <Ionicons name="close" size={18} color={Colors.textMuted} />
       </TouchableOpacity>
+
       <TouchableOpacity
         style={styles.row}
         onPress={() => onOpen(feature.id)}
@@ -74,7 +155,7 @@ export function MapBottomSheet({ feature, onOpen, onClose }: Props) {
         </View>
         <Ionicons name="chevron-forward" size={18} color={Colors.textMuted} />
       </TouchableOpacity>
-    </View>
+    </Animated.View>
   );
 }
 
@@ -96,6 +177,15 @@ const styles = StyleSheet.create({
     shadowRadius: 12,
     shadowOffset: { width: 0, height: -4 },
     elevation: 16,
+  },
+  grabber: {
+    alignSelf: 'center',
+    width: 36,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: Colors.border,
+    marginBottom: Spacing.sm,
+    marginTop: -Spacing.sm,
   },
   closeBtn: {
     position: 'absolute',

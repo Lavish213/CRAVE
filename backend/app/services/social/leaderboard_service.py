@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 from app.db.models.city import City
 from app.db.models.place import Place
 from app.db.models.place_ranking import PlaceRanking
+from app.db.models.user_profile import UserProfile
 from app.services.social import follow_service
 
 
@@ -56,6 +57,27 @@ def get_leaderboard(
         .all()
     )
 
-    return [
-        {"user_id": r[0], "places_logged": r[1], "rank": i + 1} for i, r in enumerate(rows)
-    ]
+    if not rows:
+        return []
+
+    # A leaderboard of opaque user ids is not a leaderboard. Resolve handles
+    # in one query rather than one per row.
+    profiles = {
+        p.id: p
+        for p in db.query(UserProfile)
+        .filter(UserProfile.id.in_([r[0] for r in rows]))
+        .all()
+    }
+
+    out = []
+    for i, (uid, count) in enumerate(rows):
+        profile = profiles.get(uid)
+        out.append({
+            "user_id": uid,
+            "places_logged": count,
+            "rank": i + 1,
+            "username": profile.username if profile else None,
+            "display_name": profile.display_name if profile else None,
+            "avatar_url": profile.avatar_url if profile else None,
+        })
+    return out
