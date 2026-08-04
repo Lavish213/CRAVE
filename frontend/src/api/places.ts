@@ -20,6 +20,9 @@ export interface PlaceOut {
   images: string[];
   /** Index-aligned with `images`. Needed to report a specific photo. */
   image_ids?: string[];
+  /** Index-aligned with `images`. EXIF GPS on the photo matched the
+   * place's own coordinates at upload time. */
+  image_gps_verified?: boolean[];
   website: string | null;
   grubhub_url: string | null;
   has_menu: boolean;

@@ -76,6 +76,11 @@ def get_place_detail(
     # a specific photo (see /moderation/images/{id}/report) — a proxied URL
     # is not one.
     image_ids: List[str] = []
+    # Same alignment. gps_verified was computed and stored at upload time
+    # (see app/services/images/upload_moderation.py) but never returned by
+    # any endpoint — the "this photo was taken here" signal existed only
+    # in the database, invisible to the person it was meant to reassure.
+    image_gps_verified: List[bool] = []
 
     for img in gallery:
         raw = img.url
@@ -86,6 +91,7 @@ def get_place_detail(
         if proxied:
             image_urls.append(proxied)
             image_ids.append(img.id)
+            image_gps_verified.append(bool(img.gps_verified))
 
     # No image = null; UI handles gracefully
 
@@ -145,6 +151,7 @@ def get_place_detail(
         "grubhub_url": place.grubhub_url or None,
         "images": image_urls,
         "image_ids": image_ids,
+        "image_gps_verified": image_gps_verified,
         "primary_image_url": image_urls[0] if image_urls else None,
         # category: first category name for display; full list in categories
         "category": category_names[0] if category_names else None,

@@ -61,3 +61,19 @@ imagehash>=4.3.1
 # this, a prod crash is only visible by someone reading Railway logs; the
 # service ran crashed for two months once already with nothing to notice.
 sentry-sdk[fastapi]>=2.0.0
+
+# Menu extraction escalation tier (PDF, JSON-LD, GraphQL/API discovery,
+# iframe menus, headless-browser rendering — see
+# app/services/menu/menu_extraction_router.py, called from
+# app/services/menu/processing/menu_orchestrator.py's advanced-escalation
+# step). Both were dev-only before this: pdfminer.six is imported at module
+# level by pdf_menu_extractor.py, and since menu_extraction_router.py
+# imports that module at its own top level, pdfminer alone missing failed
+# to import the ENTIRE escalation tier — not just PDF parsing — with the
+# ImportError caught silently by menu_orchestrator's try/except and logged
+# only at debug. Confirmed by simulating a prod install with each package
+# blocked. playwright additionally needs its browser binary installed at
+# build time — see the deploy note in railway.toml — the pip package alone
+# is necessary but not sufficient.
+pdfminer.six>=20221105
+playwright>=1.44.0

@@ -84,6 +84,14 @@ export function normalizePlaceOut(raw: unknown): PlaceOut {
     image,
     primary_image_url: image,
     images: Array.isArray(p.images) ? (p.images as string[]) : [],
+    // Both index-aligned with `images` above. Previously declared on the
+    // PlaceOut type but never actually copied through here, so
+    // place.image_ids was always undefined at runtime regardless of what
+    // the backend sent — the photo-report button had nothing to report.
+    image_ids: Array.isArray(p.image_ids) ? (p.image_ids as string[]) : undefined,
+    image_gps_verified: Array.isArray(p.image_gps_verified)
+      ? (p.image_gps_verified as boolean[])
+      : undefined,
     website: typeof p.website === 'string' ? p.website : null,
     grubhub_url: typeof p.grubhub_url === 'string' ? p.grubhub_url : null,
     has_menu: Boolean(p.has_menu),

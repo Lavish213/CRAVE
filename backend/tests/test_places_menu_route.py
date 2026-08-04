@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import sys
 import uuid
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -104,3 +105,45 @@ def test_menu_route_returns_empty_items_for_a_place_with_no_menu():
     response = client.get(f"/api/v1/places/{place_id}/menu")
     assert response.status_code == 200
     assert response.json()["items"] == []
+
+
+# ---------------------------------------------------------------------------
+# last_verified_at — Place.last_menu_updated_at was written by
+# materialize_menu_truth.py but never returned by this endpoint, so a menu
+# last verified yesterday and one last touched eight months ago rendered
+# identically. There was no way for a user to tell them apart.
+# ---------------------------------------------------------------------------
+
+def test_menu_route_returns_last_verified_at_when_set():
+    verified_at = datetime.now(timezone.utc) - timedelta(days=3)
+    place_id = _make_place_with_menu(price_cents_values=[1000])
+
+    db = SessionLocal()
+    try:
+        place = db.query(Place).filter(Place.id == place_id).one()
+        place.last_menu_updated_at = verified_at
+        db.commit()
+    finally:
+        db.close()
+
+    response = client.get(f"/api/v1/places/{place_id}/menu")
+
+    assert response.status_code == 200
+    returned = response.json()["last_verified_at"]
+    assert returned is not None
+    # SQLite has no real tz-aware storage, so this round-trips as a naive
+    # UTC value regardless of what went in — normalize before comparing
+    # rather than asserting on tzinfo.
+    parsed = datetime.fromisoformat(returned)
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    assert abs((parsed - verified_at).total_seconds()) < 1
+
+
+def test_menu_route_last_verified_at_is_null_when_never_materialized():
+    place_id = _make_place_with_menu(price_cents_values=[1000])
+
+    response = client.get(f"/api/v1/places/{place_id}/menu")
+
+    assert response.status_code == 200
+    assert response.json()["last_verified_at"] is None

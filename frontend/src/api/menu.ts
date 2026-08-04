@@ -11,9 +11,20 @@ export interface MenuItem {
 
 interface MenuResponse {
   items: MenuItem[];
+  /** ISO timestamp of the last successful menu materialization, or null
+   * if this place's menu has never been (re)verified. */
+  last_verified_at?: string | null;
 }
 
-export async function getPlaceMenu(placeId: string): Promise<MenuItem[]> {
+export interface PlaceMenu {
+  items: MenuItem[];
+  lastVerifiedAt: string | null;
+}
+
+export async function getPlaceMenu(placeId: string): Promise<PlaceMenu> {
   const { data } = await client.get<MenuResponse>(`/api/v1/places/${placeId}/menu`);
-  return normalizeMenuItems(data);
+  return {
+    items: normalizeMenuItems(data),
+    lastVerifiedAt: data?.last_verified_at ?? null,
+  };
 }

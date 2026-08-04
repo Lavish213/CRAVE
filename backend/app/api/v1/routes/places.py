@@ -190,10 +190,12 @@ def get_place_menu(
     if not place_id:
         raise HTTPException(status_code=400, detail="Invalid place_id")
 
-    exists = db.execute(
-        select(Place.id).where(Place.id == place_id, Place.is_active.is_(True))
+    place = db.execute(
+        select(Place.id, Place.last_menu_updated_at).where(
+            Place.id == place_id, Place.is_active.is_(True)
+        )
     ).first()
-    if not exists:
+    if not place:
         raise HTTPException(status_code=404, detail="Place not found")
 
     rows = (
@@ -220,4 +222,14 @@ def get_place_menu(
         for row in rows
     ]
 
-    return {"items": items}
+    # Written by materialize_menu_truth.py whenever the menu is
+    # (re)materialized from an extraction pass. Previously computed and
+    # stored but never returned by this endpoint, so there was no way for
+    # a user to tell a menu last verified yesterday from one last touched
+    # eight months ago — both rendered identically.
+    last_verified_at = place.last_menu_updated_at
+
+    return {
+        "items": items,
+        "last_verified_at": last_verified_at.isoformat() if last_verified_at else None,
+    }

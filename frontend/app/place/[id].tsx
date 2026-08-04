@@ -28,6 +28,7 @@ import { Colors, Spacing, Radius } from '../../src/constants/colors';
 import { getTier, getBadges, formatPrice } from '../../src/utils/scoring';
 import { fetchMyRankings } from '../../src/api/social';
 import { formatScore, tierColor } from '../../src/utils/rankScore';
+import { relativeTime } from '../../src/utils/time';
 import { ImageGallery } from '../../src/components/ImageGallery';
 import { ReportPhotoSheet } from '../../src/components/ReportPhotoSheet';
 import { TierBadge } from '../../src/components/TierBadge';
@@ -117,6 +118,7 @@ export default function PlaceDetailScreen() {
   }, [uploadStatus, uploadError, pendingImageId, toast, refetch]);
 
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
+  const [menuVerifiedAt, setMenuVerifiedAt] = useState<string | null>(null);
   const [menuLoading, setMenuLoading] = useState(true);
   const [menuExpanded, setMenuExpanded] = useState(false);
 
@@ -125,8 +127,14 @@ export default function PlaceDetailScreen() {
     if (!id) return;
     setMenuLoading(true);
     getPlaceMenu(id)
-      .then((m) => setMenuItems(m))
-      .catch(() => setMenuItems([]))
+      .then((m) => {
+        setMenuItems(m.items);
+        setMenuVerifiedAt(m.lastVerifiedAt);
+      })
+      .catch(() => {
+        setMenuItems([]);
+        setMenuVerifiedAt(null);
+      })
       .finally(() => setMenuLoading(false));
   }, [id]);
 
@@ -245,7 +253,10 @@ export default function PlaceDetailScreen() {
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       {/* Hero gallery */}
-      <ImageGallery images={allImages} />
+      <ImageGallery
+        images={allImages}
+        gpsVerified={place.images?.length ? place.image_gps_verified : undefined}
+      />
 
       {/* Identity */}
       <View style={styles.identity}>
@@ -428,7 +439,17 @@ export default function PlaceDetailScreen() {
 
       {/* Menu */}
       <View style={styles.menuSection}>
-        <Text style={styles.sectionTitle}>Menu</Text>
+        <View style={styles.menuTitleRow}>
+          <Text style={styles.sectionTitle}>Menu</Text>
+          {/* Previously computed and stored (Place.last_menu_updated_at)
+              but never shown — a menu verified yesterday and one untouched
+              for eight months rendered identically. */}
+          {!menuLoading && menuItems.length > 0 && menuVerifiedAt ? (
+            <Text style={styles.menuVerified}>
+              Verified {relativeTime(menuVerifiedAt)}
+            </Text>
+          ) : null}
+        </View>
         {menuLoading ? (
           <View style={styles.menuSkeletonWrap}>
             {[1, 2, 3].map((i) => (
@@ -592,13 +613,19 @@ const styles = StyleSheet.create({
   actionLabel: { color: Colors.text, fontSize: 13, fontWeight: '600' },
   actionLabelSaved: { color: Colors.primary },
   menuSection: { paddingHorizontal: 16, paddingTop: 8 },
+  menuTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
   sectionTitle: {
     fontSize: 20,
     fontWeight: '800',
     color: Colors.text,
-    marginBottom: 12,
     letterSpacing: 0.3,
   },
+  menuVerified: { color: Colors.textMuted, fontSize: 12 },
   noMenu: { color: Colors.textSecondary, fontSize: 14, paddingVertical: 8 },
   menuCat: { marginBottom: 16 },
   menuCatLabel: {
