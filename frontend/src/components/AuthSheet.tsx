@@ -15,6 +15,7 @@ import * as QueryParams from 'expo-auth-session/build/QueryParams';
 import * as WebBrowser from 'expo-web-browser';
 import { supabase } from '../lib/supabase';
 import { Colors, Spacing, Radius } from '../constants/colors';
+import { useToast } from '../hooks/useToast';
 
 // Required so that when the OAuth browser tab redirects back into the app,
 // the pending WebBrowser.openAuthSessionAsync() promise actually resolves
@@ -87,6 +88,7 @@ const REASON_COPY: Record<NonNullable<Props['reason']>, { title: string; body: s
 export function AuthSheet({ visible, onClose, reason = 'default' }: Props) {
   const [loading, setLoading] = useState<'google' | 'apple' | null>(null);
   const copy = REASON_COPY[reason];
+  const toast = useToast((s) => s.show);
 
   const handleGoogle = async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -95,7 +97,12 @@ export function AuthSheet({ visible, onClose, reason = 'default' }: Props) {
       const session = await performOAuth('google');
       if (session) onClose();
     } catch (err) {
+      // Previously silent outside __DEV__ — a real failure here (network,
+      // misconfigured redirect, provider error) looked identical to
+      // nothing happening at all, with no way to tell "try again" from
+      // "the app is broken."
       if (__DEV__) console.log('[AUTH] google_oauth_failed', err);
+      toast("Couldn't sign in with Google. Try again.");
     } finally {
       setLoading(null);
     }
@@ -109,6 +116,7 @@ export function AuthSheet({ visible, onClose, reason = 'default' }: Props) {
       if (session) onClose();
     } catch (err) {
       if (__DEV__) console.log('[AUTH] apple_oauth_failed', err);
+      toast("Couldn't sign in with Apple. Try again.");
     } finally {
       setLoading(null);
     }

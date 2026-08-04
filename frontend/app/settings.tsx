@@ -8,6 +8,7 @@ import { useRouter } from 'expo-router';
 import { Colors, Spacing, Radius } from '../src/constants/colors';
 import { useCityStore } from '../src/stores/cityStore';
 import { useAuthStore } from '../src/stores/authStore';
+import { useToast } from '../src/hooks/useToast';
 
 // App version — hardcoded, update for each release
 const APP_VERSION = '1.0.0';
@@ -66,6 +67,18 @@ export default function MoreScreen() {
   const selectedCity = useCityStore((s) => s.selectedCity);
   const user = useAuthStore((s) => s.user);
   const signOut = useAuthStore((s) => s.signOut);
+  const toast = useToast((s) => s.show);
+
+  const handleSignOut = () => {
+    Alert.alert('Sign out?', "You'll need to sign back in to rank places or see your Craves.", [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Sign Out', style: 'destructive', onPress: () => signOut() },
+    ]);
+  };
+
+  const openLink = (url: string) => {
+    Linking.openURL(url).catch(() => toast("Couldn't open that link."));
+  };
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
@@ -143,13 +156,13 @@ export default function MoreScreen() {
         <Row
           icon="shield-checkmark-outline"
           label="Privacy Policy"
-          onPress={() => Linking.openURL('https://crave.app/privacy')}
+          onPress={() => openLink('https://crave.app/privacy')}
         />
         <Divider />
         <Row
           icon="document-text-outline"
           label="Terms of Service"
-          onPress={() => Linking.openURL('https://crave.app/terms')}
+          onPress={() => openLink('https://crave.app/terms')}
         />
         <Divider />
         <Row
@@ -166,7 +179,7 @@ export default function MoreScreen() {
           icon="chatbubble-outline"
           label="Send Feedback"
           sublabel="Help us improve CRAVE"
-          onPress={() => Linking.openURL('mailto:hello@crave.app?subject=CRAVE Feedback')}
+          onPress={() => openLink('mailto:hello@crave.app?subject=CRAVE Feedback')}
         />
       </View>
 
@@ -185,7 +198,7 @@ export default function MoreScreen() {
               icon="log-out-outline"
               label="Sign Out"
               tint={Colors.error}
-              onPress={signOut}
+              onPress={handleSignOut}
             />
           </View>
         </>

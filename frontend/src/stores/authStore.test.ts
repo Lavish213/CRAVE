@@ -85,6 +85,18 @@ describe('useAuthStore.signOut', () => {
     expect(useAuthStore.getState().user).toBeNull();
   });
 
+  it('clears the local user even when the remote signOut call rejects', async () => {
+    // Previously unguarded: `await supabase.auth.signOut()` throwing meant
+    // `set({ user: null })` never ran, so a network blip while signing out
+    // left the user still "signed in" locally with zero feedback. Local
+    // sign-out must not depend on the remote call succeeding.
+    mockedSupabase.auth.signOut.mockRejectedValue(new Error('network down'));
+    useAuthStore.setState({ user: { id: 'u1' } as any, loading: false });
+
+    await expect(useAuthStore.getState().signOut()).resolves.toBeUndefined();
+    expect(useAuthStore.getState().user).toBeNull();
+  });
+
   it('does not throw even if the post-signout cleanup step fails', async () => {
     // signOut() dynamically imports cravesStore to clear saves, wrapped in
     // its own try/catch (see authStore.ts) specifically so a cleanup

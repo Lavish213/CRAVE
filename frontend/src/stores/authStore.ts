@@ -26,7 +26,17 @@ export const useAuthStore = create<AuthStore>((set) => ({
   },
 
   signOut: async () => {
-    await supabase.auth.signOut();
+    // Local sign-out must not be blocked by the remote call failing (a
+    // network blip here previously meant `set({ user: null })` never ran
+    // at all, so tapping "Sign Out" with a flaky connection silently did
+    // nothing — no error, no feedback, still signed in). The user wanting
+    // to leave this device wins over successfully invalidating the
+    // session server-side.
+    try {
+      await supabase.auth.signOut();
+    } catch (err) {
+      console.warn('[signOut] Remote sign-out failed, clearing local session anyway:', err);
+    }
     set({ user: null });
     // Clear persisted saves so the next user doesn't see them
     try {
