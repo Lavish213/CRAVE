@@ -18,6 +18,8 @@ export interface PlaceOut {
   image: string | null;
   primary_image_url: string | null;
   images: string[];
+  /** Index-aligned with `images`. Needed to report a specific photo. */
+  image_ids?: string[];
   website: string | null;
   grubhub_url: string | null;
   has_menu: boolean;

@@ -234,3 +234,35 @@ export async function fetchLeaderboard(opts: {
   });
   return data.leaderboard ?? [];
 }
+
+// ---------------------------------------------------------------------------
+// Moderation (reporting)
+// ---------------------------------------------------------------------------
+
+export type ReportReason =
+  | 'inappropriate'
+  | 'not_this_place'
+  | 'low_quality'
+  | 'spam'
+  | 'other';
+
+export const REPORT_REASONS: { value: ReportReason; label: string }[] = [
+  { value: 'inappropriate', label: 'Inappropriate or offensive' },
+  { value: 'not_this_place', label: "Not this restaurant" },
+  { value: 'low_quality', label: 'Bad photo quality' },
+  { value: 'spam', label: 'Spam or advertising' },
+  { value: 'other', label: 'Something else' },
+];
+
+/** Idempotent per user — reporting twice returns 'already_reported'. */
+export async function reportImage(
+  imageId: string,
+  reason: ReportReason,
+  note?: string,
+): Promise<{ status: string; withheld?: boolean }> {
+  const { data } = await client.post(`/api/v1/moderation/images/${imageId}/report`, {
+    reason,
+    note: note ?? null,
+  });
+  return data;
+}

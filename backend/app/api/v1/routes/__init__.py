@@ -45,6 +45,7 @@ from app.api.v1.routes.follows import router as follows_router
 from app.api.v1.routes.rankings import router as rankings_router
 from app.api.v1.routes.feed_social import router as feed_social_router
 from app.api.v1.routes.leaderboard import router as leaderboard_router
+from app.api.v1.routes.moderation import router as moderation_router
 
 
 # -------------------------
@@ -84,3 +85,4 @@ router.include_router(follows_router)
 router.include_router(rankings_router)
 router.include_router(feed_social_router)
 router.include_router(leaderboard_router)
+router.include_router(moderation_router)

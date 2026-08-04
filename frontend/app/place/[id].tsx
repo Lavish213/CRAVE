@@ -29,6 +29,7 @@ import { getTier, getBadges, formatPrice } from '../../src/utils/scoring';
 import { fetchMyRankings } from '../../src/api/social';
 import { formatScore, tierColor } from '../../src/utils/rankScore';
 import { ImageGallery } from '../../src/components/ImageGallery';
+import { ReportPhotoSheet } from '../../src/components/ReportPhotoSheet';
 import { TierBadge } from '../../src/components/TierBadge';
 import { ErrorState } from '../../src/components/ErrorState';
 
@@ -96,6 +97,8 @@ export default function PlaceDetailScreen() {
     enabled: !!user,
   });
   const myRanking = myRankings?.find((r) => r.place_id === id);
+
+  const [reportImageId, setReportImageId] = useState<string | null>(null);
 
   const [isAddingPhoto, setIsAddingPhoto] = useState(false);
   const [pendingImageId, setPendingImageId] = useState<string | undefined>();
@@ -398,6 +401,29 @@ export default function PlaceDetailScreen() {
           <Ionicons name="restaurant-outline" size={18} color={Colors.text} />
           <Text style={styles.actionLabel}>Add menu photo</Text>
         </TouchableOpacity>
+
+        {/* Reporting needs a specific photo id, which only exists once the
+            detail response carries image_ids. Reports the lead photo —
+            the one on the card and the map pin, so the one that actually
+            matters if it's wrong. */}
+        {place.image_ids?.length ? (
+          <TouchableOpacity
+            style={styles.actionBtn}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              if (!user) {
+                toast('Sign in to report a photo');
+                return;
+              }
+              setReportImageId(place.image_ids![0]);
+            }}
+            accessibilityLabel="Report the main photo"
+            accessibilityRole="button"
+          >
+            <Ionicons name="flag-outline" size={18} color={Colors.textSecondary} />
+            <Text style={[styles.actionLabel, { color: Colors.textSecondary }]}>Report</Text>
+          </TouchableOpacity>
+        ) : null}
       </View>
 
       {/* Menu */}
@@ -489,6 +515,13 @@ export default function PlaceDetailScreen() {
           </ScrollView>
         </View>
       )}
+
+      <ReportPhotoSheet
+        visible={reportImageId !== null}
+        imageId={reportImageId}
+        onClose={() => setReportImageId(null)}
+        onReported={() => toast('Thanks — we’ll take a look')}
+      />
     </ScrollView>
   );
 }

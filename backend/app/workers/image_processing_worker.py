@@ -10,7 +10,15 @@ from app.db.session import SessionLocal
 from app.db.models.place_image import (
     PlaceImage,
     VISIBILITY_CANDIDATE_PRIMARY,
+    VISIBILITY_HIDDEN,
     VISIBILITY_SHOWCASE,
+)
+from app.services.images.exif_reader import read_exif
+from app.services.images.quality_analyzer import analyze_image
+from app.services.images.upload_moderation import (
+    MOD_REJECTED,
+    apply_decision,
+    screen_upload,
 )
 
 from app.services.upload.r2_client import _get_s3_client, R2_BUCKET, generate_public_url
@@ -86,7 +94,40 @@ def process_image_upload(image_id: str) -> None:
 
         raw_bytes = obj["Body"].read()
 
-        pil_image = Image.open(BytesIO(raw_bytes)).convert("RGB")
+        source_image = Image.open(BytesIO(raw_bytes))
+
+        # -------------------------
+        # Screening (ORDER IS CRITICAL)
+        # -------------------------
+        # Both of these read the image as the user actually shot it:
+        #   - EXIF must come off `source_image` before .convert("RGB"),
+        #     which does not carry metadata onto the new image, and long
+        #     before process_image()'s strip_exif() discards it for good.
+        #   - Sharpness must be measured before process_image() runs its
+        #     denoise → sharpen chain, or we'd be grading our own filter
+        #     and every upload would look acceptably sharp.
+        exif_report = read_exif(source_image)
+        quality_report = analyze_image(source_image)
+
+        pil_image = source_image.convert("RGB")
+
+        # Bail on unusable photos before paying for an R2 write and a
+        # Vision call. Rejected uploads keep status="ready" semantics out
+        # of it entirely — they never become visible.
+        if not quality_report.acceptable:
+            image.status = "failed"
+            image.moderation_status = MOD_REJECTED
+            image.moderation_reason = quality_report.rejection_reason
+            image.quality_score = quality_report.quality_score
+            image.blur_score = quality_report.blur_score
+            image.is_approved = False
+            image.error_message = f"Rejected: {quality_report.rejection_reason}"
+            db.commit()
+            logger.info(
+                "image_upload_rejected image_id=%s reason=%s blur=%.1f",
+                image.id, quality_report.rejection_reason, quality_report.blur_score,
+            )
+            return
 
         # -------------------------
         # Process images
@@ -154,6 +195,36 @@ def process_image_upload(image_id: str) -> None:
         image.processing_version = CURRENT_PROCESSING_VERSION
         image.error_message = None
         image.confidence = _USER_UPLOAD_CONFIDENCE
+
+        # -------------------------
+        # Moderation decision
+        # -------------------------
+        # Runs here rather than earlier because the safety scan needs a
+        # publicly reachable URL, which only exists once the processed file
+        # is in R2. The local checks computed above are handed in so they
+        # aren't recomputed.
+        decision = screen_upload(
+            db,
+            image=image,
+            original=source_image,
+            public_url=image.url,
+            quality=quality_report,
+            exif=exif_report,
+        )
+        apply_decision(image, decision)
+
+        if not decision.is_publishable:
+            # Held or rejected: keep it out of every read path. Nothing
+            # queries hidden images for the gallery, the feed card, or the
+            # map pin, so this is inert until a human resolves it.
+            image.is_primary = False
+            image.visibility_status = VISIBILITY_HIDDEN
+            db.commit()
+            logger.info(
+                "image_upload_withheld image_id=%s status=%s reason=%s",
+                image.id, decision.status, decision.reason,
+            )
+            return
 
         # A user-uploaded photo defaults to is_primary=False,
         # visibility_status="gallery_only" (PlaceImage's column defaults),

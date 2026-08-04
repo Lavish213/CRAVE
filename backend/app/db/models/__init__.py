@@ -60,6 +60,9 @@ from .user_follow import UserFollow
 from .place_ranking import PlaceRanking
 from .activity_event import ActivityEvent
 
+# ----- Moderation Layer -----
+from .image_report import ImageReport
+
 
 # ---------------------------------------------------------
 # EXPORTS (STRICT + COMPLETE)
@@ -116,4 +119,7 @@ __all__ = [
     "UserFollow",
     "PlaceRanking",
     "ActivityEvent",
+
+    # Moderation
+    "ImageReport",
 ]

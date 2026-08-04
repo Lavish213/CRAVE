@@ -20,6 +20,7 @@ actual resize/hash/dedup code path is genuinely exercised, not stubbed.
 from __future__ import annotations
 
 import io
+import random
 import sys
 import uuid
 from pathlib import Path
@@ -28,7 +29,7 @@ from unittest.mock import MagicMock, patch
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import pytest
-from PIL import Image
+from PIL import Image, ImageDraw
 
 from app.db.session import SessionLocal
 from app.db.models.city import City
@@ -83,8 +84,27 @@ def _make_pending_upload(db, place, **overrides) -> PlaceImage:
 
 
 def _jpeg_bytes(color=(200, 100, 50)) -> bytes:
+    """
+    A plausible photo: large enough and detailed enough to clear the
+    upload screening in app/services/images/upload_moderation.py.
+
+    This used to be a 64x64 flat colour swatch, which screening correctly
+    rejects on two counts — under MIN_DIMENSION, and a featureless image
+    has essentially zero Laplacian variance so it reads as fully blurred.
+    A fixture that the real pipeline would throw out can't stand in for a
+    successful upload, so it draws actual edge detail instead.
+    """
+    img = Image.new("RGB", (900, 900), color=color)
+    draw = ImageDraw.Draw(img)
+    rng = random.Random(1234)
+    for i in range(0, 900, 18):
+        draw.line([(i, 0), (i, 900)], fill=(20, 20, 20), width=4)
+    for _ in range(140):
+        x, y = rng.randint(0, 840), rng.randint(0, 840)
+        draw.rectangle([x, y, x + rng.randint(12, 55), y + rng.randint(12, 55)],
+                       outline=(250, 250, 250), width=3)
     buf = io.BytesIO()
-    Image.new("RGB", (64, 64), color=color).save(buf, format="JPEG")
+    img.save(buf, format="JPEG", quality=92)
     return buf.getvalue()
 
 

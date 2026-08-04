@@ -50,6 +50,9 @@ from app.db.models.user_follow import UserFollow  # noqa: F401
 from app.db.models.place_ranking import PlaceRanking  # noqa: F401
 from app.db.models.activity_event import ActivityEvent  # noqa: F401
 
+# Moderation
+from app.db.models.image_report import ImageReport  # noqa: F401
+
 
 # --------------------------------------------------
 # Alembic Config

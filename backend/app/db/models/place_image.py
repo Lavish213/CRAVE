@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+from datetime import datetime
 from uuid import uuid4
 
 from sqlalchemy import (
     BigInteger,
     Boolean,
+    DateTime,
     Float,
     ForeignKey,
     Index,
@@ -176,6 +178,51 @@ class PlaceImage(Base, TimestampMixin):
     phash: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
 
     error_message: Mapped[str | None] = mapped_column(String(500), nullable=True)
+
+    # --------------------------------------------------
+    # MODERATION (see app/services/images/upload_moderation.py)
+    # --------------------------------------------------
+    # Distinct from `status` above, which tracks the processing lifecycle
+    # (pending/processing/ready/failed). An upload can process perfectly
+    # and still be withheld from display. Scraped/legacy images default to
+    # "approved" — they never went through user upload.
+    moderation_status: Mapped[str] = mapped_column(
+        String(24),
+        nullable=False,
+        default="approved",
+        server_default="approved",
+        index=True,
+    )
+
+    # Why it was rejected or held, e.g. "too_blurry", "safety_adult",
+    # "unscanned_new_contributor", "user_reported".
+    moderation_reason: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
+    # Variance of the Laplacian, measured on the ORIGINAL bytes before the
+    # processing pipeline sharpens them. Kept raw (not just folded into
+    # quality_score) so thresholds can be retuned against real data later
+    # without re-downloading every image.
+    blur_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+    # EXIF GPS placed this photo at the establishment it was uploaded to.
+    # Corroboration of a real visit, never a requirement — most photos
+    # legitimately carry no GPS at all.
+    gps_verified: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("0"),
+    )
+
+    # Whether SafeSearch actually ran. False means "not checked", which is
+    # different from "checked and clean" — the moderation policy treats
+    # them differently.
+    safety_scanned: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("0"),
+    )
+
+    reviewed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True,
+    )
+
+    reviewed_by: Mapped[str | None] = mapped_column(String(128), nullable=True)
 
     # Supabase user id of the uploader. Nullable — legacy/scraped images have
     # no uploader. Not exposed on any public API response.

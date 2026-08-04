@@ -72,6 +72,10 @@ def get_place_detail(
 
     seen = set()
     image_urls: List[str] = []
+    # Index-aligned with image_urls. The client needs a stable id to report
+    # a specific photo (see /moderation/images/{id}/report) — a proxied URL
+    # is not one.
+    image_ids: List[str] = []
 
     for img in gallery:
         raw = img.url
@@ -81,6 +85,7 @@ def get_place_detail(
         proxied = _to_proxy_url(raw)
         if proxied:
             image_urls.append(proxied)
+            image_ids.append(img.id)
 
     # No image = null; UI handles gracefully
 
@@ -139,6 +144,7 @@ def get_place_detail(
         "website": place.website or None,
         "grubhub_url": place.grubhub_url or None,
         "images": image_urls,
+        "image_ids": image_ids,
         "primary_image_url": image_urls[0] if image_urls else None,
         # category: first category name for display; full list in categories
         "category": category_names[0] if category_names else None,
