@@ -50,16 +50,28 @@ jobs:
           cache: "pip"
           cache-dependency-path: backend/requirements.txt
 
-      - name: Root requirements.txt actually resolves (Railway's real build entry point)
-        # Railway's build runs `pip install -r requirements.txt` from the
-        # REPO ROOT, not backend/requirements.txt — see that file's own
-        # header comment. Every other step in this job installs from
-        # backend/requirements-dev.txt, which is why this exact drift (root
-        # file missing packages backend/requirements.txt has) got past CI
-        # silently, twice. --dry-run only resolves the dependency graph, it
-        # doesn't install anything into this job's environment.
+      - name: Railway's real install command still resolves
+        # Not "pip install -r requirements.txt from repo root" — that was
+        # this repo's own previous (wrong) assumption, and collapsing root
+        # requirements.txt to `-r backend/requirements.txt` on that belief
+        # caused an actual production outage: Railway's Railpack builder
+        # copies only the top-level requirements.txt into the build context
+        # before installing, it doesn't resolve `-r` references first, so
+        # pip couldn't find backend/requirements.txt at that point. The real
+        # install command now lives in railpack.json — this step asserts
+        # that file still says what we think it says, and that the path it
+        # points at still resolves, so this can't silently drift a third
+        # time. --dry-run only resolves the dependency graph, it doesn't
+        # install anything into this job's environment.
         working-directory: ${{ github.workspace }}
-        run: pip install --dry-run -r requirements.txt
+        run: |
+          python3 -c "
+          import json
+          cmd = json.load(open('railpack.json'))['steps']['install']['commands'][0]
+          expected = 'pip install -r backend/requirements.txt'
+          assert cmd == expected, f'railpack.json install command changed: {cmd!r}'
+          "
+          pip install --dry-run -r backend/requirements.txt
 
       - name: Install dependencies
         # requirements-dev.txt pulls in requirements.txt plus pytest (and

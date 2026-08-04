@@ -1,27 +1,25 @@
-# CRAVE backend — Railway build entry point.
+# CRAVE backend — NOT Railway's build entry point, despite this file's
+# previous header claiming otherwise. That claim was wrong and caused a
+# real production outage: Railway's Railpack builder auto-detects Python
+# and, as an optimization, copies ONLY this top-level requirements.txt
+# into the build context before running `pip install -r requirements.txt`
+# — it does not resolve `-r` references to other files first. Collapsing
+# this file to `-r backend/requirements.txt` (the previous fix for a real
+# drift problem — see git history) made pip try to open
+# /app/backend/requirements.txt, which hadn't been copied into the build
+# context yet at that point, and every deploy failed with "No such file
+# or directory" until this was caught from an actual Railway build log,
+# not local testing (a local `pip install --dry-run` from repo root has
+# the whole filesystem present and can't reproduce Railway's staged copy
+# order).
 #
-# Railway's build runs `pip install -r requirements.txt` from the repo
-# root (before `cd backend` in the deploy start command — see
-# railway.toml), so THIS file, not backend/requirements.txt, is what
-# actually gets installed into the deployed container.
+# The actual install command Railway runs is now pinned explicitly in
+# railpack.json at the repo root, which references backend/requirements.txt
+# directly with no indirection through this file to get confused about.
 #
-# This used to duplicate backend/requirements.txt's full contents with a
-# comment instructing whoever edits one to also edit the other by hand.
-# That already drifted out of sync twice: first missing pyjwt/redis/boto3
-# and carrying an impossible "starlette>=1.0.0" constraint, then missing
-# playwright/pdfminer.six/sentry-sdk after a later pass added them to
-# backend/requirements.txt only. The second drift was worse than the
-# first — sentry-sdk is imported unguarded at module level in
-# app/main.py the moment SENTRY_DSN is set, so that specific gap wasn't
-# a silently-degraded feature like the other two, it was a total prod
-# outage waiting for someone to configure error monitoring, which is
-# the natural next step main.py's own comment invites.
-#
-# Neither drift was ever visible in CI: ci.yml only ever installs
-# backend/requirements-dev.txt from the backend/ working directory,
-# never this file, so nothing exercises the exact dependency set Railway
-# actually deploys with.
-#
-# A single line eliminates the class of bug rather than re-fixing today's
-# instance of it — there is now nothing here to keep in sync by hand.
+# This file still exists for local convenience — `pip install -r
+# requirements.txt` from repo root on a normal (non-staged) filesystem
+# works fine and picks up backend/requirements.txt correctly, since the
+# whole repo is already present on disk. Just don't assume this is what
+# Railway itself installs from — check railpack.json for that.
 -r backend/requirements.txt
