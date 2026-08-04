@@ -17,6 +17,7 @@ import pytest
 
 from app.config.settings import settings
 from app.db.session import SessionLocal
+from app.db.models.category import Category, CategoryType
 from app.db.models.city import City
 from app.db.models.place import Place
 from app.db.models.place_ranking import PlaceRanking, TIER_SCORE_BANDS
@@ -65,6 +66,20 @@ def _seed_ranking(db, *, user_id, place_id, tier, score):
     db.add(r)
     db.commit()
     return r
+
+
+def _make_cuisine(db, name):
+    slug = f"{name}-{uuid.uuid4().hex[:8]}"
+    cat = Category(slug=slug, name=slug, type=CategoryType.cuisine)
+    db.add(cat)
+    db.commit()
+    return cat
+
+
+def _tag(db, place, *categories):
+    place.categories = list(categories)
+    db.add(place)
+    db.commit()
 
 
 # ---------------------------------------------------------------------------
@@ -176,6 +191,91 @@ def test_split_decision_lands_new_place_in_the_middle(db, city):
     assert result["status"] == "ranked"
     assert 7.0 < result["ranking"].rank_score < 8.0
     assert result["ranking"].rank_score == pytest.approx(7.5)
+
+
+# ---------------------------------------------------------------------------
+# Comparisons are scoped to same-cuisine places — Beli's most-cited flaw
+# (forcing a bagel shop against a steakhouse) is the thing this avoids.
+# ---------------------------------------------------------------------------
+
+def test_new_place_never_compared_against_a_different_cuisine(db, city):
+    bbq = _make_cuisine(db, "bbq")
+    ethiopian = _make_cuisine(db, "ethiopian")
+    existing_bbq, existing_eth, new_bbq = _make_places(db, city, 3)
+    _tag(db, existing_bbq, bbq)
+    _tag(db, existing_eth, ethiopian)
+    _tag(db, new_bbq, bbq)
+
+    _seed_ranking(db, user_id="alice", place_id=existing_bbq.id, tier="liked", score=8.0)
+    _seed_ranking(db, user_id="alice", place_id=existing_eth.id, tier="liked", score=9.5)
+
+    result = ranking_service.start_ranking(db, user_id="alice", place_id=new_bbq.id, tier="liked")
+    # Only one same-cuisine (BBQ) place exists — the Ethiopian one, despite
+    # outscoring it, must never be offered as the opponent.
+    assert result["opponent_place_id"] == existing_bbq.id
+
+
+def test_first_place_of_a_new_cuisine_skips_comparison_entirely(db, city):
+    bbq = _make_cuisine(db, "bbq")
+    ethiopian = _make_cuisine(db, "ethiopian")
+    existing_bbq, new_eth = _make_places(db, city, 2)
+    _tag(db, existing_bbq, bbq)
+    _tag(db, new_eth, ethiopian)
+
+    _seed_ranking(db, user_id="alice", place_id=existing_bbq.id, tier="liked", score=8.0)
+
+    # Tier is non-empty (has a BBQ place), but no Ethiopian place exists yet
+    # in it — should place immediately, same as an empty tier, not force a
+    # cross-cuisine comparison against the BBQ place.
+    result = ranking_service.start_ranking(db, user_id="alice", place_id=new_eth.id, tier="liked")
+    assert result["status"] == "ranked"
+    lo, hi = TIER_SCORE_BANDS["liked"]
+    assert result["ranking"].rank_score == pytest.approx((lo + hi) / 2)
+
+
+def test_uncategorized_place_falls_back_to_comparing_against_the_whole_tier(db, city):
+    # No categories tagged at all (the common case for older/uncategorized
+    # data) — must not silently stop comparing just because there's no
+    # cuisine info to scope by.
+    existing, new = _make_places(db, city, 2)
+    _seed_ranking(db, user_id="alice", place_id=existing.id, tier="liked", score=8.0)
+
+    result = ranking_service.start_ranking(db, user_id="alice", place_id=new.id, tier="liked")
+    assert result["status"] == "comparing"
+    assert result["opponent_place_id"] == existing.id
+
+
+# ---------------------------------------------------------------------------
+# "skip" — the escape hatch for a comparison the user has no opinion on.
+# ---------------------------------------------------------------------------
+
+def test_skip_converges_immediately_next_to_the_opponent(db, city):
+    a, b, new = _make_places(db, city, 3)
+    _seed_ranking(db, user_id="alice", place_id=a.id, tier="liked", score=7.0)
+    _seed_ranking(db, user_id="alice", place_id=b.id, tier="liked", score=8.0)
+
+    result = ranking_service.start_ranking(db, user_id="alice", place_id=new.id, tier="liked")
+    assert result["status"] == "comparing"
+
+    result = ranking_service.submit_comparison(
+        db, token=result["comparison_token"], winner="skip",
+    )
+    assert result["status"] == "ranked"
+    # Landed adjacent to whichever place it was asked to skip on, not
+    # pushed all the way to the top or bottom of the tier.
+    assert TIER_SCORE_BANDS["liked"][0] < result["ranking"].rank_score < TIER_SCORE_BANDS["liked"][1]
+
+
+def test_skip_is_a_valid_winner_value(db, city):
+    existing, new = _make_places(db, city, 2)
+    _seed_ranking(db, user_id="alice", place_id=existing.id, tier="liked", score=8.0)
+    result = ranking_service.start_ranking(db, user_id="alice", place_id=new.id, tier="liked")
+
+    # Must not raise — "skip" is accepted alongside "new"/"opponent".
+    result = ranking_service.submit_comparison(
+        db, token=result["comparison_token"], winner="skip",
+    )
+    assert result["status"] == "ranked"
 
 
 # ---------------------------------------------------------------------------

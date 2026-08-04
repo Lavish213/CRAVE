@@ -112,7 +112,7 @@ export default function RankPlaceScreen() {
     }
   };
 
-  const handleChoose = async (winner: 'new' | 'opponent') => {
+  const handleChoose = async (winner: 'new' | 'opponent' | 'skip') => {
     if (!token || busy) return;
     setBusy(true);
     setError(null);
@@ -157,9 +157,9 @@ export default function RankPlaceScreen() {
     return (
       <View style={styles.container}>
         <View style={styles.doneWrap}>
-          <View style={[styles.scoreRing, { borderColor: tierColor(result.tier) }]}>
+          <View style={styles.scoreBlock}>
             <Text style={styles.scoreValue}>{formatScore(result.rank_score)}</Text>
-            <Text style={styles.scoreOutOf}>out of 10</Text>
+            <Text style={styles.scoreOutOf}>OUT OF 10</Text>
           </View>
 
           <Text style={styles.doneName}>{place.name}</Text>
@@ -232,6 +232,16 @@ export default function RankPlaceScreen() {
             onChoose={() => handleChoose('opponent')}
             disabled={busy}
           />
+
+          <TouchableOpacity
+            style={styles.skipBtn}
+            onPress={() => handleChoose('skip')}
+            disabled={busy}
+            accessibilityRole="button"
+            accessibilityLabel="Can't decide"
+          >
+            <Text style={styles.skipBtnText}>Can't decide — too close to call</Text>
+          </TouchableOpacity>
         </View>
 
         {busy ? (
@@ -379,6 +389,13 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     letterSpacing: 1,
   },
+  skipBtn: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: Spacing.sm,
+    minHeight: 40,
+  },
+  skipBtnText: { color: Colors.textMuted, fontSize: 13, fontWeight: '600' },
   busyOverlay: {
     ...StyleSheet.absoluteFillObject,
     alignItems: 'center',
@@ -394,17 +411,18 @@ const styles = StyleSheet.create({
     padding: Spacing.xl,
     gap: Spacing.sm,
   },
-  scoreRing: {
-    width: 148,
-    height: 148,
-    borderRadius: Radius.full,
-    borderWidth: 5,
+  scoreBlock: {
     alignItems: 'center',
-    justifyContent: 'center',
     marginBottom: Spacing.lg,
   },
-  scoreValue: { color: Colors.text, fontSize: 46, fontWeight: '900' },
-  scoreOutOf: { color: Colors.textMuted, fontSize: 12, marginTop: -4 },
+  scoreValue: { color: Colors.text, fontSize: 56, fontWeight: '800', lineHeight: 60 },
+  scoreOutOf: {
+    color: Colors.textMuted,
+    fontSize: 11,
+    fontWeight: '600',
+    letterSpacing: 0.8,
+    marginTop: 6,
+  },
   doneName: { color: Colors.text, fontSize: 22, fontWeight: '800', textAlign: 'center' },
   doneTier: { fontSize: 15, fontWeight: '700' },
   doneBody: {

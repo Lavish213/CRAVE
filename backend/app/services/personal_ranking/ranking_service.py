@@ -6,6 +6,26 @@ answer a handful of "which was better" pairwise comparisons that binary-
 insert the new place into your existing ranked list for that tier. The
 final score is interpolated from where it lands, not assigned directly.
 
+Two deviations from Beli's literal mechanic, both driven by its own most
+common user complaint (documented across app-store reviews and design
+critiques): forcing a comparison between two places that aren't actually
+alike — a bagel shop against a steakhouse — reads as unfair and makes the
+resulting score feel wrong, and users specifically ask to opt out of a
+comparison they don't have a real opinion on.
+
+  1. Comparisons are scoped to places sharing a cuisine-type category.
+     A new ranking only ever competes against same-cuisine places already
+     in that tier; if this is the first place of that cuisine in the
+     tier, it's placed at the tier's band midpoint with zero comparisons,
+     the same as being the first entry in the tier at all. This means
+     rank_score is a same-cuisine ordering mapped onto the tier's band,
+     not a strict cross-cuisine total order — a deliberate trade: Beli's
+     unified list is the thing users say feels unfair.
+  2. "skip" is a third valid comparison outcome (alongside "new" and
+     "opponent"), for "I can't call this one." It converges the search at
+     the current midpoint instead of continuing to narrow — landing the
+     new place right next to the opponent rather than forcing a verdict.
+
 Session state between comparison rounds is a signed, short-lived JWT (not
 a DB row) carrying the binary-search bounds — nothing to clean up, and it
 can't be tampered with client-side since it's HMAC-signed with the app's
@@ -26,6 +46,7 @@ import jwt
 from sqlalchemy.orm import Session
 
 from app.config.settings import settings
+from app.db.models.category import Category, CategoryType
 from app.db.models.place import Place
 from app.db.models.place_ranking import (
     TIER_SCORE_BANDS,
@@ -35,19 +56,28 @@ from app.db.models.place_ranking import (
 
 _TOKEN_ALGORITHM = "HS256"
 _TOKEN_TTL_SECONDS = 15 * 60
+_VALID_WINNERS = ("new", "opponent", "skip")
 
 
 class RankingError(ValueError):
     pass
 
 
-def _tier_list(db: Session, *, user_id: str, tier: str) -> list[PlaceRanking]:
-    return (
-        db.query(PlaceRanking)
-        .filter(PlaceRanking.user_id == user_id, PlaceRanking.tier == tier)
-        .order_by(PlaceRanking.rank_score.asc())
-        .all()
+def _cuisine_category_ids(place: Place) -> list[str]:
+    return sorted({c.id for c in place.categories if c.type == CategoryType.cuisine})
+
+
+def _tier_list(
+    db: Session, *, user_id: str, tier: str, category_ids: Optional[list[str]] = None
+) -> list[PlaceRanking]:
+    query = db.query(PlaceRanking).filter(
+        PlaceRanking.user_id == user_id, PlaceRanking.tier == tier
     )
+    if category_ids:
+        query = query.join(Place, PlaceRanking.place_id == Place.id).filter(
+            Place.categories.any(Category.id.in_(category_ids))
+        )
+    return query.order_by(PlaceRanking.rank_score.asc()).all()
 
 
 def _sign_state(payload: dict) -> str:
@@ -113,7 +143,8 @@ def start_ranking(
     if tier not in VALID_TIERS:
         raise RankingError(f"tier must be one of {sorted(VALID_TIERS)}")
 
-    if not db.query(Place.id).filter(Place.id == place_id).first():
+    place = db.query(Place).filter(Place.id == place_id).one_or_none()
+    if not place:
         raise RankingError("place not found")
 
     if db.query(PlaceRanking.id).filter(
@@ -123,10 +154,12 @@ def start_ranking(
             "place already ranked — DELETE the existing ranking first to re-rank it"
         )
 
-    tier_list = _tier_list(db, user_id=user_id, tier=tier)
+    category_ids = _cuisine_category_ids(place)
+    tier_list = _tier_list(db, user_id=user_id, tier=tier, category_ids=category_ids)
 
     if not tier_list:
-        # First entry in this tier — nothing to compare against yet.
+        # First entry in this tier (or first of this cuisine within the
+        # tier) — nothing comparable to compare against yet.
         score = (TIER_SCORE_BANDS[tier][0] + TIER_SCORE_BANDS[tier][1]) / 2.0
         ranking = _create_ranking(
             db, user_id=user_id, place_id=place_id, tier=tier, score=score,
@@ -141,6 +174,7 @@ def start_ranking(
 
     token = _sign_state({
         "user_id": user_id, "place_id": place_id, "tier": tier,
+        "category_ids": category_ids,
         "lo": lo, "hi": hi,
         "visited_at": visited_at.isoformat() if visited_at else None,
         "note": note, "tags": tags,
@@ -151,8 +185,8 @@ def start_ranking(
 def submit_comparison(
     db: Session, *, token: str, winner: str, expected_user_id: Optional[str] = None
 ) -> dict:
-    if winner not in ("new", "opponent"):
-        raise RankingError("winner must be 'new' or 'opponent'")
+    if winner not in _VALID_WINNERS:
+        raise RankingError(f"winner must be one of {_VALID_WINNERS}")
 
     state = _verify_state(token)
     user_id = state["user_id"]
@@ -161,9 +195,10 @@ def submit_comparison(
     if expected_user_id is not None and user_id != expected_user_id:
         raise RankingError("this comparison token belongs to a different user")
     tier = state["tier"]
+    category_ids = state.get("category_ids") or []
     lo, hi = state["lo"], state["hi"]
 
-    tier_list = _tier_list(db, user_id=user_id, tier=tier)
+    tier_list = _tier_list(db, user_id=user_id, tier=tier, category_ids=category_ids)
     # Defensive clamp — see concurrency note in the module docstring.
     hi = min(hi, len(tier_list))
     lo = min(lo, hi)
@@ -172,14 +207,20 @@ def submit_comparison(
 
     if winner == "new":
         lo = mid + 1
-    else:
+    elif winner == "opponent":
         hi = mid
+    else:
+        # "skip" ("I can't call this one") converges right here instead of
+        # narrowing further — the new place lands next to this opponent
+        # rather than the flow forcing a verdict neither side earned.
+        lo = hi = mid
 
     if lo < hi:
         next_mid = (lo + hi) // 2
         opponent = tier_list[next_mid]
         next_token = _sign_state({
             "user_id": user_id, "place_id": place_id, "tier": tier,
+            "category_ids": category_ids,
             "lo": lo, "hi": hi,
             "visited_at": state.get("visited_at"), "note": state.get("note"),
             "tags": state.get("tags"),

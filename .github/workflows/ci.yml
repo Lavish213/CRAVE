@@ -50,6 +50,17 @@ jobs:
           cache: "pip"
           cache-dependency-path: backend/requirements.txt
 
+      - name: Root requirements.txt actually resolves (Railway's real build entry point)
+        # Railway's build runs `pip install -r requirements.txt` from the
+        # REPO ROOT, not backend/requirements.txt — see that file's own
+        # header comment. Every other step in this job installs from
+        # backend/requirements-dev.txt, which is why this exact drift (root
+        # file missing packages backend/requirements.txt has) got past CI
+        # silently, twice. --dry-run only resolves the dependency graph, it
+        # doesn't install anything into this job's environment.
+        working-directory: ${{ github.workspace }}
+        run: pip install --dry-run -r requirements.txt
+
       - name: Install dependencies
         # requirements-dev.txt pulls in requirements.txt plus pytest (and
         # playwright/pdfminer, used by some extraction tests).
@@ -73,6 +84,23 @@ jobs:
           APP_ENV: dev
           DATABASE_URL: "sqlite:///./test_crave.db"
         run: pytest -q
+
+      - name: Migration chain has exactly one head
+        # Caught the hard way: a merge migration once left two heads
+        # sitting side by side for a while before anyone noticed, and
+        # `alembic upgrade head` is ambiguous (and fails) the moment that
+        # happens. `alembic heads` only inspects the versions/ directory —
+        # no live DB needed — so this is cheap enough to run on every push.
+        env:
+          APP_ENV: dev
+          DATABASE_URL: "sqlite:///./test_crave.db"
+        run: |
+          heads=$(python -m alembic heads | wc -l)
+          if [ "$heads" -ne 1 ]; then
+            echo "::error::Expected exactly 1 alembic head, found $heads. Add a merge migration."
+            python -m alembic heads
+            exit 1
+          fi
 
       - name: Dependency vulnerability scan
         # Runs via `pipx run` — an isolated venv, NOT the job's main

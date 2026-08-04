@@ -149,7 +149,7 @@ export async function startRanking(input: {
 
 export async function submitComparison(
   comparisonToken: string,
-  winner: 'new' | 'opponent',
+  winner: 'new' | 'opponent' | 'skip',
 ): Promise<RankingStep> {
   const { data } = await client.post<RankingStep>('/api/v1/rankings/compare', {
     comparison_token: comparisonToken,
