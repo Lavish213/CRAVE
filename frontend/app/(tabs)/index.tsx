@@ -119,10 +119,14 @@ export default function FeedScreen() {
   }
 
   useEffect(() => {
-    fetchCategories().then((cats) => {
-      if (__DEV__) console.log('[FEED] CATEGORIES_LOADED', { count: cats.length, names: cats.map((c) => c.name) });
-      setAvailableCategories(cats.map((c) => c.name));
-    });
+    fetchCategories()
+      .then((cats) => {
+        if (__DEV__) console.log('[FEED] CATEGORIES_LOADED', { count: cats.length, names: cats.map((c) => c.name) });
+        setAvailableCategories(cats.map((c) => c.name));
+      })
+      // Filter options are non-critical — a failure here shouldn't be an
+      // unhandled rejection, it should just leave the filter list empty.
+      .catch(() => setAvailableCategories([]));
   }, []);
 
   // Always populate the city list on mount — it's never persisted (only

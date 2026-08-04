@@ -245,9 +245,10 @@ export default function PlaceDetailScreen() {
   const handleDirections = () => {
     if (!place.lat || !place.lng) return;
     const mapsUrl = `maps://?q=${encodeURIComponent(place.name)}&ll=${place.lat},${place.lng}`;
-    Linking.canOpenURL(mapsUrl).then((ok) => {
-      Linking.openURL(ok ? mapsUrl : `https://maps.google.com/?q=${place.lat},${place.lng}`);
-    });
+    const webUrl = `https://maps.google.com/?q=${place.lat},${place.lng}`;
+    Linking.canOpenURL(mapsUrl)
+      .then((ok) => Linking.openURL(ok ? mapsUrl : webUrl))
+      .catch(() => toast("Couldn't open Maps."));
   };
 
   return (
@@ -345,7 +346,7 @@ export default function PlaceDetailScreen() {
             style={styles.actionBtn}
             onPress={() => {
               Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              Linking.openURL(place.website!);
+              Linking.openURL(place.website!).catch(() => toast("Couldn't open that website."));
             }}
             accessibilityLabel="Open website"
             accessibilityRole="link"
@@ -360,7 +361,7 @@ export default function PlaceDetailScreen() {
             style={styles.actionBtn}
             onPress={() => {
               Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              Linking.openURL(place.grubhub_url!);
+              Linking.openURL(place.grubhub_url!).catch(() => toast("Couldn't open that link."));
             }}
             accessibilityLabel="Order online"
             accessibilityRole="link"
@@ -511,7 +512,7 @@ export default function PlaceDetailScreen() {
                 style={styles.socialCard}
                 onPress={() => {
                   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  Linking.openURL(item.url);
+                  Linking.openURL(item.url).catch(() => toast("Couldn't open that post."));
                 }}
                 accessibilityRole="link"
                 accessibilityLabel={`Open ${item.source_type} post${item.author_name ? ` by ${item.author_name}` : ''}`}
