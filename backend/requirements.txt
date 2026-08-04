@@ -75,5 +75,5 @@ sentry-sdk[fastapi]>=2.0.0
 # blocked. playwright additionally needs its browser binary installed at
 # build time — see the deploy note in railway.toml — the pip package alone
 # is necessary but not sufficient.
-pdfminer.six>=20221105
+pdfminer.six>=20260107
 playwright>=1.44.0
