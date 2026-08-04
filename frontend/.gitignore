@@ -30,8 +30,13 @@ yarn-error.*
 .DS_Store
 *.pem
 
-# local env files
-.env*.local
+# local env files — .env*.local alone doesn't match a bare .env, which
+# is exactly the file `expo start` reads GOOGLE_MAPS_ANDROID_API_KEY from
+# locally (see app.config.js). .env.example stays tracked deliberately.
+.env
+.env.local
+.env.*.local
+!.env.example
 
 # typescript
 *.tsbuildinfo
