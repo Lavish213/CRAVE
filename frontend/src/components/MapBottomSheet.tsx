@@ -17,7 +17,7 @@ import { Animated, PanResponder, StyleSheet, Text, TouchableOpacity, View } from
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import { Colors, Radius, Spacing } from '../constants/colors';
+import { Colors, Radius, Shadows, Spacing } from '../constants/colors';
 import { TierBadge } from './TierBadge';
 import { TIERS } from '../utils/scoring';
 import type { TierKey } from '../utils/scoring';
@@ -172,11 +172,7 @@ const styles = StyleSheet.create({
     paddingBottom: Spacing.xxl,
     borderTopWidth: 1,
     borderColor: Colors.border,
-    shadowColor: '#000',
-    shadowOpacity: 0.4,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: -4 },
-    elevation: 16,
+    ...Shadows.sheet,
   },
   grabber: {
     alignSelf: 'center',

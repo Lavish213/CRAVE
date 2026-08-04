@@ -78,8 +78,20 @@ export default function RootLayout() {
           }}
         >
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-          <Stack.Screen name="place/[id]" options={{ title: '' }} />
-          <Stack.Screen name="rank/[placeId]" options={{ title: 'Rank this place' }} />
+          {/* A true shared-element transition (the card's photo morphing
+              into the hero image) was researched and deliberately skipped:
+              react-native-reanimated's shared-element API has documented
+              crash reports specifically with expo-router (nested-stack and
+              Android back-navigation), needs an explicit opt-in flag on
+              Reanimated 4 (what this app runs), and there's no confirmed
+              crash monitoring live yet to catch it if it misbehaves for a
+              slice of users. `fade_from_bottom` is the safe middle ground —
+              fully supported by native-stack, no native risk — for the two
+              screens that are the actual product moments (opening a place,
+              starting to rank it) rather than the default slide-from-right
+              every push gets. */}
+          <Stack.Screen name="place/[id]" options={{ title: '', animation: 'fade_from_bottom' }} />
+          <Stack.Screen name="rank/[placeId]" options={{ title: 'Rank this place', animation: 'fade_from_bottom' }} />
           <Stack.Screen name="user/[id]" options={{ title: '' }} />
           <Stack.Screen name="profile-setup" options={{ title: 'Set up profile' }} />
           <Stack.Screen name="friends-feed" options={{ title: 'Friends' }} />

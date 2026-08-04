@@ -115,7 +115,7 @@ export default function SearchScreen() {
 
       {/* Error */}
       {searchError && !searchLoading && (
-        <ErrorState message="Search failed" onRetry={() => setDebouncedQuery(query)} />
+        <ErrorState message="Couldn't search right now." onRetry={() => setDebouncedQuery(query)} />
       )}
 
       {/* Trending empty state */}

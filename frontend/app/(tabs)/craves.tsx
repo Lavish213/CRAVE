@@ -18,6 +18,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
+import { SkeletonRowList } from '../../src/components/SkeletonCard';
 import { useCravesStore } from '../../src/stores/cravesStore';
 import { useToast } from '../../src/hooks/useToast';
 import { Colors, Spacing, Radius } from '../../src/constants/colors';
@@ -111,8 +112,8 @@ export default function CravesScreen() {
   // Loading initial saves
   if (savesLoading && saves.length === 0) {
     return (
-      <View style={styles.centered}>
-        <ActivityIndicator color={Colors.primary} size="large" />
+      <View style={styles.list}>
+        <SkeletonRowList count={4} />
       </View>
     );
   }
@@ -326,7 +327,6 @@ export default function CravesScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
-  centered: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: Colors.background },
   list: { padding: Spacing.md, gap: Spacing.sm, paddingBottom: Spacing.xxl },
   screenHeader: {
     flexDirection: 'row',

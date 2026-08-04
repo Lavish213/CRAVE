@@ -10,7 +10,7 @@
 // The comparison loop is driven entirely by the backend: each answer
 // POSTs the signed token back and gets either the next opponent or the
 // finished ranking. The client never computes a position itself.
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   ScrollView,
@@ -22,10 +22,13 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
+import * as Sharing from 'expo-sharing';
+import { captureRef } from 'react-native-view-shot';
 
 import { Colors, Radius, Spacing } from '../../src/constants/colors';
 import { ComparisonChoice } from '../../src/components/ComparisonChoice';
 import { ErrorState } from '../../src/components/ErrorState';
+import { ShareRankCard } from '../../src/components/ShareRankCard';
 import { fetchPlaceDetail, PlaceOut } from '../../src/api/places';
 import {
   RankTier,
@@ -61,6 +64,13 @@ export default function RankPlaceScreen() {
   // known ahead of time (it depends on how the binary search splits), so
   // showing "3 of 4" would be a guess. "Comparison 3" is honest.
   const [round, setRound] = useState(0);
+  // The opponent from the last comparison actually won (not skipped, not
+  // lost) — the backend doesn't persist comparison history, only the final
+  // position, so this is the one piece of "what did it beat" the share
+  // card can honestly show without inventing a stat the app doesn't track.
+  const [beatOpponentName, setBeatOpponentName] = useState<string | null>(null);
+  const [sharing, setSharing] = useState(false);
+  const shareCardRef = useRef<View>(null);
 
   useEffect(() => {
     if (!placeId) return;
@@ -116,6 +126,9 @@ export default function RankPlaceScreen() {
     if (!token || busy) return;
     setBusy(true);
     setError(null);
+    if (winner === 'new' && opponent) {
+      setBeatOpponentName(opponent.name);
+    }
     try {
       await applyStep(await submitComparison(token, winner));
     } catch (err: any) {
@@ -123,6 +136,22 @@ export default function RankPlaceScreen() {
       setError(detail ?? "Couldn't record that comparison.");
     } finally {
       setBusy(false);
+    }
+  };
+
+  const handleShare = async () => {
+    if (sharing) return;
+    setSharing(true);
+    try {
+      const uri = await captureRef(shareCardRef, { format: 'png', quality: 1 });
+      if (await Sharing.isAvailableAsync()) {
+        await Sharing.shareAsync(uri, { mimeType: 'image/png', dialogTitle: 'Share your ranking' });
+      }
+    } catch {
+      // Best-effort — a failed share shouldn't block anything else on this
+      // screen, there's nothing else useful to do with the error here.
+    } finally {
+      setSharing(false);
     }
   };
 
@@ -154,6 +183,8 @@ export default function RankPlaceScreen() {
   // Stage 3 — result
   // -------------------------------------------------------------------
   if (stage === 'done' && result) {
+    const areaName = place.address ? place.address.split(',').pop()?.trim() ?? null : null;
+
     return (
       <View style={styles.container}>
         <View style={styles.doneWrap}>
@@ -181,6 +212,23 @@ export default function RankPlaceScreen() {
           </TouchableOpacity>
 
           <TouchableOpacity
+            style={styles.shareBtn}
+            onPress={handleShare}
+            disabled={sharing}
+            accessibilityRole="button"
+            accessibilityLabel="Share this ranking"
+          >
+            {sharing ? (
+              <ActivityIndicator color={Colors.text} size="small" />
+            ) : (
+              <>
+                <Ionicons name="share-outline" size={16} color={Colors.text} />
+                <Text style={styles.shareBtnText}>Share</Text>
+              </>
+            )}
+          </TouchableOpacity>
+
+          <TouchableOpacity
             style={styles.secondaryBtn}
             onPress={() => router.back()}
             accessibilityRole="button"
@@ -188,6 +236,21 @@ export default function RankPlaceScreen() {
           >
             <Text style={styles.secondaryBtnText}>Done</Text>
           </TouchableOpacity>
+        </View>
+
+        {/* Off-screen (not display:none — that would skip layout entirely
+            and captureRef needs a real, measured view to snapshot). */}
+        <View style={styles.shareCardOffscreen} pointerEvents="none">
+          <ShareRankCard
+            ref={shareCardRef}
+            name={place.name}
+            category={place.category}
+            areaName={areaName}
+            imageUrl={place.primary_image_url ?? place.image}
+            score={result.rank_score}
+            tier={result.tier}
+            beatName={beatOpponentName}
+          />
         </View>
       </View>
     );
@@ -444,6 +507,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   primaryBtnText: { color: '#FFFFFF', fontSize: 15, fontWeight: '800' },
+  shareBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderRadius: Radius.pill,
+    minHeight: 46,
+    alignSelf: 'stretch',
+    marginTop: Spacing.sm,
+  },
+  shareBtnText: { color: Colors.text, fontSize: 14, fontWeight: '700' },
+  shareCardOffscreen: { position: 'absolute', top: 0, left: -9999 },
   secondaryBtn: {
     paddingHorizontal: Spacing.xl,
     paddingVertical: 12,

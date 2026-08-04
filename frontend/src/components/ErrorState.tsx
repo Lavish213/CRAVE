@@ -9,7 +9,7 @@ interface Props {
   onRetry?: () => void;
 }
 
-export function ErrorState({ message = 'Something went wrong', onRetry }: Props) {
+export function ErrorState({ message = "Couldn't load that.", onRetry }: Props) {
   return (
     <View style={styles.container}>
       <Ionicons name="cloud-offline-outline" size={40} color={Colors.textMuted} />

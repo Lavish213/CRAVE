@@ -9,7 +9,7 @@ import { PlaceOut } from '../api/places';
 import { getTier, formatPrice, getBadges } from '../utils/scoring';
 // formatPrice imported for fallback; normalized places already have place.price
 import { TierBadge } from './TierBadge';
-import { Colors, Spacing, Radius } from '../constants/colors';
+import { Colors, Spacing, Radius, Shadows } from '../constants/colors';
 
 const SAVE_HIT_SLOP = { top: 8, bottom: 8, left: 8, right: 8 } as const;
 const IMAGE_HEIGHT = 220;
@@ -45,8 +45,9 @@ export function PlaceCard({ place, onPress, onSave, saved, style }: Props) {
   const metaParts = [categoryLabel, price, distanceLabel].filter(Boolean);
 
   return (
+    <View style={[styles.shadowWrap, style]}>
     <TouchableOpacity
-      style={[styles.card, style]}
+      style={styles.card}
       onPress={() => {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
         onPress();
@@ -115,10 +116,19 @@ export function PlaceCard({ place, onPress, onSave, saved, style }: Props) {
         )}
       </View>
     </TouchableOpacity>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  // A shadow and `overflow: hidden` can't live on the same view — hidden
+  // clips the shadow along with everything else — so the shadow sits on
+  // this outer, unclipped wrapper and the actual rounded-corner clipping
+  // (for the image) stays on `card` beneath it.
+  shadowWrap: {
+    borderRadius: Radius.card,
+    ...Shadows.card,
+  },
   card: {
     backgroundColor: Colors.surface,
     borderRadius: Radius.card,

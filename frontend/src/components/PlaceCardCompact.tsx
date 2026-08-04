@@ -6,7 +6,7 @@ import { PlaceOut } from '../api/places';
 import { getTier, formatPrice, getBadges } from '../utils/scoring';
 // formatPrice imported for fallback; normalized places already have place.price
 import { TierBadge } from './TierBadge';
-import { Colors, Radius } from '../constants/colors';
+import { Colors, Radius, Shadows } from '../constants/colors';
 
 interface Props {
   place: PlaceOut;
@@ -28,8 +28,9 @@ export function PlaceCardCompact({ place, onPress, rightAction, style }: Props) 
   const metaParts = [categoryLabel, price, distanceLabel].filter(Boolean);
 
   return (
+    <View style={[styles.shadowWrap, style]}>
     <TouchableOpacity
-      style={[styles.row, style]}
+      style={styles.row}
       onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onPress(); }}
       activeOpacity={0.85}
       accessibilityRole="button"
@@ -69,10 +70,15 @@ export function PlaceCardCompact({ place, onPress, rightAction, style }: Props) 
       </View>
       {rightAction}
     </TouchableOpacity>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  shadowWrap: {
+    borderRadius: Radius.card,
+    ...Shadows.card,
+  },
   row: {
     flexDirection: 'row',
     gap: 12,

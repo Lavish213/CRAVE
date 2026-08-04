@@ -7,7 +7,6 @@
 // indistinguishable from the home tab.
 import React, { useCallback, useState } from 'react';
 import {
-  ActivityIndicator,
   FlatList,
   RefreshControl,
   StyleSheet,
@@ -21,6 +20,7 @@ import { useFocusEffect, useRouter } from 'expo-router';
 
 import { Colors, Radius, Spacing } from '../src/constants/colors';
 import { EmptyState } from '../src/components/EmptyState';
+import { SkeletonRowList } from '../src/components/SkeletonCard';
 import { ActivityEvent, fetchFriendsFeed } from '../src/api/social';
 import { formatScore, tierColor } from '../src/utils/rankScore';
 import { relativeTime } from '../src/utils/time';
@@ -54,8 +54,8 @@ export default function FriendsFeedScreen() {
 
   if (loading) {
     return (
-      <View style={styles.centered}>
-        <ActivityIndicator color={Colors.primary} size="large" />
+      <View style={styles.list}>
+        <SkeletonRowList count={5} avatar />
       </View>
     );
   }
@@ -159,12 +159,6 @@ export default function FriendsFeedScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
-  centered: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: Colors.background,
-  },
   list: { padding: Spacing.md, gap: Spacing.sm, paddingBottom: Spacing.xxl },
   row: {
     flexDirection: 'row',

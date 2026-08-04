@@ -3,7 +3,7 @@ import React, { useEffect, useRef } from 'react';
 import { Animated, StyleSheet, Text } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { useToast } from '../hooks/useToast';
-import { Colors } from '../constants/colors';
+import { Colors, Shadows } from '../constants/colors';
 
 export function ToastContainer() {
   const message = useToast((s) => s.message);
@@ -46,11 +46,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
     paddingVertical: 13,
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOpacity: 0.4,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 10,
+    ...Shadows.floating,
     zIndex: 9999,
   },
   text: { color: Colors.text, fontSize: 14, fontWeight: '600', textAlign: 'center' },

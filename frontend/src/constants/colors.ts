@@ -38,3 +38,43 @@ export const Radius = {
   pill: 20,
   full: 9999,
 } as const;
+
+// Elevation tiers — before this, every floating surface (map controls,
+// Toast, MapBottomSheet) hand-typed its own shadowColor/Opacity/Radius/
+// elevation with no shared logic, and cards (PlaceCard etc.) had no shadow
+// at all — just a 1px border on flat black, which is why they read as flat
+// cutouts rather than cards. These three tiers are the values already in
+// use across the app (map.tsx's controls, Toast, MapBottomSheet) given
+// names so new surfaces reuse a real tier instead of inventing a fourth
+// arbitrary one; `card` is the one genuinely new tier, for surfaces that
+// previously had none.
+export const Shadows = {
+  card: {
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 3,
+    elevation: 2,
+  },
+  control: {
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  floating: {
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4,
+    shadowRadius: 8,
+    elevation: 10,
+  },
+  sheet: {
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.4,
+    shadowRadius: 12,
+    elevation: 16,
+  },
+} as const;

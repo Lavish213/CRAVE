@@ -9,7 +9,6 @@
 // race you can actually place in.
 import React, { useCallback, useState } from 'react';
 import {
-  ActivityIndicator,
   FlatList,
   RefreshControl,
   StyleSheet,
@@ -23,6 +22,7 @@ import * as Haptics from 'expo-haptics';
 
 import { Colors, Radius, Spacing } from '../src/constants/colors';
 import { EmptyState } from '../src/components/EmptyState';
+import { SkeletonRowList } from '../src/components/SkeletonCard';
 import { LeaderboardRow, fetchLeaderboard } from '../src/api/social';
 import { useAuthStore } from '../src/stores/authStore';
 
@@ -87,8 +87,8 @@ export default function LeaderboardScreen() {
       </View>
 
       {loading ? (
-        <View style={styles.centered}>
-          <ActivityIndicator color={Colors.primary} size="large" />
+        <View style={styles.skeletonWrap}>
+          <SkeletonRowList count={7} avatar />
         </View>
       ) : rows.length === 0 ? (
         <EmptyState
@@ -172,7 +172,7 @@ export default function LeaderboardScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
-  centered: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  skeletonWrap: { padding: Spacing.md },
   toggle: {
     flexDirection: 'row',
     gap: Spacing.xs,

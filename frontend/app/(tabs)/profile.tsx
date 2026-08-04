@@ -10,7 +10,6 @@
 // their own tab — the same place every comparable app puts them.
 import React, { useCallback, useState } from 'react';
 import {
-  ActivityIndicator,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -26,6 +25,7 @@ import { Colors, Radius, Spacing } from '../../src/constants/colors';
 import { EmptyState } from '../../src/components/EmptyState';
 import { AuthSheet } from '../../src/components/AuthSheet';
 import { RankedPlaceRow } from '../../src/components/RankedPlaceRow';
+import { SkeletonRowList } from '../../src/components/SkeletonCard';
 import { useAuthStore } from '../../src/stores/authStore';
 import {
   Profile,
@@ -125,8 +125,8 @@ export default function ProfileScreen() {
 
   if (loading) {
     return (
-      <View style={styles.centered}>
-        <ActivityIndicator color={Colors.primary} size="large" />
+      <View style={styles.content}>
+        <SkeletonRowList count={4} />
       </View>
     );
   }
@@ -265,12 +265,6 @@ export default function ProfileScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
   content: { padding: Spacing.lg, paddingBottom: Spacing.xxl, gap: Spacing.lg },
-  centered: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: Colors.background,
-  },
 
   header: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md },
   avatar: { width: 64, height: 64, borderRadius: Radius.full, backgroundColor: Colors.surfaceElevated },

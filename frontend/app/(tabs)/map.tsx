@@ -7,7 +7,7 @@ import * as Haptics from 'expo-haptics';
 import { fetchMapGeoJSON, NormalizedMapFeature } from '../../src/api/map';
 import { useCityStore } from '../../src/stores/cityStore';
 import { useLocation } from '../../src/hooks/useLocation';
-import { Colors, Radius, Spacing } from '../../src/constants/colors';
+import { Colors, Radius, Shadows, Spacing } from '../../src/constants/colors';
 import { CitySelectorStrip } from '../../src/components/CitySelectorStrip';
 import { MapMarkerDot, MapClusterDot } from '../../src/components/MapMarker';
 import { MapBottomSheet } from '../../src/components/MapBottomSheet';
@@ -337,11 +337,7 @@ const styles = StyleSheet.create({
     borderColor: Colors.border,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 4,
+    ...Shadows.control,
   },
   mapBannerText: {
     color: Colors.textSecondary,
