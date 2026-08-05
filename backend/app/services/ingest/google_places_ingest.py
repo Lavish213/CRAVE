@@ -4,6 +4,7 @@ import logging
 import time
 from typing import Dict, List, Optional, Set
 
+from app.config.settings import settings
 from app.services.network.http_fetcher import fetch
 
 
@@ -122,6 +123,18 @@ class GoogleQuotaExhausted(RuntimeError):
     """
 
 
+class GooglePlacesBudgetExhausted(GoogleQuotaExhausted):
+    """
+    Self-imposed cap (Settings.google_places_max_calls_per_run), distinct
+    from GoogleQuotaExhausted's Google-reported OVER_QUERY_LIMIT/REQUEST_DENIED
+    cases — this fires before Google ever complains, to bound worst-case
+    billing from a single run (e.g. an oversized grid or a bad step_km).
+    Subclasses GoogleQuotaExhausted so it's caught by the same "abort the
+    whole run now" handling in scan_grid/search_nearby without duplicating
+    that logic.
+    """
+
+
 # Non-fatal statuses: proceed as normal (OK) or move on (no results for this
 # page/type, not an error).
 _OK_STATUSES = frozenset({"OK", "ZERO_RESULTS"})
@@ -156,8 +169,22 @@ class GooglePlacesIngest:
     MAX_QUOTA_RETRIES = 3
     QUOTA_BACKOFF_BASE_SECONDS = 2.0
 
-    def __init__(self, api_key: str) -> None:
+    def __init__(self, api_key: str, max_calls_per_run: Optional[int] = None) -> None:
         self.api_key = api_key
+        self.max_calls_per_run = (
+            max_calls_per_run
+            if max_calls_per_run is not None
+            else settings.google_places_max_calls_per_run
+        )
+        self._calls_made = 0
+
+    def _consume_call_budget(self) -> None:
+        self._calls_made += 1
+        if self.max_calls_per_run and self._calls_made > self.max_calls_per_run:
+            raise GooglePlacesBudgetExhausted(
+                f"google_places_max_calls_per_run={self.max_calls_per_run} "
+                f"exceeded (this run has made {self._calls_made} calls)"
+            )
 
     def search_nearby(self, *, lat: float, lng: float, radius_m: int = 150) -> List[Dict]:
         """
@@ -182,6 +209,7 @@ class GooglePlacesIngest:
                     "type": place_type,
                     "key": self.api_key,
                 }
+                self._consume_call_budget()
                 response = fetch(GOOGLE_PLACES_URL, method="GET", params=params)
 
                 if response.status_code != 200:
@@ -321,6 +349,7 @@ class GooglePlacesIngest:
                         if next_page_token:
                             params = {"pagetoken": next_page_token, "key": self.api_key}
 
+                        self._consume_call_budget()
                         response = fetch(GOOGLE_PLACES_URL, method="GET", params=params)
 
                         if response.status_code != 200:

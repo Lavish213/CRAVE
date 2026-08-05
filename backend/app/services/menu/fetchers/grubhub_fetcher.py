@@ -12,6 +12,21 @@ from urllib.parse import urlparse
 logger = logging.getLogger(__name__)
 
 
+class GrubhubCookiesExpired(RuntimeError):
+    """
+    Raised by _default_fetcher when Grubhub responds 401 to an authenticated
+    request, or when GRUBHUB_COOKIES is missing/unparseable — either way the
+    fix is the same (re-run scripts/grab_grubhub_cookies.py). Previously
+    both cases only ever printed to stdout and returned None, identical to
+    "this place just has no menu" to everything downstream (menu_orchestrator,
+    menu_worker, job_runs) — nobody could tell a stale cookie apart from a
+    genuinely menu-less place without reading raw worker stdout by hand.
+    fetch_grubhub_menu() catches this specifically to log it as one distinct,
+    greppable event (grubhub_cookies_expired) instead of the generic
+    grubhub_fetch_failed warning every other failure produces.
+    """
+
+
 FetchCallable = Callable[[str], Any]
 
 GRUBHUB_API_BASE = "https://api-gtm.grubhub.com/restaurant_gateway/feed"
@@ -269,8 +284,10 @@ def _default_fetcher(url: str, place: Any = None) -> Optional[Dict[str, Any]]:
             "Run: python backend/scripts/grab_grubhub_cookies.py",
             flush=True,
         )
-        logger.warning("grubhub_cookies_missing url=%s", url)
-        return None
+        raise GrubhubCookiesExpired(
+            "GRUBHUB_COOKIES env var missing or unparseable — "
+            "run: python backend/scripts/grab_grubhub_cookies.py"
+        )
 
     # ── 3. Perimeter-X ───────────────────────────────────────────────────────
     perimeter_x = _load_perimeter_x()
@@ -306,7 +323,10 @@ def _default_fetcher(url: str, place: Any = None) -> Optional[Dict[str, Any]]:
 
             if rest_resp.status_code == 401:
                 print("FAILURE: COOKIES_INVALID\nERROR: 401 — cookies expired.", flush=True)
-                return None
+                raise GrubhubCookiesExpired(
+                    f"Grubhub returned 401 for slug_id={slug_id} — cookies expired. "
+                    "Refresh via: python backend/scripts/grab_grubhub_cookies.py"
+                )
             if rest_resp.status_code == 403:
                 print("FAILURE: FETCH_BLOCKED\nERROR: 403 — PerimeterX block.", flush=True)
                 return None
@@ -385,6 +405,11 @@ def _default_fetcher(url: str, place: Any = None) -> Optional[Dict[str, Any]]:
             print("payload_valid=True", flush=True)
             return payload
 
+        except GrubhubCookiesExpired:
+            # Retrying with the same expired cookies would just 401 again on
+            # every remaining attempt — let it propagate to fetch_grubhub_menu
+            # instead of burning the retry loop and returning a plain None.
+            raise
         except Exception as exc:
             print(f"FAILURE: FETCH_BLOCKED\nERROR: {exc}", flush=True)
             logger.warning("grubhub_fetch_exception attempt=%s url=%s error=%s", attempt, url, exc)
@@ -416,6 +441,15 @@ def fetch_grubhub_menu(
 
     try:
         raw = fetcher(url) if fetcher is not None else _default_fetcher(url, place=place)
+    except GrubhubCookiesExpired as exc:
+        # Distinct, greppable, logger.error (not warning) — this needs a
+        # human to go refresh GRUBHUB_COOKIES, unlike every other reason
+        # fetch_grubhub_menu returns None (no menu, parser bug, timeout).
+        logger.error(
+            "grubhub_cookies_expired place_id=%s url=%s error=%s",
+            place_id, url, exc,
+        )
+        return None
     except Exception as exc:
         logger.warning(
             "grubhub_fetch_failed place_id=%s url=%s error=%s",

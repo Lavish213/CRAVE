@@ -89,6 +89,12 @@ class Settings(BaseSettings):
     # Set to e.g. "hello@yourcompany.com" or "https://yourapp.com/contact".
     nominatim_contact: str = ""
 
+    # Safety cap on total Google Places API calls made by a single
+    # GooglePlacesIngest run (search_nearby + scan_grid combined) — stops a
+    # bad grid/cell count or a runaway retry loop from silently running up
+    # billing. 0 disables the cap (unlimited).
+    google_places_max_calls_per_run: int = 2000
+
     # --------------------------------------------------
     # DERIVED PROPERTIES
     # --------------------------------------------------
