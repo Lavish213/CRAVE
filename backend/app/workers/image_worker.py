@@ -223,24 +223,56 @@ class ImageWorker:
         place_ids: Optional[List[str]],
     ) -> List[Place]:
 
-        stmt = select(Place).where(
+        base_stmt = select(Place).where(
             Place.is_active.is_(True),
         )
 
         if place_ids:
-            stmt = stmt.where(Place.id.in_(place_ids))
+            base_stmt = base_stmt.where(Place.id.in_(place_ids))
 
         if not force_refresh:
-            stmt = stmt.where(self._needs_image_work_clause())
-            stmt = stmt.where(Place.image_blocked.is_not(True))
+            base_stmt = base_stmt.where(self._needs_image_work_clause())
+            base_stmt = base_stmt.where(Place.image_blocked.is_not(True))
 
-        stmt = stmt.order_by(
+        priority_stmt = base_stmt.order_by(
             Place.rank_score.desc(),
             Place.confidence_score.desc(),
             Place.created_at.asc(),
-        ).limit(limit)
+        )
 
-        return list(db.execute(stmt).scalars().all())
+        # An explicit place list or a forced refresh means the caller wants
+        # exactly those places, in priority order — no fairness split.
+        if place_ids or force_refresh or limit < 2:
+            return list(db.execute(priority_stmt.limit(limit)).scalars().all())
+
+        # Reserve a slice of the batch for the oldest places that still need
+        # work, regardless of rank_score. Without this, a place with a
+        # naturally low rank_score (e.g. a small town with few signals) can
+        # be permanently outranked by every other place still needing image
+        # work — discovery keeps adding new, higher-signal candidates that
+        # refill the top of the rank_score-ordered queue, so a straight
+        # ORDER BY rank_score DESC LIMIT never reaches it. Confirmed in
+        # production: Lodi's 48 places sat at zero images across 622
+        # consecutive successful worker runs because none of them ever
+        # cracked the top `limit` by rank_score. Same starvation shape
+        # menu_worker.py's own comments warn about for its batch query.
+        starvation_reserve = max(1, limit // 5)
+        priority_limit = limit - starvation_reserve
+
+        priority_places = list(
+            db.execute(priority_stmt.limit(priority_limit)).scalars().all()
+        )
+        picked_ids = {p.id for p in priority_places}
+
+        fairness_stmt = base_stmt.order_by(Place.created_at.asc()).limit(
+            starvation_reserve + len(picked_ids)
+        )
+        fairness_places = [
+            p for p in db.execute(fairness_stmt).scalars().all()
+            if p.id not in picked_ids
+        ][:starvation_reserve]
+
+        return priority_places + fairness_places
 
     def _needs_image_work_clause(self):
         """
