@@ -128,7 +128,10 @@ class CraveItem(Base):
         String(36),
         ForeignKey("places.id", ondelete="SET NULL"),
         nullable=True,
-        index=True,
+        # Not index=True — already indexed via the explicit
+        # Index("ix_crave_items_matched_place_id", ...) in __table_args__
+        # above; the shorthand here was a redundant second (never-deployed)
+        # index.
     )
 
     match_confidence: Mapped[float | None] = mapped_column(
@@ -146,7 +149,6 @@ class CraveItem(Base):
         nullable=False,
         default="pending",
         server_default="pending",
-        index=True,
         doc="'pending', 'matched', 'unmatched', 'error'",
     )
 
@@ -155,7 +157,6 @@ class CraveItem(Base):
         nullable=False,
         default=_utcnow,
         server_default=text("(CURRENT_TIMESTAMP)"),
-        index=True,
     )
 
     processed_at: Mapped[datetime | None] = mapped_column(

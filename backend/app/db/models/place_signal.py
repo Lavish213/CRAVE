@@ -55,6 +55,10 @@ class PlaceSignal(Base):
             "external_event_id",
             name="uq_place_signal_dedupe",
         ),
+        # Explicit name — index=True on signal_class below would route
+        # through Base's naming convention and mismatch what's actually
+        # deployed (see NAMING_CONVENTION's comment in app/db/models/base.py).
+        Index("ix_place_signals_signal_class", "signal_class"),
     )
 
     # -----------------------------------------------------
@@ -96,7 +100,6 @@ class PlaceSignal(Base):
     signal_class: Mapped[str | None] = mapped_column(
         String(20),
         nullable=True,
-        index=True,
     )
 
     # -----------------------------------------------------
