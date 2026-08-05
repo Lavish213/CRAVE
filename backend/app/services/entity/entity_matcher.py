@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 from typing import Dict, Optional
 
+from app.services.entity.brand_aliases import resolve_brand_alias
 from app.services.entity.dedupe_rules import (
     names_match,
     addresses_match,
@@ -92,6 +93,15 @@ def _names_match(a: Dict, b: Dict) -> bool:
         return False
 
     try:
+        # Brand aliases first — catches pairs the fuzzy string comparison in
+        # names_match() can't, because they aren't textually similar at all
+        # ("KFC" vs "Kentucky Fried Chicken"). Built but never called from
+        # here until now; dedup silently fell through to fuzzy-only matching.
+        alias_a = resolve_brand_alias(name_a)
+        alias_b = resolve_brand_alias(name_b)
+        if alias_a and alias_b and alias_a == alias_b:
+            return True
+
         return names_match(name_a, name_b)
     except Exception as exc:
         logger.debug("name_match_failed error=%s", exc)

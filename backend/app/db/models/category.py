@@ -77,6 +77,15 @@ class Category(Base, TimestampMixin):
     type: Mapped[CategoryType] = mapped_column(
         SQLEnum(
             CategoryType,
+            # Explicit literal name (not the ck_%(table_name)s_%(constraint_name)s
+            # convention from Base's NAMING_CONVENTION) — this is the actual
+            # constraint name already live in production since the init
+            # migration (994c7522912e). Renaming it to match the convention
+            # would need a real migration for a purely cosmetic change, so it
+            # deliberately keeps this name. `alembic check`/autogenerate will
+            # always report this one constraint as drift (wanting
+            # ck_categories_category_type_enum) — known, harmless, and not
+            # a sign anything is actually wrong.
             name="category_type_enum",
             native_enum=False,
             create_constraint=True,

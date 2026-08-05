@@ -131,7 +131,7 @@ class DiscoveryCandidate(Base, TimestampMixin):
         Boolean,
         nullable=False,
         default=False,
-        server_default=text("0"),
+        server_default=text("false"),
         index=True,
     )
 
@@ -145,7 +145,7 @@ class DiscoveryCandidate(Base, TimestampMixin):
         Boolean,
         nullable=False,
         default=False,
-        server_default=text("0"),
+        server_default=text("false"),
         index=True,
     )
 

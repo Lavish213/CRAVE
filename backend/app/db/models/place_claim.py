@@ -132,14 +132,14 @@ class PlaceClaim(Base, TimestampMixin):
         Boolean,
         nullable=False,
         default=False,
-        server_default=text("0"),
+        server_default=text("false"),
     )
 
     is_user_submitted: Mapped[bool] = mapped_column(
         Boolean,
         nullable=False,
         default=False,
-        server_default=text("0"),
+        server_default=text("false"),
     )
 
     # --------------------------------------------------

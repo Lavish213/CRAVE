@@ -53,13 +53,17 @@ class PlaceRanking(Base, TimestampMixin):
         ),
         Index("ix_place_rankings_user_tier_score", "user_id", "tier", "rank_score"),
         Index("ix_place_rankings_place_id", "place_id"),
+        # Explicit name — index=True here would route through Base's naming
+        # convention and mismatch what the migration actually deployed (see
+        # NAMING_CONVENTION's comment in app/db/models/base.py).
+        Index("ix_place_rankings_user_id", "user_id"),
     )
 
     id: Mapped[str] = mapped_column(
         String(36), primary_key=True, default=lambda: str(uuid.uuid4())
     )
 
-    user_id: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+    user_id: Mapped[str] = mapped_column(String(128), nullable=False)
 
     place_id: Mapped[str] = mapped_column(
         String(36), ForeignKey("places.id", ondelete="CASCADE"), nullable=False

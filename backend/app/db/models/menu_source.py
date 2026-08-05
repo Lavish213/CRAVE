@@ -146,7 +146,7 @@ class MenuSource(Base, TimestampMixin):
         Boolean,
         nullable=False,
         default=True,
-        server_default=text("1"),
+        server_default=text("true"),
         index=True,
     )
 
