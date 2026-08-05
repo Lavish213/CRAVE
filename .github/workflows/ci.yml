@@ -50,27 +50,39 @@ jobs:
           cache: "pip"
           cache-dependency-path: backend/requirements.txt
 
-      - name: Railway's real install command still resolves
-        # Not "pip install -r requirements.txt from repo root" — that was
-        # this repo's own previous (wrong) assumption, and collapsing root
-        # requirements.txt to `-r backend/requirements.txt` on that belief
-        # caused an actual production outage: Railway's Railpack builder
-        # copies only the top-level requirements.txt into the build context
-        # before installing, it doesn't resolve `-r` references first, so
-        # pip couldn't find backend/requirements.txt at that point. The real
-        # install command now lives in railpack.json — this step asserts
-        # that file still says what we think it says, and that the path it
-        # points at still resolves, so this can't silently drift a third
-        # time. --dry-run only resolves the dependency graph, it doesn't
-        # install anything into this job's environment.
+      - name: Root requirements.txt matches backend's (Railway's real build entry point)
+        # Root requirements.txt is deliberately self-contained (duplicates
+        # backend/requirements.txt) rather than `-r`-referencing it or
+        # living behind a custom railpack.json — both were tried, both
+        # caused real production build failures the same night (Railway's
+        # Railpack builder auto-detects Python and copies only the
+        # top-level requirements.txt before installing; a custom step's
+        # inputs default to nothing and rejecting a bare local-files-only
+        # input outright, respectively — see requirements.txt's own header
+        # for the full account). Zero-config Railpack only builds
+        # correctly when it can see a real, self-contained requirements.txt
+        # at the repo root, so that's what stays there — and this step is
+        # what actually keeps it in sync with backend/requirements.txt
+        # instead of a comment asking a human to remember to edit both.
         working-directory: ${{ github.workspace }}
         run: |
           python3 -c "
-          import json
-          cmd = json.load(open('railpack.json'))['steps']['install']['commands'][0]
-          expected = 'pip install -r backend/requirements.txt'
-          assert cmd == expected, f'railpack.json install command changed: {cmd!r}'
+          def package_lines(path):
+              with open(path) as f:
+                  return sorted(
+                      line.strip() for line in f
+                      if line.strip() and not line.strip().startswith('#')
+                  )
+
+          root = package_lines('requirements.txt')
+          backend = package_lines('backend/requirements.txt')
+          assert root == backend, (
+              f'requirements.txt (root) and backend/requirements.txt have '
+              f'drifted apart.\nOnly in root: {sorted(set(root) - set(backend))}\n'
+              f'Only in backend: {sorted(set(backend) - set(root))}'
+          )
           "
+          pip install --dry-run -r requirements.txt
           pip install --dry-run -r backend/requirements.txt
 
       - name: Install dependencies

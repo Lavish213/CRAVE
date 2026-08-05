@@ -1,25 +1,113 @@
-# CRAVE backend — NOT Railway's build entry point, despite this file's
-# previous header claiming otherwise. That claim was wrong and caused a
-# real production outage: Railway's Railpack builder auto-detects Python
-# and, as an optimization, copies ONLY this top-level requirements.txt
-# into the build context before running `pip install -r requirements.txt`
-# — it does not resolve `-r` references to other files first. Collapsing
-# this file to `-r backend/requirements.txt` (the previous fix for a real
-# drift problem — see git history) made pip try to open
-# /app/backend/requirements.txt, which hadn't been copied into the build
-# context yet at that point, and every deploy failed with "No such file
-# or directory" until this was caught from an actual Railway build log,
-# not local testing (a local `pip install --dry-run` from repo root has
-# the whole filesystem present and can't reproduce Railway's staged copy
-# order).
+# CRAVE backend — Railway's actual build entry point.
 #
-# The actual install command Railway runs is now pinned explicitly in
-# railpack.json at the repo root, which references backend/requirements.txt
-# directly with no indirection through this file to get confused about.
+# This file is deliberately self-contained again, duplicating
+# backend/requirements.txt's package list, after two separate attempts
+# tonight to eliminate the duplication via Railpack customization each
+# broke production in a different way:
 #
-# This file still exists for local convenience — `pip install -r
-# requirements.txt` from repo root on a normal (non-staged) filesystem
-# works fine and picks up backend/requirements.txt correctly, since the
-# whole repo is already present on disk. Just don't assume this is what
-# Railway itself installs from — check railpack.json for that.
--r backend/requirements.txt
+#   1. Collapsing this file to `-r backend/requirements.txt` broke the
+#      build: Railway's Railpack builder auto-detects Python and, as a
+#      caching optimization, copies ONLY this top-level file into the
+#      build context before running `pip install -r requirements.txt` —
+#      it never resolves `-r` references to other files first, so pip
+#      couldn't find backend/requirements.txt (not copied in yet).
+#   2. Replacing that with a custom railpack.json pinning the real
+#      install command explicitly (`pip install -r backend/requirements.txt`)
+#      broke a different way: a custom step's `inputs` field defaults to
+#      nothing, not "the local repo" — so the install step ran against a
+#      filesystem with no source files in it at all.
+#   3. Adding `"inputs": [{"local": true}]` to fix #2 hit a THIRD failure:
+#      Railpack rejected it outright ("`install` inputs must be an image
+#      or step input") — a bare local-files layer isn't a valid sole
+#      input for a step with nothing else to build from.
+#
+# Three failed attempts in one night to make Railpack's custom step model
+# do something Railway's own zero-config Python auto-detection already
+# does correctly by default — which only works when it can see a
+# self-contained requirements.txt at the repo root, no `-r` indirection
+# for its file-copy heuristic to miss. So: back to duplication, but with
+# the actual class of bug (two copies silently drifting apart, which is
+# what caused the ORIGINAL sentry-sdk/playwright/pdfminer gaps) closed a
+# different way — see the "Root requirements.txt matches backend's" CI
+# step in .github/workflows/ci.yml, which fails the build if this file's
+# package list and backend/requirements.txt's ever diverge. Edit
+# backend/requirements.txt first, then copy its package lines here
+# verbatim; CI is the thing that actually enforces they stay identical
+# now, not a comment asking a human to remember.
+
+# Web framework
+# NOTE: starlette has never released a 1.0 (latest as of writing is the
+# 0.5x series — see https://pypi.org/project/starlette/#history). The
+# previous "starlette>=1.0.0" here is an impossible constraint: no version
+# satisfies it, so `pip install -r requirements.txt` would fail to resolve
+# outright. Pinned to the actual current release line instead.
+fastapi>=0.135.0
+starlette>=0.40.0,<1.0.0
+uvicorn[standard]>=0.30.0
+
+# HTTP
+requests>=2.33.0
+httpx>=0.28.0
+curl_cffi>=0.15.0
+
+# SSL (macOS native trust store support)
+truststore>=0.10.0
+
+# Database
+sqlalchemy>=2.0.0
+alembic>=1.18.0
+psycopg2-binary>=2.9.0
+
+# Pydantic / validation
+pydantic>=2.13.0
+pydantic-settings>=2.13.0
+annotated-types>=0.7.0
+
+# HTML parsing
+beautifulsoup4>=4.14.0
+
+# Fuzzy matching
+rapidfuzz>=3.6.0
+
+# Scheduling
+apscheduler>=3.10.0
+
+# Auth (Supabase JWT verification)
+pyjwt>=2.8.0
+
+# Cache
+redis>=5.0.0
+
+# Utilities
+python-dotenv>=1.2.0
+
+# Object storage (Cloudflare R2 image uploads)
+boto3>=1.34.0
+
+# Image processing (upload pipeline: resize/EXIF/thumbnails + perceptual
+# dedup hashing) — imported eagerly at startup via app.api.v1.endpoints.upload
+# -> app.workers.image_processing_worker, so missing these breaks every boot,
+# not just the upload feature.
+Pillow>=10.4.0
+imagehash>=4.3.1
+
+# Error monitoring — no-op if SENTRY_DSN is unset (see app/main.py). Without
+# this, a prod crash is only visible by someone reading Railway logs; the
+# service ran crashed for two months once already with nothing to notice.
+sentry-sdk[fastapi]>=2.0.0
+
+# Menu extraction escalation tier (PDF, JSON-LD, GraphQL/API discovery,
+# iframe menus, headless-browser rendering — see
+# app/services/menu/menu_extraction_router.py, called from
+# app/services/menu/processing/menu_orchestrator.py's advanced-escalation
+# step). Both were dev-only before this: pdfminer.six is imported at module
+# level by pdf_menu_extractor.py, and since menu_extraction_router.py
+# imports that module at its own top level, pdfminer alone missing failed
+# to import the ENTIRE escalation tier — not just PDF parsing — with the
+# ImportError caught silently by menu_orchestrator's try/except and logged
+# only at debug. Confirmed by simulating a prod install with each package
+# blocked. playwright additionally needs its browser binary installed at
+# build time (the pip package alone is necessary but not sufficient) —
+# see the Playwright-binary note below.
+pdfminer.six>=20221105
+playwright>=1.44.0
