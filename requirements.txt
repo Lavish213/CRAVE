@@ -48,6 +48,10 @@ uvicorn[standard]>=0.30.0
 # HTTP
 requests>=2.33.0
 httpx>=0.28.0
+# h2 — required for httpx's http2=True (app/services/network/http_client.py).
+# Without it, every _create_client() call raised ImportError and every
+# outbound fetch through this client failed — found live in production logs.
+h2>=4.1.0
 curl_cffi>=0.15.0
 
 # SSL (macOS native trust store support)
