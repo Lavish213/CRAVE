@@ -114,3 +114,37 @@ def test_ordinary_restaurant_with_no_candidate_is_not_flagged(db, city):
     flagged = _find_candidates_to_deactivate(db)
     flagged_ids = {p.id for p, _ in flagged}
     assert place.id not in flagged_ids
+
+
+def test_pizzeria_with_liquor_store_type_is_not_flagged(db, city):
+    # Real false positive found running this script for real: pizza places
+    # holding a beer/wine license get `liquor_store` in their Google types
+    # alongside `restaurant` and were getting swept up as junk.
+    place = _make_place(db, city, "Curry Pizza House")
+    _make_candidate(db, city, place, types=["restaurant", "liquor_store", "food"])
+
+    flagged = _find_candidates_to_deactivate(db)
+    flagged_ids = {p.id for p, _ in flagged}
+    assert place.id not in flagged_ids
+
+
+def test_bakery_with_wholesaler_type_is_not_flagged(db, city):
+    # Same class of false positive: bakeries/cafes Google also tags
+    # `wholesaler` (Paris Baguette, Mrs. Fields, The Plant Café Organic, etc.)
+    place = _make_place(db, city, "The Plant Café Organic")
+    _make_candidate(db, city, place, types=["bakery", "wholesaler", "point_of_interest"])
+
+    flagged = _find_candidates_to_deactivate(db)
+    flagged_ids = {p.id for p, _ in flagged}
+    assert place.id not in flagged_ids
+
+
+def test_actual_wholesaler_with_no_food_service_type_is_still_flagged(db, city):
+    # The exemption only fires when a genuine food-service type is present.
+    # A place with ONLY non-restaurant types is still real junk.
+    place = _make_place(db, city, "Some Wholesale Depot")
+    _make_candidate(db, city, place, types=["wholesaler", "point_of_interest"])
+
+    flagged = _find_candidates_to_deactivate(db)
+    flagged_ids = {p.id for p, _ in flagged}
+    assert place.id in flagged_ids
