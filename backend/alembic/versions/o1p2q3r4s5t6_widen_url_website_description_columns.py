@@ -27,42 +27,53 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.alter_column(
-        "place_images", "url",
-        existing_type=sa.String(length=512),
-        type_=sa.String(length=1024),
-        existing_nullable=True,
-    )
-    op.alter_column(
-        "discovery_candidates", "website",
-        existing_type=sa.String(length=255),
-        type_=sa.String(length=512),
-        existing_nullable=True,
-    )
-    op.alter_column(
-        "menu_items", "description",
-        existing_type=sa.String(length=1000),
-        type_=sa.String(length=2000),
-        existing_nullable=True,
-    )
+    # batch_alter_table (not a bare op.alter_column) — SQLite has no native
+    # ALTER COLUMN TYPE; it errors outright ("near ALTER: syntax error").
+    # Batch mode is what actually makes this migration runnable against a
+    # fresh SQLite dev/test DB (recreate-table-and-copy under the hood on
+    # SQLite; a plain direct ALTER on Postgres, so no behavior change there).
+    with op.batch_alter_table("place_images") as batch_op:
+        batch_op.alter_column(
+            "url",
+            existing_type=sa.String(length=512),
+            type_=sa.String(length=1024),
+            existing_nullable=True,
+        )
+    with op.batch_alter_table("discovery_candidates") as batch_op:
+        batch_op.alter_column(
+            "website",
+            existing_type=sa.String(length=255),
+            type_=sa.String(length=512),
+            existing_nullable=True,
+        )
+    with op.batch_alter_table("menu_items") as batch_op:
+        batch_op.alter_column(
+            "description",
+            existing_type=sa.String(length=1000),
+            type_=sa.String(length=2000),
+            existing_nullable=True,
+        )
 
 
 def downgrade() -> None:
-    op.alter_column(
-        "menu_items", "description",
-        existing_type=sa.String(length=2000),
-        type_=sa.String(length=1000),
-        existing_nullable=True,
-    )
-    op.alter_column(
-        "discovery_candidates", "website",
-        existing_type=sa.String(length=512),
-        type_=sa.String(length=255),
-        existing_nullable=True,
-    )
-    op.alter_column(
-        "place_images", "url",
-        existing_type=sa.String(length=1024),
-        type_=sa.String(length=512),
-        existing_nullable=True,
-    )
+    with op.batch_alter_table("menu_items") as batch_op:
+        batch_op.alter_column(
+            "description",
+            existing_type=sa.String(length=2000),
+            type_=sa.String(length=1000),
+            existing_nullable=True,
+        )
+    with op.batch_alter_table("discovery_candidates") as batch_op:
+        batch_op.alter_column(
+            "website",
+            existing_type=sa.String(length=512),
+            type_=sa.String(length=255),
+            existing_nullable=True,
+        )
+    with op.batch_alter_table("place_images") as batch_op:
+        batch_op.alter_column(
+            "url",
+            existing_type=sa.String(length=1024),
+            type_=sa.String(length=512),
+            existing_nullable=True,
+        )
