@@ -36,7 +36,16 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from app.db.session import SessionLocal
 from app.db.models.place import Place
 from app.db.models.discovery_candidate import DiscoveryCandidate
-from app.services.ingest.google_places_ingest import _NON_RESTAURANT_TYPES
+from app.services.ingest.google_places_ingest import _NON_RESTAURANT_TYPES, _TYPE_TO_HINT
+
+# Genuine food-service types (restaurant, cafe, bakery, bar, and the various
+# cuisine-specific Google types). A place carrying one of these alongside a
+# broader _NON_RESTAURANT_TYPES hit is a false positive, not junk — e.g. a
+# pizzeria that also holds a liquor license (`liquor_store`), or a bakery
+# Google additionally tags `wholesaler`. Found running this script for real:
+# it flagged "Curry Pizza House" locations, "The Plant Café Organic", and a
+# dozen other bakeries/cafes this way before this exemption existed.
+_FOOD_SERVICE_TYPES = frozenset(_TYPE_TO_HINT)
 
 
 # Belt-and-suspenders name check for well-known non-restaurant chains, in
@@ -86,6 +95,11 @@ def _find_candidates_to_deactivate(db):
                 if not isinstance(candidate.raw_payload, dict):
                     continue
                 types = candidate.raw_payload.get("types") or []
+                if _FOOD_SERVICE_TYPES.intersection(types):
+                    # A genuine food-service type on this same candidate
+                    # outweighs a broader non-restaurant type also present —
+                    # this is a real restaurant/cafe/bakery/bar, not junk.
+                    continue
                 hit = _NON_RESTAURANT_TYPES.intersection(types)
                 if hit:
                     reason = f"Google types include {sorted(hit)}"
