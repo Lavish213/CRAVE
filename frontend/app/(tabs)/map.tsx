@@ -76,6 +76,19 @@ function distanceKm(lat1: number, lng1: number, lat2: number, lng2: number): num
   return Math.sqrt(dLat * dLat + dLng * dLng);
 }
 
+// radiusKmForRegion is half the LONGER side — the right measure for how
+// much to fetch, but too small for a coverage check: a viewport's actual
+// corners sit at the half-DIAGONAL distance from center, which is always
+// >= half the longer side. Using radiusKmForRegion here could call a
+// viewport "covered" while its corners still poke outside the cached
+// circle. This is the stricter, correct value for that comparison only.
+function coverageRadiusKmForRegion(region: Region): number {
+  const latRad = (region.latitude * Math.PI) / 180;
+  const widthKm = region.longitudeDelta * 111.32 * Math.cos(latRad);
+  const heightKm = region.latitudeDelta * 111.32;
+  return Math.hypot(widthKm, heightKm) / 2;
+}
+
 interface FetchCoverage {
   lat: number;
   lng: number;
@@ -232,6 +245,14 @@ export default function MapScreen() {
       clearTimeout(fetchDebounceRef.current);
       fetchDebounceRef.current = null;
     }
+    // Without this, a failed load for the new city leaves the previous
+    // city's pins on screen with features.length still > 0 — which now
+    // (correctly, for the already-covered-viewport case) suppresses the
+    // error banner entirely, silently showing the wrong city's data with
+    // no indication anything went wrong.
+    lastFetchCoverageRef.current = null;
+    setFeatures([]);
+    setMapLoaded(false);
     loadFeatures(mapLat, mapLng, prefetchRadiusKmForRegion(cityToRegion(mapLat, mapLng)));
   }, [selectedCity?.id, mapLat, mapLng, loadFeatures]);
 
@@ -262,9 +283,17 @@ export default function MapScreen() {
 
       if (fetchDebounceRef.current) clearTimeout(fetchDebounceRef.current);
       fetchDebounceRef.current = setTimeout(() => {
-        const visibleRadiusKm = radiusKmForRegion(region);
+        const visibleRadiusKm = coverageRadiusKmForRegion(region);
         if (isCoveredByPriorFetch(region.latitude, region.longitude, visibleRadiusKm, lastFetchCoverageRef.current)) {
           if (__DEV__) console.log('[MAP] SKIP_FETCH_ALREADY_COVERED', { lat: region.latitude, lng: region.longitude, visibleRadiusKm });
+          // Still bump this so an older in-flight request for a different
+          // region (panned away from, now panned back to cached ground)
+          // can't land later and overwrite these still-valid cached pins —
+          // otherwise skipping the fetch here does nothing to stop that
+          // stale response from winning once it finally resolves.
+          requestIdRef.current += 1;
+          setMapLoading(false);
+          setMapError(false);
           return;
         }
         loadFeatures(region.latitude, region.longitude, prefetchRadiusKmForRegion(region));

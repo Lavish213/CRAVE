@@ -111,6 +111,7 @@ export default function AddSpotScreen() {
   useEffect(() => {
     accountGenerationRef.current += 1;
     setConfirmedIds(new Set());
+    setConfirmingId(null);
   }, [user?.id]);
 
   const handleConfirm = async (candidate: NearbyCandidate) => {
@@ -139,8 +140,8 @@ export default function AddSpotScreen() {
       if (submittingGeneration !== accountGenerationRef.current) return;
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       toast(err instanceof Error ? err.message : 'Could not submit this spot');
-    } finally {
-      if (submittingGeneration !== accountGenerationRef.current) return;
+    }
+    if (submittingGeneration === accountGenerationRef.current) {
       setConfirmingId(null);
     }
   };

@@ -73,13 +73,31 @@ def _handle_shutdown_signal(signum: int, frame: Optional[FrameType]) -> None:
 
 
 def run_scheduler_worker() -> None:
+    global _shutdown_requested
+    _shutdown_requested = False
+
     # SIGTERM is what Railway sends on deploy/restart — without handling it,
     # the process dies immediately and scheduler.shutdown(wait=True) never
     # gets a chance to let an in-flight job finish cleanly.
     signal.signal(signal.SIGTERM, _handle_shutdown_signal)
     signal.signal(signal.SIGINT, _handle_shutdown_signal)
 
+    # A signal delivered in the window right after registering the handlers
+    # above but before scheduler.start() below would otherwise still run
+    # start() unconditionally, then immediately fall into
+    # scheduler.shutdown(wait=True) on a scheduler whose background threads
+    # may not have finished initializing yet. Bail out before starting at
+    # all if that already happened.
+    if _shutdown_requested:
+        logger.info("scheduler_worker_shutdown_before_start")
+        return
+
     scheduler = create_scheduler()
+
+    if _shutdown_requested:
+        logger.info("scheduler_worker_shutdown_before_start")
+        return
+
     scheduler.start()
     logger.info("scheduler_worker_started jobs=%s", len(scheduler.get_jobs()))
 
