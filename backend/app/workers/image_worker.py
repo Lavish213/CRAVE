@@ -264,9 +264,9 @@ class ImageWorker:
         )
         picked_ids = {p.id for p in priority_places}
 
-        fairness_stmt = base_stmt.order_by(Place.created_at.asc()).limit(
-            starvation_reserve + len(picked_ids)
-        )
+        fairness_stmt = base_stmt.order_by(
+            Place.created_at.asc(), Place.id.asc()
+        ).limit(starvation_reserve + len(picked_ids))
         fairness_places = [
             p for p in db.execute(fairness_stmt).scalars().all()
             if p.id not in picked_ids

@@ -9,7 +9,7 @@
 // immediately — it's one signal toward the confidence threshold the
 // scheduler's discovery job checks every 5 minutes. See
 // backend/app/api/v1/routes/nearby.py for the full mechanism.
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   ScrollView,
@@ -34,6 +34,7 @@ export default function AddSpotScreen() {
   const router = useRouter();
   const toast = useToast((s) => s.show);
   const user = useAuthStore((s) => s.user);
+  const authLoading = useAuthStore((s) => s.loading);
 
   const [state, setState] = useState<LoadState>('locating');
   const [results, setResults] = useState<NearbyCandidate[]>([]);
@@ -41,7 +42,24 @@ export default function AddSpotScreen() {
   const [confirmedIds, setConfirmedIds] = useState<Set<string>>(new Set());
   const [authVisible, setAuthVisible] = useState(false);
 
+  // Bumped on every run() invocation so a stale in-flight run (e.g. one
+  // started before a sign-out lands mid-permission-request/location-fetch/
+  // searchNearby) can't clobber state a newer run already set — without
+  // this, an old closure's setState('ready') could overwrite a correctly
+  // set 'unauthenticated' after the user signed out mid-flight.
+  const runIdRef = useRef(0);
+
   const run = useCallback(async () => {
+    const myRunId = ++runIdRef.current;
+
+    // authStore.init() (RootLayout) resolves getSession() asynchronously —
+    // `user` reads null during that window even for a valid persisted
+    // session. Wait for hydration instead of treating that as signed out.
+    if (authLoading) {
+      setState('locating');
+      return;
+    }
+
     // /api/v1/nearby/search requires a signed-in session (Google Places
     // lookups cost real money per call) — this used to fire unconditionally
     // on mount, so a signed-out user got a raw 401 AxiosError instead of a
@@ -53,6 +71,7 @@ export default function AddSpotScreen() {
     setState('locating');
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
+      if (myRunId !== runIdRef.current) return;
       if (status !== 'granted') {
         setState('denied');
         return;
@@ -61,20 +80,31 @@ export default function AddSpotScreen() {
       const pos = await Location.getCurrentPositionAsync({
         accuracy: Location.Accuracy.High,
       });
+      if (myRunId !== runIdRef.current) return;
 
       setState('searching');
       const found = await searchNearby(pos.coords.latitude, pos.coords.longitude);
+      if (myRunId !== runIdRef.current) return;
       setResults(found);
       setState('ready');
     } catch (err) {
+      if (myRunId !== runIdRef.current) return;
       if (__DEV__) console.error('[ADD_SPOT ERROR]', err);
       setState('error');
     }
-  }, [user?.id]);
+  }, [user?.id, authLoading]);
 
   useEffect(() => {
     run();
   }, [run]);
+
+  // A signed-in user's confirmed-spot submissions are specific to that
+  // account — reset them on sign-out/account switch so the next session
+  // can't inherit "Submitted" state (and disabled buttons) from a
+  // different user, if this screen ever stays mounted across the change.
+  useEffect(() => {
+    setConfirmedIds(new Set());
+  }, [user?.id]);
 
   const handleConfirm = async (candidate: NearbyCandidate) => {
     if (!user) {
