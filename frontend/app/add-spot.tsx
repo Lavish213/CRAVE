@@ -25,9 +25,10 @@ import * as Haptics from 'expo-haptics';
 import { Colors, Spacing, Radius } from '../src/constants/colors';
 import { useToast } from '../src/hooks/useToast';
 import { useAuthStore } from '../src/stores/authStore';
+import { AuthSheet } from '../src/components/AuthSheet';
 import { NearbyCandidate, confirmNewSpot, searchNearby } from '../src/api/nearby';
 
-type LoadState = 'locating' | 'searching' | 'ready' | 'denied' | 'error';
+type LoadState = 'locating' | 'searching' | 'ready' | 'denied' | 'error' | 'unauthenticated';
 
 export default function AddSpotScreen() {
   const router = useRouter();
@@ -38,8 +39,17 @@ export default function AddSpotScreen() {
   const [results, setResults] = useState<NearbyCandidate[]>([]);
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
   const [confirmedIds, setConfirmedIds] = useState<Set<string>>(new Set());
+  const [authVisible, setAuthVisible] = useState(false);
 
   const run = useCallback(async () => {
+    // /api/v1/nearby/search requires a signed-in session (Google Places
+    // lookups cost real money per call) — this used to fire unconditionally
+    // on mount, so a signed-out user got a raw 401 AxiosError instead of a
+    // sign-in prompt.
+    if (!user) {
+      setState('unauthenticated');
+      return;
+    }
     setState('locating');
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
@@ -60,7 +70,7 @@ export default function AddSpotScreen() {
       if (__DEV__) console.error('[ADD_SPOT ERROR]', err);
       setState('error');
     }
-  }, []);
+  }, [user?.id]);
 
   useEffect(() => {
     run();
@@ -115,6 +125,19 @@ export default function AddSpotScreen() {
         <TouchableOpacity style={styles.retryBtn} onPress={run}>
           <Text style={styles.retryLabel}>Try again</Text>
         </TouchableOpacity>
+      </View>
+    );
+  }
+
+  if (state === 'unauthenticated') {
+    return (
+      <View style={styles.centered}>
+        <Ionicons name="person-circle-outline" size={32} color={Colors.textMuted} />
+        <Text style={styles.statusText}>Sign in to add a new spot.</Text>
+        <TouchableOpacity style={styles.retryBtn} onPress={() => setAuthVisible(true)}>
+          <Text style={styles.retryLabel}>Sign in</Text>
+        </TouchableOpacity>
+        <AuthSheet visible={authVisible} onClose={() => setAuthVisible(false)} reason="add-spot" />
       </View>
     );
   }
