@@ -16,6 +16,13 @@ import { MapBottomSheet } from '../../src/components/MapBottomSheet';
 // avoids firing a request on every intermediate frame of a gesture.
 const REGION_FETCH_DEBOUNCE_MS = 500;
 
+// Fetch a wider radius than the exact visible viewport so a small pan lands
+// on already-loaded pins instantly instead of showing a fresh loading state
+// — previously every fetch matched the viewport exactly, so any pan at all
+// (even a few hundred meters) required a brand-new round trip before pins
+// reappeared.
+const PREFETCH_RADIUS_MULTIPLIER = 1.6;
+
 // Grid cell size clustering constants — cell size scales with the visible
 // longitude span so clustering density adapts to zoom level.
 const MIN_CLUSTER_SIZE = 3;
@@ -49,6 +56,13 @@ function radiusKmForRegion(region: Region): number {
   const heightKm = region.latitudeDelta * 111.32;
   const radius = Math.max(widthKm, heightKm) / 2;
   return Math.min(50, Math.max(0.5, radius));
+}
+
+// What we actually fetch: the visible radius padded by
+// PREFETCH_RADIUS_MULTIPLIER, re-clamped to the API's 50km max, so a pan
+// within that margin needs no new request at all.
+function prefetchRadiusKmForRegion(region: Region): number {
+  return Math.min(50, radiusKmForRegion(region) * PREFETCH_RADIUS_MULTIPLIER);
 }
 
 interface SelectedFeature {
@@ -153,7 +167,7 @@ export default function MapScreen() {
 
   // Initial load + reload on city change (or GPS location resolving).
   useEffect(() => {
-    loadFeatures(mapLat, mapLng, radiusKmForRegion(cityToRegion(mapLat, mapLng)));
+    loadFeatures(mapLat, mapLng, prefetchRadiusKmForRegion(cityToRegion(mapLat, mapLng)));
   }, [selectedCity?.id, mapLat, mapLng, loadFeatures]);
 
   // Recenter the map on city change — flagged as programmatic so the
@@ -183,7 +197,7 @@ export default function MapScreen() {
 
       if (fetchDebounceRef.current) clearTimeout(fetchDebounceRef.current);
       fetchDebounceRef.current = setTimeout(() => {
-        loadFeatures(region.latitude, region.longitude, radiusKmForRegion(region));
+        loadFeatures(region.latitude, region.longitude, prefetchRadiusKmForRegion(region));
       }, REGION_FETCH_DEBOUNCE_MS);
     },
     [loadFeatures]

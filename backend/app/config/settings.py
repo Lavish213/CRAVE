@@ -42,6 +42,24 @@ class Settings(BaseSettings):
     # 🔥 AUTO DERIVED (never manually toggle in prod)
     debug: bool = False
 
+    # APScheduler's BackgroundScheduler runs its jobs in threads inside this
+    # same process — fine for local dev (single-service, low traffic), but
+    # in prod with a single uvicorn worker (see railway.toml's startCommand)
+    # it means CPU-bound job work (image resize/hash, HTML parsing, OCR)
+    # directly competes with the GIL for time the async event loop needs to
+    # serve HTTP requests, causing request timeouts that have nothing to do
+    # with client network quality. Confirmed in production: a single
+    # menu_enrichment run took 3h21m end to end while image_ingestion ran
+    # every 20 minutes concurrently.
+    #
+    # Default True keeps existing single-service deployments working
+    # unchanged. Once a second Railway service is running
+    # `python -m app.scheduler_worker` (see that module's docstring), set
+    # this to False on the WEB service specifically — otherwise both
+    # processes run every scheduled job, double-billing paid APIs
+    # (Google Places/Vision) and double-writing data.
+    run_embedded_scheduler: bool = True
+
     # --------------------------------------------------
     # DATABASE
     # --------------------------------------------------

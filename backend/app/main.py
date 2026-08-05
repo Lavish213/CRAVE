@@ -141,16 +141,27 @@ async def lifespan(app: FastAPI):
 
     _startup_validation()
 
-    # Start background pipeline scheduler
-    scheduler = create_scheduler()
-    scheduler.start()
-    logger.info("scheduler_started jobs=%s", len(scheduler.get_jobs()))
+    # Background pipeline scheduler — embedded here by default so a single-
+    # service deployment keeps working unchanged. Once a separate
+    # `python -m app.scheduler_worker` service is running the same jobs (see
+    # that module's docstring for why: this same process serving HTTP
+    # requests also running CPU-bound job work causes request timeouts
+    # under a single uvicorn worker), set RUN_EMBEDDED_SCHEDULER=false on
+    # THIS (the web) service so jobs don't run twice.
+    scheduler = None
+    if settings.run_embedded_scheduler:
+        scheduler = create_scheduler()
+        scheduler.start()
+        logger.info("scheduler_started jobs=%s", len(scheduler.get_jobs()))
+    else:
+        logger.info("scheduler_embedded_disabled — expecting app.scheduler_worker elsewhere")
 
     yield
 
     # Graceful scheduler shutdown — wait for running jobs to finish
-    scheduler.shutdown(wait=True)
-    logger.info("scheduler_stopped")
+    if scheduler is not None:
+        scheduler.shutdown(wait=True)
+        logger.info("scheduler_stopped")
 
     logger.info("shutdown")
 

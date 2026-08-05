@@ -125,6 +125,32 @@ these five files.
     instead of doing nothing — a proper onboarding modal would be a better
     long-term experience but is a real feature to design, not a quick fix.
 20. Push notifications remain fully unbuilt ("Coming soon" in More).
+21a. **Action required on Railway: provision a second service for the
+    scheduler.** Root-caused a persistent "map/feed times out even on good
+    Wi-Fi" report: the web service runs as a single uvicorn worker
+    (`railway.toml`'s startCommand has no `--workers` flag) with
+    APScheduler's BackgroundScheduler running in threads inside that same
+    process. CPU-bound job work (image resize/hash, HTML parsing, OCR)
+    competes with the GIL for time the request-handling event loop needs —
+    confirmed via `job_runs`: a single menu_enrichment run took 3h21m while
+    image_ingestion ran every 20 minutes concurrently, both in the same
+    process serving map/feed API requests. Code is now in place
+    (`app/scheduler_worker.py`, `settings.run_embedded_scheduler`) but
+    doesn't take effect until you do this on Railway's dashboard:
+    1. New service in the same Railway project, same repo/branch.
+    2. Override its start command to: `cd backend && python -m app.scheduler_worker`
+       (no `alembic upgrade head` needed here — the web service's
+       startCommand already runs migrations).
+    3. Copy every env var the web service has (DATABASE_URL,
+       GOOGLE_PLACES_API_KEY, R2_*, SUPABASE_*, etc.) onto this new service —
+       it runs the identical jobs, just in its own process.
+    4. Once that new service is confirmed running (check its logs for
+       `scheduler_worker_started jobs=8`), set `RUN_EMBEDDED_SCHEDULER=false`
+       on the WEB service specifically and redeploy it. Skipping this step
+       means both processes run every job — double-billing Google
+       Places/Vision and double-writing data.
+    Until step 4 is done, nothing changes (the web service still runs jobs
+    embedded, same as before — this is backward compatible by design).
 21. **Email + phone number sign-up/sign-in is not built.** `AuthSheet.tsx`
     only offers "Continue with Apple" / "Continue with Google" — there's no
     email+password or phone/OTP option, so anyone without one of those two
