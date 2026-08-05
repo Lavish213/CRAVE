@@ -20,7 +20,7 @@ def _get_a_city_with_places() -> str | None:
     try:
         row = db.execute(
             text(
-                "SELECT city_id FROM places WHERE is_active=1 "
+                "SELECT city_id FROM places WHERE is_active=true "
                 "GROUP BY city_id ORDER BY COUNT(*) DESC LIMIT 1"
             )
         ).fetchone()

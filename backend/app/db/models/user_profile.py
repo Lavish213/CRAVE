@@ -35,5 +35,5 @@ class UserProfile(Base, TimestampMixin):
     # default — matches every other app in this space (Beli, Letterboxd,
     # Strava): public-by-default with an opt-out, not private-by-default.
     is_public: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, default=True, server_default=text("1")
+        Boolean, nullable=False, default=True, server_default=text("true")
     )

@@ -45,12 +45,12 @@ def upgrade() -> None:
         batch_op.add_column(sa.Column("blur_score", sa.Float(), nullable=True))
         batch_op.add_column(
             sa.Column(
-                "gps_verified", sa.Boolean(), nullable=False, server_default=sa.text("0")
+                "gps_verified", sa.Boolean(), nullable=False, server_default=sa.text("false")
             )
         )
         batch_op.add_column(
             sa.Column(
-                "safety_scanned", sa.Boolean(), nullable=False, server_default=sa.text("0")
+                "safety_scanned", sa.Boolean(), nullable=False, server_default=sa.text("false")
             )
         )
         batch_op.add_column(

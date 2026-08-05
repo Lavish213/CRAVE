@@ -138,6 +138,60 @@ jobs:
         continue-on-error: true
         run: pipx run pip-audit -r requirements.txt
 
+  backend-postgres:
+    name: Backend (same suite, against real Postgres)
+    runs-on: ubuntu-latest
+    # This job exists because of a real production outage: the SQLite path
+    # above is what CI has always run, and SQLite is far more lenient than
+    # Postgres about type matching — it silently accepts `server_default=
+    # sa.text("1")` on a Boolean column (and `WHERE is_active=1` in a raw
+    # query), which is not valid SQL against Postgres at all. That gap
+    # let a broken migration (add_user_profiles_table) and a broken test
+    # fixture (test_trending.py) both merge and pass CI clean, and the
+    # migration then failed for real the first time it ran against actual
+    # production Postgres data — discovered from a live Railway deploy
+    # log, not from anything in this pipeline. Running the exact same
+    # suite against a real Postgres service container is what would have
+    # caught both before they ever reached main.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+
+      - name: Run full migration chain against real Postgres, from empty
+        env:
+          APP_ENV: dev
+          DATABASE_URL: "postgresql://postgres@localhost:5432/postgres"
+        run: alembic upgrade head
+
+      - name: Run tests against real Postgres
+        env:
+          APP_ENV: dev
+          DATABASE_URL: "postgresql://postgres@localhost:5432/postgres"
+        run: pytest -q
+
   frontend:
     name: Frontend (typecheck + tests)
     runs-on: ubuntu-latest

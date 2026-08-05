@@ -208,14 +208,14 @@ class PlaceImage(Base, TimestampMixin):
     # Corroboration of a real visit, never a requirement — most photos
     # legitimately carry no GPS at all.
     gps_verified: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, default=False, server_default=text("0"),
+        Boolean, nullable=False, default=False, server_default=text("false"),
     )
 
     # Whether SafeSearch actually ran. False means "not checked", which is
     # different from "checked and clean" — the moderation policy treats
     # them differently.
     safety_scanned: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, default=False, server_default=text("0"),
+        Boolean, nullable=False, default=False, server_default=text("false"),
     )
 
     reviewed_at: Mapped[datetime | None] = mapped_column(
