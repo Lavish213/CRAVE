@@ -17,11 +17,14 @@ Or import run_share_parser() and call it from the master worker.
 """
 from __future__ import annotations
 
+import ipaddress
 import logging
+import socket
 import time
 from contextlib import suppress
 from datetime import datetime, timezone
 from typing import Optional
+from urllib.parse import urlparse
 
 import httpx
 from bs4 import BeautifulSoup
@@ -58,6 +61,95 @@ _HEADERS = {
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
     "Accept-Language": "en-US,en;q=0.5",
 }
+
+_MAX_REDIRECTS = 5
+
+
+# ---------------------------------------------------------------------------
+# SSRF protection
+# ---------------------------------------------------------------------------
+#
+# share_intake (app/api/v1/routes/share.py) deliberately accepts arbitrary
+# "web"/"other" URLs, not just known platforms — sharing a blog post/article
+# about a restaurant is a real, intended use case, so this can't be a domain
+# allowlist. Instead, validate the actual network destination: reject any
+# URL whose host resolves to a private, loopback, link-local (this is what
+# catches cloud metadata endpoints like 169.254.169.254), multicast,
+# reserved, or unspecified address. Every authenticated user can trigger
+# this fetch by submitting a URL, so without this a signed-in user could
+# make the backend issue requests to internal services or the metadata
+# endpoint just by sharing a crafted link.
+
+def _resolve_host_ips(host: str) -> list[str]:
+    try:
+        infos = socket.getaddrinfo(host, None)
+    except (socket.gaierror, UnicodeError):
+        return []
+    return list({info[4][0] for info in infos})
+
+
+def _is_public_ip(ip_str: str) -> bool:
+    try:
+        ip = ipaddress.ip_address(ip_str)
+    except ValueError:
+        return False
+    return not (
+        ip.is_private
+        or ip.is_loopback
+        or ip.is_link_local
+        or ip.is_multicast
+        or ip.is_reserved
+        or ip.is_unspecified
+    )
+
+
+def _is_safe_url(url: str) -> bool:
+    try:
+        parsed = urlparse(url)
+    except Exception:
+        return False
+
+    if parsed.scheme not in ("http", "https"):
+        return False
+
+    host = parsed.hostname
+    if not host:
+        return False
+
+    ips = _resolve_host_ips(host)
+    if not ips:
+        # Doesn't resolve — fail closed rather than let httpx's own resolver
+        # hit something this lookup didn't see.
+        return False
+
+    return all(_is_public_ip(ip) for ip in ips)
+
+
+def _safe_get(url: str, *, headers: dict, timeout: float) -> httpx.Response:
+    """
+    GET with the safety check re-run at every redirect hop — a URL that
+    resolves to a public IP on the first request can still 30x to an
+    internal address, and blindly following redirects (the previous
+    behavior) would chase it there.
+    """
+    current_url = url
+    for _ in range(_MAX_REDIRECTS + 1):
+        if not _is_safe_url(current_url):
+            raise ValueError(f"unsafe URL blocked: {current_url}")
+
+        with httpx.Client(timeout=timeout, headers=headers, follow_redirects=False) as client:
+            response = client.get(current_url)
+
+        if response.is_redirect:
+            location = response.headers.get("location")
+            if not location:
+                return response
+            current_url = str(httpx.URL(current_url).join(location))
+            continue
+
+        return response
+
+    raise ValueError(f"too many redirects: {url}")
 
 
 # ---------------------------------------------------------------------------
@@ -205,10 +297,9 @@ def _process_item(db: Session, item: CraveItem) -> None:
         place_name = oembed_text
     else:
         try:
-            with httpx.Client(timeout=HTTP_TIMEOUT, headers=_HEADERS, follow_redirects=True) as client:
-                response = client.get(item.url)
-                response.raise_for_status()
-                html = response.text
+            response = _safe_get(item.url, headers=_HEADERS, timeout=HTTP_TIMEOUT)
+            response.raise_for_status()
+            html = response.text
         except Exception as exc:
             logger.warning("share_fetch_failed id=%s url=%s error=%s", item.id, item.url, exc)
             item.status = "error"
