@@ -186,6 +186,25 @@ def test_target_cafe_is_not_flagged(db, city):
     assert place.id not in flagged_ids
 
 
+def test_yummi_sushi_at_safeway_is_not_flagged(db, city):
+    # A different concessionaire brand than AFC — same real food-service
+    # business, caught by the broader "sushi" term instead of "afc ".
+    place = _make_place(db, city, "YUMMI SUSHI @ SAFEWAY #910")
+    flagged = _find_candidates_to_deactivate(db)
+    flagged_ids = {p.id for p, _ in flagged}
+    assert place.id not in flagged_ids
+
+
+def test_starbuck_missing_trailing_s_is_not_flagged(db, city):
+    # Real production row: the source data itself spells it "STARBUCK"
+    # (missing the final letter). "starbuck" (not "starbucks") in the
+    # exemption list still matches normal spellings as a substring too.
+    place = _make_place(db, city, '"STARBUCK " SAFEWAY #910')
+    flagged = _find_candidates_to_deactivate(db)
+    flagged_ids = {p.id for p, _ in flagged}
+    assert place.id not in flagged_ids
+
+
 def test_plain_costco_with_no_concession_signal_is_still_flagged(db, city):
     # Regression: the exemption must only fire for an actual concession
     # signal in the name, not just because SOME food-related word exists

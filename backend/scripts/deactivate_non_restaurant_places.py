@@ -69,12 +69,17 @@ _KNOWN_NON_RESTAURANT_NAME_SUBSTRINGS = [
 # host store's name is right there in it. Found running this script for
 # real: "Costco Food Court", "AFC Sushi @ Safeway #1953", "Starbucks (in
 # Target)", "Target Cafe" all got swept up by the chain-name check above.
+# "starbuck" (not "starbucks") deliberately drops the trailing s — still
+# matches every normal "Starbucks" spelling as a substring, but also catches
+# a real production row literally named `"STARBUCK " SAFEWAY #910` (the
+# source data itself is missing the final letter). "sushi" catches
+# concessionaires beyond the AFC brand (e.g. "Yummi Sushi @ Safeway #910").
 # Deliberately NOT included: "canteen" ("Canteen @ Costco #1341 Breakroom"
 # reads as an employee-only cafeteria, not a public place to eat) and plain
 # "food" (would exempt "Advantage Food Sampling Program @ Safeway #1502",
 # a promotional sampling table, not a restaurant).
 _IN_STORE_FOOD_CONCESSION_SUBSTRINGS = [
-    "food court", "starbucks", "cafe", "afc ",
+    "food court", "starbuck", "cafe", "afc ", "sushi",
 ]
 
 
