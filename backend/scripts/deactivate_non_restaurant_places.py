@@ -62,6 +62,21 @@ _KNOWN_NON_RESTAURANT_NAME_SUBSTRINGS = [
     "home depot", "lowe's", "lowes ",
 ]
 
+# Same false-positive shape as _FOOD_SERVICE_TYPES above, but for the name
+# check: an in-store food concession — a Starbucks kiosk inside a Target, an
+# AFC Sushi counter inside a Safeway, a Costco Food Court — is a distinct,
+# real food-service business, not the host store itself, even though the
+# host store's name is right there in it. Found running this script for
+# real: "Costco Food Court", "AFC Sushi @ Safeway #1953", "Starbucks (in
+# Target)", "Target Cafe" all got swept up by the chain-name check above.
+# Deliberately NOT included: "canteen" ("Canteen @ Costco #1341 Breakroom"
+# reads as an employee-only cafeteria, not a public place to eat) and plain
+# "food" (would exempt "Advantage Food Sampling Program @ Safeway #1502",
+# a promotional sampling table, not a restaurant).
+_IN_STORE_FOOD_CONCESSION_SUBSTRINGS = [
+    "food court", "starbucks", "cafe", "afc ",
+]
+
 
 def _find_candidates_to_deactivate(db):
     places = db.query(Place).filter(Place.is_active.is_(True)).all()
@@ -88,10 +103,14 @@ def _find_candidates_to_deactivate(db):
         reason = None
 
         name_lower = (place.name or "").lower()
-        for substr in _KNOWN_NON_RESTAURANT_NAME_SUBSTRINGS:
-            if substr in name_lower:
-                reason = f"name matches known non-restaurant chain ({substr!r})"
-                break
+        is_in_store_concession = any(
+            substr in name_lower for substr in _IN_STORE_FOOD_CONCESSION_SUBSTRINGS
+        )
+        if not is_in_store_concession:
+            for substr in _KNOWN_NON_RESTAURANT_NAME_SUBSTRINGS:
+                if substr in name_lower:
+                    reason = f"name matches known non-restaurant chain ({substr!r})"
+                    break
 
         if not reason:
             # A place can have more than one resolved DiscoveryCandidate —
