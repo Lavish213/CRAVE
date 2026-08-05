@@ -48,6 +48,13 @@ class PlaceRanking(Base, TimestampMixin):
 
     __table_args__ = (
         UniqueConstraint("user_id", "place_id", name="uq_place_rankings_user_place"),
+        # `alembic check`/autogenerate always reports this as drift (wanting
+        # ck_place_rankings_ck_place_rankings_valid_tier — the "ck" naming
+        # convention gets applied on top of this explicit name, doubling
+        # the prefix). The real deployed constraint is this exact name;
+        # renaming it would need a migration for a purely cosmetic change,
+        # same known/harmless situation as categories.category_type_enum in
+        # app/db/models/category.py.
         CheckConstraint(
             "tier in ('liked', 'fine', 'disliked')", name="ck_place_rankings_valid_tier"
         ),

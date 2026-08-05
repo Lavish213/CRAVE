@@ -61,6 +61,18 @@ class PlaceImage(Base, TimestampMixin):
         Index("ix_place_images_visibility_status", "visibility_status"),
         Index("ix_place_images_place_visibility", "place_id", "visibility_status"),
         Index("ix_place_images_place_order", "place_id", "insertion_order"),
+        # Explicit names — index=True on these columns below would route
+        # through Base's naming convention and mismatch what's actually
+        # deployed (see NAMING_CONVENTION's comment in app/db/models/base.py).
+        Index("ix_place_images_status", "status"),
+        Index("ix_place_images_phash", "phash"),
+        Index("ix_place_images_moderation_status", "moderation_status"),
+        Index("ix_place_images_uploaded_by", "uploaded_by"),
+        # Matches the CONCURRENTLY-created index from migration
+        # v1w2x3y4z5a6 — the single-column index the index=True shorthand
+        # below asked for was declared from day one but never actually
+        # deployed (only the composite ix_place_images_place_order was).
+        Index("ix_place_images_insertion_order", "insertion_order"),
     )
 
     # --------------------------------------------------
@@ -122,7 +134,10 @@ class PlaceImage(Base, TimestampMixin):
         nullable=False,
         default=VISIBILITY_GALLERY_ONLY,
         server_default=text(f"'{VISIBILITY_GALLERY_ONLY}'"),
-        index=True,
+        # Not index=True — already indexed via the explicit
+        # Index("ix_place_images_visibility_status", ...) in __table_args__
+        # above; the shorthand here was a redundant second (never-deployed)
+        # index.
     )
 
     # Content-based quality score (0.0–1.0). Null until scored by heuristics (Phase 3).
@@ -163,7 +178,6 @@ class PlaceImage(Base, TimestampMixin):
         nullable=False,
         default="ready",
         server_default=text("'ready'"),
-        index=True,
     )
 
     processing_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
@@ -175,7 +189,7 @@ class PlaceImage(Base, TimestampMixin):
         server_default=text("true"),
     )
 
-    phash: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    phash: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
     error_message: Mapped[str | None] = mapped_column(String(500), nullable=True)
 
@@ -191,7 +205,6 @@ class PlaceImage(Base, TimestampMixin):
         nullable=False,
         default="approved",
         server_default="approved",
-        index=True,
     )
 
     # Why it was rejected or held, e.g. "too_blurry", "safety_adult",
@@ -226,7 +239,7 @@ class PlaceImage(Base, TimestampMixin):
 
     # Supabase user id of the uploader. Nullable — legacy/scraped images have
     # no uploader. Not exposed on any public API response.
-    uploaded_by: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
+    uploaded_by: Mapped[str | None] = mapped_column(String(128), nullable=True)
 
     # --------------------------------------------------
     # ORDERING (PostgreSQL migration safety)
@@ -239,7 +252,6 @@ class PlaceImage(Base, TimestampMixin):
         BigInteger,
         nullable=True,
         default=None,
-        index=True,
     )
 
     # --------------------------------------------------

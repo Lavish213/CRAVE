@@ -37,6 +37,17 @@ class MenuSource(Base, TimestampMixin):
         Index("ix_menu_source_active", "is_active"),
         Index("ix_menu_source_type", "source_type"),
         Index("ix_menu_source_last_seen", "last_seen_at"),
+        # Composite — added by a dedicated migration (add_missing_pg_indexes)
+        # but never declared here, so alembic autogenerate wanted to DROP a
+        # real, deployed, useful index just because the model didn't know
+        # about it.
+        Index("ix_menu_source_place_active", "place_id", "is_active"),
+        # Explicit names below — index=True on these columns would route
+        # through Base's naming convention and mismatch what's actually
+        # deployed (see NAMING_CONVENTION's comment in app/db/models/base.py).
+        Index("ix_menu_source_provider", "provider"),
+        Index("ix_menu_source_confidence", "confidence"),
+        Index("ix_menu_source_last_verified", "last_verified_at"),
     )
 
     # --------------------------------------------------
@@ -76,7 +87,6 @@ class MenuSource(Base, TimestampMixin):
     provider: Mapped[str | None] = mapped_column(
         String(32),
         nullable=True,
-        index=True,
     )
 
     source_type: Mapped[str] = mapped_column(
@@ -94,7 +104,6 @@ class MenuSource(Base, TimestampMixin):
         nullable=False,
         default=0.0,
         server_default=text("0"),
-        index=True,
     )
 
     # --------------------------------------------------
@@ -109,7 +118,6 @@ class MenuSource(Base, TimestampMixin):
     last_verified_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
         nullable=True,
-        index=True,
     )
 
     last_success_at: Mapped[datetime | None] = mapped_column(

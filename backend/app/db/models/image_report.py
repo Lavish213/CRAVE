@@ -45,6 +45,10 @@ class ImageReport(Base, TimestampMixin):
         # trip the auto-hide threshold alone.
         UniqueConstraint("image_id", "reporter_id", name="uq_image_reports_image_reporter"),
         Index("ix_image_reports_image", "image_id"),
+        # Explicit name — index=True on reporter_id below would route
+        # through Base's naming convention and mismatch what's actually
+        # deployed (see NAMING_CONVENTION's comment in app/db/models/base.py).
+        Index("ix_image_reports_reporter_id", "reporter_id"),
     )
 
     id: Mapped[str] = mapped_column(
@@ -57,7 +61,7 @@ class ImageReport(Base, TimestampMixin):
         nullable=False,
     )
 
-    reporter_id: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+    reporter_id: Mapped[str] = mapped_column(String(128), nullable=False)
 
     reason: Mapped[str] = mapped_column(String(32), nullable=False)
 

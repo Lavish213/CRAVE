@@ -31,6 +31,10 @@ class JobRun(Base):
 
     __table_args__ = (
         Index("ix_job_runs_job_name_started", "job_name", "started_at"),
+        # Explicit name — index=True on job_name below would route through
+        # Base's naming convention and mismatch what's actually deployed
+        # (see NAMING_CONVENTION's comment in app/db/models/base.py).
+        Index("ix_job_runs_job_name", "job_name"),
     )
 
     id: Mapped[str] = mapped_column(
@@ -39,7 +43,7 @@ class JobRun(Base):
         default=lambda: str(uuid.uuid4()),
     )
 
-    job_name: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    job_name: Mapped[str] = mapped_column(String(64), nullable=False)
 
     started_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

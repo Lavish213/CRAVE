@@ -49,6 +49,10 @@ class Place(Base, TimestampMixin):
         Index("ix_places_price_tier", "price_tier"),
         Index("ix_places_created_at", "created_at"),
         Index("ix_places_website", "website"),
+        # Explicit name — index=True on image_blocked below would route
+        # through Base's naming convention and mismatch what's actually
+        # deployed (see NAMING_CONVENTION's comment in app/db/models/base.py).
+        Index("ix_places_image_blocked", "image_blocked"),
     )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
@@ -212,7 +216,6 @@ class Place(Base, TimestampMixin):
         nullable=False,
         default=False,
         server_default=text("false"),
-        index=True,
     )
 
     city: Mapped["City"] = relationship(

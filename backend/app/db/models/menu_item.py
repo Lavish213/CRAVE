@@ -40,6 +40,10 @@ class MenuItem(Base, TimestampMixin):
         Index("ix_menu_snapshot", "source_snapshot_id"),
         Index("ix_menu_place_active", "place_id", "is_active"),
         Index("ix_menu_provider", "provider"),
+        # Explicit name — index=True on fingerprint below would route
+        # through Base's naming convention and mismatch what's actually
+        # deployed (see NAMING_CONVENTION's comment in app/db/models/base.py).
+        Index("ix_menu_fingerprint", "fingerprint"),
     )
 
     # --------------------------------------------------
@@ -80,7 +84,9 @@ class MenuItem(Base, TimestampMixin):
     price_cents: Mapped[int | None] = mapped_column(
         Integer,
         nullable=True,
-        index=True,
+        # Not index=True — already indexed via the explicit
+        # Index("ix_menu_price_cents", ...) in __table_args__ above; the
+        # shorthand here was a redundant second (never-deployed) index.
     )
 
     description: Mapped[str | None] = mapped_column(
@@ -102,7 +108,6 @@ class MenuItem(Base, TimestampMixin):
     fingerprint: Mapped[str] = mapped_column(
         String(64),
         nullable=False,
-        index=True,
     )
 
     # --------------------------------------------------
@@ -119,7 +124,9 @@ class MenuItem(Base, TimestampMixin):
     provider: Mapped[str | None] = mapped_column(
         String(32),
         nullable=True,
-        index=True,
+        # Not index=True — already indexed via the explicit
+        # Index("ix_menu_provider", ...) in __table_args__ above; the
+        # shorthand here was a redundant second (never-deployed) index.
     )
 
     source_type: Mapped[str | None] = mapped_column(

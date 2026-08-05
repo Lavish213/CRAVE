@@ -48,6 +48,10 @@ class DiscoveryCandidate(Base, TimestampMixin):
         Index("ix_candidate_lng", "lng"),
         Index("ix_candidate_promote", "confidence_score", "status"),
         Index("ix_candidate_resolved", "resolved", "blocked"),
+        # Explicit name — index=True on next_retry_at below would route
+        # through Base's naming convention and mismatch what's actually
+        # deployed (see NAMING_CONVENTION's comment in app/db/models/base.py).
+        Index("ix_candidate_next_retry_at", "next_retry_at"),
     )
 
     id: Mapped[str] = mapped_column(
@@ -185,7 +189,6 @@ class DiscoveryCandidate(Base, TimestampMixin):
     next_retry_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
         nullable=True,
-        index=True,
     )
 
     # ------------------------------------------------------------------
