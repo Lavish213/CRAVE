@@ -61,6 +61,16 @@ _DOMAIN_RULES = {
 
     # generic CDN hint
     "cdn": 0.5,
+
+    # Geocoding / places APIs — pinned explicitly at the same effective
+    # value _DEFAULT_DELAY already provided (no runtime behavior change).
+    # Before this, both fell through to the generic default and happened
+    # to satisfy Nominatim's 1 req/sec usage policy only by accident — a
+    # future edit to _DEFAULT_DELAY for some unrelated domain could have
+    # silently violated it (and started chewing through Google's per-key
+    # QPS budget) with nothing here to stop it.
+    "openstreetmap.org": 2.0,
+    "googleapis.com": 2.0,
 }
 
 

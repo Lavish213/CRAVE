@@ -1,7 +1,7 @@
 # app/db/models/user_profile.py
 from __future__ import annotations
 
-from sqlalchemy import Boolean, String, text
+from sqlalchemy import Boolean, Index, String, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.models.base import Base, TimestampMixin
@@ -20,9 +20,17 @@ class UserProfile(Base, TimestampMixin):
 
     __tablename__ = "user_profiles"
 
+    __table_args__ = (
+        # Explicit name — unique=True + index=True on the column below would
+        # route through Base's naming convention and mismatch what the
+        # migration actually deployed (see NAMING_CONVENTION's comment in
+        # app/db/models/base.py).
+        Index("ix_user_profiles_username", "username", unique=True),
+    )
+
     id: Mapped[str] = mapped_column(String(128), primary_key=True)
 
-    username: Mapped[str] = mapped_column(String(30), nullable=False, unique=True, index=True)
+    username: Mapped[str] = mapped_column(String(30), nullable=False)
 
     display_name: Mapped[str | None] = mapped_column(String(60), nullable=True)
 

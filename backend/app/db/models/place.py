@@ -97,7 +97,7 @@ class Place(Base, TimestampMixin):
         Boolean,
         nullable=False,
         default=True,
-        server_default=text("1"),
+        server_default=text("true"),
         index=True,
     )
 
@@ -149,7 +149,7 @@ class Place(Base, TimestampMixin):
         Boolean,
         nullable=False,
         default=False,
-        server_default=text("0"),
+        server_default=text("false"),
         index=True,
     )
 
@@ -211,7 +211,7 @@ class Place(Base, TimestampMixin):
         Boolean,
         nullable=False,
         default=False,
-        server_default=text("0"),
+        server_default=text("false"),
         index=True,
     )
 
