@@ -3,7 +3,10 @@
   "steps": {
     "install": {
       "inputs": [{ "local": true }],
-      "commands": ["pip install -r backend/requirements.txt"]
+      "commands": [
+        "pip install -r backend/requirements.txt",
+        "playwright install --with-deps chromium"
+      ]
     }
   }
 }
