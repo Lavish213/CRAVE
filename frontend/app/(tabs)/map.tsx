@@ -356,7 +356,7 @@ export default function MapScreen() {
         </View>
       )}
 
-      {mapError && (
+      {mapError && features.length === 0 && (
         <View style={styles.mapBanner}>
           <Text style={styles.mapBannerText}>Could not load places</Text>
         </View>
