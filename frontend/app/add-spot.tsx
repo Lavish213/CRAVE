@@ -98,11 +98,18 @@ export default function AddSpotScreen() {
     run();
   }, [run]);
 
+  // Bumped every time the signed-in account changes — a handleConfirm call
+  // in flight when the account switches captures the generation it started
+  // under, so its completion/error/finally handlers can tell they're stale
+  // and skip touching confirmedIds/confirmingId for the new account.
+  const accountGenerationRef = useRef(0);
+
   // A signed-in user's confirmed-spot submissions are specific to that
   // account — reset them on sign-out/account switch so the next session
   // can't inherit "Submitted" state (and disabled buttons) from a
   // different user, if this screen ever stays mounted across the change.
   useEffect(() => {
+    accountGenerationRef.current += 1;
     setConfirmedIds(new Set());
   }, [user?.id]);
 
@@ -111,6 +118,7 @@ export default function AddSpotScreen() {
       toast('Sign in to add a new spot');
       return;
     }
+    const submittingGeneration = accountGenerationRef.current;
     const key = candidate.external_id ?? candidate.name;
     setConfirmingId(key);
     try {
@@ -123,13 +131,16 @@ export default function AddSpotScreen() {
         address: candidate.address,
         category_hint: candidate.category_hint,
       });
+      if (submittingGeneration !== accountGenerationRef.current) return;
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setConfirmedIds((prev) => new Set(prev).add(key));
       toast("Got it — added as a signal. It'll appear once confirmed by more activity.");
     } catch (err) {
+      if (submittingGeneration !== accountGenerationRef.current) return;
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       toast(err instanceof Error ? err.message : 'Could not submit this spot');
     } finally {
+      if (submittingGeneration !== accountGenerationRef.current) return;
       setConfirmingId(null);
     }
   };

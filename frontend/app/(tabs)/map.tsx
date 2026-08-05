@@ -65,6 +65,36 @@ function prefetchRadiusKmForRegion(region: Region): number {
   return Math.min(50, radiusKmForRegion(region) * PREFETCH_RADIUS_MULTIPLIER);
 }
 
+// Equirectangular approximation, consistent with radiusKmForRegion's own —
+// accurate enough at map-pan scale, used to check whether a pan landed
+// somewhere the last successful fetch already covers.
+function distanceKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const latRad = ((lat1 + lat2) / 2 * Math.PI) / 180;
+  const kmPerLngDegree = 111.32 * Math.cos(latRad);
+  const dLat = (lat2 - lat1) * 111.32;
+  const dLng = (lng2 - lng1) * kmPerLngDegree;
+  return Math.sqrt(dLat * dLat + dLng * dLng);
+}
+
+interface FetchCoverage {
+  lat: number;
+  lng: number;
+  radiusKm: number;
+}
+
+// True when everything within visibleRadiusKm of (lat, lng) already sits
+// inside a previously-fetched circle — i.e. this pan needs no new request
+// at all, not even the padded prefetch one.
+function isCoveredByPriorFetch(
+  lat: number,
+  lng: number,
+  visibleRadiusKm: number,
+  coverage: FetchCoverage | null
+): boolean {
+  if (!coverage) return false;
+  return distanceKm(lat, lng, coverage.lat, coverage.lng) + visibleRadiusKm <= coverage.radiusKm;
+}
+
 interface SelectedFeature {
   id: string;
   name: string;
@@ -148,6 +178,12 @@ export default function MapScreen() {
   // confirmed on a real device.
   const requestIdRef = useRef(0);
 
+  // The most recent successful fetch's center + actual fetched radius —
+  // lets a subsequent pan skip firing a request at all when the visible
+  // area is already fully inside this circle, instead of always refetching
+  // on every debounced region change regardless of coverage.
+  const lastFetchCoverageRef = useRef<FetchCoverage | null>(null);
+
   // Effective center: city > user location > default
   const mapLat = selectedCity?.lat ?? userLocation?.lat ?? DEFAULT_REGION.latitude;
   const mapLng = selectedCity?.lng ?? userLocation?.lng ?? DEFAULT_REGION.longitude;
@@ -171,6 +207,7 @@ export default function MapScreen() {
           if (__DEV__) console.log('[MAP] FEATURES_LOADED', { count: normalized.length, radiusKm, sample: normalized[0] ? { id: normalized[0].id, lat: normalized[0].coordinate.lat, lng: normalized[0].coordinate.lng, tier: normalized[0].tier } : null });
           setFeatures(normalized);
           setMapLoaded(true);
+          lastFetchCoverageRef.current = { lat, lng, radiusKm };
         })
         .catch(() => {
           if (myRequestId !== requestIdRef.current) return;
@@ -186,6 +223,15 @@ export default function MapScreen() {
 
   // Initial load + reload on city change (or GPS location resolving).
   useEffect(() => {
+    // A pan-triggered debounce scheduled just before this fires would
+    // otherwise invoke a stale loadFeatures closure bound to the previous
+    // city/region once its timer elapses — since it calls loadFeatures
+    // after this effect's call, it would win the requestIdRef race and
+    // overwrite these correct, newer results with the old city's pins.
+    if (fetchDebounceRef.current) {
+      clearTimeout(fetchDebounceRef.current);
+      fetchDebounceRef.current = null;
+    }
     loadFeatures(mapLat, mapLng, prefetchRadiusKmForRegion(cityToRegion(mapLat, mapLng)));
   }, [selectedCity?.id, mapLat, mapLng, loadFeatures]);
 
@@ -216,6 +262,11 @@ export default function MapScreen() {
 
       if (fetchDebounceRef.current) clearTimeout(fetchDebounceRef.current);
       fetchDebounceRef.current = setTimeout(() => {
+        const visibleRadiusKm = radiusKmForRegion(region);
+        if (isCoveredByPriorFetch(region.latitude, region.longitude, visibleRadiusKm, lastFetchCoverageRef.current)) {
+          if (__DEV__) console.log('[MAP] SKIP_FETCH_ALREADY_COVERED', { lat: region.latitude, lng: region.longitude, visibleRadiusKm });
+          return;
+        }
         loadFeatures(region.latitude, region.longitude, prefetchRadiusKmForRegion(region));
       }, REGION_FETCH_DEBOUNCE_MS);
     },

@@ -35,7 +35,27 @@ import time
 from types import FrameType
 from typing import Optional
 
+from app.config.settings import settings
 from app.scheduler import create_scheduler
+
+# Same as app/main.py: this process runs the identical scheduled jobs (see
+# that module's own Sentry block for the full reasoning), including
+# _job_moderation_queue_health_check's logger.error calls — without this,
+# once the scheduler moves here those errors would never reach Sentry at
+# all, since main.py's Sentry init only runs in the web process. No
+# FastApiIntegration/StarletteIntegration here — there's no ASGI app in
+# this process — but sentry_sdk's default integrations (left enabled)
+# already include LoggingIntegration, which is what actually captures
+# logger.error as events.
+if settings.sentry_dsn:
+    import sentry_sdk
+
+    sentry_sdk.init(
+        dsn=settings.sentry_dsn,
+        environment=settings.app_env,
+        traces_sample_rate=0.1,
+        send_default_pii=False,
+    )
 
 logging.basicConfig(
     level=logging.INFO,
