@@ -1,5 +1,5 @@
 // app/place/[id].tsx
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
@@ -122,32 +122,55 @@ export default function PlaceDetailScreen() {
   const [menuLoading, setMenuLoading] = useState(true);
   const [menuExpanded, setMenuExpanded] = useState(false);
 
+  // expo-router can reuse this screen instance across a param change (e.g.
+  // tapping from one place's menu/social content into another place's
+  // detail) rather than unmounting — without a guard, a slow response for
+  // the *previous* place's id could resolve after the new place's and
+  // silently overwrite this screen with the wrong place's menu/craves. Each
+  // fetch below gets its own counter since they're independent requests —
+  // sharing one would make each falsely invalidate the other on mount.
+  const menuGenerationRef = useRef(0);
+
   // Fetch menu separately (not worth a useQuery for this small side-load)
   useEffect(() => {
     if (!id) return;
+    const myGeneration = ++menuGenerationRef.current;
     setMenuLoading(true);
     getPlaceMenu(id)
       .then((m) => {
+        if (myGeneration !== menuGenerationRef.current) return;
         setMenuItems(m.items);
         setMenuVerifiedAt(m.lastVerifiedAt);
       })
       .catch(() => {
+        if (myGeneration !== menuGenerationRef.current) return;
         setMenuItems([]);
         setMenuVerifiedAt(null);
       })
-      .finally(() => setMenuLoading(false));
+      .finally(() => {
+        if (myGeneration !== menuGenerationRef.current) return;
+        setMenuLoading(false);
+      });
   }, [id]);
 
   const [craves, setCraves] = useState<CraveItem[]>([]);
+  const cravesGenerationRef = useRef(0);
 
   // Matched shares for this place — "seen on TikTok/YouTube" social proof.
   // Public endpoint, no auth needed, silently empty on failure (this is
   // supplementary content, not worth an error state of its own).
   useEffect(() => {
     if (!id) return;
+    const myGeneration = ++cravesGenerationRef.current;
     getCravesForPlace(id)
-      .then((items) => setCraves(items))
-      .catch(() => setCraves([]));
+      .then((items) => {
+        if (myGeneration !== cravesGenerationRef.current) return;
+        setCraves(items);
+      })
+      .catch(() => {
+        if (myGeneration !== cravesGenerationRef.current) return;
+        setCraves([]);
+      });
   }, [id]);
 
   const handleShare = useCallback(() => {

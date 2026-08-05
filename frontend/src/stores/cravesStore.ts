@@ -32,6 +32,14 @@ interface CravesStore {
 
 const _pendingSaves = new Set<string>();
 
+// loadSaves() takes a userId but fetchSaves() has no request-cancellation
+// mechanism — without this, a slow loadSaves() call for a just-signed-out
+// account can resolve after a faster loadSaves() call for the newly
+// signed-in account and overwrite the persisted `saves` state with the
+// wrong account's data. Bumped at the start of each call; a call only
+// applies its result if it's still the most recently *started* one.
+let _loadSequence = 0;
+
 // Previously every failure (network error, 500, 429, expired session) was
 // collapsed into one of two hardcoded strings, so a user hitting the rate
 // limiter (see backend app/core/rate_limit.py) saw the exact same message
@@ -54,12 +62,15 @@ export const useCravesStore = create<CravesStore>()(
       error: null,
 
       loadSaves: async (userId: string) => {
+        const mySequence = ++_loadSequence;
         set({ loading: true, error: null });
         try {
           const items = await fetchSaves(userId);
+          if (mySequence !== _loadSequence) return;
           if (__DEV__) console.log('[CRAVES_STORE] loadSaves', { count: items.length });
           set({ saves: items, loading: false });
         } catch (err: any) {
+          if (mySequence !== _loadSequence) return;
           const msg = _classifyError(err, 'Failed to load saves');
           if (__DEV__) console.log('[CRAVES_STORE] loadSaves_error', msg, err?.response?.status);
           set({ loading: false, error: msg });

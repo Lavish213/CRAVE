@@ -1,5 +1,5 @@
 // src/hooks/useTrending.ts
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { PlaceOut, fetchTrending } from '../api/places';
 import { useCityStore } from '../stores/cityStore';
 
@@ -21,15 +21,27 @@ export function useTrendingWithRefresh(): [PlaceOut[], boolean, () => void] {
   );
   const [refreshing, setRefreshing] = useState(false);
 
+  // Tracks the cityId of the most recently *started* request — without
+  // this, switching city A → B quickly (e.g. via CitySelectorStrip) while
+  // A's fetchTrending is still in flight lets A's slower response resolve
+  // after B's and clobber the already-displayed city-B list with stale
+  // city-A data via setTrending.
+  const latestRequestCityRef = useRef<string | null>(null);
+
   const load = useCallback((cityId: string, { bypassCache }: { bypassCache: boolean }) => {
     if (!bypassCache && cache[cityId]) {
+      latestRequestCityRef.current = cityId;
       setTrending(cache[cityId]);
       return;
     }
+    latestRequestCityRef.current = cityId;
     setRefreshing(true);
     fetchTrending(cityId)
       .then((data) => {
+        // Cache write stays unconditional — still correct data for a future
+        // switch back to this city, even if it's not the one showing now.
         cache[cityId] = data;
+        if (cityId !== latestRequestCityRef.current) return;
         setTrending(data);
       })
       .catch((err) => {
@@ -38,7 +50,10 @@ export function useTrendingWithRefresh(): [PlaceOut[], boolean, () => void] {
         // error completely, including real bugs, with zero visibility.
         if (__DEV__) console.warn('[useTrending] fetchTrending_failed', err?.response?.status, err?.message);
       })
-      .finally(() => setRefreshing(false));
+      .finally(() => {
+        if (cityId !== latestRequestCityRef.current) return;
+        setRefreshing(false);
+      });
   }, []);
 
   useEffect(() => {

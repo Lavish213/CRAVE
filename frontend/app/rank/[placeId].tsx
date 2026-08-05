@@ -72,11 +72,26 @@ export default function RankPlaceScreen() {
   const [sharing, setSharing] = useState(false);
   const shareCardRef = useRef<View>(null);
 
+  // expo-router can reuse this screen instance across a placeId change
+  // rather than unmounting — without this guard, a slow response for a
+  // previous placeId could resolve after the current one's and repaint
+  // stage 1 with the wrong place's name/image (the actual ranking calls
+  // below key off the route's placeId directly, not this state, so this
+  // only guards against a visual mismatch, not corrupted ranking data).
+  const placeGenerationRef = useRef(0);
+
   useEffect(() => {
     if (!placeId) return;
+    const myGeneration = ++placeGenerationRef.current;
     fetchPlaceDetail(placeId)
-      .then(setPlace)
-      .catch(() => setError("Couldn't load this place."));
+      .then((p) => {
+        if (myGeneration !== placeGenerationRef.current) return;
+        setPlace(p);
+      })
+      .catch(() => {
+        if (myGeneration !== placeGenerationRef.current) return;
+        setError("Couldn't load this place.");
+      });
   }, [placeId]);
 
   /** Both entry points (start + each answer) return the same shape. */

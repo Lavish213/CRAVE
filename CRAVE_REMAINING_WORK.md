@@ -178,3 +178,99 @@ these five files.
   0.5x series) that would make `pip install` fail outright. Fixed to
   `starlette>=0.40.0,<1.0.0`. Other version floors in that file were
   spot-checked against real PyPI release history and are fine.
+
+## 2026-08-05 — project-grade systems review (branch `claude/project-grade-systems-review-4ot7d0`)
+
+Unlike the log above, every fix in this section was written, then actually
+run: full backend pytest suite (445 passing) and `npx tsc --noEmit` (clean)
+after each change, on a real checkout with shell access. Earlier in this
+same session (prior to this log entry) the scheduler was split out of the
+web process, a missing DB index was added for the map bounding-box query,
+frontend preload/prefetch was added for map + feed, and ImageWorker's
+place-selection fairness bug was found and fixed. This entry covers the
+follow-up pass: hunting down every other instance of the same two bug
+classes elsewhere in the codebase.
+
+### Backend: menu_worker.py had the identical starvation bug as image_worker.py
+
+`app/services/workers/menu_worker.py::_load_places_requiring_menu` ordered
+strictly `rank_score DESC, id ASC` with a plain `LIMIT BATCH_SIZE` (25) and
+no rotation — the exact shape the module's own docstring already warned
+about, confirmed in production for the identical pattern in
+`image_worker.py` (Lodi's 48 places sat at zero images across 622
+consecutive runs). The backoff mechanism already in this file
+(`_not_in_backoff_clause`) only protects against a *repeat-failing* place
+hogging every run — it does nothing for a place with a valid menu source
+that's simply never been attempted and has a low `rank_score`, since
+discovery keeps refilling the top of that ordering with newer, higher-
+signal places ahead of it.
+
+Fixed by mirroring `image_worker.py::_select_places`'s pattern: reserve
+`max(1, BATCH_SIZE // 5)` (5) slots of each batch for the oldest eligible
+places by `created_at`, on top of the rank_score-priority slice, sharing all
+the same filters (website/grubhub/menu_source_url present, no existing menu
+`PlaceTruth` row, not in backoff). New test:
+`backend/tests/test_menu_worker_starvation.py`, mirroring
+`test_image_worker_starvation.py`'s shape (80 high-rank + 5 low-rank places,
+assert at least one low-rank place survives the batch selection).
+
+### Frontend: the same unguarded stale-response race existed in four more places
+
+Same bug class already fixed this session in `map.tsx` and `add-spot.tsx`:
+a `.then()` handler calling `setState` unconditionally, with no check that
+the screen's identity (place id, signed-in account, or selected city) is
+still the one the request was made for. A background research agent
+audited every other data-fetching screen/hook first (Feed and Search are
+safe — React Query's per-key caching means a stale response resolves into
+its own now-irrelevant cache bucket rather than overwriting the current
+one; `useLocation` is safe — a single shared promise means there's only
+ever one in-flight response, period). Confirmed and fixed:
+
+- **`app/place/[id].tsx`** — the menu fetch (`getPlaceMenu` →
+  `setMenuItems`/`setMenuVerifiedAt`) and the craves-for-place fetch
+  (`getCravesForPlace` → `setCraves`) were both keyed only on `id` with no
+  guard. Since expo-router can reuse this screen instance across an `id`
+  change (e.g. tapping from one place's menu/social content into another
+  place's detail) rather than unmounting, a slow response for the old place
+  could resolve after the new place's and silently repaint the screen with
+  the wrong place's menu/craves. Fixed with two independent generation
+  refs (`menuGenerationRef`, `cravesGenerationRef` — kept separate since
+  they're unrelated requests; a shared counter would make each falsely
+  invalidate the other on mount).
+
+- **`app/(tabs)/craves.tsx` + `src/stores/cravesStore.ts`** —
+  account-switch version of the same bug. Neither `getCraveItems()` nor
+  `getMyPlaceSaves()` takes a userId (both rely on the ambient auth token),
+  so a slow request in flight when the signed-in account changes could
+  resolve after the new account's and overwrite `craves`/`placeSaves`/the
+  persisted `saves` store with the previous user's data. Fixed with an
+  `accountGenerationRef` in craves.tsx (bumped on `user?.id` change, same
+  pattern as `add-spot.tsx`'s `accountGenerationRef`) guarding
+  `loadCraves`/`loadPlaceSaves`, and a module-level `_loadSequence` counter
+  in `cravesStore.ts` guarding `loadSaves` (same shape as that file's
+  existing `_pendingSaves` module-level guard).
+
+- **`src/hooks/useTrending.ts`** — city-switch version. `load()` had no
+  guard against a city switch mid-request; switching city A → B quickly
+  with A's `fetchTrending` resolving after B's would clobber the correctly-
+  displayed city-B trending list with stale city-A data. Fixed with a
+  `latestRequestCityRef`, set synchronously at the start of `load()` before
+  the async call, checked before `setTrending`/clearing `refreshing`. The
+  `cache[cityId] = data` write stays unconditional — still correct for a
+  future switch back to that city even when it's not the one on screen.
+
+- **`app/rank/[placeId].tsx`** — found during a follow-up sweep for any
+  remaining unguarded `.then()` chains in effects keyed on a route param.
+  Same shape as `place/[id].tsx`: `fetchPlaceDetail(placeId)` had no guard
+  against a `placeId` change reusing the screen instance. Lower severity
+  than the others here — the actual ranking calls (`startRanking`,
+  `submitComparison`) key off the route's `placeId` directly, not this
+  `place` state, so an unguarded race here could only have caused a
+  momentary wrong name/image in stage 1, never corrupted ranking data.
+  Fixed the same way regardless, with a `placeGenerationRef`.
+
+### Verification
+
+- `cd backend && rm -f test_crave.db && python -m pytest -q` — 445 passed
+  (444 baseline + 1 new test).
+- `cd frontend && npx tsc --noEmit -p .` — clean, no errors.

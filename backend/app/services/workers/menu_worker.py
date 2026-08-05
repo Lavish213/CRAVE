@@ -192,7 +192,7 @@ class MenuWorker:
         # place whose only menu source is a delivery-platform URL (Grubhub)
         # or a directly-discovered menu_source_url without a general website
         # on file — a real and common case, not an edge case.
-        query = (
+        base_query = (
             db.query(Place)
             .outerjoin(
                 PlaceTruth,
@@ -208,18 +208,50 @@ class MenuWorker:
                 PlaceTruth.id.is_(None),
                 _not_in_backoff_clause(datetime.now(timezone.utc)),
             )
-            .order_by(
+        )
+
+        # Reserve a slice of the batch for the oldest eligible places
+        # regardless of rank_score. Without this, a straight
+        # `rank_score DESC LIMIT BATCH_SIZE` never-attempted place with a
+        # low rank_score can be permanently outranked by newer, higher-signal
+        # places — discovery keeps refilling the top of the queue, so it
+        # never cracks the top BATCH_SIZE and is never even tried. Same
+        # starvation shape the module docstring above warns about (confirmed
+        # in production for the identical pattern in image_worker.py's
+        # _select_places, which this mirrors). The backoff clause already
+        # applied above prevents a repeat-failing place from hogging every
+        # run — this fixes the separate case of a place that's simply
+        # never been attempted at all.
+        starvation_reserve = max(1, BATCH_SIZE // 5)
+        priority_limit = BATCH_SIZE - starvation_reserve
+
+        priority_places = list(
+            base_query.order_by(
                 Place.rank_score.desc(),
                 Place.id.asc(),
             )
-            .limit(BATCH_SIZE)
+            .limit(priority_limit)
+            .all()
         )
+        picked_ids = {p.id for p in priority_places}
 
-        places = query.all()
+        fairness_places = [
+            p
+            for p in base_query.order_by(
+                Place.created_at.asc(), Place.id.asc()
+            )
+            .limit(starvation_reserve + len(picked_ids))
+            .all()
+            if p.id not in picked_ids
+        ][:starvation_reserve]
+
+        places = priority_places + fairness_places
 
         logger.info(
-            "menu_worker_places_loaded count=%s",
+            "menu_worker_places_loaded count=%s priority=%s fairness=%s",
             len(places),
+            len(priority_places),
+            len(fairness_places),
         )
 
         return places
