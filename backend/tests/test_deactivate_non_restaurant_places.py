@@ -148,3 +148,68 @@ def test_actual_wholesaler_with_no_food_service_type_is_still_flagged(db, city):
     flagged = _find_candidates_to_deactivate(db)
     flagged_ids = {p.id for p, _ in flagged}
     assert place.id in flagged_ids
+
+
+# --------------------------------------------------------------------------
+# In-store food concessions (name-check exemption) — the same false-positive
+# shape as the Google-types exemption above, but for the belt-and-suspenders
+# chain-name check: a Starbucks kiosk or AFC Sushi counter inside a Safeway
+# is a distinct, real food-service business, not the host store itself.
+# Found running this script for real against production.
+# --------------------------------------------------------------------------
+
+def test_costco_food_court_is_not_flagged_despite_costco_in_the_name(db, city):
+    place = _make_place(db, city, "Costco Food Court")
+    flagged = _find_candidates_to_deactivate(db)
+    flagged_ids = {p.id for p, _ in flagged}
+    assert place.id not in flagged_ids
+
+
+def test_starbucks_inside_target_is_not_flagged(db, city):
+    place = _make_place(db, city, "Starbucks (in Target)")
+    flagged = _find_candidates_to_deactivate(db)
+    flagged_ids = {p.id for p, _ in flagged}
+    assert place.id not in flagged_ids
+
+
+def test_afc_sushi_at_safeway_is_not_flagged(db, city):
+    place = _make_place(db, city, "AFC SUSHI @ SAFEWAY #1953")
+    flagged = _find_candidates_to_deactivate(db)
+    flagged_ids = {p.id for p, _ in flagged}
+    assert place.id not in flagged_ids
+
+
+def test_target_cafe_is_not_flagged(db, city):
+    place = _make_place(db, city, "Target Cafe")
+    flagged = _find_candidates_to_deactivate(db)
+    flagged_ids = {p.id for p, _ in flagged}
+    assert place.id not in flagged_ids
+
+
+def test_plain_costco_with_no_concession_signal_is_still_flagged(db, city):
+    # Regression: the exemption must only fire for an actual concession
+    # signal in the name, not just because SOME food-related word exists
+    # anywhere in the broader catalog. Plain "Costco" is still real junk.
+    place = _make_place(db, city, "Costco Wholesale #118")
+    flagged = _find_candidates_to_deactivate(db)
+    flagged_ids = {p.id for p, _ in flagged}
+    assert place.id in flagged_ids
+
+
+def test_costco_breakroom_canteen_is_still_flagged(db, city):
+    # Deliberately NOT exempted: "canteen"/"breakroom" reads as an
+    # employee-only cafeteria, not a public place to eat.
+    place = _make_place(db, city, "Canteen @ Costco #1341 Breakroom")
+    flagged = _find_candidates_to_deactivate(db)
+    flagged_ids = {p.id for p, _ in flagged}
+    assert place.id in flagged_ids
+
+
+def test_food_sampling_program_is_still_flagged(db, city):
+    # Deliberately NOT exempted: plain "food" isn't in the concession list
+    # specifically so this doesn't get swept into the exemption — it's a
+    # promotional sampling table, not a restaurant.
+    place = _make_place(db, city, "Advantage Food Sampling Program @ Safeway #1502")
+    flagged = _find_candidates_to_deactivate(db)
+    flagged_ids = {p.id for p, _ in flagged}
+    assert place.id in flagged_ids
