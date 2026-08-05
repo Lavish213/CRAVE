@@ -21,27 +21,28 @@ export function useTrendingWithRefresh(): [PlaceOut[], boolean, () => void] {
   );
   const [refreshing, setRefreshing] = useState(false);
 
-  // Tracks the cityId of the most recently *started* request — without
-  // this, switching city A → B quickly (e.g. via CitySelectorStrip) while
-  // A's fetchTrending is still in flight lets A's slower response resolve
-  // after B's and clobber the already-displayed city-B list with stale
-  // city-A data via setTrending.
-  const latestRequestCityRef = useRef<string | null>(null);
+  // Tracks the most recently *started* request by sequence number, not just
+  // cityId — two overlapping requests for the *same* city (e.g. refresh()
+  // fired twice quickly, or a cache-bypass racing a plain load) both pass a
+  // cityId-only check, so a slower of two same-city responses could still
+  // overwrite a newer one and leave `refreshing` clobbered. Incremented for
+  // both the cached and network paths.
+  const latestRequestRef = useRef(0);
 
   const load = useCallback((cityId: string, { bypassCache }: { bypassCache: boolean }) => {
+    const requestId = ++latestRequestRef.current;
     if (!bypassCache && cache[cityId]) {
-      latestRequestCityRef.current = cityId;
       setTrending(cache[cityId]);
+      setRefreshing(false);
       return;
     }
-    latestRequestCityRef.current = cityId;
     setRefreshing(true);
     fetchTrending(cityId)
       .then((data) => {
         // Cache write stays unconditional — still correct data for a future
         // switch back to this city, even if it's not the one showing now.
         cache[cityId] = data;
-        if (cityId !== latestRequestCityRef.current) return;
+        if (requestId !== latestRequestRef.current) return;
         setTrending(data);
       })
       .catch((err) => {
@@ -51,7 +52,7 @@ export function useTrendingWithRefresh(): [PlaceOut[], boolean, () => void] {
         if (__DEV__) console.warn('[useTrending] fetchTrending_failed', err?.response?.status, err?.message);
       })
       .finally(() => {
-        if (cityId !== latestRequestCityRef.current) return;
+        if (requestId !== latestRequestRef.current) return;
         setRefreshing(false);
       });
   }, []);

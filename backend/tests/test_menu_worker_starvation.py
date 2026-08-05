@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import sys
 import uuid
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -25,6 +26,14 @@ from app.db.session import SessionLocal
 from app.db.models.city import City
 from app.db.models.place import Place
 from app.services.workers.menu_worker import MenuWorker, BATCH_SIZE
+
+# _load_places_requiring_menu has no city filter — it selects eligible places
+# across the whole table. Without pinning created_at explicitly, a stray
+# eligible row left by another test (or run in a different order) with an
+# older created_at than our low-rank places could occupy a fairness-slice
+# seat instead of them, making this test flaky rather than a true reflection
+# of the worker's behavior. This anchor predates any real place in the app.
+_ANCIENT = datetime(2000, 1, 1, tzinfo=timezone.utc)
 
 
 @pytest.fixture
@@ -47,7 +56,9 @@ def city(db):
     db.commit()
 
 
-def _make_place(db, city, *, rank_score: float) -> Place:
+def _make_place(db, city, *, rank_score: float, created_at: datetime) -> Place:
+    # Place.__init__ doesn't accept created_at (it's TimestampMixin's
+    # default-only column) — set it directly after construction instead.
     p = Place(
         name=f"Place {uuid.uuid4().hex[:8]}",
         city_id=city.id,
@@ -55,20 +66,26 @@ def _make_place(db, city, *, rank_score: float) -> Place:
         rank_score=rank_score,
         website=f"https://example-{uuid.uuid4().hex[:8]}.test",
     )
+    p.created_at = created_at
     db.add(p)
     return p
 
 
 def test_load_places_requiring_menu_reserves_slots_for_low_rank_places(db, city):
     # The Lodi-shaped tail: a handful of long-established, low-rank places
-    # that need menu work and have never been attempted.
+    # that need menu work and have never been attempted. Explicitly the
+    # oldest rows in the table (see _ANCIENT) so the fairness slice's
+    # created_at ASC ordering can't be displaced by unrelated eligible rows
+    # left by other tests.
     low_rank_places = [
-        _make_place(db, city, rank_score=0.0) for _ in range(5)
+        _make_place(db, city, rank_score=0.0, created_at=_ANCIENT + timedelta(seconds=i))
+        for i in range(5)
     ]
     # Far more high-rank places need work than fit in one batch, and keep
     # arriving after the low-rank ones — the exact production shape.
     high_rank_places = [
-        _make_place(db, city, rank_score=100.0 - i) for i in range(80)
+        _make_place(db, city, rank_score=100.0 - i, created_at=datetime.now(timezone.utc))
+        for i in range(80)
     ]
     db.commit()
 
