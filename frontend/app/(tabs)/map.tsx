@@ -137,6 +137,17 @@ export default function MapScreen() {
   const [mapLoaded, setMapLoaded] = useState(false);
   const [mapError, setMapError] = useState(false);
 
+  // Bumped on every loadFeatures call — an in-flight request whose result
+  // arrives after a newer one has already resolved gets discarded instead
+  // of overwriting it. Without this, mount fires a load at the default/
+  // fallback location and GPS resolving fires a second one moments later;
+  // if the first (default-location) request is the slower of the two and
+  // fails after the second already succeeded, its late .catch() clobbered
+  // mapError back to true even though pins from the newer request were
+  // already showing — exactly the "pins visible + error banner" state
+  // confirmed on a real device.
+  const requestIdRef = useRef(0);
+
   // Effective center: city > user location > default
   const mapLat = selectedCity?.lat ?? userLocation?.lat ?? DEFAULT_REGION.latitude;
   const mapLng = selectedCity?.lng ?? userLocation?.lng ?? DEFAULT_REGION.longitude;
@@ -146,6 +157,7 @@ export default function MapScreen() {
 
   const loadFeatures = useCallback(
     (lat: number, lng: number, radiusKm: number) => {
+      const myRequestId = ++requestIdRef.current;
       setMapError(false);
       setMapLoading(true);
       fetchMapGeoJSON({
@@ -155,12 +167,19 @@ export default function MapScreen() {
         radius_km: radiusKm,
       })
         .then((normalized) => {
+          if (myRequestId !== requestIdRef.current) return;
           if (__DEV__) console.log('[MAP] FEATURES_LOADED', { count: normalized.length, radiusKm, sample: normalized[0] ? { id: normalized[0].id, lat: normalized[0].coordinate.lat, lng: normalized[0].coordinate.lng, tier: normalized[0].tier } : null });
           setFeatures(normalized);
           setMapLoaded(true);
         })
-        .catch(() => setMapError(true))
-        .finally(() => setMapLoading(false));
+        .catch(() => {
+          if (myRequestId !== requestIdRef.current) return;
+          setMapError(true);
+        })
+        .finally(() => {
+          if (myRequestId !== requestIdRef.current) return;
+          setMapLoading(false);
+        });
     },
     [selectedCity?.id]
   );
