@@ -67,16 +67,29 @@ def _find_candidates_to_deactivate(db):
                 break
 
         if not reason:
-            candidate = (
+            # A place can have more than one resolved DiscoveryCandidate —
+            # the same real place discovered via multiple sources/searches
+            # and deduplicated down to one Place, each candidate keeping
+            # its own resolved_place_id pointing at it. .one_or_none()
+            # assumed exactly one and crashed the instant a place had more
+            # than that. Checking all of them and taking the first
+            # non-restaurant hit is both crash-proof and more correct: if
+            # ANY discovery source flagged this place's types as
+            # non-restaurant, that's real signal even when another
+            # candidate for the same place didn't carry that data.
+            candidates = (
                 db.query(DiscoveryCandidate)
                 .filter(DiscoveryCandidate.resolved_place_id == place.id)
-                .one_or_none()
+                .all()
             )
-            if candidate and isinstance(candidate.raw_payload, dict):
+            for candidate in candidates:
+                if not isinstance(candidate.raw_payload, dict):
+                    continue
                 types = candidate.raw_payload.get("types") or []
                 hit = _NON_RESTAURANT_TYPES.intersection(types)
                 if hit:
                     reason = f"Google types include {sorted(hit)}"
+                    break
 
         if reason:
             flagged.append((place, reason))
