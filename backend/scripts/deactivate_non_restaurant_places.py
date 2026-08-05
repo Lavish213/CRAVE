@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+from collections import defaultdict
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -64,6 +65,23 @@ _KNOWN_NON_RESTAURANT_NAME_SUBSTRINGS = [
 
 def _find_candidates_to_deactivate(db):
     places = db.query(Place).filter(Place.is_active.is_(True)).all()
+
+    # Batch-fetch every resolved DiscoveryCandidate for these places in one
+    # query instead of one query per place — the original per-place query
+    # (an N+1) was fine in tests against a handful of fixture rows but took
+    # this script from instant to minutes-long against the real production
+    # catalog (thousands of active places, each a separate round trip).
+    place_ids = [p.id for p in places]
+    candidates_by_place_id: dict[str, list[DiscoveryCandidate]] = defaultdict(list)
+    if place_ids:
+        all_candidates = (
+            db.query(DiscoveryCandidate)
+            .filter(DiscoveryCandidate.resolved_place_id.in_(place_ids))
+            .all()
+        )
+        for candidate in all_candidates:
+            candidates_by_place_id[candidate.resolved_place_id].append(candidate)
+
     flagged = []
 
     for place in places:
@@ -86,12 +104,7 @@ def _find_candidates_to_deactivate(db):
             # ANY discovery source flagged this place's types as
             # non-restaurant, that's real signal even when another
             # candidate for the same place didn't carry that data.
-            candidates = (
-                db.query(DiscoveryCandidate)
-                .filter(DiscoveryCandidate.resolved_place_id == place.id)
-                .all()
-            )
-            for candidate in candidates:
+            for candidate in candidates_by_place_id.get(place.id, []):
                 if not isinstance(candidate.raw_payload, dict):
                     continue
                 types = candidate.raw_payload.get("types") or []
