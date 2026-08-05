@@ -125,6 +125,15 @@ these five files.
     instead of doing nothing — a proper onboarding modal would be a better
     long-term experience but is a real feature to design, not a quick fix.
 20. Push notifications remain fully unbuilt ("Coming soon" in More).
+21. **Email + phone number sign-up/sign-in is not built.** `AuthSheet.tsx`
+    only offers "Continue with Apple" / "Continue with Google" — there's no
+    email+password or phone/OTP option, so anyone without one of those two
+    accounts can't sign up at all. Needed for broader sign-up capture (and
+    for collecting emails/numbers directly rather than only through an OAuth
+    provider). Requires: enabling email + phone providers in the Supabase
+    dashboard (Authentication → Providers), a phone OTP send/verify flow
+    (Supabase supports this via an SMS provider like Twilio, which needs its
+    own account/billing), and new UI in `AuthSheet.tsx` for both. Not started.
 
 ## What was verified, for confidence
 
