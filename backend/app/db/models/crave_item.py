@@ -8,6 +8,7 @@ from sqlalchemy import (
     Float,
     ForeignKey,
     Index,
+    Integer,
     String,
     Text,
     text,
@@ -41,6 +42,7 @@ class CraveItem(Base):
         Index("ix_crave_items_status", "status"),
         Index("ix_crave_items_created_at", "created_at"),
         Index("ix_crave_items_matched_place_id", "matched_place_id"),
+        Index("ix_crave_items_next_retry_at", "next_retry_at"),
     )
 
     # ------------------------------------------------------------------
@@ -73,7 +75,7 @@ class CraveItem(Base):
     submitted_by: Mapped[str | None] = mapped_column(
         String(255),
         nullable=True,
-        doc="User identifier — no auth system yet, stored as-is",
+        doc="JWT-derived user id — always server-set, never client input (see app/api/v1/routes/share.py)",
     )
 
     # ------------------------------------------------------------------
@@ -162,6 +164,36 @@ class CraveItem(Base):
     processed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
         nullable=True,
+    )
+
+    # ------------------------------------------------------------------
+    # RETRY / BACKOFF
+    # ------------------------------------------------------------------
+    # Before this existed, a 'error' (fetch/parse failure) or 'unmatched'
+    # (no place in the catalog matched yet) item was never revisited —
+    # run_share_parser only ever selected status='pending'. A transient
+    # fetch failure was permanent, and a share that couldn't match because
+    # the place hadn't been added to the catalog *yet* never got a second
+    # chance to match once it was. Same progressive-backoff shape already
+    # used elsewhere in this app (see menu_worker.py's _BACKOFF_HOURS and
+    # discovery_candidates' failure_count/next_retry_at columns).
+
+    failure_count: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=0,
+        server_default=text("0"),
+    )
+
+    last_error: Mapped[str | None] = mapped_column(
+        String(500),
+        nullable=True,
+    )
+
+    next_retry_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+        doc="NULL once failure_count exceeds the retry cap — stop trying.",
     )
 
     # ------------------------------------------------------------------

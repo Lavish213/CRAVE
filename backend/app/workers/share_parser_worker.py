@@ -1,14 +1,18 @@
 """
 Share-to-CRAVE parser worker.
 
-Picks up CraveItems with status='pending', fetches the URL to extract
-restaurant name hints from Open Graph / HTML title metadata, then attempts
-a fuzzy match against Place.name using rapidfuzz (already in requirements).
+Picks up CraveItems with status='pending', plus 'error'/'unmatched' items
+whose backoff window (next_retry_at) has elapsed, fetches the URL to
+extract restaurant name hints from Open Graph / HTML title metadata, then
+attempts a fuzzy match against Place.name using rapidfuzz (already in
+requirements).
 
 Match rules:
   - confidence > 0.7  → status='matched', creates a PlaceSignal(signal_type='creator')
-  - confidence <= 0.7 → status='unmatched'
-  - HTTP / parse error → status='error'
+  - confidence <= 0.7 → status='unmatched', retried later with backoff
+  - HTTP / parse error → status='error', retried later with backoff
+
+See _schedule_retry for the backoff schedule and retry cap.
 
 Run via:
     python -m app.workers.share_parser_worker
@@ -22,14 +26,14 @@ import logging
 import socket
 import time
 from contextlib import suppress
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 from urllib.parse import urlparse
 
 import httpx
 from bs4 import BeautifulSoup
 from rapidfuzz import fuzz
-from sqlalchemy import select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.orm import Session
 
 from app.db.session import SessionLocal
@@ -53,6 +57,16 @@ INTERVAL_SECONDS = 60
 # scheduler's discovery job promotes it automatically. See
 # app/services/discovery/promotion_orchestrator_v2.py.
 UNMATCHED_SHARE_CANDIDATE_CONFIDENCE = 0.3
+
+# Retry / backoff for 'error' and 'unmatched' items — see CraveItem.next_retry_at's
+# docstring. Same exponential-backoff-with-cap shape as
+# promotion_orchestrator_v2's DiscoveryCandidate retry handling: delay doubles
+# per attempt up to a cap, and once failure_count reaches the cap next_retry_at
+# is left NULL so the item stops being picked up (permanently, not just until
+# the next backoff window).
+MAX_RETRY_ATTEMPTS = 5
+RETRY_BACKOFF_BASE_MINUTES = 30
+RETRY_BACKOFF_MAX_MINUTES = 480  # 8 hours
 
 _HEADERS = {
     "User-Agent": (
@@ -264,6 +278,42 @@ def _find_best_place_match(
 
 
 # ---------------------------------------------------------------------------
+# Retry / backoff
+# ---------------------------------------------------------------------------
+
+def _schedule_retry(item: CraveItem, now: datetime, error: Optional[str] = None) -> None:
+    """Bump failure_count and set next_retry_at with exponential backoff.
+
+    Called for both real failures (status='error') and non-terminal outcomes
+    that deserve another look later (status='unmatched' — the catalog may
+    grow to include the place). Once failure_count reaches MAX_RETRY_ATTEMPTS,
+    next_retry_at is left NULL so the item stops being selected at all.
+    """
+    item.failure_count = (item.failure_count or 0) + 1
+    if error:
+        item.last_error = error[:500]
+
+    if item.failure_count >= MAX_RETRY_ATTEMPTS:
+        item.next_retry_at = None
+        logger.info(
+            "share_retry_exhausted id=%s failure_count=%s status=%s",
+            item.id, item.failure_count, item.status,
+        )
+    else:
+        delay_minutes = min(
+            RETRY_BACKOFF_BASE_MINUTES * (2 ** (item.failure_count - 1)),
+            RETRY_BACKOFF_MAX_MINUTES,
+        )
+        item.next_retry_at = now + timedelta(minutes=delay_minutes)
+
+
+def _clear_retry_state(item: CraveItem) -> None:
+    item.failure_count = 0
+    item.last_error = None
+    item.next_retry_at = None
+
+
+# ---------------------------------------------------------------------------
 # Single-item processor
 # ---------------------------------------------------------------------------
 
@@ -304,6 +354,7 @@ def _process_item(db: Session, item: CraveItem) -> None:
             logger.warning("share_fetch_failed id=%s url=%s error=%s", item.id, item.url, exc)
             item.status = "error"
             item.processed_at = now
+            _schedule_retry(item, now, error=str(exc))
             db.commit()
             return
 
@@ -321,6 +372,7 @@ def _process_item(db: Session, item: CraveItem) -> None:
         logger.info("share_no_name_extracted id=%s url=%s", item.id, item.url)
         item.status = "unmatched"
         item.processed_at = now
+        _schedule_retry(item, now)
         db.commit()
         return
 
@@ -332,6 +384,7 @@ def _process_item(db: Session, item: CraveItem) -> None:
     if place_id and confidence >= CONFIDENCE_THRESHOLD:
         item.matched_place_id = place_id
         item.status = "matched"
+        _clear_retry_state(item)
 
         # Create a PlaceSignal so this URL feeds into the ranking pipeline
         signal = PlaceSignal(
@@ -354,6 +407,7 @@ def _process_item(db: Session, item: CraveItem) -> None:
             item.status = "matched"
             item.match_confidence = confidence
             item.processed_at = now
+            _clear_retry_state(item)
             logger.debug("share_signal_duplicate id=%s error=%s", item.id, exc)
         db.commit()
         logger.info(
@@ -364,6 +418,7 @@ def _process_item(db: Session, item: CraveItem) -> None:
         )
     else:
         item.status = "unmatched"
+        _schedule_retry(item, now)
 
         # No existing place matched — this is likely a genuinely new spot,
         # not just a bad name guess. Feed it into the discovery-candidate
@@ -420,9 +475,25 @@ def run_share_parser(db: Session | None = None, limit: int = BATCH_SIZE) -> dict
     summary = {"processed": 0, "matched": 0, "unmatched": 0, "error": 0}
 
     try:
+        now = datetime.now(timezone.utc)
+        # 'pending' items are always eligible (first attempt). 'error'/
+        # 'unmatched' items are only picked up once their backoff window has
+        # elapsed — see _schedule_retry/CraveItem.next_retry_at. Items whose
+        # next_retry_at was cleared to NULL after exhausting MAX_RETRY_ATTEMPTS
+        # are deliberately excluded here (only 'pending' matches a NULL
+        # next_retry_at) so they stop being retried forever.
         pending = db.execute(
             select(CraveItem)
-            .where(CraveItem.status == "pending")
+            .where(
+                or_(
+                    CraveItem.status == "pending",
+                    and_(
+                        CraveItem.status.in_(("error", "unmatched")),
+                        CraveItem.next_retry_at.isnot(None),
+                        CraveItem.next_retry_at <= now,
+                    ),
+                )
+            )
             .order_by(CraveItem.created_at.asc())
             .limit(limit)
         ).scalars().all()
@@ -439,6 +510,7 @@ def run_share_parser(db: Session | None = None, limit: int = BATCH_SIZE) -> dict
                 with suppress(Exception):
                     item.status = "error"
                     item.processed_at = datetime.now(timezone.utc)
+                    _schedule_retry(item, datetime.now(timezone.utc), error=str(exc))
                     db.commit()
                 summary["error"] += 1
 
