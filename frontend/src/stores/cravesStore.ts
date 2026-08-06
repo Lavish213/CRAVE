@@ -54,6 +54,45 @@ const _pendingSaves = new Set<string>();
 // still the most recently *started* one.
 let _loadSequence = 0;
 
+// Separate from _loadSequence, which bumps on *every* loadSaves() call
+// (including a same-account pull-to-refresh — that must NOT invalidate a
+// concurrent addSave/removeSave for the same account). This only bumps on
+// an actual account change (clearSaves(), or loadSaves() detecting a
+// savesUserId mismatch) — addSave/removeSave capture it at call time and
+// check it before applying their post-await state updates, so a mutation
+// still in flight when the account switches can't rollback-restore the
+// *previous* account's full saves list, or optimistically-apply into the
+// *new* account's list, after the fact.
+let _accountGeneration = 0;
+
+function _resetForNewAccount() {
+  _accountGeneration += 1;
+  // A pending add for one account must not silently block the same
+  // place from being saved by a different account that signs in next —
+  // _pendingSaves is keyed only by place.id, with no account scoping.
+  _pendingSaves.clear();
+}
+
+// zustand persist rehydrates from AsyncStorage asynchronously — there's a
+// real window right after the store is created where `saves`/`savesUserId`
+// still read as their pre-hydration defaults ([]/null), not the actual
+// persisted values from a previous session. If loadSaves() runs in that
+// window it reads a `savesUserId` of `null` and, when rehydration finishes
+// moments later, zustand's own rehydration set() applies the *persisted*
+// (older) saves on top of whatever loadSaves() already wrote — silently
+// reverting a fresher fetch result back to stale disk data. Waiting for
+// hydration to finish before loadSaves() reads/writes anything closes that
+// ordering gap.
+function _waitForHydration(): Promise<void> {
+  if (useCravesStore.persist.hasHydrated()) return Promise.resolve();
+  return new Promise((resolve) => {
+    const unsub = useCravesStore.persist.onFinishHydration(() => {
+      unsub();
+      resolve();
+    });
+  });
+}
+
 // Previously every failure (network error, 500, 429, expired session) was
 // collapsed into one of two hardcoded strings, so a user hitting the rate
 // limiter (see backend app/core/rate_limit.py) saw the exact same message
@@ -77,6 +116,8 @@ export const useCravesStore = create<CravesStore>()(
       savesUserId: null,
 
       loadSaves: async (userId: string) => {
+        await _waitForHydration();
+
         const mySequence = ++_loadSequence;
         // A different account than the one `saves` currently belongs to
         // (including a rehydrated-but-unlabeled-for-this-account cache,
@@ -85,8 +126,17 @@ export const useCravesStore = create<CravesStore>()(
         // in flight. `savesUserId === userId` (a genuine same-account
         // reload/restart) is the only case that skips this, preserving the
         // cached-saves-show-instantly UX for the one case where it's safe.
+        //
+        // saves and savesUserId are cleared/set together, atomically, not
+        // left to land only once the fetch below succeeds — otherwise an
+        // addSave/removeSave for the *new* account landing in this window
+        // would optimistically write into `saves` while `savesUserId` still
+        // named the *old* account, and if the app died right then, the
+        // persisted pair on disk would be saves-from-B mislabeled as
+        // belonging to A.
         if (get().savesUserId !== userId) {
-          set({ saves: [] });
+          _resetForNewAccount();
+          set({ saves: [], savesUserId: userId });
         }
         set({ loading: true, error: null });
         try {
@@ -108,6 +158,7 @@ export const useCravesStore = create<CravesStore>()(
         if (prev.find((s) => s.id === place.id) || _pendingSaves.has(place.id)) {
           return null;
         }
+        const myGeneration = _accountGeneration;
         _pendingSaves.add(place.id);
         // Optimistic: add immediately
         set({ saves: [place, ...prev] });
@@ -116,8 +167,13 @@ export const useCravesStore = create<CravesStore>()(
           if (__DEV__) console.log('[CRAVES_STORE] addSave_ok', place.id);
           return null;
         } catch (err: any) {
-          // Rollback
-          set({ saves: get().saves.filter((s) => s.id !== place.id) });
+          // Rollback — but only into this same account's state. If the
+          // account switched while this request was in flight, `saves`
+          // now belongs to a different account entirely; touching it here
+          // would inject (or filter) against the wrong account's list.
+          if (myGeneration === _accountGeneration) {
+            set({ saves: get().saves.filter((s) => s.id !== place.id) });
+          }
           const msg = _classifyError(err, "Couldn't save. Try again.");
           if (__DEV__) console.log('[CRAVES_STORE] addSave_error', err?.response?.status, err?.message);
           return msg;
@@ -127,6 +183,7 @@ export const useCravesStore = create<CravesStore>()(
       },
 
       removeSave: async (placeId: string, userId: string): Promise<string | null> => {
+        const myGeneration = _accountGeneration;
         // Optimistic: remove immediately
         const prev = get().saves;
         set({ saves: prev.filter((s) => s.id !== placeId) });
@@ -135,8 +192,15 @@ export const useCravesStore = create<CravesStore>()(
           if (__DEV__) console.log('[CRAVES_STORE] removeSave_ok', placeId);
           return null;
         } catch (err: any) {
-          // Rollback
-          set({ saves: prev });
+          // Rollback — guarded the same way as addSave's: `prev` is this
+          // account's full list captured at call time. If the account has
+          // since switched (e.g. sign-out ran while this DELETE was still
+          // in flight), restoring it now would splice the *previous*
+          // account's entire saves list back into the store after
+          // clearSaves() already ran.
+          if (myGeneration === _accountGeneration) {
+            set({ saves: prev });
+          }
           const msg = _classifyError(err, "Couldn't remove. Try again.");
           if (__DEV__) console.log('[CRAVES_STORE] removeSave_error', err?.response?.status, err?.message);
           return msg;
@@ -150,6 +214,10 @@ export const useCravesStore = create<CravesStore>()(
         // account's saves, since it would otherwise still match
         // _loadSequence.
         ++_loadSequence;
+        // Also invalidate any in-flight addSave/removeSave (see their
+        // guards above) and drop any pending-add markers so they can't
+        // block the next account from saving the same place.
+        _resetForNewAccount();
         if (__DEV__) console.log('[CRAVES_STORE] clearSaves');
         set({ saves: [], savesUserId: null, loading: false, error: null });
       },
