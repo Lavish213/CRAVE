@@ -186,6 +186,58 @@ def _job_image_ingestion() -> None:
             db.close()
 
 
+def _job_moderation_queue_health_check() -> None:
+    """
+    Catches a silent deadlock, not a routine failure: review_image/review_queue
+    in app/api/v1/routes/moderation.py fail closed on purpose (require_admin
+    404s everyone if ADMIN_USER_IDS is unset — "an unset allowlist means
+    nobody can review", per that module's own docstring). That's the right
+    call for a route, but it means an accidentally-unset/misconfigured env
+    var produces no error anywhere — the review queue just silently piles up
+    forever with no admin able to drain it, and nothing before this ever
+    noticed. logger.error here reaches Sentry automatically the same way any
+    other logger.error in this app does (see app/main.py's sentry_sdk.init —
+    default_integrations isn't disabled, so its LoggingIntegration turns
+    ERROR-level log calls into real Sentry events on its own).
+    """
+    from contextlib import suppress
+    from app.core.job_run_tracker import track_job_run
+    from app.db.session import SessionLocal
+    from app.db.models.place_image import PlaceImage
+    from app.services.images.upload_moderation import MOD_PENDING_REVIEW
+    from app.api.v1.routes.moderation import _admin_ids
+
+    db = SessionLocal()
+    try:
+        with track_job_run("moderation_queue_health_check") as run:
+            pending_count = (
+                db.query(PlaceImage)
+                .filter(PlaceImage.moderation_status == MOD_PENDING_REVIEW)
+                .count()
+            )
+
+            if pending_count > 0 and not _admin_ids():
+                logger.error(
+                    "moderation_queue_undrainable pending_count=%s — "
+                    "ADMIN_USER_IDS is unset/empty, so nobody can reach "
+                    "POST /moderation/images/{id}/review to clear this queue",
+                    pending_count,
+                )
+                run.set_summary(f"UNDRAINABLE pending={pending_count}")
+            elif pending_count > 0:
+                logger.info("moderation_queue_health pending_count=%s", pending_count)
+                run.set_summary(f"pending={pending_count}")
+            else:
+                run.set_summary("empty")
+    except Exception as exc:
+        logger.exception("scheduler_moderation_health_check_failed error=%s", exc)
+        with suppress(Exception):
+            db.rollback()
+    finally:
+        with suppress(Exception):
+            db.close()
+
+
 def _job_share_parser() -> None:
     """Share parser: process pending CraveItem share URLs."""
     from app.core.job_run_tracker import track_job_run
@@ -294,6 +346,17 @@ def create_scheduler() -> BackgroundScheduler:
         minutes=20,
         id="image_ingestion",
         name="CRAVE image ingestion",
+    )
+
+    # moderation queue health check — every 6 hours. Cheap (one COUNT query)
+    # and only ever loud when something is actually wrong (see the job's
+    # own docstring for what it's guarding against).
+    scheduler.add_job(
+        _job_moderation_queue_health_check,
+        trigger="interval",
+        hours=6,
+        id="moderation_queue_health_check",
+        name="CRAVE moderation queue health check",
     )
 
     return scheduler

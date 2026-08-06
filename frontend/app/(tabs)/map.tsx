@@ -16,6 +16,13 @@ import { MapBottomSheet } from '../../src/components/MapBottomSheet';
 // avoids firing a request on every intermediate frame of a gesture.
 const REGION_FETCH_DEBOUNCE_MS = 500;
 
+// Fetch a wider radius than the exact visible viewport so a small pan lands
+// on already-loaded pins instantly instead of showing a fresh loading state
+// — previously every fetch matched the viewport exactly, so any pan at all
+// (even a few hundred meters) required a brand-new round trip before pins
+// reappeared.
+const PREFETCH_RADIUS_MULTIPLIER = 1.6;
+
 // Grid cell size clustering constants — cell size scales with the visible
 // longitude span so clustering density adapts to zoom level.
 const MIN_CLUSTER_SIZE = 3;
@@ -49,6 +56,56 @@ function radiusKmForRegion(region: Region): number {
   const heightKm = region.latitudeDelta * 111.32;
   const radius = Math.max(widthKm, heightKm) / 2;
   return Math.min(50, Math.max(0.5, radius));
+}
+
+// What we actually fetch: the visible radius padded by
+// PREFETCH_RADIUS_MULTIPLIER, re-clamped to the API's 50km max, so a pan
+// within that margin needs no new request at all.
+function prefetchRadiusKmForRegion(region: Region): number {
+  return Math.min(50, radiusKmForRegion(region) * PREFETCH_RADIUS_MULTIPLIER);
+}
+
+// Equirectangular approximation, consistent with radiusKmForRegion's own —
+// accurate enough at map-pan scale, used to check whether a pan landed
+// somewhere the last successful fetch already covers.
+function distanceKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const latRad = ((lat1 + lat2) / 2 * Math.PI) / 180;
+  const kmPerLngDegree = 111.32 * Math.cos(latRad);
+  const dLat = (lat2 - lat1) * 111.32;
+  const dLng = (lng2 - lng1) * kmPerLngDegree;
+  return Math.sqrt(dLat * dLat + dLng * dLng);
+}
+
+// radiusKmForRegion is half the LONGER side — the right measure for how
+// much to fetch, but too small for a coverage check: a viewport's actual
+// corners sit at the half-DIAGONAL distance from center, which is always
+// >= half the longer side. Using radiusKmForRegion here could call a
+// viewport "covered" while its corners still poke outside the cached
+// circle. This is the stricter, correct value for that comparison only.
+function coverageRadiusKmForRegion(region: Region): number {
+  const latRad = (region.latitude * Math.PI) / 180;
+  const widthKm = region.longitudeDelta * 111.32 * Math.cos(latRad);
+  const heightKm = region.latitudeDelta * 111.32;
+  return Math.hypot(widthKm, heightKm) / 2;
+}
+
+interface FetchCoverage {
+  lat: number;
+  lng: number;
+  radiusKm: number;
+}
+
+// True when everything within visibleRadiusKm of (lat, lng) already sits
+// inside a previously-fetched circle — i.e. this pan needs no new request
+// at all, not even the padded prefetch one.
+function isCoveredByPriorFetch(
+  lat: number,
+  lng: number,
+  visibleRadiusKm: number,
+  coverage: FetchCoverage | null
+): boolean {
+  if (!coverage) return false;
+  return distanceKm(lat, lng, coverage.lat, coverage.lng) + visibleRadiusKm <= coverage.radiusKm;
 }
 
 interface SelectedFeature {
@@ -123,6 +180,23 @@ export default function MapScreen() {
   const [mapLoaded, setMapLoaded] = useState(false);
   const [mapError, setMapError] = useState(false);
 
+  // Bumped on every loadFeatures call — an in-flight request whose result
+  // arrives after a newer one has already resolved gets discarded instead
+  // of overwriting it. Without this, mount fires a load at the default/
+  // fallback location and GPS resolving fires a second one moments later;
+  // if the first (default-location) request is the slower of the two and
+  // fails after the second already succeeded, its late .catch() clobbered
+  // mapError back to true even though pins from the newer request were
+  // already showing — exactly the "pins visible + error banner" state
+  // confirmed on a real device.
+  const requestIdRef = useRef(0);
+
+  // The most recent successful fetch's center + actual fetched radius —
+  // lets a subsequent pan skip firing a request at all when the visible
+  // area is already fully inside this circle, instead of always refetching
+  // on every debounced region change regardless of coverage.
+  const lastFetchCoverageRef = useRef<FetchCoverage | null>(null);
+
   // Effective center: city > user location > default
   const mapLat = selectedCity?.lat ?? userLocation?.lat ?? DEFAULT_REGION.latitude;
   const mapLng = selectedCity?.lng ?? userLocation?.lng ?? DEFAULT_REGION.longitude;
@@ -132,6 +206,7 @@ export default function MapScreen() {
 
   const loadFeatures = useCallback(
     (lat: number, lng: number, radiusKm: number) => {
+      const myRequestId = ++requestIdRef.current;
       setMapError(false);
       setMapLoading(true);
       fetchMapGeoJSON({
@@ -141,19 +216,44 @@ export default function MapScreen() {
         radius_km: radiusKm,
       })
         .then((normalized) => {
+          if (myRequestId !== requestIdRef.current) return;
           if (__DEV__) console.log('[MAP] FEATURES_LOADED', { count: normalized.length, radiusKm, sample: normalized[0] ? { id: normalized[0].id, lat: normalized[0].coordinate.lat, lng: normalized[0].coordinate.lng, tier: normalized[0].tier } : null });
           setFeatures(normalized);
           setMapLoaded(true);
+          lastFetchCoverageRef.current = { lat, lng, radiusKm };
         })
-        .catch(() => setMapError(true))
-        .finally(() => setMapLoading(false));
+        .catch(() => {
+          if (myRequestId !== requestIdRef.current) return;
+          setMapError(true);
+        })
+        .finally(() => {
+          if (myRequestId !== requestIdRef.current) return;
+          setMapLoading(false);
+        });
     },
     [selectedCity?.id]
   );
 
   // Initial load + reload on city change (or GPS location resolving).
   useEffect(() => {
-    loadFeatures(mapLat, mapLng, radiusKmForRegion(cityToRegion(mapLat, mapLng)));
+    // A pan-triggered debounce scheduled just before this fires would
+    // otherwise invoke a stale loadFeatures closure bound to the previous
+    // city/region once its timer elapses — since it calls loadFeatures
+    // after this effect's call, it would win the requestIdRef race and
+    // overwrite these correct, newer results with the old city's pins.
+    if (fetchDebounceRef.current) {
+      clearTimeout(fetchDebounceRef.current);
+      fetchDebounceRef.current = null;
+    }
+    // Without this, a failed load for the new city leaves the previous
+    // city's pins on screen with features.length still > 0 — which now
+    // (correctly, for the already-covered-viewport case) suppresses the
+    // error banner entirely, silently showing the wrong city's data with
+    // no indication anything went wrong.
+    lastFetchCoverageRef.current = null;
+    setFeatures([]);
+    setMapLoaded(false);
+    loadFeatures(mapLat, mapLng, prefetchRadiusKmForRegion(cityToRegion(mapLat, mapLng)));
   }, [selectedCity?.id, mapLat, mapLng, loadFeatures]);
 
   // Recenter the map on city change — flagged as programmatic so the
@@ -183,7 +283,20 @@ export default function MapScreen() {
 
       if (fetchDebounceRef.current) clearTimeout(fetchDebounceRef.current);
       fetchDebounceRef.current = setTimeout(() => {
-        loadFeatures(region.latitude, region.longitude, radiusKmForRegion(region));
+        const visibleRadiusKm = coverageRadiusKmForRegion(region);
+        if (isCoveredByPriorFetch(region.latitude, region.longitude, visibleRadiusKm, lastFetchCoverageRef.current)) {
+          if (__DEV__) console.log('[MAP] SKIP_FETCH_ALREADY_COVERED', { lat: region.latitude, lng: region.longitude, visibleRadiusKm });
+          // Still bump this so an older in-flight request for a different
+          // region (panned away from, now panned back to cached ground)
+          // can't land later and overwrite these still-valid cached pins —
+          // otherwise skipping the fetch here does nothing to stop that
+          // stale response from winning once it finally resolves.
+          requestIdRef.current += 1;
+          setMapLoading(false);
+          setMapError(false);
+          return;
+        }
+        loadFeatures(region.latitude, region.longitude, prefetchRadiusKmForRegion(region));
       }, REGION_FETCH_DEBOUNCE_MS);
     },
     [loadFeatures]
@@ -272,7 +385,7 @@ export default function MapScreen() {
         </View>
       )}
 
-      {mapError && (
+      {mapError && features.length === 0 && (
         <View style={styles.mapBanner}>
           <Text style={styles.mapBannerText}>Could not load places</Text>
         </View>

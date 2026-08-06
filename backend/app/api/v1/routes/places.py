@@ -159,7 +159,17 @@ def get_places(
             p.primary_image_url = image_urls.get(p.id)
             items.append(PlaceOut.model_validate(p, from_attributes=True))
         except Exception as exc:
-            logger.debug(
+            # Was logger.debug — invisible at the app's default INFO level.
+            # A single place failing PlaceOut validation (e.g. a rank_score
+            # that somehow ended up outside the 0.0-1.0 range) silently
+            # drops it from every feed response with zero operational
+            # visibility, while `total` (computed before this loop, from the
+            # raw query) keeps counting it — so the feed quietly undercounts
+            # what it claims to have with no way to notice short of a user
+            # complaint. Confirmed reachable: caught this exact log during a
+            # live verification pass where a seeded place's rank_score was
+            # out of range.
+            logger.warning(
                 "places_serialize_failed place_id=%s error=%s",
                 getattr(p, "id", None), exc,
             )

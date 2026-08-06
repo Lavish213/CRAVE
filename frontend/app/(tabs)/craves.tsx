@@ -4,7 +4,7 @@
 // this feature; the tab bar label was "Saves" and "Hitlist" was informal
 // drift. This screen (and the whole tab) is called Craves: bookmarked
 // places plus shared TikTok/Instagram/YouTube links working toward a match.
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -43,28 +43,62 @@ export default function CravesScreen() {
   const [authVisible, setAuthVisible] = useState(false);
   const [shareVisible, setShareVisible] = useState(false);
 
+  // Bumped every time the signed-in account changes — neither getCraveItems()
+  // nor getMyPlaceSaves() takes a userId (both rely on the ambient auth
+  // token), so without this guard a slow request started under the old
+  // account can resolve after the new account's sign-in and silently
+  // overwrite craves/placeSaves with the previous user's data.
+  //
+  // Also resets craves/placeSaves here (not inside loadCraves/loadPlaceSaves
+  // themselves, which are also called on pull-to-refresh and after sharing a
+  // link for the *same* account, where clearing first would just flash an
+  // empty list). Neither piece of state has a loading flag gating its
+  // section's visibility in the JSX below (unlike `savesLoading` for the
+  // main saves list) — without this, the previous account's craves/
+  // placeSaves would stay visibly attributed to the new account until its
+  // own fetch resolved.
+  const accountGenerationRef = useRef(0);
+  useEffect(() => {
+    accountGenerationRef.current += 1;
+    setCraves([]);
+    setPlaceSaves([]);
+  }, [user?.id]);
+
   const loadCraves = React.useCallback(() => {
+    const myGeneration = accountGenerationRef.current;
     setCravesLoading(true);
     setCravesError(false);
     return getCraveItems()
       .then((items) => {
+        if (myGeneration !== accountGenerationRef.current) return;
         if (__DEV__) console.log('[CRAVES] CRAVES_LOADED', { count: items.length });
         setCraves(items);
       })
       .catch((err) => {
+        if (myGeneration !== accountGenerationRef.current) return;
         if (__DEV__) console.log('[CRAVES] CRAVES_ERROR', err?.response?.status, err?.message);
         setCravesError(true);
       })
-      .finally(() => setCravesLoading(false));
+      .finally(() => {
+        if (myGeneration !== accountGenerationRef.current) return;
+        setCravesLoading(false);
+      });
   }, []);
 
   // "Just the name" adds — separate list from CraveItems (which come from
   // shared links), fetched and shown alongside so a manual add doesn't
   // vanish into a black hole after submitting.
   const loadPlaceSaves = React.useCallback(() => {
+    const myGeneration = accountGenerationRef.current;
     return getMyPlaceSaves()
-      .then((items) => setPlaceSaves(items))
-      .catch(() => setPlaceSaves([]));
+      .then((items) => {
+        if (myGeneration !== accountGenerationRef.current) return;
+        setPlaceSaves(items);
+      })
+      .catch(() => {
+        if (myGeneration !== accountGenerationRef.current) return;
+        setPlaceSaves([]);
+      });
   }, []);
 
   // Load backend saves whenever user changes

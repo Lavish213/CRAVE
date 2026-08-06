@@ -63,7 +63,7 @@ async function performOAuth(provider: 'google' | 'apple') {
 interface Props {
   visible: boolean;
   onClose: () => void;
-  reason?: 'save' | 'craves' | 'profile' | 'default';
+  reason?: 'save' | 'craves' | 'profile' | 'add-spot' | 'default';
 }
 
 const REASON_COPY: Record<NonNullable<Props['reason']>, { title: string; body: string }> = {
@@ -74,6 +74,10 @@ const REASON_COPY: Record<NonNullable<Props['reason']>, { title: string; body: s
   craves: {
     title: 'Your Craves await',
     body: 'Sign in to access your saved places and food memories.',
+  },
+  'add-spot': {
+    title: 'Add a spot',
+    body: 'Sign in so we know who found it — new spots are credited to the person who confirms them.',
   },
   profile: {
     title: 'Build your list',

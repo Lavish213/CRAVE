@@ -72,11 +72,38 @@ export default function RankPlaceScreen() {
   const [sharing, setSharing] = useState(false);
   const shareCardRef = useRef<View>(null);
 
+  // expo-router can reuse this screen instance across a placeId change
+  // rather than unmounting — without resetting state here, `place` (and the
+  // rest of the ranking flow) can still hold the previous place while the
+  // new placeId's fetch is in flight, showing place A's name/image while
+  // handlePickTier/handleChoose below submit against the route's (new)
+  // placeId — a real risk of the UI showing one place while the ranking
+  // that gets recorded is for another. Reset everything up front and keep
+  // rendering the loading state until the fetched place actually matches
+  // the current placeId.
+  const placeGenerationRef = useRef(0);
+
   useEffect(() => {
     if (!placeId) return;
+    const myGeneration = ++placeGenerationRef.current;
+    setPlace(null);
+    setError(null);
+    setOpponent(null);
+    setStage('tier');
+    setTier(null);
+    setToken(null);
+    setResult(null);
+    setRound(0);
+    setBeatOpponentName(null);
     fetchPlaceDetail(placeId)
-      .then(setPlace)
-      .catch(() => setError("Couldn't load this place."));
+      .then((p) => {
+        if (myGeneration !== placeGenerationRef.current) return;
+        setPlace(p);
+      })
+      .catch(() => {
+        if (myGeneration !== placeGenerationRef.current) return;
+        setError("Couldn't load this place.");
+      });
   }, [placeId]);
 
   /** Both entry points (start + each answer) return the same shape. */
@@ -171,7 +198,11 @@ export default function RankPlaceScreen() {
     return <ErrorState message={error} onRetry={() => router.back()} />;
   }
 
-  if (!place) {
+  // place.id !== placeId (not just !place) — between a placeId change and
+  // the new place resolving, `place` briefly holds nothing (it's reset
+  // above), but this also holds the line even if that ever changes, so a
+  // stale previous place can never render under the new route's placeId.
+  if (!place || place.id !== placeId) {
     return (
       <View style={styles.centered}>
         <ActivityIndicator color={Colors.primary} size="large" />

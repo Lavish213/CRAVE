@@ -125,6 +125,41 @@ these five files.
     instead of doing nothing — a proper onboarding modal would be a better
     long-term experience but is a real feature to design, not a quick fix.
 20. Push notifications remain fully unbuilt ("Coming soon" in More).
+21a. **Action required on Railway: provision a second service for the
+    scheduler.** Root-caused a persistent "map/feed times out even on good
+    Wi-Fi" report: the web service runs as a single uvicorn worker
+    (`railway.toml`'s startCommand has no `--workers` flag) with
+    APScheduler's BackgroundScheduler running in threads inside that same
+    process. CPU-bound job work (image resize/hash, HTML parsing, OCR)
+    competes with the GIL for time the request-handling event loop needs —
+    confirmed via `job_runs`: a single menu_enrichment run took 3h21m while
+    image_ingestion ran every 20 minutes concurrently, both in the same
+    process serving map/feed API requests. Code is now in place
+    (`app/scheduler_worker.py`, `settings.run_embedded_scheduler`) but
+    doesn't take effect until you do this on Railway's dashboard:
+    1. New service in the same Railway project, same repo/branch.
+    2. Override its start command to: `cd backend && python -m app.scheduler_worker`
+       (no `alembic upgrade head` needed here — the web service's
+       startCommand already runs migrations).
+    3. Copy every env var the web service has (DATABASE_URL,
+       GOOGLE_PLACES_API_KEY, R2_*, SUPABASE_*, etc.) onto this new service —
+       it runs the identical jobs, just in its own process.
+    4. Once that new service is confirmed running (check its logs for
+       `scheduler_worker_started jobs=8`), set `RUN_EMBEDDED_SCHEDULER=false`
+       on the WEB service specifically and redeploy it. Skipping this step
+       means both processes run every job — double-billing Google
+       Places/Vision and double-writing data.
+    Until step 4 is done, nothing changes (the web service still runs jobs
+    embedded, same as before — this is backward compatible by design).
+21. **Email + phone number sign-up/sign-in is not built.** `AuthSheet.tsx`
+    only offers "Continue with Apple" / "Continue with Google" — there's no
+    email+password or phone/OTP option, so anyone without one of those two
+    accounts can't sign up at all. Needed for broader sign-up capture (and
+    for collecting emails/numbers directly rather than only through an OAuth
+    provider). Requires: enabling email + phone providers in the Supabase
+    dashboard (Authentication → Providers), a phone OTP send/verify flow
+    (Supabase supports this via an SMS provider like Twilio, which needs its
+    own account/billing), and new UI in `AuthSheet.tsx` for both. Not started.
 
 ## What was verified, for confidence
 
@@ -143,3 +178,303 @@ these five files.
   0.5x series) that would make `pip install` fail outright. Fixed to
   `starlette>=0.40.0,<1.0.0`. Other version floors in that file were
   spot-checked against real PyPI release history and are fine.
+
+## 2026-08-05 — project-grade systems review (branch `claude/project-grade-systems-review-4ot7d0`)
+
+Unlike the log above, every fix in this section was written, then actually
+run: full backend pytest suite (445 passing) and `npx tsc --noEmit` (clean)
+after each change, on a real checkout with shell access. Earlier in this
+same session (prior to this log entry) the scheduler was split out of the
+web process, a missing DB index was added for the map bounding-box query,
+frontend preload/prefetch was added for map + feed, and ImageWorker's
+place-selection fairness bug was found and fixed. This entry covers the
+follow-up pass: hunting down every other instance of the same two bug
+classes elsewhere in the codebase.
+
+### Backend: menu_worker.py had the identical starvation bug as image_worker.py
+
+`app/services/workers/menu_worker.py::_load_places_requiring_menu` ordered
+strictly `rank_score DESC, id ASC` with a plain `LIMIT BATCH_SIZE` (25) and
+no rotation — the exact shape the module's own docstring already warned
+about, confirmed in production for the identical pattern in
+`image_worker.py` (Lodi's 48 places sat at zero images across 622
+consecutive runs). The backoff mechanism already in this file
+(`_not_in_backoff_clause`) only protects against a *repeat-failing* place
+hogging every run — it does nothing for a place with a valid menu source
+that's simply never been attempted and has a low `rank_score`, since
+discovery keeps refilling the top of that ordering with newer, higher-
+signal places ahead of it.
+
+Fixed by mirroring `image_worker.py::_select_places`'s pattern: reserve
+`max(1, BATCH_SIZE // 5)` (5) slots of each batch for the oldest eligible
+places by `created_at`, on top of the rank_score-priority slice, sharing all
+the same filters (website/grubhub/menu_source_url present, no existing menu
+`PlaceTruth` row, not in backoff). New test:
+`backend/tests/test_menu_worker_starvation.py`, mirroring
+`test_image_worker_starvation.py`'s shape (80 high-rank + 5 low-rank places,
+assert at least one low-rank place survives the batch selection).
+
+### Frontend: the same unguarded stale-response race existed in four more places
+
+Same bug class already fixed this session in `map.tsx` and `add-spot.tsx`:
+a `.then()` handler calling `setState` unconditionally, with no check that
+the screen's identity (place id, signed-in account, or selected city) is
+still the one the request was made for. A background research agent
+audited every other data-fetching screen/hook first (Feed and Search are
+safe — React Query's per-key caching means a stale response resolves into
+its own now-irrelevant cache bucket rather than overwriting the current
+one; `useLocation` is safe — a single shared promise means there's only
+ever one in-flight response, period). Confirmed and fixed:
+
+- **`app/place/[id].tsx`** — the menu fetch (`getPlaceMenu` →
+  `setMenuItems`/`setMenuVerifiedAt`) and the craves-for-place fetch
+  (`getCravesForPlace` → `setCraves`) were both keyed only on `id` with no
+  guard. Since expo-router can reuse this screen instance across an `id`
+  change (e.g. tapping from one place's menu/social content into another
+  place's detail) rather than unmounting, a slow response for the old place
+  could resolve after the new place's and silently repaint the screen with
+  the wrong place's menu/craves. Fixed with two independent generation
+  refs (`menuGenerationRef`, `cravesGenerationRef` — kept separate since
+  they're unrelated requests; a shared counter would make each falsely
+  invalidate the other on mount).
+
+- **`app/(tabs)/craves.tsx` + `src/stores/cravesStore.ts`** —
+  account-switch version of the same bug. Neither `getCraveItems()` nor
+  `getMyPlaceSaves()` takes a userId (both rely on the ambient auth token),
+  so a slow request in flight when the signed-in account changes could
+  resolve after the new account's and overwrite `craves`/`placeSaves`/the
+  persisted `saves` store with the previous user's data. Fixed with an
+  `accountGenerationRef` in craves.tsx (bumped on `user?.id` change, same
+  pattern as `add-spot.tsx`'s `accountGenerationRef`) guarding
+  `loadCraves`/`loadPlaceSaves`, and a module-level `_loadSequence` counter
+  in `cravesStore.ts` guarding `loadSaves` (same shape as that file's
+  existing `_pendingSaves` module-level guard).
+
+- **`src/hooks/useTrending.ts`** — city-switch version. `load()` had no
+  guard against a city switch mid-request; switching city A → B quickly
+  with A's `fetchTrending` resolving after B's would clobber the correctly-
+  displayed city-B trending list with stale city-A data. Fixed with a
+  `latestRequestCityRef`, set synchronously at the start of `load()` before
+  the async call, checked before `setTrending`/clearing `refreshing`. The
+  `cache[cityId] = data` write stays unconditional — still correct for a
+  future switch back to that city even when it's not the one on screen.
+
+- **`app/rank/[placeId].tsx`** — found during a follow-up sweep for any
+  remaining unguarded `.then()` chains in effects keyed on a route param.
+  Same shape as `place/[id].tsx`: `fetchPlaceDetail(placeId)` had no guard
+  against a `placeId` change reusing the screen instance. Lower severity
+  than the others here — the actual ranking calls (`startRanking`,
+  `submitComparison`) key off the route's `placeId` directly, not this
+  `place` state, so an unguarded race here could only have caused a
+  momentary wrong name/image in stage 1, never corrupted ranking data.
+  Fixed the same way regardless, with a `placeGenerationRef`.
+
+### Verification
+
+- `cd backend && rm -f test_crave.db && python -m pytest -q` — 445 passed
+  (444 baseline + 1 new test).
+- `cd frontend && npx tsc --noEmit -p .` — clean, no errors.
+
+### Follow-up — CodeRabbit's second review pass on PR #40 found 3 more real issues in the above
+
+Correction to this log's own claim above: `rank/[placeId].tsx`'s race was
+**not** harmless. CodeRabbit correctly pointed out that between a `placeId`
+change and the new place's fetch resolving, the old `place` state stayed on
+screen — so the user could see place A's name/image while `handlePickTier`/
+`handleChoose` recorded a ranking against the route's (new) `placeId`, a
+real risk of ranking the wrong-looking place, not just a cosmetic flash.
+Fixed by resetting `place`/`error`/the whole ranking-flow state (`opponent`,
+`stage`, `tier`, `token`, `result`, `round`, `beatOpponentName`) at the start
+of the `placeId`-change effect, and gating the loading screen on
+`place.id === placeId` rather than just `!place`.
+
+Two more, both confirmed and fixed:
+
+- **`useTrending.ts`** — the `latestRequestCityRef` guard tracked only
+  `cityId`, so two overlapping requests for the *same* city (e.g. `refresh()`
+  fired twice quickly) both passed the check, meaning a slower of two
+  same-city responses could still overwrite a newer one, and a cache-hit
+  load never cleared `refreshing`, so it could stay stuck `true` from an
+  earlier in-flight network call. Replaced with a monotonically increasing
+  `latestRequestRef` sequence number, incremented on every load (cached or
+  network), and the cache-hit path now explicitly clears `refreshing`.
+
+- **`test_menu_worker_starvation.py`** — `_load_places_requiring_menu` has
+  no city filter (it selects eligible places across the whole table by
+  design), so the test's fairness-slice assertion could flake if another
+  test left behind an eligible row with an older `created_at` than the
+  test's own low-rank places, silently displacing them from the reserved
+  slice. Fixed by pinning explicit `created_at` timestamps (`Place.__init__`
+  doesn't accept `created_at` — it's set as a post-construction attribute)
+  so the test's low-rank places are deterministically the oldest rows in
+  the table regardless of execution order or other tests' leftover data.
+
+Verified again: 445 backend tests passing, `tsc --noEmit` clean.
+
+### Follow-up — live verification pass, 3 more residual gaps found and closed
+
+Asked to actually run the app and check the fixed screens, not just trust
+typecheck/tests. Backend booted cleanly against a fresh SQLite DB (Alembic
+migrations + a seeded place, confirmed via `GET /api/v1/place/{id}`).
+Full-app Playwright screenshots hit two pre-existing platform gaps unrelated
+to anything touched this session: `react-native-maps` has no web-target
+support (Metro's web bundler chokes on its native codegen import), and a
+`zustand` transitive dependency emits `import.meta`, which Metro's
+non-module web bundle can't execute. Neither was worth patching around
+further just for a smoke test.
+
+Pivoted to differential Jest/React-Testing-Library tests instead — write a
+test against the fixed code, confirm it passes, then swap in the pre-fix
+version of the same file and confirm the test fails exactly as predicted,
+then restore the fix. This is more rigorous than a screenshot for
+timing-dependent bugs, since a static render can't prove a race is actually
+closed. `useTrending.ts`'s round-2 fix passed this differential check
+cleanly. But applying the same test to `rank/[placeId].tsx`, `place/[id].tsx`,
+and `craves.tsx`/`cravesStore.ts` surfaced a narrower, real class of bug the
+generation-ref/sequence guards didn't cover:
+
+**The guards stop an out-of-order OLD response from overwriting a NEWER
+one — they don't clear the *currently displayed* stale data the moment the
+identity (place id or account) changes.** Wherever a section's visibility
+isn't gated by its own loading flag, the previous place's/account's data
+stays on screen for as long as the new fetch is in flight:
+
+- `place/[id].tsx` — the "Seen on social" (craves-for-place) section had no
+  loading flag, just `craves.length > 0`. Navigating from place A to place
+  B kept showing place A's crave rows — each a real tap target to
+  `matched_place_id` — until B's fetch resolved. Fixed by resetting
+  `craves` to `[]` at the start of the effect (the menu section right above
+  it didn't need this — it already has a `menuLoading` flag that gates its
+  visibility regardless of what's still in `menuItems`).
+- `craves.tsx` — the "Added" (`placeSaves`) section had the same shape.
+  Fixed by resetting `craves`/`placeSaves` inside the existing
+  `accountGenerationRef` effect (keyed on `user?.id`, so it only fires on a
+  genuine account change — never on pull-to-refresh or right after sharing
+  a link for the same account, so no new empty-flash regression).
+- `cravesStore.ts` — the main Saves list *does* have a `loading` flag, but
+  craves.tsx's skeleton only renders when `loading && saves.length === 0`,
+  so a non-empty stale list from a previous account was never hidden just
+  because a fetch for a *different* account was in flight. Fixed with a
+  `_lastLoadedUserId` marker (mirroring this file's existing module-level
+  guards like `_pendingSaves`) — clears `saves` only on a genuine account
+  mismatch, deliberately preserving both a same-account refresh (must keep
+  showing cached data while it revalidates) and a legitimate same-account
+  app restart (AsyncStorage-persisted saves should show immediately, not
+  flash empty just because the marker isn't known yet after rehydration).
+
+`rank/[placeId].tsx`'s round-2 fix (the CodeRabbit-flagged Major
+data-integrity issue) passed its differential test cleanly with no further
+gaps found — its reset was already complete because it clears every piece
+of ranking-flow state up front, not just the visible one.
+
+Verified: 445 backend tests passing, 78 frontend tests passing,
+`tsc --noEmit` clean. All differential/scratch test files were deleted
+after verification — they existed only to prove each fix, not as
+permanent coverage.
+
+### Follow-up — a real bug the live-verification pass actually found, and 3 more CodeRabbit findings on cravesStore.ts
+
+While live-verifying the Feed screen against a seeded database, it rendered
+completely empty despite the API reporting `total: 2`. Root cause turned
+out to be two layered issues: the immediate one was a mistake in the test
+seed data (`rank_score` set to `90.0`/`80.0` instead of the schema's
+required `0.0`-`1.0` normalized range) — but that only mattered because
+`GET /api/v1/places` (`backend/app/api/v1/routes/places.py`) was silently
+swallowing the resulting per-place `PlaceOut` validation failure at
+`logger.debug`, invisible at the app's default log level. In production,
+*any* place whose data ever fails validation for any reason vanishes from
+every feed response with zero operational visibility, while `total` (from
+the raw query, computed earlier) keeps counting it like nothing's wrong.
+Bumped to `logger.warning` so this is actually visible when it happens for
+real.
+
+CodeRabbit's review of that same commit then found 3 more real gaps in the
+`savesUserId` design from the entry above — all confirmed with differential
+tests (fail on the pre-fix version, pass on the fix):
+
+- `loadSaves()` cleared `saves` but left `savesUserId` pointing at the old
+  account until the fetch succeeded. An optimistic `addSave`/`removeSave`
+  for the new account landing in that window would persist under the wrong
+  owner label — if the app died right then, the *old* account could sign
+  back in later and see the *new* account's data. Fixed by setting
+  `saves`+`savesUserId` atomically in the same `set()` call.
+- `addSave`/`removeSave` had no generation guard at all. `removeSave`'s
+  failure-path rollback restored `prev` — the pre-removal account's full
+  list, captured at call time — even after `clearSaves()` had already run
+  for a sign-out, so a slow DELETE failing after sign-out could repopulate
+  the signed-out account's data. Added a separate `_accountGeneration`
+  counter (not reusing `_loadSequence`, which bumps on every `loadSaves()`
+  call including harmless same-account refreshes) that only changes on a
+  real account switch; both mutations check it before their post-await
+  state updates. `_pendingSaves` (keyed only by `place.id`, no account
+  scoping) is now cleared on every account switch too, since a still-in-
+  flight add from the old account could otherwise silently block the new
+  account from saving that same place.
+- zustand's `persist` middleware rehydrates from `AsyncStorage`
+  asynchronously — there's a real window right after the store is created
+  where `saves`/`savesUserId` still read as their pre-hydration defaults,
+  not the previous session's actual persisted values. `loadSaves()` now
+  awaits `useCravesStore.persist.hasHydrated()`/`onFinishHydration()`
+  before reading or writing anything, so it can't make its clear-or-not
+  decision against stale defaults, and zustand's own rehydration `set()`
+  can never land later and silently revert an already-fresher fetch
+  result.
+
+Verified: 445 backend tests, 78 frontend tests, `tsc --noEmit` clean.
+
+### Follow-up — CodeRabbit round-3 on `cravesStore.ts`: 3 more real gaps in the same file, all fixed with regression tests
+
+CodeRabbit's review of the previous entry's own commit found 3 more real
+issues in `cravesStore.ts`, all confirmed with new differential tests in
+`cravesStore.test.ts` (fail against the pre-fix version restored from git,
+pass against the fix):
+
+- `loadSaves()` still created its `_loadSequence` token (`mySequence`)
+  *after* `await _waitForHydration()`, not before. A `clearSaves()`
+  (sign-out) that ran while hydration was still pending would bump
+  `_loadSequence` during that window, but since `mySequence` was only read
+  once hydration finished — after the bump — it read the *post-clearSaves*
+  value and matched trivially. The call would proceed exactly as if
+  sign-out had never happened, fetching and applying the just-signed-out
+  account's saves. Fixed by capturing `mySequence` before the hydration
+  await (so a bump during that window is visible as a real mismatch) and
+  adding an early return right after the await.
+- `addSave`/`removeSave` guarded against a stale *account* via
+  `_accountGeneration`, but not a stale *overlapping mutation for the same
+  place*. Concretely for `removeSave`: two overlapping calls for the same
+  place (e.g. a stale pre-account-switch call and a fresh post-switch call,
+  or any other overlap) meant the older call's failure-path rollback could
+  restore its captured `prev` — the pre-removal list — after a newer call
+  for the same place had already succeeded in removing it, silently
+  undoing the correct, newer removal. `addSave`'s analogous `finally` had
+  the same shape: an older call's cleanup could delete a newer call's still
+  in-flight `_pendingSaves` marker. Fixed with a per-`placeId` monotonic
+  mutation token (`_saveMutationToken`, a `Map<string, number>`) —
+  `addSave`/`removeSave` each capture their own token at call start, and
+  only clear the pending marker / apply the rollback if their token is
+  still the current one for that `placeId`.
+- `_waitForHydration()` only ever resolved via zustand persist's
+  `onFinishHydration` listeners — reading zustand's own `persist.ts`
+  directly confirmed those listeners fire only on a *successful*
+  rehydration; an `AsyncStorage.getItem` rejection runs the middleware's
+  separate `.catch()` path instead, which only calls `onRehydrateStorage`'s
+  error callback and never touches `finishHydrationListeners` or
+  `hasHydrated`. A real storage failure (corruption, quota, whatever) would
+  leave any `loadSaves()` call already waiting on hydration stuck forever.
+  Fixed by wiring `onRehydrateStorage`'s error callback to a module-level
+  `_hydrationFailed` flag plus a small waiter-list, so a storage failure
+  now degrades to "proceed with in-memory defaults" instead of hanging.
+
+New test file `cravesStore.test.ts` (previous rounds' differential tests
+were scratch-only and deleted after verification — this one is kept as
+permanent coverage since these are exactly the kind of timing bugs a static
+render/typecheck can't catch): mocks `@react-native-async-storage/async-
+storage`'s `getItem` with a manually-resolvable/rejectable promise to
+control hydration timing precisely, and `../api/saves` to control
+fetch/create/delete timing. 4 tests: clearSaves-during-hydration-wait,
+normal-load-still-works (regression guard for the token-reordering fix),
+hydration-failure-does-not-hang, and overlapping-removeSave-mutation-token.
+
+Verified: `tsc --noEmit` clean, 82 frontend tests passing (78 + 4 new).
+Backend untouched this round — 445 backend tests still the last-known-good
+baseline.
