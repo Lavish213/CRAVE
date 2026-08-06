@@ -13,6 +13,18 @@ interface CravesStore {
   loading: boolean;
   error: string | null;
 
+  // Which account `saves` currently belongs to — persisted alongside
+  // `saves` (see partialize below) specifically so it survives an app
+  // restart. Without persisting this too, a restart's rehydrated `saves`
+  // would have no way to prove which account they belong to, and — since
+  // we can't safely assume unlabeled data belongs to whichever account
+  // signs in next — the only safe default would be to distrust it and
+  // clear on every restart, losing the whole point of caching saves
+  // locally for instant display. Persisting the two together instead lets
+  // a genuine same-account restart keep its cache while a different
+  // account's leftover data still gets caught and cleared.
+  savesUserId: string | null;
+
   // Load (or reload) saves from backend. Replaces local state.
   loadSaves: (userId: string) => Promise<void>;
 
@@ -32,27 +44,14 @@ interface CravesStore {
 
 const _pendingSaves = new Set<string>();
 
-// Tracks which account the currently-held `saves` belong to (not persisted
-// — only `saves` itself is, via partialize below). Explicit sign-out
-// already calls clearSaves() (see authStore.ts), but a session can also be
-// replaced by a different account without going through that path (e.g.
-// re-authenticating as someone else after the "session expired" prompt in
-// craves.tsx, without an explicit sign-out first) — without this, the
-// previous account's saves would stay visible: `loading` alone doesn't
-// gate the FlatList's visibility in craves.tsx, only `loading && saves.length
-// === 0` does, so a non-empty stale list is never hidden just because a
-// fetch for a *different* account is in flight. `null` means "unknown owner
-// (e.g. just rehydrated from disk for the current session's own account)"
-// — deliberately not clearing in that case is what lets the persisted cache
-// show immediately instead of flashing empty on every app restart.
-let _lastLoadedUserId: string | null = null;
-
 // loadSaves() takes a userId but fetchSaves() has no request-cancellation
 // mechanism — without this, a slow loadSaves() call for a just-signed-out
 // account can resolve after a faster loadSaves() call for the newly
 // signed-in account and overwrite the persisted `saves` state with the
-// wrong account's data. Bumped at the start of each call; a call only
-// applies its result if it's still the most recently *started* one.
+// wrong account's data. Bumped at the start of each call (and by
+// clearSaves(), so a request already in flight when sign-out happens can't
+// repopulate the store afterward); a call only applies its result if it's
+// still the most recently *started* one.
 let _loadSequence = 0;
 
 // Previously every failure (network error, 500, 429, expired session) was
@@ -75,22 +74,26 @@ export const useCravesStore = create<CravesStore>()(
       saves: [],
       loading: false,
       error: null,
+      savesUserId: null,
 
       loadSaves: async (userId: string) => {
         const mySequence = ++_loadSequence;
-        // A different account than the one `saves` currently belongs to —
+        // A different account than the one `saves` currently belongs to
+        // (including a rehydrated-but-unlabeled-for-this-account cache,
+        // which is exactly as untrustworthy as a known-different one) —
         // that data must not stay visible while this account's fetch is
-        // in flight (see _lastLoadedUserId's comment above).
-        if (_lastLoadedUserId !== null && _lastLoadedUserId !== userId) {
+        // in flight. `savesUserId === userId` (a genuine same-account
+        // reload/restart) is the only case that skips this, preserving the
+        // cached-saves-show-instantly UX for the one case where it's safe.
+        if (get().savesUserId !== userId) {
           set({ saves: [] });
         }
         set({ loading: true, error: null });
         try {
           const items = await fetchSaves(userId);
           if (mySequence !== _loadSequence) return;
-          _lastLoadedUserId = userId;
           if (__DEV__) console.log('[CRAVES_STORE] loadSaves', { count: items.length });
-          set({ saves: items, loading: false });
+          set({ saves: items, savesUserId: userId, loading: false });
         } catch (err: any) {
           if (mySequence !== _loadSequence) return;
           const msg = _classifyError(err, 'Failed to load saves');
@@ -141,9 +144,14 @@ export const useCravesStore = create<CravesStore>()(
       },
 
       clearSaves: () => {
+        // Invalidate any load already in flight — without this, a slow
+        // fetchSaves() that started before sign-out could still resolve
+        // afterward and repopulate the store with the just-signed-out
+        // account's saves, since it would otherwise still match
+        // _loadSequence.
+        ++_loadSequence;
         if (__DEV__) console.log('[CRAVES_STORE] clearSaves');
-        _lastLoadedUserId = null;
-        set({ saves: [], error: null });
+        set({ saves: [], savesUserId: null, loading: false, error: null });
       },
 
       isSaved: (placeId: string) => get().saves.some((s) => s.id === placeId),
@@ -151,8 +159,9 @@ export const useCravesStore = create<CravesStore>()(
     {
       name: 'crave-saves',
       storage: createJSONStorage(() => AsyncStorage),
-      // Only persist the saves array. loading/error are transient.
-      partialize: (state) => ({ saves: state.saves }),
+      // saves + savesUserId travel together — see savesUserId's comment.
+      // loading/error are transient, not persisted.
+      partialize: (state) => ({ saves: state.saves, savesUserId: state.savesUserId }),
     },
   ),
 );
