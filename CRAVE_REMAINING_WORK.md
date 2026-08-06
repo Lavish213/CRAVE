@@ -310,3 +310,64 @@ Two more, both confirmed and fixed:
   the table regardless of execution order or other tests' leftover data.
 
 Verified again: 445 backend tests passing, `tsc --noEmit` clean.
+
+### Follow-up — live verification pass, 3 more residual gaps found and closed
+
+Asked to actually run the app and check the fixed screens, not just trust
+typecheck/tests. Backend booted cleanly against a fresh SQLite DB (Alembic
+migrations + a seeded place, confirmed via `GET /api/v1/place/{id}`).
+Full-app Playwright screenshots hit two pre-existing platform gaps unrelated
+to anything touched this session: `react-native-maps` has no web-target
+support (Metro's web bundler chokes on its native codegen import), and a
+`zustand` transitive dependency emits `import.meta`, which Metro's
+non-module web bundle can't execute. Neither was worth patching around
+further just for a smoke test.
+
+Pivoted to differential Jest/React-Testing-Library tests instead — write a
+test against the fixed code, confirm it passes, then swap in the pre-fix
+version of the same file and confirm the test fails exactly as predicted,
+then restore the fix. This is more rigorous than a screenshot for
+timing-dependent bugs, since a static render can't prove a race is actually
+closed. `useTrending.ts`'s round-2 fix passed this differential check
+cleanly. But applying the same test to `rank/[placeId].tsx`, `place/[id].tsx`,
+and `craves.tsx`/`cravesStore.ts` surfaced a narrower, real class of bug the
+generation-ref/sequence guards didn't cover:
+
+**The guards stop an out-of-order OLD response from overwriting a NEWER
+one — they don't clear the *currently displayed* stale data the moment the
+identity (place id or account) changes.** Wherever a section's visibility
+isn't gated by its own loading flag, the previous place's/account's data
+stays on screen for as long as the new fetch is in flight:
+
+- `place/[id].tsx` — the "Seen on social" (craves-for-place) section had no
+  loading flag, just `craves.length > 0`. Navigating from place A to place
+  B kept showing place A's crave rows — each a real tap target to
+  `matched_place_id` — until B's fetch resolved. Fixed by resetting
+  `craves` to `[]` at the start of the effect (the menu section right above
+  it didn't need this — it already has a `menuLoading` flag that gates its
+  visibility regardless of what's still in `menuItems`).
+- `craves.tsx` — the "Added" (`placeSaves`) section had the same shape.
+  Fixed by resetting `craves`/`placeSaves` inside the existing
+  `accountGenerationRef` effect (keyed on `user?.id`, so it only fires on a
+  genuine account change — never on pull-to-refresh or right after sharing
+  a link for the same account, so no new empty-flash regression).
+- `cravesStore.ts` — the main Saves list *does* have a `loading` flag, but
+  craves.tsx's skeleton only renders when `loading && saves.length === 0`,
+  so a non-empty stale list from a previous account was never hidden just
+  because a fetch for a *different* account was in flight. Fixed with a
+  `_lastLoadedUserId` marker (mirroring this file's existing module-level
+  guards like `_pendingSaves`) — clears `saves` only on a genuine account
+  mismatch, deliberately preserving both a same-account refresh (must keep
+  showing cached data while it revalidates) and a legitimate same-account
+  app restart (AsyncStorage-persisted saves should show immediately, not
+  flash empty just because the marker isn't known yet after rehydration).
+
+`rank/[placeId].tsx`'s round-2 fix (the CodeRabbit-flagged Major
+data-integrity issue) passed its differential test cleanly with no further
+gaps found — its reset was already complete because it clears every piece
+of ranking-flow state up front, not just the visible one.
+
+Verified: 445 backend tests passing, 78 frontend tests passing,
+`tsc --noEmit` clean. All differential/scratch test files were deleted
+after verification — they existed only to prove each fix, not as
+permanent coverage.
