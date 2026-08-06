@@ -274,3 +274,39 @@ ever one in-flight response, period). Confirmed and fixed:
 - `cd backend && rm -f test_crave.db && python -m pytest -q` — 445 passed
   (444 baseline + 1 new test).
 - `cd frontend && npx tsc --noEmit -p .` — clean, no errors.
+
+### Follow-up — CodeRabbit's second review pass on PR #40 found 3 more real issues in the above
+
+Correction to this log's own claim above: `rank/[placeId].tsx`'s race was
+**not** harmless. CodeRabbit correctly pointed out that between a `placeId`
+change and the new place's fetch resolving, the old `place` state stayed on
+screen — so the user could see place A's name/image while `handlePickTier`/
+`handleChoose` recorded a ranking against the route's (new) `placeId`, a
+real risk of ranking the wrong-looking place, not just a cosmetic flash.
+Fixed by resetting `place`/`error`/the whole ranking-flow state (`opponent`,
+`stage`, `tier`, `token`, `result`, `round`, `beatOpponentName`) at the start
+of the `placeId`-change effect, and gating the loading screen on
+`place.id === placeId` rather than just `!place`.
+
+Two more, both confirmed and fixed:
+
+- **`useTrending.ts`** — the `latestRequestCityRef` guard tracked only
+  `cityId`, so two overlapping requests for the *same* city (e.g. `refresh()`
+  fired twice quickly) both passed the check, meaning a slower of two
+  same-city responses could still overwrite a newer one, and a cache-hit
+  load never cleared `refreshing`, so it could stay stuck `true` from an
+  earlier in-flight network call. Replaced with a monotonically increasing
+  `latestRequestRef` sequence number, incremented on every load (cached or
+  network), and the cache-hit path now explicitly clears `refreshing`.
+
+- **`test_menu_worker_starvation.py`** — `_load_places_requiring_menu` has
+  no city filter (it selects eligible places across the whole table by
+  design), so the test's fairness-slice assertion could flake if another
+  test left behind an eligible row with an older `created_at` than the
+  test's own low-rank places, silently displacing them from the reserved
+  slice. Fixed by pinning explicit `created_at` timestamps (`Place.__init__`
+  doesn't accept `created_at` — it's set as a post-construction attribute)
+  so the test's low-rank places are deterministically the oldest rows in
+  the table regardless of execution order or other tests' leftover data.
+
+Verified again: 445 backend tests passing, `tsc --noEmit` clean.
