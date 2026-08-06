@@ -1,0 +1,157 @@
+// Regression coverage for three CodeRabbit findings on the account-safety
+// guards in cravesStore.ts:
+//
+// 1. loadSaves() used to capture its _loadSequence token *after* awaiting
+//    hydration, so a clearSaves() (sign-out) that ran while the token still
+//    matched the pre-hydration value could never be caught by the
+//    mySequence check — the fetch would proceed and repopulate `saves` as
+//    if sign-out had never happened.
+// 2. addSave/removeSave only guarded against a stale *account* (via
+//    _accountGeneration), not a stale *overlapping same-account/same-place*
+//    mutation — an older removeSave's failure rollback could restore a
+//    place a newer removeSave for the same place already removed.
+// 3. _waitForHydration() only resolved via zustand persist's
+//    onFinishHydration, which never fires if the AsyncStorage read itself
+//    rejects — a storage failure left any pending loadSaves() call waiting
+//    forever.
+import type { PlaceOut } from '../api/places';
+
+let resolveGetItem: ((value: string | null) => void) | null = null;
+let rejectGetItem: ((err: unknown) => void) | null = null;
+
+jest.mock('@react-native-async-storage/async-storage', () => ({
+  __esModule: true,
+  default: {
+    getItem: jest.fn(
+      () =>
+        new Promise((resolve, reject) => {
+          resolveGetItem = resolve;
+          rejectGetItem = reject;
+        })
+    ),
+    setItem: jest.fn(() => Promise.resolve()),
+    removeItem: jest.fn(() => Promise.resolve()),
+  },
+}));
+
+jest.mock('../api/saves', () => ({
+  fetchSaves: jest.fn(),
+  createSave: jest.fn(),
+  deleteSave: jest.fn(),
+}));
+
+function makePlace(id: string): PlaceOut {
+  return { id, name: id } as unknown as PlaceOut;
+}
+
+// Several .then() hops separate our mock's resolve/reject call from the
+// awaited code in loadSaves — give the microtask queue plenty of turns to
+// drain rather than guessing the exact chain depth.
+async function flush(): Promise<void> {
+  for (let i = 0; i < 15; i++) {
+    await Promise.resolve();
+  }
+}
+
+describe('cravesStore', () => {
+  let useCravesStore: typeof import('./cravesStore').useCravesStore;
+  let savesApi: typeof import('../api/saves');
+
+  beforeEach(() => {
+    jest.resetModules();
+    resolveGetItem = null;
+    rejectGetItem = null;
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    savesApi = require('../api/saves');
+    (savesApi.fetchSaves as jest.Mock).mockReset();
+    (savesApi.createSave as jest.Mock).mockReset();
+    (savesApi.deleteSave as jest.Mock).mockReset();
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    ({ useCravesStore } = require('./cravesStore'));
+  });
+
+  async function hydrateWith(persistedState: string | null = null) {
+    resolveGetItem?.(persistedState);
+    await flush();
+  }
+
+  async function failHydrationWith(err: unknown) {
+    rejectGetItem?.(err);
+    await flush();
+  }
+
+  it('does not repopulate saves if clearSaves runs while loadSaves is still waiting on hydration', async () => {
+    const loadPromise = useCravesStore.getState().loadSaves('userA');
+
+    // Sign-out lands before AsyncStorage's read (and thus hydration) ever
+    // resolves.
+    useCravesStore.getState().clearSaves();
+
+    (savesApi.fetchSaves as jest.Mock).mockResolvedValue([makePlace('p1')]);
+    await hydrateWith(null);
+    await loadPromise;
+
+    expect(savesApi.fetchSaves).not.toHaveBeenCalled();
+    expect(useCravesStore.getState().saves).toEqual([]);
+    expect(useCravesStore.getState().savesUserId).toBeNull();
+  });
+
+  it('still loads saves normally when no sign-out races the hydration wait', async () => {
+    const loadPromise = useCravesStore.getState().loadSaves('userA');
+    (savesApi.fetchSaves as jest.Mock).mockResolvedValue([makePlace('p1')]);
+
+    await hydrateWith(null);
+    await loadPromise;
+
+    expect(savesApi.fetchSaves).toHaveBeenCalledWith('userA');
+    expect(useCravesStore.getState().saves).toEqual([makePlace('p1')]);
+    expect(useCravesStore.getState().savesUserId).toBe('userA');
+  });
+
+  it('resolves a pending hydration wait instead of hanging when the AsyncStorage read fails', async () => {
+    (savesApi.fetchSaves as jest.Mock).mockResolvedValue([makePlace('p1')]);
+    const loadPromise = useCravesStore.getState().loadSaves('userA');
+
+    await failHydrationWith(new Error('storage unavailable'));
+    await loadPromise;
+
+    expect(savesApi.fetchSaves).toHaveBeenCalledWith('userA');
+    expect(useCravesStore.getState().saves).toEqual([makePlace('p1')]);
+  });
+
+  it('does not let an older failed removeSave restore a place a newer removeSave already removed', async () => {
+    await hydrateWith(null);
+    useCravesStore.setState({ saves: [makePlace('p1')], savesUserId: 'userA' });
+
+    let rejectFirst: (err: unknown) => void = () => {};
+    let resolveSecond: () => void = () => {};
+    (savesApi.deleteSave as jest.Mock)
+      .mockImplementationOnce(
+        () =>
+          new Promise((_resolve, reject) => {
+            rejectFirst = reject;
+          })
+      )
+      .mockImplementationOnce(
+        () =>
+          new Promise<void>((resolve) => {
+            resolveSecond = resolve;
+          })
+      );
+
+    const remove1 = useCravesStore.getState().removeSave('p1', 'userA');
+    const remove2 = useCravesStore.getState().removeSave('p1', 'userA');
+
+    resolveSecond();
+    await remove2;
+    expect(useCravesStore.getState().saves).toEqual([]);
+
+    // remove1's rollback captured `prev` (=[p1]) before either removal ran.
+    // Without the per-place mutation token, this stale failure would splice
+    // p1 back in even though remove2 already correctly removed it.
+    rejectFirst(new Error('network error'));
+    await remove1;
+
+    expect(useCravesStore.getState().saves).toEqual([]);
+  });
+});

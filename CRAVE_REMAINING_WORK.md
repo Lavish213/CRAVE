@@ -421,3 +421,60 @@ tests (fail on the pre-fix version, pass on the fix):
   result.
 
 Verified: 445 backend tests, 78 frontend tests, `tsc --noEmit` clean.
+
+### Follow-up — CodeRabbit round-3 on `cravesStore.ts`: 3 more real gaps in the same file, all fixed with regression tests
+
+CodeRabbit's review of the previous entry's own commit found 3 more real
+issues in `cravesStore.ts`, all confirmed with new differential tests in
+`cravesStore.test.ts` (fail against the pre-fix version restored from git,
+pass against the fix):
+
+- `loadSaves()` still created its `_loadSequence` token (`mySequence`)
+  *after* `await _waitForHydration()`, not before. A `clearSaves()`
+  (sign-out) that ran while hydration was still pending would bump
+  `_loadSequence` during that window, but since `mySequence` was only read
+  once hydration finished — after the bump — it read the *post-clearSaves*
+  value and matched trivially. The call would proceed exactly as if
+  sign-out had never happened, fetching and applying the just-signed-out
+  account's saves. Fixed by capturing `mySequence` before the hydration
+  await (so a bump during that window is visible as a real mismatch) and
+  adding an early return right after the await.
+- `addSave`/`removeSave` guarded against a stale *account* via
+  `_accountGeneration`, but not a stale *overlapping mutation for the same
+  place*. Concretely for `removeSave`: two overlapping calls for the same
+  place (e.g. a stale pre-account-switch call and a fresh post-switch call,
+  or any other overlap) meant the older call's failure-path rollback could
+  restore its captured `prev` — the pre-removal list — after a newer call
+  for the same place had already succeeded in removing it, silently
+  undoing the correct, newer removal. `addSave`'s analogous `finally` had
+  the same shape: an older call's cleanup could delete a newer call's still
+  in-flight `_pendingSaves` marker. Fixed with a per-`placeId` monotonic
+  mutation token (`_saveMutationToken`, a `Map<string, number>`) —
+  `addSave`/`removeSave` each capture their own token at call start, and
+  only clear the pending marker / apply the rollback if their token is
+  still the current one for that `placeId`.
+- `_waitForHydration()` only ever resolved via zustand persist's
+  `onFinishHydration` listeners — reading zustand's own `persist.ts`
+  directly confirmed those listeners fire only on a *successful*
+  rehydration; an `AsyncStorage.getItem` rejection runs the middleware's
+  separate `.catch()` path instead, which only calls `onRehydrateStorage`'s
+  error callback and never touches `finishHydrationListeners` or
+  `hasHydrated`. A real storage failure (corruption, quota, whatever) would
+  leave any `loadSaves()` call already waiting on hydration stuck forever.
+  Fixed by wiring `onRehydrateStorage`'s error callback to a module-level
+  `_hydrationFailed` flag plus a small waiter-list, so a storage failure
+  now degrades to "proceed with in-memory defaults" instead of hanging.
+
+New test file `cravesStore.test.ts` (previous rounds' differential tests
+were scratch-only and deleted after verification — this one is kept as
+permanent coverage since these are exactly the kind of timing bugs a static
+render/typecheck can't catch): mocks `@react-native-async-storage/async-
+storage`'s `getItem` with a manually-resolvable/rejectable promise to
+control hydration timing precisely, and `../api/saves` to control
+fetch/create/delete timing. 4 tests: clearSaves-during-hydration-wait,
+normal-load-still-works (regression guard for the token-reordering fix),
+hydration-failure-does-not-hang, and overlapping-removeSave-mutation-token.
+
+Verified: `tsc --noEmit` clean, 82 frontend tests passing (78 + 4 new).
+Backend untouched this round — 445 backend tests still the last-known-good
+baseline.

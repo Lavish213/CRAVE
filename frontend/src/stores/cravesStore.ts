@@ -65,6 +65,28 @@ let _loadSequence = 0;
 // *new* account's list, after the fact.
 let _accountGeneration = 0;
 
+// Per-place mutation token — addSave/removeSave for the same place.id can
+// overlap (e.g. an account switch clears _pendingSaves mid-request, or a
+// same-account double-tap), and _accountGeneration alone can't tell two
+// overlapping operations for the *same* account apart. Without this, the
+// older of two overlapping addSave calls could delete the newer one's
+// _pendingSaves marker out from under it in its `finally`, or the older of
+// two overlapping removeSave calls could restore its stale captured `prev`
+// list after the newer removeSave already succeeded. Bumped once per
+// addSave/removeSave call for a given placeId; a call only clears the
+// pending marker or applies its rollback if its token is still current.
+const _saveMutationToken = new Map<string, number>();
+
+function _nextMutationToken(placeId: string): number {
+  const next = (_saveMutationToken.get(placeId) ?? 0) + 1;
+  _saveMutationToken.set(placeId, next);
+  return next;
+}
+
+function _isCurrentMutation(placeId: string, token: number): boolean {
+  return _saveMutationToken.get(placeId) === token;
+}
+
 function _resetForNewAccount() {
   _accountGeneration += 1;
   // A pending add for one account must not silently block the same
@@ -83,10 +105,31 @@ function _resetForNewAccount() {
 // reverting a fresher fetch result back to stale disk data. Waiting for
 // hydration to finish before loadSaves() reads/writes anything closes that
 // ordering gap.
+//
+// zustand's persist middleware only calls onFinishHydration's listeners on
+// a *successful* rehydration — an AsyncStorage read failure runs the
+// rejection path instead (only reaching onRehydrateStorage's error
+// callback below), so hasHydrated() would stay false and any pending
+// _waitForHydration() promise would never resolve at all. _hydrationFailed
+// (set from that error callback) unblocks waiters in that case too, so a
+// storage failure degrades to "proceed with in-memory defaults" instead of
+// hanging loadSaves() forever.
+let _hydrationFailed = false;
+const _hydrationWaiters: Array<() => void> = [];
+
+function _resolveHydrationWaiters(): void {
+  const waiters = _hydrationWaiters.splice(0, _hydrationWaiters.length);
+  waiters.forEach((resolve) => resolve());
+}
+
 function _waitForHydration(): Promise<void> {
-  if (useCravesStore.persist.hasHydrated()) return Promise.resolve();
+  if (useCravesStore.persist.hasHydrated() || _hydrationFailed) return Promise.resolve();
   return new Promise((resolve) => {
     const unsub = useCravesStore.persist.onFinishHydration(() => {
+      unsub();
+      resolve();
+    });
+    _hydrationWaiters.push(() => {
       unsub();
       resolve();
     });
@@ -116,9 +159,18 @@ export const useCravesStore = create<CravesStore>()(
       savesUserId: null,
 
       loadSaves: async (userId: string) => {
-        await _waitForHydration();
-
+        // Captured *before* awaiting hydration — a clearSaves() (sign-out)
+        // that runs while this call is still waiting on
+        // _waitForHydration() must be able to invalidate it. Capturing
+        // this after the await instead would read the sequence clearSaves()
+        // already bumped as this call's own starting point, so the
+        // mismatch check below would never catch it — this call would
+        // proceed to fetch and apply the just-signed-out account's saves
+        // as if sign-out had never happened.
         const mySequence = ++_loadSequence;
+        await _waitForHydration();
+        if (mySequence !== _loadSequence) return;
+
         // A different account than the one `saves` currently belongs to
         // (including a rehydrated-but-unlabeled-for-this-account cache,
         // which is exactly as untrustworthy as a known-different one) —
@@ -159,6 +211,13 @@ export const useCravesStore = create<CravesStore>()(
           return null;
         }
         const myGeneration = _accountGeneration;
+        // _resetForNewAccount() clears _pendingSaves on every account
+        // switch, so a still-in-flight add from before the switch and a
+        // fresh add for the same place.id started right after it can
+        // genuinely overlap. Without this token, whichever of the two
+        // finishes first would delete the *other's* still-pending marker
+        // in its `finally` below, letting a third concurrent add through.
+        const myMutation = _nextMutationToken(place.id);
         _pendingSaves.add(place.id);
         // Optimistic: add immediately
         set({ saves: [place, ...prev] });
@@ -178,12 +237,24 @@ export const useCravesStore = create<CravesStore>()(
           if (__DEV__) console.log('[CRAVES_STORE] addSave_error', err?.response?.status, err?.message);
           return msg;
         } finally {
-          _pendingSaves.delete(place.id);
+          // Only clear the marker if no newer add for this same place has
+          // started since — otherwise this stale call's cleanup would drop
+          // the marker a still-in-flight newer call still needs.
+          if (_isCurrentMutation(place.id, myMutation)) {
+            _pendingSaves.delete(place.id);
+          }
         }
       },
 
       removeSave: async (placeId: string, userId: string): Promise<string | null> => {
         const myGeneration = _accountGeneration;
+        // Guards against two overlapping removeSave calls for the same
+        // place (e.g. a rapid double-tap, or one from before an account
+        // switch and one after) — without this, an older call's failure
+        // rollback could restore its stale captured `prev` (which still
+        // has the place in it) after a newer call already succeeded in
+        // removing it, silently undoing the newer, correct removal.
+        const myMutation = _nextMutationToken(placeId);
         // Optimistic: remove immediately
         const prev = get().saves;
         set({ saves: prev.filter((s) => s.id !== placeId) });
@@ -197,8 +268,9 @@ export const useCravesStore = create<CravesStore>()(
           // since switched (e.g. sign-out ran while this DELETE was still
           // in flight), restoring it now would splice the *previous*
           // account's entire saves list back into the store after
-          // clearSaves() already ran.
-          if (myGeneration === _accountGeneration) {
+          // clearSaves() already ran. Also skipped if a newer removeSave
+          // for this same place has since started (see myMutation above).
+          if (myGeneration === _accountGeneration && _isCurrentMutation(placeId, myMutation)) {
             set({ saves: prev });
           }
           const msg = _classifyError(err, "Couldn't remove. Try again.");
@@ -230,6 +302,17 @@ export const useCravesStore = create<CravesStore>()(
       // saves + savesUserId travel together — see savesUserId's comment.
       // loading/error are transient, not persisted.
       partialize: (state) => ({ saves: state.saves, savesUserId: state.savesUserId }),
+      // See _waitForHydration's comment — without this, an AsyncStorage
+      // read failure would never call onFinishHydration's listeners at
+      // all, and any loadSaves() call already waiting on hydration would
+      // hang forever instead of proceeding with in-memory defaults.
+      onRehydrateStorage: () => (_state, error) => {
+        if (error) {
+          if (__DEV__) console.log('[CRAVES_STORE] hydration_failed', error);
+          _hydrationFailed = true;
+          _resolveHydrationWaiters();
+        }
+      },
     },
   ),
 );
