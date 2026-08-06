@@ -371,3 +371,53 @@ Verified: 445 backend tests passing, 78 frontend tests passing,
 `tsc --noEmit` clean. All differential/scratch test files were deleted
 after verification — they existed only to prove each fix, not as
 permanent coverage.
+
+### Follow-up — a real bug the live-verification pass actually found, and 3 more CodeRabbit findings on cravesStore.ts
+
+While live-verifying the Feed screen against a seeded database, it rendered
+completely empty despite the API reporting `total: 2`. Root cause turned
+out to be two layered issues: the immediate one was a mistake in the test
+seed data (`rank_score` set to `90.0`/`80.0` instead of the schema's
+required `0.0`-`1.0` normalized range) — but that only mattered because
+`GET /api/v1/places` (`backend/app/api/v1/routes/places.py`) was silently
+swallowing the resulting per-place `PlaceOut` validation failure at
+`logger.debug`, invisible at the app's default log level. In production,
+*any* place whose data ever fails validation for any reason vanishes from
+every feed response with zero operational visibility, while `total` (from
+the raw query, computed earlier) keeps counting it like nothing's wrong.
+Bumped to `logger.warning` so this is actually visible when it happens for
+real.
+
+CodeRabbit's review of that same commit then found 3 more real gaps in the
+`savesUserId` design from the entry above — all confirmed with differential
+tests (fail on the pre-fix version, pass on the fix):
+
+- `loadSaves()` cleared `saves` but left `savesUserId` pointing at the old
+  account until the fetch succeeded. An optimistic `addSave`/`removeSave`
+  for the new account landing in that window would persist under the wrong
+  owner label — if the app died right then, the *old* account could sign
+  back in later and see the *new* account's data. Fixed by setting
+  `saves`+`savesUserId` atomically in the same `set()` call.
+- `addSave`/`removeSave` had no generation guard at all. `removeSave`'s
+  failure-path rollback restored `prev` — the pre-removal account's full
+  list, captured at call time — even after `clearSaves()` had already run
+  for a sign-out, so a slow DELETE failing after sign-out could repopulate
+  the signed-out account's data. Added a separate `_accountGeneration`
+  counter (not reusing `_loadSequence`, which bumps on every `loadSaves()`
+  call including harmless same-account refreshes) that only changes on a
+  real account switch; both mutations check it before their post-await
+  state updates. `_pendingSaves` (keyed only by `place.id`, no account
+  scoping) is now cleared on every account switch too, since a still-in-
+  flight add from the old account could otherwise silently block the new
+  account from saving that same place.
+- zustand's `persist` middleware rehydrates from `AsyncStorage`
+  asynchronously — there's a real window right after the store is created
+  where `saves`/`savesUserId` still read as their pre-hydration defaults,
+  not the previous session's actual persisted values. `loadSaves()` now
+  awaits `useCravesStore.persist.hasHydrated()`/`onFinishHydration()`
+  before reading or writing anything, so it can't make its clear-or-not
+  decision against stale defaults, and zustand's own rehydration `set()`
+  can never land later and silently revert an already-fresher fetch
+  result.
+
+Verified: 445 backend tests, 78 frontend tests, `tsc --noEmit` clean.
