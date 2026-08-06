@@ -48,9 +48,20 @@ export default function CravesScreen() {
   // token), so without this guard a slow request started under the old
   // account can resolve after the new account's sign-in and silently
   // overwrite craves/placeSaves with the previous user's data.
+  //
+  // Also resets craves/placeSaves here (not inside loadCraves/loadPlaceSaves
+  // themselves, which are also called on pull-to-refresh and after sharing a
+  // link for the *same* account, where clearing first would just flash an
+  // empty list). Neither piece of state has a loading flag gating its
+  // section's visibility in the JSX below (unlike `savesLoading` for the
+  // main saves list) — without this, the previous account's craves/
+  // placeSaves would stay visibly attributed to the new account until its
+  // own fetch resolved.
   const accountGenerationRef = useRef(0);
   useEffect(() => {
     accountGenerationRef.current += 1;
+    setCraves([]);
+    setPlaceSaves([]);
   }, [user?.id]);
 
   const loadCraves = React.useCallback(() => {

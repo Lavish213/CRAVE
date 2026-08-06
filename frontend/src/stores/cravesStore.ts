@@ -32,6 +32,21 @@ interface CravesStore {
 
 const _pendingSaves = new Set<string>();
 
+// Tracks which account the currently-held `saves` belong to (not persisted
+// — only `saves` itself is, via partialize below). Explicit sign-out
+// already calls clearSaves() (see authStore.ts), but a session can also be
+// replaced by a different account without going through that path (e.g.
+// re-authenticating as someone else after the "session expired" prompt in
+// craves.tsx, without an explicit sign-out first) — without this, the
+// previous account's saves would stay visible: `loading` alone doesn't
+// gate the FlatList's visibility in craves.tsx, only `loading && saves.length
+// === 0` does, so a non-empty stale list is never hidden just because a
+// fetch for a *different* account is in flight. `null` means "unknown owner
+// (e.g. just rehydrated from disk for the current session's own account)"
+// — deliberately not clearing in that case is what lets the persisted cache
+// show immediately instead of flashing empty on every app restart.
+let _lastLoadedUserId: string | null = null;
+
 // loadSaves() takes a userId but fetchSaves() has no request-cancellation
 // mechanism — without this, a slow loadSaves() call for a just-signed-out
 // account can resolve after a faster loadSaves() call for the newly
@@ -63,10 +78,17 @@ export const useCravesStore = create<CravesStore>()(
 
       loadSaves: async (userId: string) => {
         const mySequence = ++_loadSequence;
+        // A different account than the one `saves` currently belongs to —
+        // that data must not stay visible while this account's fetch is
+        // in flight (see _lastLoadedUserId's comment above).
+        if (_lastLoadedUserId !== null && _lastLoadedUserId !== userId) {
+          set({ saves: [] });
+        }
         set({ loading: true, error: null });
         try {
           const items = await fetchSaves(userId);
           if (mySequence !== _loadSequence) return;
+          _lastLoadedUserId = userId;
           if (__DEV__) console.log('[CRAVES_STORE] loadSaves', { count: items.length });
           set({ saves: items, loading: false });
         } catch (err: any) {
@@ -120,6 +142,7 @@ export const useCravesStore = create<CravesStore>()(
 
       clearSaves: () => {
         if (__DEV__) console.log('[CRAVES_STORE] clearSaves');
+        _lastLoadedUserId = null;
         set({ saves: [], error: null });
       },
 

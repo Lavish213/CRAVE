@@ -158,10 +158,16 @@ export default function PlaceDetailScreen() {
 
   // Matched shares for this place — "seen on TikTok/YouTube" social proof.
   // Public endpoint, no auth needed, silently empty on failure (this is
-  // supplementary content, not worth an error state of its own).
+  // supplementary content, not worth an error state of its own). Unlike the
+  // menu fetch above, there's no loading flag gating this section's
+  // visibility (it renders whenever craves.length > 0) — without resetting
+  // craves here, place A's rows (each a tap target to A's matched place)
+  // would stay visibly attributed to place B's screen for as long as B's
+  // fetch is in flight.
   useEffect(() => {
     if (!id) return;
     const myGeneration = ++cravesGenerationRef.current;
+    setCraves([]);
     getCravesForPlace(id)
       .then((items) => {
         if (myGeneration !== cravesGenerationRef.current) return;
