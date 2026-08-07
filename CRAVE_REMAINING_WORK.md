@@ -567,3 +567,69 @@ a shipped build.
 
 Verified: `npx tsc --noEmit` clean, 82 frontend tests passing, 445 backend
 tests passing.
+
+### Follow-up — root-caused "no photos" against the real production backend, and fixed it
+
+Traced this all the way through against the actual deployed Railway
+backend (`crave-production.up.railway.app`), not a local test DB — health
+check confirmed `db: ok, cache: ok, worker: ok`, and `GET /api/v1/places`
+returned real production data: **29,271 places**, including well-known
+real restaurants (Omakase, Osteria Mozza, Sons & Daughters, Lord Stanley,
+Hayato) with real `primary_image_url` values already populated. So the
+ingestion pipeline had done its job — this wasn't "no photos were ever
+fetched."
+
+Then actually fetched one of those exact, currently-listed, currently-
+served `primary_image_url` values (`GET /api/v1/image?ref=...` for
+Omakase). Result: `{"detail":"Image not found"}` — a real photo reference,
+for a real active place, that our own image proxy (`app/api/v1/routes/
+image.py`) can no longer resolve against Google's Places API (New) media
+endpoint.
+
+Root cause: Google's Places API (New) photo resource names are not
+permanent — they can and do go invalid over time. `app/workers/
+image_worker.py::_needs_image_work_clause` only ever selects places with
+too few images or no primary image at all; once a place clears that bar
+even once, nothing ever revisits it again. `STALE_IMAGE_DAYS = 30` existed
+as a named constant with a docstring literally explaining this exact gap
+("Stale refresh... is NOT selected here — it requires explicit
+force_refresh=True") — but nothing in `app/scheduler.py`'s automatic
+`image_ingestion` job (every 20 minutes, `force_refresh=False`) ever passed
+that flag, so `STALE_IMAGE_DAYS` was dead: defined, documented, and never
+acted on. With a 29k-place catalog ingested over time, this guarantees
+every photo eventually breaks permanently with zero automatic recovery.
+
+Fixed by adding a third, bounded reserve to `_select_places` (alongside the
+existing rank_score-priority slice and the starvation-fairness reserve from
+earlier this session): up to `max(1, limit // 10)` places per run, selected
+by oldest-primary-image-first, for places whose current primary image was
+set more than `STALE_IMAGE_DAYS` ago — regardless of whether they already
+have "enough" images by `_needs_image_work_clause`'s count. Places selected
+this way get `force_refresh=True` passed to `ImageIngestService.
+ingest_place_images` specifically (bypassing its own "already has images"
+skip) while everything else in the same batch keeps using the caller's
+original `force_refresh` value, so a stale-refresh cycle failing
+repeatedly still trips the normal `image_blocked` safety net instead of
+retrying forever. Also added a backfill step so an under-filled stale (or
+starvation) reserve doesn't just shrink the batch below `limit` — the
+unused capacity falls back to the next-best priority-ordered places,
+using the same over-fetch-then-filter-by-picked-ids pattern already
+established for the starvation reserve.
+
+New tests: `test_select_places_reserves_slots_for_stale_primary_images`
+(a place with a full, otherwise-acceptable gallery but a primary image
+older than STALE_IMAGE_DAYS gets picked up and reported in the new
+`stale_refresh_ids` return value) and
+`test_select_places_does_not_treat_a_fresh_primary_image_as_stale`
+(regression guard — a recent primary image must not get swept in just
+because the place also needs other work). `_select_places` now returns
+`Tuple[List[Place], Set[str]]` instead of a plain list — updated the two
+existing starvation-reserve tests to unpack accordingly.
+
+Separately confirmed (but not fixed, since it needs a Railway secrets/env
+change, not a code change): the deployed backend is currently reachable
+and healthy — this specific "reportedly crashed for ~2 months" note
+earlier in this document is stale as of this check.
+
+Verified: 447 backend tests passing (445 + 2 new), same command as every
+other round this session.
