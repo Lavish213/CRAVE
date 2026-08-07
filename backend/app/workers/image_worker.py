@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
-from typing import Dict, List, Optional
+from datetime import datetime, timedelta, timezone
+from typing import Dict, List, Optional, Set, Tuple
 
 from sqlalchemy import exists, func, not_, or_, select, update
 from sqlalchemy.orm import Session
@@ -70,7 +70,7 @@ class ImageWorker:
 
         limit = self._normalize_limit(limit)
 
-        places = self._select_places(
+        places, stale_refresh_ids = self._select_places(
             db=db,
             limit=limit,
             force_refresh=force_refresh,
@@ -111,12 +111,25 @@ class ImageWorker:
             place_id = getattr(place, "id", None)
             attempt_failed = False
 
+            # A place selected via the stale-primary-image reserve (see
+            # _select_places) already has "enough" images by
+            # _needs_image_work_clause's count — ingest_place_images'
+            # own force_refresh=False path skips any place that already has
+            # existing images, so without this it would never actually
+            # re-fetch anything for these places despite being selected
+            # specifically to refresh them. Only the ingest call itself is
+            # forced; the attempt-tracking/blocking guard below still keys
+            # off the caller's original force_refresh, not this per-place
+            # override, so a stale-refresh cycle failing repeatedly can
+            # still trip image_blocked the same as any other automatic run.
+            service_force_refresh = force_refresh or (place_id in stale_refresh_ids)
+
             try:
 
                 images = self.ingest_service.ingest_place_images(
                     db=db,
                     place=place,
-                    force_refresh=force_refresh,
+                    force_refresh=service_force_refresh,
                 )
 
                 # Count as a failed attempt if no images were returned
@@ -221,7 +234,7 @@ class ImageWorker:
         limit: int,
         force_refresh: bool,
         place_ids: Optional[List[str]],
-    ) -> List[Place]:
+    ) -> Tuple[List[Place], Set[str]]:
 
         base_stmt = select(Place).where(
             Place.is_active.is_(True),
@@ -243,7 +256,7 @@ class ImageWorker:
         # An explicit place list or a forced refresh means the caller wants
         # exactly those places, in priority order — no fairness split.
         if place_ids or force_refresh or limit < 2:
-            return list(db.execute(priority_stmt.limit(limit)).scalars().all())
+            return list(db.execute(priority_stmt.limit(limit)).scalars().all()), set()
 
         # Reserve a slice of the batch for the oldest places that still need
         # work, regardless of rank_score. Without this, a place with a
@@ -256,8 +269,24 @@ class ImageWorker:
         # consecutive successful worker runs because none of them ever
         # cracked the top `limit` by rank_score. Same starvation shape
         # menu_worker.py's own comments warn about for its batch query.
+        #
+        # A second, separate reserve handles a different failure mode:
+        # Google's Places API (New) photo resource names are not permanent
+        # — confirmed live in production, a currently-listed, currently-
+        # active place's stored primary_image_url 404'd from Google's own
+        # media endpoint. _needs_image_work_clause() only selects places
+        # with too few images or no primary at all, so once a place clears
+        # that bar even once, it is NEVER revisited by a normal run again —
+        # there is no automatic path that ever notices an existing photo
+        # reference has gone stale. STALE_IMAGE_DAYS existed as a constant
+        # for this but was never wired to anything; this reserve is what
+        # actually uses it. Bounded (like the starvation reserve above) so
+        # a 29k+-place catalog doesn't spend the whole batch re-verifying
+        # old-but-still-valid photos instead of backfilling places with
+        # none at all.
         starvation_reserve = max(1, limit // 5)
-        priority_limit = limit - starvation_reserve
+        stale_reserve = max(1, limit // 10)
+        priority_limit = max(1, limit - starvation_reserve - stale_reserve)
 
         priority_places = list(
             db.execute(priority_stmt.limit(priority_limit)).scalars().all()
@@ -271,8 +300,86 @@ class ImageWorker:
             p for p in db.execute(fairness_stmt).scalars().all()
             if p.id not in picked_ids
         ][:starvation_reserve]
+        picked_ids.update(p.id for p in fairness_places)
 
-        return priority_places + fairness_places
+        # Base filters only (is_active, place_ids, image_blocked) — NOT
+        # _needs_image_work_clause, since a stale-but-present primary image
+        # deliberately doesn't match that clause at all.
+        stale_base_stmt = select(Place).where(Place.is_active.is_(True))
+        if place_ids:
+            stale_base_stmt = stale_base_stmt.where(Place.id.in_(place_ids))
+        stale_base_stmt = stale_base_stmt.where(Place.image_blocked.is_not(True))
+
+        stale_cutoff = _utcnow() - timedelta(days=STALE_IMAGE_DAYS)
+        # A scalar subquery (not a join) specifically so DISTINCT/ORDER BY
+        # never has to reconcile a joined column against a query that only
+        # selects Place — Postgres rejects ORDER BY on a column outside the
+        # SELECT list under SELECT DISTINCT, which a join here would risk.
+        primary_created_at_subquery = (
+            select(PlaceImage.created_at)
+            .where(
+                PlaceImage.place_id == Place.id,
+                PlaceImage.is_primary.is_(True),
+            )
+            .order_by(PlaceImage.created_at.desc())
+            .limit(1)
+            .scalar_subquery()
+        )
+        stale_stmt = (
+            stale_base_stmt.where(self._stale_primary_clause(stale_cutoff))
+            .order_by(primary_created_at_subquery.asc())
+            .limit(stale_reserve + len(picked_ids))
+        )
+        stale_places = [
+            p for p in db.execute(stale_stmt).scalars().all()
+            if p.id not in picked_ids
+        ][:stale_reserve]
+        picked_ids.update(p.id for p in stale_places)
+
+        # The stale-refresh reserve above legitimately returns fewer than
+        # stale_reserve whenever there simply aren't that many old-enough
+        # primary images yet (the common case for a catalog still mostly
+        # backfilling from scratch) — that reserved capacity would
+        # otherwise just go unused and silently shrink the batch below
+        # `limit`. Backfill with the next-best priority-ordered places
+        # instead, using the same over-fetch-then-filter pattern as the
+        # fairness reserve above (limit by shortfall + len(picked_ids) to
+        # guarantee enough surplus after excluding everything already
+        # picked, rather than risk the backfill query's own limit landing
+        # entirely inside already-picked rows).
+        already_selected = len(priority_places) + len(fairness_places) + len(stale_places)
+        shortfall = limit - already_selected
+        if shortfall > 0:
+            backfill_stmt = priority_stmt.limit(shortfall + len(picked_ids))
+            backfill_places = [
+                p for p in db.execute(backfill_stmt).scalars().all()
+                if p.id not in picked_ids
+            ][:shortfall]
+        else:
+            backfill_places = []
+
+        stale_refresh_ids = {p.id for p in stale_places}
+
+        return (
+            priority_places + fairness_places + stale_places + backfill_places,
+            stale_refresh_ids,
+        )
+
+    def _stale_primary_clause(self, stale_cutoff: datetime):
+        """
+        True when a place's current primary image was set before
+        stale_cutoff — i.e. it's old enough that its Google photo reference
+        (if that's the source) may no longer resolve. See _select_places'
+        stale-refresh reserve for why this needs its own periodic,
+        automatic path instead of only firing on explicit force_refresh.
+        """
+        return exists(
+            select(PlaceImage.id).where(
+                PlaceImage.place_id == Place.id,
+                PlaceImage.is_primary.is_(True),
+                PlaceImage.created_at < stale_cutoff,
+            )
+        )
 
     def _needs_image_work_clause(self):
         """
@@ -281,9 +388,9 @@ class ImageWorker:
         - fewer than MIN_IMAGE_COUNT images, OR
         - no primary image set
 
-        Stale refresh (images older than STALE_IMAGE_DAYS) is NOT selected
-        here — it requires explicit force_refresh=True to avoid wasting
-        Google API calls on places that already have acceptable images.
+        Stale refresh (images older than STALE_IMAGE_DAYS) is handled by a
+        separate, bounded reserve in _select_places instead — see there for
+        why it can't just be added to this clause outright.
         """
         total_images_subquery = (
             select(func.count(PlaceImage.id))

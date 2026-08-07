@@ -1,18 +1,29 @@
 """
-Coverage for ImageWorker._select_places' starvation-reserve split.
+Coverage for ImageWorker._select_places' starvation-reserve split, and its
+separate stale-primary-image refresh reserve.
 
-Confirmed happening in production: a small-town city (Lodi) had 48 active
-places, all needing image work (zero images each), but zero of them were
-ever picked up across 622 consecutive successful image_ingestion runs.
-_select_places ordered strictly by rank_score DESC with a plain LIMIT and
-no rotation — a place with a naturally low rank_score can be permanently
-outranked by every other place still needing image work, since discovery
-keeps adding new candidates that refill the top of that ordering forever.
+Starvation reserve: confirmed happening in production, a small-town city
+(Lodi) had 48 active places, all needing image work (zero images each), but
+zero of them were ever picked up across 622 consecutive successful
+image_ingestion runs. _select_places ordered strictly by rank_score DESC
+with a plain LIMIT and no rotation — a place with a naturally low
+rank_score can be permanently outranked by every other place still needing
+image work, since discovery keeps adding new candidates that refill the
+top of that ordering forever.
+
+Stale-refresh reserve: confirmed live in production via a direct API call —
+a currently-listed, currently-active place's stored primary_image_url
+404'd from Google's own Places API (New) media endpoint. Google's photo
+resource names aren't permanent, but _needs_image_work_clause only selects
+places with too few images or no primary at all, so once a place clears
+that bar even once it was never revisited again — STALE_IMAGE_DAYS existed
+as a constant but nothing ever used it until this reserve.
 """
 from __future__ import annotations
 
 import sys
 import uuid
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -22,7 +33,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from app.db.session import SessionLocal
 from app.db.models.city import City
 from app.db.models.place import Place
-from app.workers.image_worker import ImageWorker
+from app.db.models.place_image import PlaceImage
+from app.workers.image_worker import ImageWorker, MIN_IMAGE_COUNT, STALE_IMAGE_DAYS
 
 
 @pytest.fixture
@@ -56,6 +68,34 @@ def _make_place(db, city, *, rank_score: float) -> Place:
     return p
 
 
+def _make_place_with_primary_image(db, city, *, rank_score: float, image_age_days: int) -> Place:
+    # MIN_IMAGE_COUNT total images (not just 1) — a place with fewer than
+    # that already matches _needs_image_work_clause on its own (regardless
+    # of how old its primary is), which would let the ordinary priority
+    # query claim it first and starve the stale-refresh reserve of
+    # anything to select. Giving it a full gallery isolates "primary image
+    # is stale" as the only reason this place should need work.
+    p = _make_place(db, city, rank_score=rank_score)
+    db.flush()
+    primary = PlaceImage(
+        place_id=p.id,
+        url=f"https://example.test/{uuid.uuid4().hex}.jpg",
+        is_primary=True,
+    )
+    db.add(primary)
+    for _ in range(MIN_IMAGE_COUNT - 1):
+        db.add(
+            PlaceImage(
+                place_id=p.id,
+                url=f"https://example.test/{uuid.uuid4().hex}.jpg",
+                is_primary=False,
+            )
+        )
+    db.flush()
+    primary.created_at = datetime.now(timezone.utc) - timedelta(days=image_age_days)
+    return p
+
+
 def test_select_places_reserves_slots_for_low_rank_places_needing_work(db, city):
     # The Lodi-shaped tail: a handful of long-established, low-rank places
     # that need image work. Created first, so they're also the oldest by
@@ -75,7 +115,7 @@ def test_select_places_reserves_slots_for_low_rank_places_needing_work(db, city)
 
     try:
         worker = ImageWorker()
-        selected = worker._select_places(
+        selected, _stale_ids = worker._select_places(
             db=db, limit=50, force_refresh=False, place_ids=None,
         )
         selected_ids = {p.id for p in selected}
@@ -99,10 +139,11 @@ def test_select_places_with_place_ids_bypasses_fairness_split(db, city):
     try:
         worker = ImageWorker()
         target_ids = [places[0].id, places[1].id]
-        selected = worker._select_places(
+        selected, stale_ids = worker._select_places(
             db=db, limit=50, force_refresh=False, place_ids=target_ids,
         )
         assert {p.id for p in selected} == set(target_ids)
+        assert stale_ids == set()
     finally:
         all_ids = [p.id for p in places]
         db.query(Place).filter(Place.id.in_(all_ids)).delete(synchronize_session=False)
@@ -115,14 +156,77 @@ def test_select_places_small_limit_skips_fairness_split(db, city):
 
     try:
         worker = ImageWorker()
-        selected = worker._select_places(
+        selected, stale_ids = worker._select_places(
             db=db, limit=1, force_refresh=False, place_ids=None,
         )
         assert len(selected) == 1
+        assert stale_ids == set()
         # Highest rank_score should win when there's no room for a fairness
         # slot at all.
         assert selected[0].id == places[-1].id
     finally:
         all_ids = [p.id for p in places]
+        db.query(Place).filter(Place.id.in_(all_ids)).delete(synchronize_session=False)
+        db.commit()
+
+
+def test_select_places_reserves_slots_for_stale_primary_images(db, city):
+    # These places already have a primary image (they'd never match
+    # _needs_image_work_clause), but it's well past STALE_IMAGE_DAYS — the
+    # exact Lodi-shaped tail for the photo-expiry bug: real, currently-
+    # active places whose stored Google photo reference has likely gone
+    # invalid, but nothing would ever revisit them without this reserve.
+    stale_places = [
+        _make_place_with_primary_image(
+            db, city, rank_score=90.0 - i, image_age_days=STALE_IMAGE_DAYS + 10 + i,
+        )
+        for i in range(3)
+    ]
+    # Plenty of places that plainly need image work too, so the stale
+    # reserve has to compete for batch space instead of being the only
+    # thing selected.
+    needs_work_places = [
+        _make_place(db, city, rank_score=100.0 - i) for i in range(40)
+    ]
+    db.commit()
+
+    all_ids = [p.id for p in stale_places + needs_work_places]
+    try:
+        worker = ImageWorker()
+        selected, stale_ids = worker._select_places(
+            db=db, limit=20, force_refresh=False, place_ids=None,
+        )
+        selected_ids = {p.id for p in selected}
+
+        assert len(selected) == 20
+        stale_place_ids = {p.id for p in stale_places}
+        assert stale_ids, "stale-refresh reserve should surface at least one candidate"
+        assert stale_ids <= stale_place_ids
+        assert stale_ids <= selected_ids
+    finally:
+        db.query(PlaceImage).filter(PlaceImage.place_id.in_(all_ids)).delete(synchronize_session=False)
+        db.query(Place).filter(Place.id.in_(all_ids)).delete(synchronize_session=False)
+        db.commit()
+
+
+def test_select_places_does_not_treat_a_fresh_primary_image_as_stale(db, city):
+    # Regression guard: a place with a normal, recently-set primary image
+    # must not get swept into the stale-refresh reserve (and therefore
+    # force_refresh=True in run()) just because it happens to also need
+    # more images elsewhere in the batch.
+    fresh_place = _make_place_with_primary_image(
+        db, city, rank_score=95.0, image_age_days=1,
+    )
+    db.commit()
+
+    all_ids = [fresh_place.id]
+    try:
+        worker = ImageWorker()
+        _selected, stale_ids = worker._select_places(
+            db=db, limit=10, force_refresh=False, place_ids=None,
+        )
+        assert fresh_place.id not in stale_ids
+    finally:
+        db.query(PlaceImage).filter(PlaceImage.place_id.in_(all_ids)).delete(synchronize_session=False)
         db.query(Place).filter(Place.id.in_(all_ids)).delete(synchronize_session=False)
         db.commit()

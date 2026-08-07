@@ -478,3 +478,158 @@ hydration-failure-does-not-hang, and overlapping-removeSave-mutation-token.
 Verified: `tsc --noEmit` clean, 82 frontend tests passing (78 + 4 new).
 Backend untouched this round — 445 backend tests still the last-known-good
 baseline.
+
+### Follow-up — root-caused "the app is completely blank, no places/photos/menus anywhere"
+
+Asked directly why nothing renders. Rather than guess, stood up the real
+stack end to end: booted the backend locally against the existing seeded
+SQLite DB, ran `npx expo start --web`, and drove it with headless
+Playwright to see exactly what a user sees. First screenshot: a **fully
+blank white page** — nothing at all, not even the tab bar. That matches
+"blank, no food places photos or menus" exactly, because it's not any one
+screen failing — the whole app never finishes loading.
+
+Two confirmed, fixed bugs, both root causes (found in sequence — fixing
+the first uncovered the second):
+
+1. **`react-native-maps` has no real web support, and one bad import took
+   down the entire bundle, not just the Map tab.** `app/(tabs)/map.tsx`
+   does `import MapView, { Marker } from 'react-native-maps'`. That
+   package's `lib/index.js` barrel unconditionally also pulls in
+   `MapMarker.js`, which imports React Native's native-only
+   `codegenNativeCommands` — Metro can't resolve that for the web platform
+   and fails the bundle at build time, not runtime. Because expo-router's
+   file-based routing uses `require.context` to eagerly scan and bundle
+   *every* file under `app/` (so it can build its route table) regardless
+   of which tab is active, that one unresolvable import failed the whole
+   web bundle — every screen, not just Map. Adding a platform-specific
+   `app/(tabs)/map.web.tsx` override alone does **not** fix this —
+   confirmed empirically: `require.context` still statically requires both
+   `map.tsx` and `map.web.tsx` (both match its route-file glob), so
+   `map.tsx`'s bad import still poisons the bundle even though it's never
+   the screen actually rendered on web. Fixed with both pieces together:
+   `app/(tabs)/map.web.tsx` (a plain "not available on web" screen, no
+   `react-native-maps` import at all) plus a new `metro.config.js` that
+   redirects the whole `react-native-maps` package to Metro's built-in
+   `{ type: 'empty' }` resolution specifically for `platform === 'web'` —
+   the actual fix that stops Metro from ever trying to resolve the bad
+   import in the first place.
+2. **Fixing #1 uncovered a second, unrelated bundle-breaking bug:**
+   `zustand`'s package.json `exports` map offers an ESM build
+   (`esm/middleware.mjs`, `esm/index.mjs`) that calls `import.meta.env`
+   (a Vite-specific check) — and Metro resolved `import ... from
+   'zustand/middleware'` (used by `cravesStore.ts`) to that ESM build over
+   the CJS one, even though Metro's own bundle output can't execute
+   `import.meta` at all. This crashed every screen at runtime with
+   "Cannot use 'import.meta' outside a module" — confirmed by grepping the
+   actual served bundle for `esm/middleware.mjs`/`esm/index.mjs` before and
+   after each attempted fix. Setting `resolver.unstable_conditionNames`
+   directly did **not** change which build got picked (confirmed
+   empirically — same `.mjs` files still in the bundle after). What
+   actually fixed it: `resolver.unstable_enablePackageExports = false` in
+   the same new `metro.config.js`, which makes Metro ignore the `exports`
+   map entirely and fall back to `resolverMainFields`
+   (`['react-native', 'browser', 'main']`) — for zustand's plain
+   `"main": "./index.js"`, that always lands on the CJS build regardless
+   of platform.
+
+Verified both fixes are real and don't regress native: requested an actual
+`platform=ios` bundle from the same Metro instance after the fix — 1422
+modules, zero errors, zero stray `esm/*.mjs` matches (iOS was never
+affected by either bug in the first place; this only confirms disabling
+package-exports resolution globally doesn't break iOS's own resolution).
+After both fixes, the exact same Playwright drive that produced a blank
+page now shows the real Feed screen — CRAVE wordmark, city strip, "Test
+Bistro" / "Second Spot" place cards with tier badges, bottom tab bar.
+
+**This is a web-preview-specific bug pair** (`expo start --web` /
+browser-based testing) — a native iOS/Android build was never affected by
+either one, since native already resolves `react-native-maps` and
+zustand's CJS build correctly on its own. If you're seeing the blank
+screen on an actual phone (Expo Go or a built app) rather than in a
+browser, this isn't the cause — see the `EXPO_PUBLIC_API_URL`/
+`EXPO_PUBLIC_SUPABASE_URL` misconfiguration risks and the still-unset
+prod secrets flagged earlier in this document instead. One more thing
+`src/lib/supabase.ts` surfaced during this same investigation, worth
+flagging regardless of platform: `createClient(supabaseUrl, ...)` runs
+**unconditionally at module-import time** with no guard — if
+`EXPO_PUBLIC_SUPABASE_URL`/`EXPO_PUBLIC_SUPABASE_ANON_KEY` are empty or
+malformed in whatever build is running (same class of misconfiguration
+risk `.env.example` already documents for `EXPO_PUBLIC_API_URL`, but
+strictly worse here), Supabase's own client throws synchronously
+("supabaseUrl is required"), which crashes the entire React tree before
+any screen — including the tab bar — ever renders. That failure mode is
+platform-agnostic (it would crash a native build exactly the same way) and
+was reproduced directly during this investigation. Not fixed here (no
+safe default URL to fall back to), just flagged as a real, previously
+undocumented crash-at-launch risk if those two env vars are ever wrong in
+a shipped build.
+
+Verified: `npx tsc --noEmit` clean, 82 frontend tests passing, 445 backend
+tests passing.
+
+### Follow-up — root-caused "no photos" against the real production backend, and fixed it
+
+Traced this all the way through against the actual deployed Railway
+backend (`crave-production.up.railway.app`), not a local test DB — health
+check confirmed `db: ok, cache: ok, worker: ok`, and `GET /api/v1/places`
+returned real production data: **29,271 places**, including well-known
+real restaurants (Omakase, Osteria Mozza, Sons & Daughters, Lord Stanley,
+Hayato) with real `primary_image_url` values already populated. So the
+ingestion pipeline had done its job — this wasn't "no photos were ever
+fetched."
+
+Then actually fetched one of those exact, currently-listed, currently-
+served `primary_image_url` values (`GET /api/v1/image?ref=...` for
+Omakase). Result: `{"detail":"Image not found"}` — a real photo reference,
+for a real active place, that our own image proxy (`app/api/v1/routes/
+image.py`) can no longer resolve against Google's Places API (New) media
+endpoint.
+
+Root cause: Google's Places API (New) photo resource names are not
+permanent — they can and do go invalid over time. `app/workers/
+image_worker.py::_needs_image_work_clause` only ever selects places with
+too few images or no primary image at all; once a place clears that bar
+even once, nothing ever revisits it again. `STALE_IMAGE_DAYS = 30` existed
+as a named constant with a docstring literally explaining this exact gap
+("Stale refresh... is NOT selected here — it requires explicit
+force_refresh=True") — but nothing in `app/scheduler.py`'s automatic
+`image_ingestion` job (every 20 minutes, `force_refresh=False`) ever passed
+that flag, so `STALE_IMAGE_DAYS` was dead: defined, documented, and never
+acted on. With a 29k-place catalog ingested over time, this guarantees
+every photo eventually breaks permanently with zero automatic recovery.
+
+Fixed by adding a third, bounded reserve to `_select_places` (alongside the
+existing rank_score-priority slice and the starvation-fairness reserve from
+earlier this session): up to `max(1, limit // 10)` places per run, selected
+by oldest-primary-image-first, for places whose current primary image was
+set more than `STALE_IMAGE_DAYS` ago — regardless of whether they already
+have "enough" images by `_needs_image_work_clause`'s count. Places selected
+this way get `force_refresh=True` passed to `ImageIngestService.
+ingest_place_images` specifically (bypassing its own "already has images"
+skip) while everything else in the same batch keeps using the caller's
+original `force_refresh` value, so a stale-refresh cycle failing
+repeatedly still trips the normal `image_blocked` safety net instead of
+retrying forever. Also added a backfill step so an under-filled stale (or
+starvation) reserve doesn't just shrink the batch below `limit` — the
+unused capacity falls back to the next-best priority-ordered places,
+using the same over-fetch-then-filter-by-picked-ids pattern already
+established for the starvation reserve.
+
+New tests: `test_select_places_reserves_slots_for_stale_primary_images`
+(a place with a full, otherwise-acceptable gallery but a primary image
+older than STALE_IMAGE_DAYS gets picked up and reported in the new
+`stale_refresh_ids` return value) and
+`test_select_places_does_not_treat_a_fresh_primary_image_as_stale`
+(regression guard — a recent primary image must not get swept in just
+because the place also needs other work). `_select_places` now returns
+`Tuple[List[Place], Set[str]]` instead of a plain list — updated the two
+existing starvation-reserve tests to unpack accordingly.
+
+Separately confirmed (but not fixed, since it needs a Railway secrets/env
+change, not a code change): the deployed backend is currently reachable
+and healthy — this specific "reportedly crashed for ~2 months" note
+earlier in this document is stale as of this check.
+
+Verified: 447 backend tests passing (445 + 2 new), same command as every
+other round this session.
