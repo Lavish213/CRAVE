@@ -31,6 +31,7 @@ import { formatScore, tierColor } from '../../src/utils/rankScore';
 import { relativeTime } from '../../src/utils/time';
 import { ImageGallery } from '../../src/components/ImageGallery';
 import { ReportPhotoSheet } from '../../src/components/ReportPhotoSheet';
+import { MenuSubmissionSheet } from '../../src/components/MenuSubmissionSheet';
 import { TierBadge } from '../../src/components/TierBadge';
 import { ErrorState } from '../../src/components/ErrorState';
 
@@ -100,6 +101,7 @@ export default function PlaceDetailScreen() {
   const myRanking = myRankings?.find((r) => r.place_id === id);
 
   const [reportImageId, setReportImageId] = useState<string | null>(null);
+  const [menuSubmitVisible, setMenuSubmitVisible] = useState(false);
 
   const [isAddingPhoto, setIsAddingPhoto] = useState(false);
   const [pendingImageId, setPendingImageId] = useState<string | undefined>();
@@ -269,6 +271,15 @@ export default function PlaceDetailScreen() {
     } finally {
       setIsAddingPhoto(false);
     }
+  };
+
+  const handleOpenMenuSubmit = () => {
+    if (!user) {
+      toast('Sign in to suggest menu items');
+      return;
+    }
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setMenuSubmitVisible(true);
   };
 
   const handleDirections = () => {
@@ -526,6 +537,20 @@ export default function PlaceDetailScreen() {
             )}
           </>
         )}
+
+        {!menuLoading && (
+          <TouchableOpacity
+            style={styles.suggestMenuBtn}
+            onPress={handleOpenMenuSubmit}
+            accessibilityRole="button"
+            accessibilityLabel="Suggest menu items"
+          >
+            <Ionicons name="create-outline" size={16} color={Colors.primary} />
+            <Text style={styles.suggestMenuText}>
+              {menuItems.length === 0 ? 'Add menu items' : 'Suggest a correction'}
+            </Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       {/* Seen on social — matched TikTok/YouTube/IG shares. Tapping opens
@@ -572,6 +597,13 @@ export default function PlaceDetailScreen() {
         imageId={reportImageId}
         onClose={() => setReportImageId(null)}
         onReported={() => toast('Thanks — we’ll take a look')}
+      />
+
+      <MenuSubmissionSheet
+        visible={menuSubmitVisible}
+        placeId={place.id}
+        onClose={() => setMenuSubmitVisible(false)}
+        onSubmitted={() => toast('Thanks — submitted for review')}
       />
     </ScrollView>
   );
@@ -686,6 +718,15 @@ const styles = StyleSheet.create({
   },
   expandBtn: { marginTop: 8, paddingVertical: 12, alignItems: 'center' },
   expandLabel: { color: Colors.primary, fontSize: 14, fontWeight: '600' },
+  suggestMenuBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    marginTop: 8,
+    paddingVertical: 12,
+  },
+  suggestMenuText: { color: Colors.primary, fontSize: 14, fontWeight: '600' },
   menuSkeletonWrap: { gap: Spacing.sm },
   socialSection: { paddingTop: 20, paddingLeft: 16 },
   socialRow: { gap: Spacing.sm, paddingRight: 16, paddingTop: 4 },

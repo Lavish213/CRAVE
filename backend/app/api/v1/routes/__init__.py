@@ -46,6 +46,10 @@ from app.api.v1.routes.rankings import router as rankings_router
 from app.api.v1.routes.feed_social import router as feed_social_router
 from app.api.v1.routes.leaderboard import router as leaderboard_router
 from app.api.v1.routes.moderation import router as moderation_router
+from app.api.v1.routes.menu_submissions import (
+    router as menu_submissions_router,
+    router_moderation as menu_submissions_moderation_router,
+)
 from app.api.v1.routes.debug import router as debug_router
 
 
@@ -87,4 +91,6 @@ router.include_router(rankings_router)
 router.include_router(feed_social_router)
 router.include_router(leaderboard_router)
 router.include_router(moderation_router)
+router.include_router(menu_submissions_router)
+router.include_router(menu_submissions_moderation_router)
 router.include_router(debug_router)

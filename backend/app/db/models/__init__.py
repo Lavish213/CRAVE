@@ -32,6 +32,7 @@ from .discovery_candidate import DiscoveryCandidate
 from .menu_item import MenuItem
 from .menu_source import MenuSource
 from .menu_snapshot import MenuSnapshot
+from .menu_submission import MenuSubmission
 
 # ----- Signals / Jobs Layer -----
 from .place_signal import PlaceSignal
@@ -92,6 +93,7 @@ __all__ = [
     "MenuItem",
     "MenuSource",
     "MenuSnapshot",
+    "MenuSubmission",
 
     # Signals / Jobs
     "PlaceSignal",

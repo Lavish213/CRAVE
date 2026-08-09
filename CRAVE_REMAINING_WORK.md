@@ -716,3 +716,105 @@ dedup switched from reference-string matching to content-hash matching
 (the `phash`/`is_duplicate_image` code the user-upload pipeline already
 has) plus a schema change, and should get an actual live-R2 smoke test
 before being trusted at 29k-place scale.
+
+### Follow-up — built restaurant/user menu self-submission end-to-end (DoorDash/UberEats scraping explicitly deferred, not authorized)
+
+Compared CRAVE's menu/photo pipeline against how competitor apps (Beli, and
+generic DoorDash/UberEats/Yelp-clone architecture research the user pasted)
+get their initial menu coverage. The honest answer for "how did small apps
+get menus active initially": (1) scraping the restaurant's own site/POS
+provider (Toast/Clover/Square/etc. — CRAVE already has all of these), and
+(2) letting the restaurant or a user just tell you. CRAVE had (1) but never
+built (2) — there was no path for a menu to enter the system except a
+scraper finding one. DoorDash/UberEats aggregator scraping was researched
+and scoped but **deliberately not built** — that's scraping a competitor
+platform's own listings, a real ToS/legal question the user explicitly
+said to hold off on ("hold off on uber and door dash").
+
+Self-submission was built as a moderated *input* into the existing
+multi-source truth pipeline, not a second, parallel "menu" system:
+submission → moderator review → on approval only, written as ordinary
+`PlaceClaim` rows → the same `materialize_menu_truth` → `MenuPublisher`
+pipeline every scraper output already goes through. A submission is
+therefore scored, corroborated, or outranked by whatever else exists for
+that place using the same trust math (`score_candidates.py`) as any other
+source — never a silent overwrite.
+
+**Backend:**
+- `app/db/models/menu_submission.py` (new) — `MenuSubmission`: place_id,
+  submitted_by (server-derived, never client input), items (JSON,
+  validated at the API boundary), status (pending/approved/rejected),
+  reviewed_by/reviewed_at/rejection_reason. Registered in
+  `app/db/models/__init__.py`.
+- `alembic/versions/x1y2z3a4b5c6_add_menu_submissions_table.py` (new) —
+  creates `menu_submissions` with both indexes, existence-guarded like the
+  repo's other new-table migrations for the dual-lineage baseline reason
+  documented in `k1l2m3n4o5p6`.
+- `app/services/menu/user_submission_service.py` (new) —
+  `apply_approved_submission()`: for each submitted item, builds the same
+  fingerprint (`build_menu_fingerprint`, price excluded from identity like
+  every other source) and upserts a `PlaceClaim` keyed on
+  `(place_id, field="menu_item", claim_key=fingerprint, source="user_submission")`
+  — a second submission for the same item updates the existing claim
+  in place rather than creating a competing duplicate under the same
+  source. Sets `is_verified_source=True` and `is_user_submitted=True`
+  together (moderator approval means the trust-weight penalty in
+  `score_candidates.py` for unverified user submissions — 0.9x — correctly
+  doesn't apply), confidence intentionally below a typical scraper's
+  starting point (0.75) so one self-reported submission doesn't
+  automatically outrank a corroborated multi-source scrape. Then calls
+  `materialize_menu_truth()` + `MenuPublisher().publish()`, same as every
+  other pipeline entry point.
+- `app/api/v1/routes/menu_submissions.py` (new) — `POST
+  /places/{place_id}/menu/submit` (auth required, 404 if place doesn't
+  exist, max 200 items/submission); `GET /moderation/menu-submissions`
+  (queue) and `POST /moderation/menu-submissions/{id}/review`
+  (approve/reject), reusing `moderation.py`'s existing `require_admin`
+  dependency (`ADMIN_USER_IDS` allowlist, 404 not 403 for non-admins) —
+  same gate as the photo-report queue, not a second admin system.
+  Re-reviewing an already-decided submission 409s. Registered both routers
+  in `app/api/v1/routes/__init__.py`.
+- **Found, not fixed (logged for later)**: `app/services/menu/claims/menu_claim_builder.py`'s
+  `build_menu_items()` constructs `MenuItem(section=..., price=...,
+  currency=...)` — kwargs that don't exist on the real
+  `MenuItem.__init__` (which takes `category`/`price_cents`, no
+  `currency`). Every call raises `TypeError`, silently swallowed by a
+  broad `except Exception`, so the function always returns `[]`. Confirmed
+  via grep this is dead code — `build_menu_items`/`upsert_menu_items`/
+  `replace_menu_items` are never called anywhere in the live pipeline —
+  so it's inert, not a live bug, but worth fixing or removing later.
+
+New tests: `tests/test_menu_submissions.py` (12) — submission creates a
+pending row with server-set `submitted_by`; unknown place 404s; empty
+items 422s; queue/detail/review all 404 for non-admins; reject records
+reason and writes zero claims; re-reviewing an already-decided submission
+409s; approving writes verified+user-submitted claims and actually
+publishes real `MenuItem` rows; a second approval for the same item
+updates the existing claim instead of duplicating it.
+
+Verified: 471 backend tests passing (459 + 12 new). Frontend: `npx tsc
+--noEmit` clean, `npx jest` 82/82 passing (no new frontend tests needed —
+`MenuSubmissionSheet.tsx` is a straightforward form component with no
+branching logic worth a dedicated test beyond what typecheck+manual review
+already covers).
+
+**Frontend:**
+- `src/api/menu.ts` — added `submitMenu()`, converts whole-dollar price
+  input to `price_cents` at the boundary so every caller doesn't have to
+  remember the backend's unit.
+- `src/components/MenuSubmissionSheet.tsx` (new) — modal form, add/remove
+  multiple items (name required, category/price/description optional),
+  client-side price validation, same bottom-sheet pattern as
+  `ReportPhotoSheet.tsx`/`ShareLinkSheet.tsx`.
+- `app/place/[id].tsx` — wired in: a "Add menu items" / "Suggest a
+  correction" button under the Menu section (label changes based on
+  whether a menu already exists), gated behind sign-in like the existing
+  add-photo action. Submitting shows a toast — deliberately doesn't
+  optimistically update `menuItems`, since nothing is live until a
+  moderator approves it.
+
+Still open / not done this pass (all explicitly deferred by the user, not
+overlooked): DoorDash/UberEats scraping; a dedicated in-app moderator UI
+for the new queue (currently API-only, same as the existing photo-report
+queue); rate-limiting repeat submissions from the same user for the same
+place beyond the general `rate_limit` dependency already on the routes.
