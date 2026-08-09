@@ -118,11 +118,12 @@ class StaleImageRefresher:
 
         try:
             self.upload_fn(key=key, data=data, content_type=content_type)
+            public_url = self.public_url_fn(key)
         except Exception as exc:
             logger.warning("stale_image_refresh_upload_failed place_id=%s error=%s", place_id, exc)
             return False
 
-        primary.url = self.public_url_fn(key)
+        primary.url = public_url
         # Resets the staleness clock _stale_primary_clause checks — this
         # row is now a fresh, durable copy, not the thing that made this
         # place eligible for the reserve in the first place.

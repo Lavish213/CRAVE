@@ -30,6 +30,12 @@ import uuid
 
 os.environ.setdefault("DATABASE_URL", "sqlite:///./test_crave.db")
 os.environ.setdefault("APP_ENV", "dev")
+# app.services.upload.r2_client.generate_public_url() raises if this is
+# unset (see that module — it deliberately no longer falls back to the
+# private S3 API endpoint). Tests that exercise the real upload pipeline
+# with a mocked S3 client still call the real generate_public_url(), so
+# it needs *some* value; the actual URL content doesn't matter for tests.
+os.environ.setdefault("R2_PUBLIC_BASE_URL", "https://pub-test.r2.dev")
 
 from app.db.session import engine  # noqa: E402
 from app.db.models import Base  # noqa: E402

@@ -80,7 +80,13 @@ def place_with_primary(db, city):
     db.commit()
 
 
-def _refresher(*, fetch_return=None, download_return=(b"bytes", "image/jpeg"), upload_side_effect=None):
+def _refresher(
+    *,
+    fetch_return=None,
+    download_return=(b"bytes", "image/jpeg"),
+    upload_side_effect=None,
+    public_url_side_effect=None,
+):
     fetcher = MagicMock()
     fetcher.fetch.return_value = fetch_return if fetch_return is not None else [
         {"url": "places/FRESH_REF/photos/xyz789"}
@@ -90,7 +96,10 @@ def _refresher(*, fetch_return=None, download_return=(b"bytes", "image/jpeg"), u
 
     upload_fn = MagicMock(side_effect=upload_side_effect)
 
-    public_url_fn = MagicMock(return_value="https://bucket.example.r2.cloudflarestorage.com/google-photos/key.jpg")
+    public_url_fn = MagicMock(
+        side_effect=public_url_side_effect,
+        return_value="https://pub-abc123.r2.dev/google-photos/key.jpg",
+    )
 
     return StaleImageRefresher(
         fetcher=fetcher,
@@ -107,7 +116,7 @@ def test_refresh_primary_updates_existing_row_in_place_on_success(db, place_with
     ok = refresher.refresh_primary(db=db, place=place)
 
     assert ok is True
-    assert primary.url == "https://bucket.example.r2.cloudflarestorage.com/google-photos/key.jpg"
+    assert primary.url == "https://pub-abc123.r2.dev/google-photos/key.jpg"
     # Staleness clock reset — this is what makes _stale_primary_clause stop
     # selecting this place again until it's genuinely old once more.
     assert primary.created_at > datetime.now(timezone.utc) - timedelta(minutes=1)
@@ -151,6 +160,24 @@ def test_refresh_primary_returns_false_when_upload_raises(db, place_with_primary
     place, primary = place_with_primary
     original_url = primary.url
     refresher, *_ = _refresher(upload_side_effect=RuntimeError("R2 is down"))
+
+    ok = refresher.refresh_primary(db=db, place=place)
+
+    assert ok is False
+    assert primary.url == original_url
+
+
+def test_refresh_primary_returns_false_when_public_url_is_unconfigured(db, place_with_primary):
+    """Regression guard: generate_public_url() now raises RuntimeError
+    when R2_PUBLIC_BASE_URL isn't set (see test_r2_client.py) instead of
+    silently returning an unreachable URL. That has to fail this refresh
+    closed — leaving the existing primary untouched — not raise out of
+    refresh_primary() uncaught."""
+    place, primary = place_with_primary
+    original_url = primary.url
+    refresher, *_ = _refresher(
+        public_url_side_effect=RuntimeError("R2_PUBLIC_BASE_URL is not configured"),
+    )
 
     ok = refresher.refresh_primary(db=db, place=place)
 

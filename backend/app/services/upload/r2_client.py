@@ -14,6 +14,16 @@ R2_BUCKET = os.getenv("R2_BUCKET")
 
 R2_ENDPOINT = f"https://{R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
 
+# The bucket's actual public-serving domain — a Public Development URL
+# (bucket Settings -> Public Development URL, "https://pub-<hash>.r2.dev")
+# or a custom domain mapped to the bucket. Deliberately NOT derived from
+# R2_ENDPOINT above: that's the S3 API host, which always requires
+# SigV4-signed requests no matter what a bucket's public-access setting
+# is, so a URL built from it can never be loaded directly by a client —
+# every URL generate_public_url() returned before this env var existed
+# was unreachable from the app regardless of any Railway config.
+R2_PUBLIC_BASE_URL = os.getenv("R2_PUBLIC_BASE_URL", "").rstrip("/")
+
 
 def _get_s3_client():
     return boto3.client(
@@ -53,10 +63,19 @@ def generate_presigned_upload_url(
 
 def generate_public_url(key: str) -> str:
     """
-    Build CDN/public URL (no DB hardcoding)
-    """
+    Build the publicly-loadable URL for an object in this bucket.
 
-    return f"https://{R2_BUCKET}.{R2_ACCOUNT_ID}.r2.cloudflarestorage.com/{key}"
+    Raises if R2_PUBLIC_BASE_URL isn't configured rather than falling back
+    to the S3 API endpoint — that fallback is what silently produced
+    unreachable URLs before, and callers here already treat a raised
+    exception as "this upload didn't work" (see StaleImageRefresher,
+    which wraps this in the same try/except as the upload call and fails
+    closed).
+    """
+    if not R2_PUBLIC_BASE_URL:
+        raise RuntimeError("R2_PUBLIC_BASE_URL is not configured")
+
+    return f"{R2_PUBLIC_BASE_URL}/{key}"
 
 
 def upload_bytes(*, key: str, data: bytes, content_type: str) -> None:

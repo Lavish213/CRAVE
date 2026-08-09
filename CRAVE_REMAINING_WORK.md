@@ -818,3 +818,76 @@ overlooked): DoorDash/UberEats scraping; a dedicated in-app moderator UI
 for the new queue (currently API-only, same as the existing photo-report
 queue); rate-limiting repeat submissions from the same user for the same
 place beyond the general `rate_limit` dependency already on the routes.
+
+### Follow-up — root-caused why photos were STILL broken after the stale-refresh fix: R2 public URLs were never actually public
+
+Live-diagnosed against the real production Railway service and Cloudflare
+dashboard (user pasted deploy logs, R2 bucket Objects tab, and R2 bucket
+Settings). Two real findings, in order of how they were found:
+
+1. **The R2 bucket had 0 objects and 0 operations, ever** — not just for
+   the new stale-refresh fix, but for the entire lifetime of the app,
+   including the pre-existing user-photo-upload feature
+   (`image_processing_worker.py`) and profile-picture upload
+   (`profile.py`), both of which already called the same
+   `generate_public_url()`. Nothing durable has ever actually landed in
+   R2.
+2. **The actual cause, confirmed at the code level**:
+   `app/services/upload/r2_client.py`'s `generate_public_url()` built
+   every "public" URL from the **R2 S3 API endpoint**
+   (`{bucket}.{account_id}.r2.cloudflarestorage.com`) — the host `boto3`
+   authenticates against with the access key/secret. That host always
+   requires SigV4-signed requests; it is not, and was never going to be,
+   loadable by a bare `<img src>` in the app, regardless of any bucket
+   "Public Access" toggle. Confirmed the bucket's actual Settings tab: no
+   custom domain, and "Public Development URL" was disabled — there was
+   no publicly-reachable domain configured at all, and even enabling one
+   wouldn't have helped until the code stopped pointing at the API host.
+
+Fix: R2 has a real public-serving domain once "Public Development URL" is
+enabled on the bucket (`https://pub-<hash>.r2.dev`, or a mapped custom
+domain for production). User enabled it and provided the resulting URL.
+
+- `app/services/upload/r2_client.py` — added `R2_PUBLIC_BASE_URL` (new
+  required env var). `generate_public_url()` now builds off that instead
+  of the S3 API host, and **raises** `RuntimeError` if it's unset rather
+  than falling back to the old (always-broken) behavior — silently
+  writing another unreachable URL is worse than failing loudly.
+- `app/services/images/stale_image_refresher.py` — moved the
+  `public_url_fn(key)` call inside the same try/except as `upload_fn`, so
+  a misconfigured `R2_PUBLIC_BASE_URL` fails `refresh_primary()` closed
+  (existing primary row untouched, returns `False`) instead of raising
+  uncaught out of the per-place loop. `image_worker.py`'s own outer
+  try/except would have caught it too, but failing closed at the source
+  matches every other failure mode `StaleImageRefresher` already handles
+  the same way.
+- `tests/conftest.py` — set a default `R2_PUBLIC_BASE_URL` for the test
+  environment (real value doesn't matter, just needs to exist) — several
+  existing tests exercise the real upload pipeline against a mocked S3
+  client but still call the real `generate_public_url()`.
+
+New tests: `tests/test_r2_client.py` (4 — raises when unconfigured,
+builds the correct URL from the base, strips a trailing slash, and a
+regression guard that the S3 API host never appears in the output),
+`tests/test_stale_image_refresher.py` (+1 — a raising `public_url_fn`
+leaves the existing primary untouched and returns `False`, mirroring the
+existing upload-raises test).
+
+Verified: 476 backend tests passing (471 + 5 new).
+
+**Required action, not yet done (needs the user's Railway dashboard,
+same as SUPABASE_JWT_SECRET elsewhere in this doc)**: add
+`R2_PUBLIC_BASE_URL` to Railway's service variables, set to the bucket's
+Public Development URL. Without it, every upload path that calls
+`generate_public_url()` (stale-photo refresh, new user photo uploads,
+profile picture uploads) will fail closed — better than silently writing
+another unreachable URL, but still means photos stay broken until this
+env var exists in production.
+
+Still open: this fixes URLs for photos uploaded *after* the fix deploys
+and the env var is set. It does not retroactively fix any `PlaceImage`
+row whose `.url` already points at a dead Google session reference or
+(for user-uploaded photos, if any ever silently succeeded before this
+fix some other way) the old unreachable R2 API host — those still need
+the existing stale-refresh reserve to cycle through them, or a one-off
+backfill script, neither of which was run here.
