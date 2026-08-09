@@ -633,3 +633,86 @@ earlier in this document is stale as of this check.
 
 Verified: 447 backend tests passing (445 + 2 new), same command as every
 other round this session.
+
+### Follow-up — made refreshed photos durable (R2), and fixed a gallery-bloat bug the stale-refresh fix itself introduced
+
+Asked why photos aren't already durably cached given the response already
+sets `Cache-Control: max-age=31536000, immutable`. Real distinction: that
+header caches the response on the *client's* side once they've
+successfully loaded it — it says nothing about whether *we* own a durable
+copy. Checked directly: user-uploaded photos are downloaded and stored in
+R2 (`orig_key`/`processed_key`/`thumb_key`, real durable storage); every
+Google-sourced photo — all 29k places' worth — has `PlaceImage.url` set
+directly to Google's own (not-permanent) photo reference, confirmed by a
+comment in `place_image.py` itself ("place_id images ingested from Google
+Places never set these — they use `url` directly instead"). The periodic
+re-validation fix from the entry above only patches the symptom; it still
+depends on Google's link every single time, forever.
+
+While designing the durable fix, found something that changes it: Google's
+Places API (New) photo resource names are **session-scoped, not stable
+identifiers for the same physical photo** — a fresh `GoogleImageFetcher.fetch()`
+call for a place that already has photos returns different reference
+strings than last time, even for what's logically the same picture.
+`MaterializeImageTruth.write()`'s dedup keys strictly on that exact string
+match (`existing_by_url`). This means the stale-refresh reserve from the
+entry above — which calls `ingest_place_images(force_refresh=True)` — has
+a **real, confirmed gallery-bloat bug of its own**: every ~30-day refresh
+cycle for a given place adds a fresh set of gallery rows without ever
+removing the old ones, since the new Google references never match what's
+already stored. Nothing prunes old `place_images` rows anywhere in the
+ingestion pipeline. Over enough cycles across 29k places, this compounds
+indefinitely. This was never triggered before this session because nothing
+called `force_refresh=True` automatically until the stale-refresh reserve
+did.
+
+Deliberately scoped the fix narrow (explicit choice, not the full "every
+photo route through R2 with content-hash dedup" version, which would touch
+the shared gallery-building pipeline all 29k places' initial ingestion
+already relies on, need a schema change, and can't be smoke-tested against
+a real R2 bucket from this environment — no live credentials available
+here):
+
+- `app/services/upload/r2_client.py` — added `upload_bytes()`, a
+  server-side `put_object` call (the existing functions only generated
+  presigned URLs for client-driven uploads).
+- `app/services/images/google_photo_downloader.py` (new) — downloads the
+  actual bytes for a Google photo resource name, reusing the same
+  ref-validation regex `app/api/v1/routes/image.py`'s proxy already
+  enforces (checked independently here too, since this has its own,
+  separate caller).
+- `app/services/images/stale_image_refresher.py` (new) —
+  `StaleImageRefresher.refresh_primary()` fetches one fresh candidate from
+  Google, downloads it, uploads to R2, and updates the place's *existing*
+  primary `PlaceImage` row in place (new `url` + `created_at` reset) —
+  deliberately not the gallery-rebuild pipeline, so there's no dedup
+  question at all: it already knows exactly which row it's replacing, and
+  creates zero new rows.
+- `app/workers/image_worker.py` — `run()` now routes stale-refresh-reserve
+  places through `StaleImageRefresher.refresh_primary()` instead of
+  `ingest_service.ingest_place_images(force_refresh=True)`, closing the
+  bloat bug and making the photo durable in the same step. Non-stale places
+  are unaffected — still the original `ingest_place_images` path with the
+  caller's own `force_refresh`.
+
+New tests: `test_google_photo_downloader.py` (5, ref validation/success/
+failure), `test_stale_image_refresher.py` (5, success path updates the
+existing row with zero new `PlaceImage` rows created; every failure mode —
+no primary, no candidates, download fails, upload raises — leaves the
+existing primary untouched and returns `False`), `test_image_worker_run_stale_refresh.py`
+(2, confirms `run()` actually routes a stale-selected place through the
+refresher and never through `ingest_service` for that same place, and that
+a refresh failure still feeds the existing `image_fetch_attempts`/
+`image_blocked` safety net).
+
+Verified: 459 backend tests passing (447 + 12 new).
+
+Still open: this only replaces a photo once it's already gone through a
+stale-refresh cycle — a brand-new place's first-ever photo is still a raw
+Google reference until its first ~30-day refresh. Making *every* photo
+durable from the moment of first ingestion is the fuller fix, deliberately
+not done here (see scope note above) — would need the gallery pipeline's
+dedup switched from reference-string matching to content-hash matching
+(the `phash`/`is_duplicate_image` code the user-upload pipeline already
+has) plus a schema change, and should get an actual live-R2 smoke test
+before being trusted at 29k-place scale.
