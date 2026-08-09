@@ -57,3 +57,21 @@ def generate_public_url(key: str) -> str:
     """
 
     return f"https://{R2_BUCKET}.{R2_ACCOUNT_ID}.r2.cloudflarestorage.com/{key}"
+
+
+def upload_bytes(*, key: str, data: bytes, content_type: str) -> None:
+    """
+    Server-side upload — for content the backend downloads itself (e.g. a
+    Google Places photo) rather than a client-presigned direct upload.
+    Raises on failure; callers that need fail-open behavior (an ingestion
+    worker shouldn't die because R2 hiccuped) must catch around this
+    themselves, same as every other outbound call in this codebase.
+    """
+
+    client = _get_s3_client()
+    client.put_object(
+        Bucket=R2_BUCKET,
+        Key=key,
+        Body=data,
+        ContentType=content_type,
+    )

@@ -11,6 +11,7 @@ from app.db.models.place import Place
 from app.db.models.place_image import PlaceImage, VISIBILITY_HIDDEN
 from app.services.images.image_ingest_service import ImageIngestService
 from app.services.images.place_image_invariant_service import PlaceImageInvariantService
+from app.services.images.stale_image_refresher import StaleImageRefresher
 from app.services.cache.cache_helpers import invalidate_place, invalidate_all_image_caches
 
 
@@ -51,9 +52,11 @@ class ImageWorker:
         *,
         ingest_service: Optional[ImageIngestService] = None,
         invariant_service: Optional[PlaceImageInvariantService] = None,
+        stale_refresher: Optional[StaleImageRefresher] = None,
     ) -> None:
         self.ingest_service = ingest_service or ImageIngestService()
         self.invariant_service = invariant_service or PlaceImageInvariantService()
+        self.stale_refresher = stale_refresher or StaleImageRefresher()
 
     # ---------------------------------------------------------
     # Worker entrypoint
@@ -110,39 +113,39 @@ class ImageWorker:
 
             place_id = getattr(place, "id", None)
             attempt_failed = False
-
-            # A place selected via the stale-primary-image reserve (see
-            # _select_places) already has "enough" images by
-            # _needs_image_work_clause's count — ingest_place_images'
-            # own force_refresh=False path skips any place that already has
-            # existing images, so without this it would never actually
-            # re-fetch anything for these places despite being selected
-            # specifically to refresh them. Only the ingest call itself is
-            # forced; the attempt-tracking/blocking guard below still keys
-            # off the caller's original force_refresh, not this per-place
-            # override, so a stale-refresh cycle failing repeatedly can
-            # still trip image_blocked the same as any other automatic run.
-            service_force_refresh = force_refresh or (place_id in stale_refresh_ids)
+            is_stale_refresh = place_id in stale_refresh_ids
 
             try:
 
-                images = self.ingest_service.ingest_place_images(
-                    db=db,
-                    place=place,
-                    force_refresh=service_force_refresh,
-                )
+                if is_stale_refresh:
+                    # Deliberately NOT ingest_service.ingest_place_images —
+                    # see StaleImageRefresher's own docstring for why
+                    # running the normal gallery-rebuild pipeline here
+                    # would accumulate a fresh, never-pruned set of gallery
+                    # rows for this place every ~30 days instead of just
+                    # replacing the one image that's actually stale.
+                    ok = self.stale_refresher.refresh_primary(db=db, place=place)
+                    written_count = 1 if ok else 0
+                    attempt_failed = not ok
+                else:
+                    images = self.ingest_service.ingest_place_images(
+                        db=db,
+                        place=place,
+                        force_refresh=force_refresh,
+                    )
+                    written_count = len(images)
 
-                # Count as a failed attempt if no images were returned
-                if not images:
-                    attempt_failed = True
+                    # Count as a failed attempt if no images were returned
+                    if not images:
+                        attempt_failed = True
 
                 succeeded += 1
-                images_written += len(images)
+                images_written += written_count
 
                 logger.debug(
                     "image_worker_place_complete place_id=%s images=%s",
                     place_id,
-                    len(images),
+                    written_count,
                 )
 
             except Exception as exc:
