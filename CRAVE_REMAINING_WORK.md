@@ -961,13 +961,109 @@ wrote, pasted output back). Two more real, confirmed findings:
 
 Verified: 485 backend tests passing (476 + 9 new).
 
-**Not done — a live production sweep**: this fixes the logic going
-forward (every future `repair()` call, which fires after every normal
-ingestion run via `image_worker.py`), but does not retroactively re-run
-`repair()` across all ~29k places to find and fix any other place
-already stuck in the same duplicate-primary-with-a-dead-winner state.
-That would be a straightforward one-off script (loop over place ids,
-call `PlaceImageInvariantService().repair()`, commit) run via Railway's
-Console the same way the manual diagnosis was done here, but wasn't run
-in this session — flagging as a real, likely-nonzero-impact gap rather
-than assuming this was the only affected place.
+**Update — the production sweep was run.** Rather than looping all
+29,626 places (the first attempt at this — ~1 place/sec of DB round-trip
+latency, projected multiple hours), switched to two bulk SQL queries to
+find the actually-affected places directly (`GROUP BY place_id HAVING
+COUNT(*) > 1` for duplicate primaries, plus a hidden-primary query), then
+ran `repair()` only on that set. Real result: **27 affected places** out
+of 29,626 (not the widespread issue it could have been) — all repaired,
+cache invalidated. Confirms this bug class was real but narrow in scope.
+
+### Follow-up — measured the real menu-coverage gap, and built an LLM extraction fallback (DeepSeek) for the part of it that's fixable
+
+The "why don't most places have a menu" question turned out to need a
+real number, not the 10-place anecdotal sample this session had been
+running on all night. Queried production directly:
+
+- **738 of 29,626 places have a menu (2.5%).**
+- Of the 28,888 without one: **10,016 (34.7%) have a website/Grubhub/menu
+  source on file** — genuine extraction-fallback candidates, where a real
+  page exists and every current strategy still finds nothing in it.
+- **18,872 (65.3%) have no source at all** — no website, no Grubhub link,
+  no discovered menu URL. This is a **discovery/enrichment gap, not an
+  extraction gap** — no smarter parsing touches it; explicitly out of
+  scope for this pass, logged here as the actual larger lever for a
+  future session (most likely fix: backfilling `Place.website` via a
+  Google Place Details call for places that don't have one).
+
+For the 10,016 addressable places: live-traced one real failure
+(`fishgutscalifornia.com`) through the full pipeline. The page fetched
+fine — 200 OK, ~80KB of real HTML, no blocking — and all 7 pattern-based
+extraction strategies (JSON-LD, hydration state, JS-bundle parsing, API
+endpoint discovery, raw HTML selectors, iframe detection, provider
+integrations) found 0 items in content that was genuinely present. This
+confirmed the actual bottleneck: arbitrary restaurant sites' markup
+defeats hardcoded selectors, and browser escalation (headless rendering)
+doesn't help this failure mode specifically, since the content was
+already in the plain-fetched HTML — re-rendering doesn't change a
+structure that heuristics already failed to recognize.
+
+Researched what other apps/teams actually do for this class of problem
+(cited sources in-session): LLM-based extraction is the current standard
+fallback precisely because it reads page semantics instead of matching
+fixed selectors, so it doesn't break on a site with unusual markup the
+way pattern-based code does — used as a fallback *after* structured-data
+extraction, never a replacement for it (CRAVE's existing 7-strategy order
+already gets this right).
+
+- `app/services/menu/extraction/llm_menu_extractor.py` (new) —
+  `extract_llm_menu(html, url)`: strips HTML to visible text
+  (BeautifulSoup, already a dependency — drops script/style/nav/footer/
+  header/svg to keep token count down), sends it to DeepSeek's
+  OpenAI-compatible chat completions endpoint with a strict
+  name/section/price_cents/description JSON schema in the system prompt,
+  parses the response into the same `ExtractedMenuItem` contract every
+  other strategy already produces. Never raises — missing API key,
+  network failure, non-200, malformed JSON all fail closed to `[]`, same
+  contract as every other extractor in the router.
+- `app/services/menu/menu_extraction_router.py` — added
+  `_safe_llm_extract()` and wired it into `_run_extraction_pass` as the
+  true last resort: tried only after all 7 free strategies produce
+  nothing (`fallback` still empty), and tried *before* browser escalation
+  rather than after, since escalation doesn't help this specific failure
+  mode. Re-tried once more if escalation does find genuinely different
+  HTML (`allow_llm_fallback` threaded through the recursive call). Never
+  called when a cheaper strategy already found enough items — cost only
+  incurred on genuine last-resort cases.
+- Chose DeepSeek over Anthropic for this specific call site on cost
+  grounds, researched and priced in-session: this is bounded, high-volume,
+  low-complexity structured extraction (not open-ended reasoning), and at
+  DeepSeek's pricing the entire 10,016-place addressable backfill costs
+  roughly **$10** (stripped text, ~5K tokens/call) versus roughly $385 at
+  Haiku 4.5 pricing for the same job. Also compared against Qwen3.7 Flash
+  and Ling-2.6-flash, which are technically cheaper per token still —
+  stuck with DeepSeek anyway since the absolute dollar gap at this volume
+  is small (~$20) and DeepSeek has the more proven, better-documented
+  production API of the three.
+
+New tests: `tests/test_llm_menu_extractor.py` (13 — HTML-to-text
+stripping, JSON parsing including a markdown-fence-wrapped response,
+missing/malformed rows, the full extract_llm_menu path with the HTTP call
+mocked: happy path, missing key, empty html, non-200, network error,
+malformed response shape), `tests/test_menu_extraction_router_llm_fallback.py`
+(4 — LLM fallback fires and its result is used when every heuristic finds
+nothing; does *not* fire when a cheap strategy already succeeded — the
+main cost-control invariant; empty LLM result still returns the pipeline's
+normal empty fallback rather than erroring; an LLM-extractor exception
+doesn't crash extraction). One test-hygiene bug caught and fixed while
+writing these: an early version of the "already succeeded" test left
+`discover_api_endpoints` unmocked, which made real speculative network
+calls to nonexistent test-domain endpoints and added ~28s of real
+timeout-driven latency to the suite — fixed by mocking it like every
+other strategy in that test.
+
+Verified: 504 backend tests passing (485 + 19 new).
+
+**Required action, not yet done**: add `DEEPSEEK_API_KEY` to Railway's
+service variables. Without it, `extract_llm_menu` fails closed (returns
+`[]`, logged, no crash) — same as every other missing-credential case
+this session.
+
+Still open: this closes the *extraction* gap for the 10,016 places that
+have a source but nothing readable in it — it does not touch the larger
+18,872-place *discovery* gap (no source at all) described above, and it
+hasn't been live-verified against a real production page yet (needs the
+Railway env var added first, then a real run against
+`fishgutscalifornia.com` specifically to confirm it actually closes that
+exact case).

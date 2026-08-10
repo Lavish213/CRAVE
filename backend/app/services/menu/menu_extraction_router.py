@@ -13,6 +13,7 @@ from app.services.menu.extraction.hydration_menu_extractor import extract_hydrat
 from app.services.menu.extraction.html_menu_extractor import extract_html_menu
 from app.services.menu.extraction.iframe_menu_detector import detect_menu_iframes
 from app.services.menu.extraction.jsonld_menu_extractor import extract_jsonld_menu
+from app.services.menu.extraction.llm_menu_extractor import extract_llm_menu
 from app.services.menu.extraction.pdf_menu_extractor import extract_pdf_menu
 from app.services.menu.extraction.provider_detector import detect_provider
 from app.services.menu.extraction.js.js_extractor import extract_menu_from_js
@@ -56,6 +57,17 @@ def _safe_extract(fn, *args) -> List[ExtractedMenuItem]:
             getattr(fn, "__name__", repr(fn)),
             exc,
         )
+        return []
+
+
+def _safe_llm_extract(html: str, url: Optional[str]) -> List[ExtractedMenuItem]:
+    try:
+        result = extract_llm_menu(html, url) or []
+        if not isinstance(result, list):
+            return []
+        return result
+    except Exception as exc:
+        logger.debug("llm_extract_failed url=%s error=%s", url, exc)
         return []
 
 
@@ -312,6 +324,7 @@ def _run_extraction_pass(
     place_id: Optional[str],
     provider: Optional[str],
     allow_browser_escalation: bool,
+    allow_llm_fallback: bool = True,
 ) -> List[ExtractedMenuItem]:
     provider_items = _safe_provider_extract(provider, html, url)
     if len(provider_items) >= PROVIDER_FAST_RETURN_MIN:
@@ -377,7 +390,22 @@ def _run_extraction_pass(
 
     final = _return(place_id, url, "fallback", fallback)
 
-    if final or not allow_browser_escalation or not url:
+    if final:
+        return final
+
+    # True last resort: every free, pattern-based strategy above found
+    # nothing in HTML we already have in hand (confirmed live against
+    # fishgutscalifornia.com — real, non-blocked content, 0 items from all
+    # 7 strategies). Tried before browser escalation since that only helps
+    # content that's missing entirely, not content whose structure defeats
+    # the heuristics; still re-tried once more below if escalation finds
+    # genuinely different HTML.
+    if allow_llm_fallback and html:
+        llm_items = _safe_llm_extract(html, url)
+        if llm_items:
+            return _return(place_id, url, "llm", llm_items)
+
+    if not allow_browser_escalation or not url:
         return final
 
     if should_browser_escalate(reason="empty_html", attempt=2):
@@ -391,6 +419,7 @@ def _run_extraction_pass(
                 place_id=place_id,
                 provider=provider,
                 allow_browser_escalation=False,
+                allow_llm_fallback=True,
             )
 
     return final
