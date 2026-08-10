@@ -891,3 +891,83 @@ row whose `.url` already points at a dead Google session reference or
 fix some other way) the old unreachable R2 API host — those still need
 the existing stale-refresh reserve to cycle through them, or a one-off
 backfill script, neither of which was run here.
+
+### Follow-up — root-caused the actual reason a specific production photo stayed broken: the R2 key restriction, and a real duplicate-primary invariant bug found live
+
+Continued diagnosing the same "Omakase" place from the R2 fix above,
+live against production via Railway's Console tab (the user ran scripts I
+wrote, pasted output back). Two more real, confirmed findings:
+
+1. **The only Google Cloud API key in the project was restricted to
+   "Android apps"** — an application restriction meant for the mobile
+   app's own Maps SDK, requiring headers (package name + signing cert)
+   that only a real Android device sends. The backend was reusing this
+   exact key (`GOOGLE_PLACES_API_KEY`) for four different server-side
+   call sites — legacy Places Nearby Search (discovery), Places API (New)
+   Text Search, Places API (New) photo media, and Cloud Vision (safety
+   scanning + menu OCR) — all four rejected with 403 PERMISSION_DENIED,
+   unconditionally, for every request, regardless of staleness. This was
+   never going to work from the day this key got wired server-side. Fix
+   was a Google Cloud Console action, not code: user created a second key
+   with Application restrictions = None, API restrictions = Places API +
+   Places API (New) + Cloud Vision API, and replaced
+   `GOOGLE_PLACES_API_KEY` in Railway with it. Confirmed by watching the
+   upstream status code on the same photo proxy request change from 403
+   to 400 after the swap (400 = genuinely invalid/expired reference,
+   which is a normal, expected outcome for an old Google photo ref, not a
+   config problem).
+
+2. **`PlaceImageInvariantService` was found, live, with two
+   `is_primary=True` rows for the same place** — an old Google Places
+   photo (confidence 0.8, dead reference) and a newer, working, durably-
+   hosted photo scraped from the restaurant's own website (confidence
+   0.556, `images.squarespace-cdn.com`). This should be structurally
+   impossible (`repair()` is supposed to run after every ingestion write
+   and demote all but one primary) — diagnosed by running `repair()`
+   directly via the production console, which **actively made the bug
+   worse**: `_fix_duplicate_primary`'s winner-selection picked purely by
+   confidence score, so it decisively demoted the *working* photo and
+   kept the *dead* one as primary. Manually reverted that via console
+   immediately after finding it (raw UPDATE flipping `is_primary` back).
+
+   Root cause: `confidence`/`quality_score` measure extraction quality at
+   ingestion time, not whether a URL still resolves — and Google Places
+   (New) photo references are session-scoped, so an old high-confidence
+   Google reference will systematically outscore a newer, lower-
+   confidence, but actually-working durable photo, every time this
+   conflict occurs. With ~29k places and photos ingested from multiple
+   sources over time (Google backfill + later website scraping), this
+   pattern is very unlikely to be unique to the one place found here.
+
+   - `app/services/images/place_image_invariant_service.py` — added
+     `_is_ephemeral_google_ref(url)` (true for both the bare
+     `places/{id}/photos/{id}` resource-name form and the full
+     `places.googleapis.com` URL form — same two shapes
+     `place_image_visibility_query.py` already checks for). Both
+     `_fix_duplicate_primary` and `_promote_best_eligible`'s winner-
+     selection now sort by `(not _is_ephemeral_google_ref(url),
+     quality_score_or_confidence)` — a durable URL always beats a raw
+     Google reference regardless of confidence gap; confidence only
+     breaks ties within the same durability class (two durable URLs, or
+     two Google refs, unchanged from before).
+
+   New tests: `tests/test_place_image_invariant_service.py` (9, no prior
+   test file existed for this service at all) — covers
+   `_is_ephemeral_google_ref`'s four cases, the exact production
+   scenario (durable beats higher-confidence Google ref), confidence
+   still deciding within the same durability class, hidden primaries
+   still excluded, a no-op when there's no duplicate, and the same
+   durability preference applying to `_promote_best_eligible`.
+
+Verified: 485 backend tests passing (476 + 9 new).
+
+**Not done — a live production sweep**: this fixes the logic going
+forward (every future `repair()` call, which fires after every normal
+ingestion run via `image_worker.py`), but does not retroactively re-run
+`repair()` across all ~29k places to find and fix any other place
+already stuck in the same duplicate-primary-with-a-dead-winner state.
+That would be a straightforward one-off script (loop over place ids,
+call `PlaceImageInvariantService().repair()`, commit) run via Railway's
+Console the same way the manual diagnosis was done here, but wasn't run
+in this session — flagging as a real, likely-nonzero-impact gap rather
+than assuming this was the only affected place.
