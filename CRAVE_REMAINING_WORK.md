@@ -1067,3 +1067,67 @@ hasn't been live-verified against a real production page yet (needs the
 Railway env var added first, then a real run against
 `fishgutscalifornia.com` specifically to confirm it actually closes that
 exact case).
+
+### Follow-up — found and fixed the actual reason the OSM discovery pipeline wasn't closing the 18,872-place gap, plus a production deploy failure
+
+Traced the open thread from the previous entry: CRAVE already has a real,
+correctly-built OSM/Overpass discovery pipeline (`osm_overpass.py` →
+`osm_ingest_job.py`, nightly, rotating 5 cities/day, free/no API key) and
+`promote_service_v2.py` already backfills `Place.website` onto an existing
+matched place when discovered by any source — the exact mechanism the
+pasted free-discovery research was suggesting be built from scratch. So the
+question was why it wasn't already closing the gap.
+
+Found it: `osm_overpass.py` set every OSM candidate's `confidence` to
+**0.6**. `promotion_orchestrator_v2.MIN_CONFIDENCE_THRESHOLD` is **0.72** —
+candidates below it are never promoted. Automated sources like OSM never
+pass a `contributor_key`, so `candidate_store_v2`'s merge logic takes
+`max(old, new)` on re-scans rather than accumulating (correct for user-
+corroboration sources like GPS/share/hitlist signals, where the same
+contributor re-submitting shouldn't inflate confidence — but it means an
+automated source's confidence can never grow past its ingest-time value).
+**Every OSM-discovered candidate was therefore permanently stuck at 0.6,
+below the gate, forever** — ingested nightly, never promoted, never
+backfilling a single website, regardless of how good the underlying data
+was. Government health-inspection data (0.75–0.9) and geocoded records
+(0.75) both already clear the bar; OSM was the one source that didn't,
+apparently never recalibrated against the threshold when it was added.
+
+Fix: `osm_overpass.py`'s `confidence` raised from 0.6 to 0.75, matching the
+value already used for comparably-sourced automated/geocoded data elsewhere
+in this package. This doesn't bypass any dedup or entity-matching logic —
+it only changes whether a candidate clears the existing promotion gate;
+`promote_candidate_v2`'s real entity-match/backfill-or-create logic runs
+exactly as before. `_job_discovery` (every 5 minutes, source-agnostic) will
+pick these up automatically once deployed — no separate wiring needed.
+New test: `tests/test_osm_overpass.py` (7 tests — field mapping, missing
+name/coordinates, non-200/exception handling, way/relation center
+coordinates, and the regression itself: asserts the returned confidence
+clears `MIN_CONFIDENCE_THRESHOLD`).
+
+**Still needs a live-production step the user should run**: existing
+already-ingested OSM candidate rows are stuck at the old 0.6 value in the
+DB — the code fix only affects newly-upserted/re-scanned rows, and since
+0.75 > 0.6, the *next* nightly re-scan of each city will naturally bump
+them (self-heals over the ~(active_cities / 5)-day rotation). To close the
+gap immediately instead of waiting on the rotation, a one-time
+`UPDATE discovery_candidates SET confidence_score = 0.75 WHERE source = 'osm' AND confidence_score < 0.75;`
+run once (e.g. via Railway Console) unblocks every already-ingested OSM
+candidate on the very next discovery cycle (every 5 min) instead of waiting
+on the rotation.
+
+Also root-caused a failed Railway deployment shown to have healthchecks
+time out ("1/1 replicas never became healthy!") despite the build and
+container start both succeeding — `railway.json`'s `healthcheckTimeout`
+was 30s, but the start command is `alembic upgrade head && uvicorn ...`,
+meaning migrations, module imports, a DB roundtrip
+(`_startup_validation`), and full APScheduler job registration (8 jobs)
+all have to finish serially before the port even opens — 30s is tight for
+that under any deploy-time variance, and this specific attempt seems to
+have blown through it (later logs from the same window show the container
+did fully start and pass `startup_validation`, just too late for the
+healthcheck to see it). Bumped to 100s — a config change only, no behavior
+change on a healthy deploy, just more patience before Railway gives up.
+
+Verified: 511 backend tests passing (504 + 7 new), frontend `tsc --noEmit`
+clean.

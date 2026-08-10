@@ -188,7 +188,22 @@ def fetch_osm_pois(
 
             "source": "osm",
 
-            "confidence": 0.6,
+            # Was 0.6 — below promotion_orchestrator_v2.MIN_CONFIDENCE_THRESHOLD
+            # (0.72), and OSM candidates never accumulate confidence the way
+            # user-corroboration sources do (candidate_store_v2's max() merge
+            # for automated sources, since a re-scan by the same source isn't
+            # new evidence). That meant every OSM candidate was permanently
+            # stuck in discovery_candidates, never promoted and never
+            # backfilling Place.website onto a matched existing place —
+            # silently defeating the whole OSM pipeline regardless of data
+            # quality. 0.75 matches the confidence already given to
+            # comparably-sourced automated data elsewhere in this package
+            # (health_normalizer/health_geocoder use 0.75 for geocoded
+            # records), and only governs backfilling missing fields onto an
+            # already-matched Place or creating a new one through the same
+            # entity-matching gate every other source goes through — it does
+            # not bypass any dedup/matching logic.
+            "confidence": 0.75,
 
             "raw_payload": tags,
         }
