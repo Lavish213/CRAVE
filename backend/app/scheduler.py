@@ -92,6 +92,33 @@ def _job_osm_ingest() -> None:
             db.close()
 
 
+def _job_overture_ingest() -> None:
+    """
+    Overture Maps acquisition: same role as _job_osm_ingest above, second
+    free source. Reads public Parquet directly off S3 (no API key, no
+    per-request billing) via app.services.discovery.overture_places, so like
+    OSM it can run unattended with no budget decision.
+    """
+    from contextlib import suppress
+    from app.db.session import SessionLocal
+    from app.services.discovery.overture_ingest_job import run_overture_city_ingest
+    from app.core.job_run_tracker import track_job_run
+
+    db = SessionLocal()
+    try:
+        with track_job_run("overture_ingest") as run:
+            result = run_overture_city_ingest(db=db)
+            logger.info("scheduler_overture_ingest_complete %s", result)
+            run.set_summary(str(result)[:500])
+    except Exception as exc:
+        logger.exception("scheduler_overture_ingest_failed error=%s", exc)
+        with suppress(Exception):
+            db.rollback()
+    finally:
+        with suppress(Exception):
+            db.close()
+
+
 def _job_score_recompute() -> None:
     """Score recompute: recalculate rank_score for unscored / stale places."""
     from contextlib import suppress
@@ -301,6 +328,16 @@ def create_scheduler() -> BackgroundScheduler:
         hours=24,
         id="osm_ingest",
         name="CRAVE OSM acquisition",
+    )
+
+    # Overture Maps acquisition — once every 24 hours (rotates through
+    # active cities same as OSM; free/no API key)
+    scheduler.add_job(
+        _job_overture_ingest,
+        trigger="interval",
+        hours=24,
+        id="overture_ingest",
+        name="CRAVE Overture Maps acquisition",
     )
 
     # menu enrichment — every 10 minutes

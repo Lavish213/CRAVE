@@ -1131,3 +1131,95 @@ change on a healthy deploy, just more patience before Railway gives up.
 
 Verified: 511 backend tests passing (504 + 7 new), frontend `tsc --noEmit`
 clean.
+
+### Follow-up — built a second, free discovery source (Overture Maps) for the 18,872-place gap, live-verified before writing any code
+
+User asked for a cheaper way to backfill websites than Google Place
+Details, initially suggesting DeepSeek directly. Corrected that: DeepSeek
+has no live web access in how it's called here (one static text-in
+request) — asking it "what's this restaurant's website" would make it
+guess from training data, which for a discovery app risks confidently
+linking the wrong business's site. Not a cost problem, a capability
+mismatch.
+
+The actual free option — already named in the user's own earlier pasted
+research — is Overture Maps: monthly public GeoParquet on S3 (Meta/
+Microsoft/Amazon/TomTom-backed), no API key, no per-request cost. Verified
+this was real and worth building *before* writing any ingestion code, not
+after: queried the real dataset live (anonymous S3 access via pyarrow,
+since DuckDB's httpfs extension download was blocked by this environment's
+egress policy — worked around it with `pyarrow.fs.S3FileSystem(anonymous=
+True)` + `pyarrow.dataset` filter pushdown on the `bbox` struct's min/max
+stats, which turned out to prune all-but-one of the 16 global part-files
+for a single-city bounding box in under a second each).
+
+Live result for a real SF-area bbox: **9,447 food/drink places, 85.2% with
+a website, average confidence 0.89.** Flagged the honest caveat to the user
+before proceeding: that's coverage for *every* food place Overture knows
+about in the area, not specifically CRAVE's 18,872-place gap — those
+places already failed to yield a website through both Google Places
+Nearby Search and OSM, a harder, adversarially-selected subset, so the
+real yield is very likely lower than 85%. User chose to build now and
+measure the real yield from production once live rather than gate the
+build on a pre-check, given the pipeline is free, additive, and reversible
+(everything still flows through the existing entity-match/dedup gate).
+
+Also caught and fixed a taxonomy issue before it became a bug: Overture's
+category names aren't safe to substring-match (`"bar" in category` would
+wrongly match `barber_shop`). Used `taxonomy.hierarchy` instead — confirmed
+live that all real restaurant/cafe/bar categories carry `hierarchy[0] ==
+"food_and_drink"` while unrelated categories don't, so filtering on that
+grouping is exact, not heuristic.
+
+- `app/services/discovery/overture_places.py` (new) —
+  `fetch_overture_places(lat_min, lat_max, lon_min, lon_max)`: discovers
+  the current dated release via an unsigned/anonymous boto3 S3 list call,
+  reads the `theme=places/type=place` Parquet with pyarrow's bbox filter
+  pushdown, keeps only `food_and_drink`-hierarchy rows, maps to the same
+  output shape `osm_overpass.py` already produces. Confidence is a flat
+  **0.8** — deliberately NOT Overture's own per-record confidence field,
+  since individual real rows legitimately score anywhere from ~0.5-1.0 in
+  Overture's own scale and reusing that directly would reintroduce the
+  exact bug just fixed for OSM (see previous entry) one field over. Fails
+  closed to `[]` on any error (missing release, S3/network failure).
+- `app/services/discovery/overture_ingest_job.py` (new) —
+  `run_overture_city_ingest(db, limit, today)`, a deliberate structural
+  mirror of `osm_ingest_job.py` (same day-based city rotation, same
+  `ingest_candidate_v2` upsert path), kept as its own copy rather than a
+  shared import so the two sources' cadence/limits can diverge
+  independently later.
+- `app/scheduler.py` — added `_job_overture_ingest`, scheduled every 24h
+  alongside the existing OSM job (9 scheduler jobs total now).
+- `requirements.txt` — added `pyarrow>=15.0.0` (boto3 already present, was
+  already a dependency for R2).
+
+New tests: `tests/test_overture_places.py` (7 — field mapping, the same
+confidence-clears-the-promotion-threshold regression test written for OSM,
+`food_and_drink` taxonomy filtering excluding a same-substring false
+positive like `barber_shop`, missing-release/exception handling,
+missing-name skip, missing website/phone/address handled), 
+`tests/test_overture_ingest_job.py` (11 — structural mirror of
+`test_osm_ingest_job.py`'s suite: rotation, idempotency by external_id,
+partial-batch failure handling, limit enforcement).
+
+One test-hygiene bug caught by running the full suite twice, not just the
+new files: the new ingest tests commit real `DiscoveryCandidate` rows
+(confidence 0.8, above the promotion threshold) into the same on-disk
+SQLite file every test module in this suite shares, and
+`test_promotion_pipeline_v2.py::test_orchestrator_promotes_eligible_candidates`
+counts *every* eligible candidate in the table with no scoping of its own
+— previously safe by accident, since every other source's test fixtures
+used confidence values below the threshold. Fixed by having the new
+ingest tests' `db` fixture delete its own `source="overture"` rows in
+teardown; didn't touch the pre-existing test's unscoped query, since
+narrowing that was out of scope for this change.
+
+Verified: 526 backend tests passing (511 + 15 new, confirmed stable across
+repeated full-suite runs, not just in isolation).
+
+**Still open**: this closes the *mechanism* gap (a second free acquisition
+source, correctly calibrated to actually clear the promotion gate this
+time) but the real yield against CRAVE's specific 18,872-place gap is
+still unmeasured — needs the scheduled job to actually run against
+production data, then a live count of how many gap places got a `website`
+backfilled from `source="overture"` candidates.
