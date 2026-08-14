@@ -1274,3 +1274,45 @@ Bagels`, `Panama Bay Coffee Co.` in Pleasant Hill) and image invariant
 repair is running clean (50/50 succeeded this cycle) — the pipeline built
 earlier this session is alive and working end to end; this bug was only
 costing some fraction of the candidates passing through it.
+
+### Follow-up — root-caused why `overture_places` kept ModuleNotFoundError-ing on `pyarrow` across multiple otherwise-successful, otherwise-current deploys
+
+Deploying this session's full set of fixes turned out to need many more
+retries than expected, live-diagnosed turn by turn against real Railway
+deploy logs and console sessions (Railway had a genuine US-West regional
+outage in the middle of this that explained the first round of failures;
+a stale local git checkout — 5 commits behind, from a branch history
+rewrite earlier in the session — explained a second round; both closed
+out). What was left after both of those: `DEEPSEEK_API_KEY` intermittently
+reading `False` even on deploys confirmed to have the right code, and
+`overture_places` raising `ModuleNotFoundError: No module named 'pyarrow'`
+on every single deploy checked, including ones with `scheduler_started
+jobs=9` (i.e. definitely running current code).
+
+Root cause, found by reading the actual Build Logs rather than assuming
+from the Deploy Logs alone: every one of these builds showed `pip install
+-r requirements.txt cached 0ms` — Railway's build cache was reusing the
+result of an *earlier* build where `pyarrow` silently failed to install
+(pip completed with exit 0 and a "Successfully installed [long list]"
+line that just never included pyarrow — never investigated why that first
+failure happened, since it's now moot), and kept serving that same broken
+cached layer on every subsequent deploy because `requirements.txt`'s bytes
+hadn't changed since. No amount of redeploying — restart, dashboard
+redeploy, repeated `railway up` — would ever fix this on its own, because
+none of them changed the one thing the cache keys off.
+
+Fix: bumped `pyarrow`'s floor from `>=15.0.0` to `>=18.0.0` in
+`requirements.txt` — changes the file's bytes (forces a real reinstall)
+while staying a floor, not an exact pin, consistent with every other
+dependency in this file. `DEEPSEEK_API_KEY` reading `False` was very
+likely a symptom of console sessions landing on a container from one of
+these same stale-cache builds rather than a separate variable-injection
+bug — no code or config change was needed for that once a genuinely fresh
+build was confirmed.
+
+Verified: 532 backend tests passing (unchanged — this is a pure dependency
+version-floor change, no application code touched).
+
+Still needs: one more deploy + the same verification script run once more
+to confirm `pyarrow` actually installs this time (cache-busted, but not
+yet re-verified against a live build as of this entry).
