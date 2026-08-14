@@ -1223,3 +1223,54 @@ time) but the real yield against CRAVE's specific 18,872-place gap is
 still unmeasured — needs the scheduled job to actually run against
 production data, then a live count of how many gap places got a `website`
 backfilled from `source="overture"` candidates.
+
+### Follow-up — root-caused a live production crash silently dropping OSM candidates, found by reading real deploy logs 4 days after the previous fixes shipped
+
+User pasted a routine production log check (image ingestion + OSM
+acquisition + discovery cycle all running normally) that also contained a
+repeating, unhandled `sqlalchemy.exc.MultipleResultsFound` traceback in
+`osm_ingest_candidate_failed`. Root cause:
+`candidate_store_v2.upsert_discovery_candidate_v2`'s name+city fallback
+match used `.one_or_none()`, which raises the moment a city has more than
+one `DiscoveryCandidate` row sharing a name. That's not an edge case —
+only `(city_id, name, lat, lng)` together is unique
+(`uq_candidate_city_name_location` on the model), not `(city_id, name)`
+alone, and OSM legitimately produces this shape (the same real place
+tagged twice — building outline and point — or two branches of one chain).
+Every POI that hit an existing name collision was silently dropped from
+that point on; `osm_ingest_city_ingest`'s per-POI try/except caught the
+crash and logged it, so the job itself never died, but the data never
+landed. Overture Maps runs through this exact same function, so it would
+hit the identical failure the moment it found a same-named collision too.
+
+Fix: replaced `.one_or_none()` with `.order_by(created_at.asc()).first()`
+— picks the oldest existing row deterministically instead of crashing,
+consistent with "update the existing record" being the whole point of a
+fallback match in the first place.
+
+New test: `tests/test_candidate_store_v2.py` (6 tests — first coverage
+this file has ever had). The regression test needed to construct the
+two-duplicate-rows precondition directly via the ORM rather than through
+two calls to the function under test, because the function's own fallback
+match already self-heals that shape on a normal path (a second upsert call
+with a new external_id but the same name+city merges onto the first row
+rather than creating a second) — matching how the real precondition
+actually had to arise in production (two rows created through some other
+means before ever colliding on a shared upsert call). Also caught and
+fixed the same test-pollution class found earlier this session: this
+file's `city` fixture now sweeps its own `DiscoveryCandidate` rows in
+teardown so `test_promotion_pipeline_v2.py`'s unscoped global query
+doesn't pick up leftover eligible candidates.
+
+Verified: 532 backend tests passing (526 + 6 new). One transient failure
+during verification (`sqlite3.OperationalError: disk I/O error` on an
+unrelated test) turned out to be two overlapping local pytest invocations
+against the same on-disk SQLite file, not a real bug — confirmed clean on
+a serial rerun.
+
+Also confirmed live in the same pasted log: OSM ingestion is genuinely
+finding real, new places (`Millie's`, `El Faro Méxican Foods`, `Noah's
+Bagels`, `Panama Bay Coffee Co.` in Pleasant Hill) and image invariant
+repair is running clean (50/50 succeeded this cycle) — the pipeline built
+earlier this session is alive and working end to end; this bug was only
+costing some fraction of the candidates passing through it.

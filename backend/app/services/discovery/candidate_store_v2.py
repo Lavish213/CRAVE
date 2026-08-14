@@ -98,6 +98,16 @@ def upsert_discovery_candidate_v2(
     # ---------------------------------------------------
     # FALLBACK MATCH: name + city
     # ---------------------------------------------------
+    # .first() not .one_or_none(): only (city_id, name, lat, lng) together is
+    # unique (see uq_candidate_city_name_location on the model) — name+city
+    # alone is not, and legitimately isn't (two branches of the same chain,
+    # or the same real-world place tagged twice by a source at slightly
+    # different coordinates, e.g. OSM's building-outline-vs-point
+    # duplication). one_or_none() raised MultipleResultsFound the moment any
+    # city had two rows sharing a name, silently dropping every OSM/Overture
+    # POI that hit it (confirmed live in production — repeated
+    # osm_ingest_candidate_failed crashes). Ordering by created_at keeps the
+    # choice deterministic across repeated upserts of the same POI.
     if not existing:
         existing = (
             db.query(DiscoveryCandidate)
@@ -105,7 +115,8 @@ def upsert_discovery_candidate_v2(
                 DiscoveryCandidate.city_id == city_id,
                 func.lower(DiscoveryCandidate.name) == name.lower(),
             )
-            .one_or_none()
+            .order_by(DiscoveryCandidate.created_at.asc())
+            .first()
         )
 
     # ---------------------------------------------------
