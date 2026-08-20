@@ -58,6 +58,7 @@ from .job_run import JobRun
 # ----- Social / Identity Layer -----
 from .user_profile import UserProfile
 from .user_follow import UserFollow
+from .user_block import UserBlock
 from .place_ranking import PlaceRanking
 from .activity_event import ActivityEvent
 

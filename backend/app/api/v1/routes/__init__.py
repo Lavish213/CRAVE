@@ -41,7 +41,9 @@ from app.api.v1.endpoints.upload import router as upload_router
 # Social / Identity / Ranking
 # -------------------------
 from app.api.v1.routes.profile import router as profile_router
+from app.api.v1.routes.account import router as account_router
 from app.api.v1.routes.follows import router as follows_router
+from app.api.v1.routes.blocks import router as blocks_router
 from app.api.v1.routes.rankings import router as rankings_router
 from app.api.v1.routes.feed_social import router as feed_social_router
 from app.api.v1.routes.leaderboard import router as leaderboard_router
@@ -86,7 +88,9 @@ router.include_router(coverage_router)
 router.include_router(upload_router)
 
 router.include_router(profile_router)
+router.include_router(account_router)
 router.include_router(follows_router)
+router.include_router(blocks_router)
 router.include_router(rankings_router)
 router.include_router(feed_social_router)
 router.include_router(leaderboard_router)

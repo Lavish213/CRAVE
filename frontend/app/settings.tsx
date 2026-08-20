@@ -9,6 +9,7 @@ import { Colors, Spacing, Radius } from '../src/constants/colors';
 import { useCityStore } from '../src/stores/cityStore';
 import { useAuthStore } from '../src/stores/authStore';
 import { useToast } from '../src/hooks/useToast';
+import { deleteMyAccount } from '../src/api/social';
 
 // App version — hardcoded, update for each release
 const APP_VERSION = '1.0.0';
@@ -74,6 +75,41 @@ export default function MoreScreen() {
       { text: 'Cancel', style: 'cancel' },
       { text: 'Sign Out', style: 'destructive', onPress: () => signOut() },
     ]);
+  };
+
+  const handleDeleteAccount = () => {
+    Alert.alert(
+      'Delete your account?',
+      'This permanently deletes your profile, follows, and login — it cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete Account',
+          style: 'destructive',
+          onPress: () => {
+            // Second confirmation — irreversible and destroys the login
+            // itself, not just app data, so one tap is too easy to hit by
+            // accident.
+            Alert.alert('Are you absolutely sure?', 'This cannot be undone.', [
+              { text: 'Cancel', style: 'cancel' },
+              {
+                text: 'Yes, delete everything',
+                style: 'destructive',
+                onPress: async () => {
+                  try {
+                    await deleteMyAccount();
+                  } catch {
+                    toast("Couldn't delete your account. Try again.");
+                    return;
+                  }
+                  await signOut();
+                },
+              },
+            ]);
+          },
+        },
+      ],
+    );
   };
 
   const openLink = (url: string) => {
@@ -199,6 +235,14 @@ export default function MoreScreen() {
               label="Sign Out"
               tint={Colors.error}
               onPress={handleSignOut}
+            />
+            <Divider />
+            <Row
+              icon="trash-outline"
+              label="Delete Account"
+              sublabel="Permanently delete your profile and login"
+              tint={Colors.error}
+              onPress={handleDeleteAccount}
             />
           </View>
         </>

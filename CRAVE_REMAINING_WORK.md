@@ -1316,3 +1316,96 @@ version-floor change, no application code touched).
 Still needs: one more deploy + the same verification script run once more
 to confirm `pyarrow` actually installs this time (cache-busted, but not
 yet re-verified against a live build as of this entry).
+
+### Follow-up — built user-blocking and account deletion (two of the three App Store review blockers found earlier this session)
+
+User asked what's actually left before this can go on the App Store and
+be used end to end. Checked the real state of the code instead of
+guessing: photo upload already exists (and now works, given this
+session's R2/invariant fixes), but video upload doesn't exist at all
+(only sharing an external video *link*, not uploading one), and three
+App Store review requirements were unmet — no privacy policy, no
+account-deletion flow (Guideline 5.1.1(v)), no user-blocking (Guideline
+1.2, UGC apps — only photo *reporting* existed, not blocking a person).
+Privacy policy is a hosting/content task, not something to build; the
+other two are real engineering work, built this pass.
+
+**User blocking** — `app/db/models/user_block.py` (new, mirrors
+`user_follow.py`'s shape exactly: `(blocker_id, blocked_id)`, unique pair,
+no-self-block check constraint), migration `y1z2a3b4c5d6`,
+`app/services/social/block_service.py` (`block_user`, `unblock_user`,
+`is_blocked` — deliberately symmetric, true if *either* side blocked the
+other, since a blocked person losing visibility into the blocker is the
+whole point — `list_blocked`, `blocked_user_ids_either_direction`),
+`app/api/v1/routes/blocks.py` (`POST/DELETE /blocks/{id}`, `GET
+/blocks/status/{id}`, `GET /blocks`). `block_user` also deletes any
+existing `UserFollow` row in both directions, and `follow_service.
+follow_user` now refuses a new follow between blocked users — checked
+this actually closes the friends-feed gap for free: `get_friends_feed`
+only ever reads from `list_following` (real `UserFollow` rows), so once a
+block clears the follow relationship, blocked users' activity can never
+resurface there without any separate filtering needed.
+
+Frontend: `app/user/[id].tsx` gets a header "⋯" button (Block/Unblock),
+and blocking now replaces their follow button + ranked list with a plain
+"you've blocked this person" notice instead of still rendering their
+content. `src/api/social.ts` gets `blockUser`/`unblockUser`/
+`fetchBlockStatus`/`fetchBlockedUsers`.
+
+Deliberately NOT done in this pass (real gap, not silently dropped):
+blocked users aren't filtered out of search results or place-level
+comment/crave lists yet — only the friends feed and follow relationship
+are covered. Worth a follow-up sweep before shipping if App Review
+specifically probes those surfaces.
+
+**Account deletion** — `app/services/account/account_deletion_service.py`:
+`delete_account(db, user_id)` deletes the `UserProfile` row and every
+`UserFollow`/`UserBlock` row referencing this user, then calls Supabase's
+Admin API (`DELETE {SUPABASE_URL}/auth/v1/admin/users/{id}`) to delete the
+actual auth identity — this app never owned auth (Supabase does, see
+`app/core/user_auth.py`'s docstring), so "delete account" has to mean
+deleting that credential too, not just app-side data; otherwise someone
+who "deleted their account" could still log back in with the same
+email/password. Route: `DELETE /account/me`, requires `{"confirm": true}`
+in the body as cheap insurance against an accidental/retried call actually
+deleting something.
+
+**Real, flagged gap, not yet resolved**: `SUPABASE_SERVICE_ROLE_KEY` and
+`SUPABASE_URL` aren't configured anywhere in this codebase yet (confirmed
+— the app has only ever verified incoming JWTs via `SUPABASE_JWT_SECRET`,
+never made an outbound admin call to Supabase). Without them,
+`delete_account` still deletes all app-side data but logs
+`account_deletion_supabase_not_configured` and reports
+`supabase_account_deleted: false` — fails visibly, not silently, but the
+auth credential genuinely isn't deleted until those two env vars are set
+(`SUPABASE_URL` = same value as the frontend's `EXPO_PUBLIC_SUPABASE_URL`;
+`SUPABASE_SERVICE_ROLE_KEY` = Supabase dashboard → Project Settings → API
+→ service_role secret — a real secret, never expose it client-side).
+
+Deliberately scoped: does not sweep every other table referencing this
+user_id (place claims, submitted photos, craves/rankings) — those are left
+in place, same as most social apps handle deleted accounts (past public
+contributions can remain, un-tied to a reachable profile). A full
+data-retention audit is separate, real follow-up work, not silently
+skipped.
+
+Frontend: `app/settings.tsx` gets a "Delete Account" row with a two-step
+destructive confirmation (the second step exists specifically because this
+destroys the login itself, not just app data — one tap felt too easy for
+something this irreversible), calling `deleteMyAccount()` then the
+existing `signOut()`.
+
+New tests: `tests/test_block_service.py` (12), `tests/test_account_
+deletion_service.py` (7, Supabase's HTTP call always mocked — never a real
+network call). Verified: 551 backend tests passing (532 + 12 + 7, stable
+across repeated runs), frontend `tsc --noEmit` and `jest` both clean (82
+frontend tests unaffected).
+
+**Still open for real App Store readiness**: privacy policy (hosting/
+content, not code — `settings.tsx` already links to `https://crave.app/
+privacy` and `/terms`, but nothing confirms those pages exist), video
+upload (doesn't exist at all — only external video link sharing), the two
+Supabase env vars above, and the blocked-user filtering gap (search/
+comments) noted earlier. Apple Developer enrollment, App Store Connect
+listing, and TestFlight builds are process items outside what code can
+resolve.

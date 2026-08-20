@@ -100,6 +100,42 @@ export async function fetchFollowers(): Promise<string[]> {
 }
 
 // ---------------------------------------------------------------------------
+// Blocks
+// ---------------------------------------------------------------------------
+
+export async function blockUser(userId: string): Promise<void> {
+  await client.post(`/api/v1/blocks/${userId}`);
+}
+
+export async function unblockUser(userId: string): Promise<void> {
+  await client.delete(`/api/v1/blocks/${userId}`);
+}
+
+export async function fetchBlockStatus(userId: string): Promise<{ blocked: boolean }> {
+  const { data } = await client.get(`/api/v1/blocks/status/${userId}`);
+  return data;
+}
+
+export async function fetchBlockedUsers(): Promise<string[]> {
+  const { data } = await client.get<{ user_ids: string[] }>('/api/v1/blocks');
+  return data.user_ids ?? [];
+}
+
+// ---------------------------------------------------------------------------
+// Account deletion
+// ---------------------------------------------------------------------------
+
+export async function deleteMyAccount(): Promise<{
+  profile_deleted: boolean;
+  supabase_account_deleted: boolean;
+}> {
+  const { data } = await client.delete('/api/v1/account/me', {
+    data: { confirm: true },
+  });
+  return data;
+}
+
+// ---------------------------------------------------------------------------
 // Rankings
 // ---------------------------------------------------------------------------
 
