@@ -17,7 +17,8 @@ from app.db.models.place import Place
 from app.db.models.place_ranking import PlaceRanking
 from app.db.models.activity_event import ActivityEvent
 from app.db.models.user_follow import UserFollow
-from app.services.social import follow_service
+from app.db.models.user_block import UserBlock
+from app.services.social import block_service, follow_service
 from app.services.social.activity_service import (
     record_ranked_place,
     record_followed_user,
@@ -70,6 +71,9 @@ def users():
         ).delete(synchronize_session=False)
         cleanup_db.query(UserFollow).filter(
             UserFollow.follower_id.in_(ids.values())
+        ).delete(synchronize_session=False)
+        cleanup_db.query(UserBlock).filter(
+            UserBlock.blocker_id.in_(ids.values())
         ).delete(synchronize_session=False)
         cleanup_db.commit()
 
@@ -197,6 +201,38 @@ def test_leaderboard_friends_scope_excludes_non_followed(db, city, users):
     assert users["alice"] in user_ids  # self always included
     assert users["bob"] in user_ids  # followed
     assert users["carol"] not in user_ids  # not followed
+
+
+def test_leaderboard_global_scope_excludes_blocked_users(db, city, users):
+    """Global scope has no follow-graph filtering to inherit block-safety
+    from (unlike 'friends'), so it needs its own exclusion — a blocked
+    user's name/avatar must not surface here even though every other
+    surface (profile, friends feed) already hides them."""
+    places = [_make_place(db, city) for _ in range(2)]
+    _seed_ranking(db, user_id=users["alice"], place_id=places[0].id)
+    _seed_ranking(db, user_id=users["bob"], place_id=places[1].id)
+    _seed_ranking(db, user_id=users["carol"], place_id=places[1].id)
+
+    block_service.block_user(db, blocker_id=users["alice"], blocked_id=users["bob"])
+
+    rows = get_leaderboard(db, user_id=users["alice"], among="global", limit=100)
+    user_ids = {r["user_id"] for r in rows}
+    assert users["alice"] in user_ids
+    assert users["carol"] in user_ids
+    assert users["bob"] not in user_ids
+
+
+def test_leaderboard_global_scope_excludes_users_who_blocked_you(db, city, users):
+    places = [_make_place(db, city) for _ in range(2)]
+    _seed_ranking(db, user_id=users["alice"], place_id=places[0].id)
+    _seed_ranking(db, user_id=users["bob"], place_id=places[1].id)
+
+    # bob blocked alice, not the other way around — still must be mutual.
+    block_service.block_user(db, blocker_id=users["bob"], blocked_id=users["alice"])
+
+    rows = get_leaderboard(db, user_id=users["alice"], among="global", limit=100)
+    user_ids = {r["user_id"] for r in rows}
+    assert users["bob"] not in user_ids
 
 
 def test_leaderboard_unknown_city_slug_raises(db, users):

@@ -15,7 +15,7 @@ from app.db.models.city import City
 from app.db.models.place import Place
 from app.db.models.place_ranking import PlaceRanking
 from app.db.models.user_profile import UserProfile
-from app.services.social import follow_service
+from app.services.social import block_service, follow_service
 
 
 class LeaderboardError(ValueError):
@@ -46,9 +46,20 @@ def get_leaderboard(
         )
 
     if among == "friends":
+        # Already block-safe: blocking clears the follow relationship in
+        # both directions (see block_service.block_user), so a blocked
+        # user can never appear in list_following's result.
         followee_ids = follow_service.list_following(db, user_id, limit=500, offset=0)
         scoped_ids = followee_ids + [user_id]
         query = query.filter(PlaceRanking.user_id.in_(scoped_ids))
+    else:
+        # "global" has no follow-graph scoping to inherit block-safety
+        # from, so it needs its own filter — otherwise a blocked user's
+        # name/avatar still surfaces here even though everywhere else
+        # (profile, feed) correctly hides them.
+        excluded_ids = block_service.blocked_user_ids_either_direction(db, user_id)
+        if excluded_ids:
+            query = query.filter(PlaceRanking.user_id.notin_(excluded_ids))
 
     rows = (
         query.group_by(PlaceRanking.user_id)

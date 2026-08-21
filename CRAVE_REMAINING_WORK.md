@@ -1409,3 +1409,112 @@ Supabase env vars above, and the blocked-user filtering gap (search/
 comments) noted earlier. Apple Developer enrollment, App Store Connect
 listing, and TestFlight builds are process items outside what code can
 resolve.
+
+### Follow-up — deployed the Overture Maps commit and found pyarrow reliably fails to install during Railway's build, root cause still unresolved
+
+Ran the actual deploy. Good news first: `scheduler_discovery_complete
+promoted=2` appeared in production logs for the first time ever — real
+evidence the OSM confidence fix is working, not just running. `user_blocks`
+migration applied cleanly. `DEEPSEEK_API_KEY`/`SUPABASE_URL`/
+`SUPABASE_SERVICE_ROLE_KEY` were all already configured (checked the
+Variables tab directly — earlier assumption that Supabase's two vars were
+missing was wrong).
+
+`overture_places` still threw `ModuleNotFoundError: No module named
+'pyarrow'` on every deploy checked, including builds confirmed to be
+running current code (`scheduler_started jobs=9`). Tried, in order, none
+of which fixed it: (1) bumping the version floor to bust a
+content-hash-keyed build cache, (2) `NO_CACHE=1` (a documented Railway
+fix for build-cache corruption — didn't help, consistent with a known gap
+that `NO_CACHE` isn't always honored by the newer Railpack builder), (3)
+`RAILPACK_INSTALL_CMD` overriding the pip step directly — this one
+actively broke the build, because it replaced Railpack's *entire*
+auto-generated install sequence (venv creation + pip install + Playwright
+browser install), not just the pip line as hoped; the build then failed
+outright trying to copy a Playwright cache directory that was never
+created. Reverted immediately.
+
+Confirmed via live diagnosis that pyarrow itself is completely fine:
+running `pip install pyarrow` by hand in the Railway Console, on the
+exact same container reporting the import error, succeeds instantly
+(50MB wheel, full speed). So the package, the platform, and the network
+are all fine — something specific to how Railway's *build* step invokes
+pip is the actual problem, and four attempts at fixing it from the
+outside (cache flags, version bumps, command overrides) didn't land.
+
+**Decision: stop chasing this.** Overture Maps is a second, nice-to-have
+discovery source — OSM alone is already confirmed finding real places in
+production (`promoted=2` and multiple real restaurant names in the
+logs). The accepted workaround going forward: run `pip install pyarrow`
+manually in the Railway Console after any deploy that needs Overture
+working (confirmed reliable every time tried, ~10 seconds). This does
+not survive a container restart/redeploy and needs redoing each time —
+a real, known limitation, not a silent gap.
+
+### Follow-up — closed the two "without your input" gaps from the App Store punch list: leaderboard block-filtering and menu staleness re-verification
+
+User asked what could be done with zero further input/decisions from
+them. Two real, pure-code items from the earlier punch list qualified;
+built both.
+
+**Leaderboard block filtering** — re-checked the actual claim from
+earlier ("blocked users still show in search/comments") against the real
+code before building anything, since it turned out to be wrong on both
+counts: `/search` is place search with no user identity involved at all,
+and `/craves/for-place/{id}` deliberately never exposes `submitted_by`
+(already privacy-safe by design, confirmed in that route's own
+docstring). The one real gap was the **global** leaderboard
+(`leaderboard_service.get_leaderboard`), which lists every ranked user's
+name/avatar with no block-awareness — `among="friends"` was already
+safe for free (it's scoped through `list_following`, and blocking already
+clears follow relationships both ways), but `among="global"` had no
+equivalent filter. Fixed: excludes `block_service.
+blocked_user_ids_either_direction(db, user_id)` from the global query.
+2 new tests in `tests/test_activity_and_leaderboard.py`.
+
+**Menu staleness re-verification** — `menu_worker.py`'s
+`_load_places_requiring_menu` excluded any place with an existing menu
+`PlaceTruth` row *permanently*, with no way to notice a menu going stale
+(price changes, a site redesign that breaks the extractor, a closed
+restaurant). Added `MENU_STALENESS_DAYS = 60`: a place with a menu is now
+re-eligible once its last real check
+(`Place.menu_extraction_attempted_at`) is older than that window, or was
+never stamped at all (every existing menu'd place predates this
+mechanism — treated as eligible for one catch-up check rather than
+needing a data migration). Also now stamps `menu_extraction_attempted_at`
+on the *success* path in `run()`, not just failure — needed because
+`materialize_menu_truth` skips updating `PlaceTruth.updated_at` when a
+re-extraction hashes identical to what's already stored (its own,
+separately-correct dedup optimization), so that column alone couldn't
+serve as the staleness clock.
+
+Found and fixed a real interaction bug while building this:
+`_not_in_backoff_clause` had no branch for "0 failures, but the last
+check is old" — a healthy place's `failure_count` resets to 0 on
+success, and once staleness made it eligible again, none of the
+existing count==1/2/3/4+ backoff branches ever match count 0, so it
+would look permanently "in backoff" despite having never failed at all.
+Added an explicit "0 or unset failure count is never backed off" branch
+— backoff should only ever apply to places that have actually failed.
+
+Updated the one existing test whose name/assertion described the old,
+now-deliberately-changed permanent-exclusion behavior
+(`test_a_place_with_an_existing_menu_truth_is_still_excluded_regardless_of_backoff`
+→ split into three tests: recently-checked stays excluded, stale becomes
+eligible, never-stamped becomes eligible). Extended the existing
+materialized-success test to assert the new stamp. 5 net new/changed
+tests in `tests/test_menu_worker.py`.
+
+Also drafted `docs/privacy-policy.md` and `docs/terms-of-service.md` —
+real content reflecting CRAVE's actual data flows (Supabase auth,
+location use, R2 photo storage, Google Places/DeepSeek/Sentry as
+third-party processors, content moderation, block/account-deletion
+mechanics) rather than placeholder text. Explicitly flagged as not legal
+advice and needing an actual lawyer's review plus filling in bracketed
+placeholders (jurisdiction, contact email) before publishing — hosting
+these at the URLs `settings.tsx` already links to (`crave.app/privacy`,
+`/terms`) is still on the user, this only removes "start from a blank
+page" as a blocker.
+
+Verified: 555 backend tests passing (551 + 2 leaderboard + 3 net
+menu_worker change, stable across repeated full-suite runs).
