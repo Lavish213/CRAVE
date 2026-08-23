@@ -138,6 +138,14 @@ export default function TasteProfileScreen() {
             <Text style={styles.heroLabel}>of all diners</Text>
           </View>
         )}
+        {!isSelf && taste.match_score !== null && (
+          <View style={styles.heroTile}>
+            <Text style={[styles.heroValue, { color: Colors.primary }]}>
+              {taste.match_score}%
+            </Text>
+            <Text style={styles.heroLabel}>taste match</Text>
+          </View>
+        )}
       </View>
 
       <View style={styles.section}>

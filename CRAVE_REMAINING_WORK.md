@@ -2179,3 +2179,71 @@ now-unused `PlaceImage` import.
 
 Verified: full backend suite passes (578, unchanged — nothing referenced
 the removed function, so no test count change), stable across two runs.
+
+### Personalized recommendations + Match Score (item #3 of the agreed roadmap, closes Beli's "prediction score" gap)
+
+Built the last big deferred item from the earlier research pass:
+user-based collaborative filtering over `PlaceRanking` rows, confirmed
+via research as the right level of sophistication for CRAVE's current
+scale (no new ML infra). Also builds Beli's "Match Score" — deliberately
+deferred from the Taste Profile work specifically so it could reuse this
+same similarity computation instead of a second bespoke one.
+
+Algorithm (`app/services/social/recommendation_service.py`, new):
+for user U, build their `{place_id: rank_score}` vector, find every
+other non-blocked user who ranked at least 2 of the same places
+(`MIN_SHARED_PLACES` — below that, "similarity" is noise: two users who
+share exactly one ranked place agree "perfectly" by construction), score
+them by cosine similarity restricted to the shared places, then weight
+every place a similar user ranked (that U hasn't already ranked or
+saved) by `similarity * their_rank_score` and sum across similar users.
+Cold start (no ranking history yet, or genuinely no similar users found)
+falls back to the highest-`rank_score` active places U hasn't
+interacted with yet — never personalized, but never an empty screen.
+`get_match_score(user_a, user_b)` reuses the identical cosine similarity
+computation and returns it directly as a 0–100 percentage (rank_score is
+always non-negative, so the general `[-1, 1]` cosine range is already
+bounded to `[0, 1]` in practice here) — `None` if they haven't ranked
+enough of the same places yet for the number to mean anything, which
+callers must treat as "not enough data," not "0% match."
+
+- `GET /api/v1/recommendations` (new route, `recommendations.py`) —
+  same `PlaceOut`/`PlacesResponse` shape and bulk-image-lookup pattern as
+  `trending.py`, specifically so the frontend could reuse its existing
+  place-list rendering rather than a bespoke response shape. Requires
+  auth (personalized, not just public data).
+- `GET /api/v1/profile/{user_id}/taste` now also returns `match_score`
+  when the viewer is signed in and looking at someone else's profile.
+  This needed the taste route (previously fully anonymous/public) to
+  know the *viewer's* identity without requiring sign-in to view a
+  public profile at all — added `get_current_user_id_optional` to
+  `app/core/user_auth.py` (returns `None` instead of raising 401 on a
+  missing/invalid token) rather than making the whole route auth-required.
+- Frontend: `fetchRecommendations` (`src/api/places.ts`),
+  `useRecommendations` hook (same generation-ref stale-response guard
+  shape as `useTrending`'s, keyed on the signed-in user instead of the
+  selected city). `TrendingStrip` gained an optional `heading` prop
+  (default `"TRENDING"`) so the exact same component renders a
+  "RECOMMENDED FOR YOU" strip on the feed (`index.tsx`, shown only when
+  signed in, right above the existing trending strip) without
+  duplicating its styles. `taste-profile/[userId].tsx` gained a third
+  hero tile showing `match_score` as "`N`% taste match" — only rendered
+  on someone else's profile, never your own.
+- `tests/test_recommendation_service.py` (8 tests): cold start ranks by
+  real `rank_score`; cold start excludes already-ranked/saved places; a
+  place liked by a genuinely similar user (2+ shared places) gets
+  recommended; a single shared place is *not* enough to count as similar
+  (verified by confirming a place with a real intrinsic rank_score
+  advantage still outranks a "boosted" pick, rather than asserting
+  absence outright — the shared test DB isn't isolated across files, so
+  a bare non-membership check would be sensitive to ambient seeded
+  data); a blocked user's ratings are excluded from similarity by the
+  same discriminating pattern; Match Score is `None` below the shared-
+  places threshold, high (≥95) for closely-aligned tastes, and `None`
+  for comparing a user against themselves.
+
+Verified: backend suite passes (586 — 578 previous + 8 new), stable
+across two runs. Frontend: `npx tsc --noEmit` clean, full Jest suite
+passes (90, unaffected — no dedicated test for the new hook/strip
+itself, same convention as other similarly-scoped UI additions this
+session; covered by the service-level tests plus a clean typecheck).

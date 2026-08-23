@@ -9,10 +9,11 @@ from sqlalchemy.orm import Session
 
 from app.core.auth import require_api_key
 from app.core.rate_limit import rate_limit
-from app.core.user_auth import get_current_user_id
+from app.core.user_auth import get_current_user_id, get_current_user_id_optional
 from app.db.session import get_db
 from app.services.profile import profile_service
 from app.services.social.taste_profile_service import get_taste_profile
+from app.services.social.recommendation_service import get_match_score
 from app.services.upload.r2_client import generate_presigned_upload_url, generate_public_url
 
 router = APIRouter(prefix="/profile", tags=["profile"])
@@ -135,6 +136,7 @@ def get_public_profile(
 def get_taste_profile_route(
     user_id: str,
     db: Session = Depends(get_db),
+    viewer_id: Optional[str] = Depends(get_current_user_id_optional),
 ) -> dict:
     """
     "Taste Profile" — the equivalent of Beli's own stats screen (total
@@ -145,8 +147,19 @@ def get_taste_profile_route(
     Block enforcement is handled client-side (same convention the
     existing user/[id] screen already uses via GET /blocks/status),
     not duplicated here.
+
+    Also includes "match_score" — Beli's pairwise taste-compatibility
+    number — whenever the viewer is signed in and looking at someone
+    else's profile. Auth is optional (get_current_user_id_optional)
+    rather than required, since this route is otherwise viewable by a
+    signed-out visitor; match_score is simply omitted (None) for them.
     """
     profile = profile_service.get_profile(db, user_id)
     if not profile or not profile.is_public:
         raise HTTPException(status_code=404, detail="profile not found")
-    return get_taste_profile(db, user_id=user_id)
+    taste = get_taste_profile(db, user_id=user_id)
+    match_score = None
+    if viewer_id and viewer_id != user_id:
+        match_score = get_match_score(db, user_id=viewer_id, other_user_id=user_id)
+    taste["match_score"] = match_score
+    return taste

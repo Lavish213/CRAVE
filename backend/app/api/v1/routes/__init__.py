@@ -14,6 +14,7 @@ from app.api.v1.routes.cities import router as cities_router
 from app.api.v1.routes.hitlist import router as hitlist_router
 from app.api.v1.routes.trending import router as trending_router
 from app.api.v1.routes.signals import router as signals_router
+from app.api.v1.routes.recommendations import router as recommendations_router
 
 # -------------------------
 # User content (were fully built + JWT-secured but never registered here —
@@ -74,6 +75,7 @@ router.include_router(cities_router)
 router.include_router(hitlist_router)
 router.include_router(trending_router)
 router.include_router(signals_router)
+router.include_router(recommendations_router)
 
 router.include_router(saves_router)
 router.include_router(craves_router)

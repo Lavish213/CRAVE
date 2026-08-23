@@ -88,3 +88,18 @@ def get_current_user_id(authorization: Optional[str] = Header(default=None)) -> 
         raise HTTPException(status_code=401, detail="Token missing subject claim")
 
     return str(user_id)
+
+
+def get_current_user_id_optional(authorization: Optional[str] = Header(default=None)) -> Optional[str]:
+    """
+    Same verification as get_current_user_id, but for routes that behave
+    differently for a signed-in viewer without *requiring* sign-in (e.g. a
+    public profile that also shows a "Match Score" when the viewer happens
+    to be logged in). Returns None instead of raising on a missing or
+    invalid token -- callers must treat None as "anonymous", not as an
+    error to surface.
+    """
+    try:
+        return get_current_user_id(authorization=authorization)
+    except HTTPException:
+        return None

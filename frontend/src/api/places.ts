@@ -69,3 +69,14 @@ export async function fetchTrending(cityId: string): Promise<PlaceOut[]> {
   const items = Array.isArray(data?.items) ? data.items : [];
   return items.map(normalizePlaceOut);
 }
+
+// Personalized "For You" recommendations -- collaborative filtering over
+// shared PlaceRanking rows (see backend recommendation_service.py).
+// Requires auth; callers should only invoke this when a user is signed in.
+export async function fetchRecommendations(limit = 20): Promise<PlaceOut[]> {
+  const { data } = await client.get<{ items: PlaceOut[] }>('/api/v1/recommendations', {
+    params: { limit },
+  });
+  const items = Array.isArray(data?.items) ? data.items : [];
+  return items.map(normalizePlaceOut);
+}

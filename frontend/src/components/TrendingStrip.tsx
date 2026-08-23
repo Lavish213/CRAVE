@@ -9,13 +9,14 @@ import { Colors, Radius, Spacing } from '../constants/colors';
 interface Props {
   places: PlaceOut[];
   onPress: (id: string) => void;
+  heading?: string;
 }
 
-export function TrendingStrip({ places, onPress }: Props) {
+export function TrendingStrip({ places, onPress, heading = 'TRENDING' }: Props) {
   if (places.length === 0) return null;
   return (
     <View style={styles.container}>
-      <Text style={styles.heading}>TRENDING</Text>
+      <Text style={styles.heading}>{heading}</Text>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.scroll}>
         {places.map((p) => {
           const tier = getTier(p.rank_score);
@@ -25,7 +26,7 @@ export function TrendingStrip({ places, onPress }: Props) {
               style={styles.chip}
               onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onPress(p.id); }}
               activeOpacity={0.8}
-              accessibilityLabel={`${p.name}, trending`}
+              accessibilityLabel={`${p.name}, ${heading.toLowerCase()}`}
               accessibilityRole="button"
             >
               <View style={[styles.dot, { backgroundColor: tier.color }]} />

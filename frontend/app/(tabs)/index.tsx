@@ -19,6 +19,7 @@ import { useCityStore } from '../../src/stores/cityStore';
 import { useCravesStore } from '../../src/stores/cravesStore';
 import { useToast } from '../../src/hooks/useToast';
 import { useTrending } from '../../src/hooks/useTrending';
+import { useRecommendations } from '../../src/hooks/useRecommendations';
 import { useLocation } from '../../src/hooks/useLocation';
 import { Colors, Spacing, Radius } from '../../src/constants/colors';
 import { getTier, TIERS, TierKey } from '../../src/utils/scoring';
@@ -71,6 +72,7 @@ export default function FeedScreen() {
 
   const userLocation = useLocation();
   const trending = useTrending();
+  const recommendations = useRecommendations();
 
   const [filterVisible, setFilterVisible] = useState(false);
   const [filters, setFilters] = useState<FilterState>(EMPTY_FILTERS);
@@ -215,6 +217,13 @@ export default function FeedScreen() {
       </View>
 
       <CitySelectorStrip />
+      {user ? (
+        <TrendingStrip
+          places={recommendations}
+          heading="RECOMMENDED FOR YOU"
+          onPress={(id) => router.push(`/place/${id}`)}
+        />
+      ) : null}
       <TrendingStrip places={trending} onPress={(id) => router.push(`/place/${id}`)} />
 
       {!initialLoaded ? (

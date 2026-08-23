@@ -68,6 +68,11 @@ export interface TasteProfile {
   favorite_cuisine: string | null;
   top_city: { id: string; name: string; count: number } | null;
   percentile: number | null;
+  /** Taste-compatibility % with the viewer -- only present when the
+   * viewer is signed in and looking at someone else's profile; null if
+   * they haven't shared enough ranked places for the number to mean
+   * anything yet. */
+  match_score: number | null;
 }
 
 export async function fetchTasteProfile(userId: string): Promise<TasteProfile> {
