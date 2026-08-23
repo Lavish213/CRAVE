@@ -2718,3 +2718,48 @@ afterward in that request, but fixed for consistency).
 
 Verified: 633 backend tests passing (631 + 2 new), frontend `tsc
 --noEmit` clean, full jest suite 94/94, stable across repeated runs.
+
+### Follow-up — this repo's own CI caught a real, standing production bug none of this session's own testing could
+
+Opened PR #46 with everything above. Subscribed to its activity, and its
+"Backend (same suite, against real Postgres)" CI job — a second run of
+the exact same suite, but against a real Postgres instance instead of
+SQLite — failed with `psycopg2.errors.InvalidColumnReference: for
+SELECT DISTINCT, ORDER BY expressions must appear in select list`, in
+`search_query.py::search_places()`, not in anything touched this
+session. `search_places()` builds `select(Place).distinct()`, then
+(when the caller supplies `lat`/`lng`) orders by a computed distance
+expression that was never part of the SELECT list — SQLite doesn't
+enforce this rule at all, so it silently "worked" in every local test
+run and never surfaced until run against real Postgres, which is also
+what production actually runs. Same bug class already hit twice this
+session while building the map-latency debug endpoints, just this time
+in live search code.
+
+**Practical impact**: any real search request that included `lat`/`lng`
+— i.e. CRAVE's own location-aware "nearby search" feature, the exact
+fix this proximity-ordering code exists for — would 500 against
+production Postgres, every time, for as long as this code has existed.
+
+Fixed with `add_columns()` to add the distance expression to the select
+list explicitly, without disturbing `.scalars()`'s entity extraction.
+Set up a real local Postgres 16 instance (available in this sandbox)
+and ran the full suite directly against it, matching the exact
+environment that caught the bug — confirmed all 5
+`test_search_query.py` tests (which already existed, asserting real
+sort-order correctness, not just "doesn't crash") fail before the fix
+and pass after, on a fresh database each time (a first pass at this
+reused the same Postgres database across runs and got misleading
+results from leftover state — recreated it fresh per run to match how
+CI actually behaves).
+
+Also fixed two of this session's own new debug-route tests that
+assumed the suite always runs on SQLite — they failed for a different
+reason (a bad assumption, not a bug) once actually run against
+Postgres. Made them conditional on the real configured database, and
+added the missing positive-path coverage for the Postgres branch that
+had previously only been verified manually via curl against production.
+
+Verified: 633 backend tests passing (2 conditionally skipped depending
+on which DB is active), stable across two runs each against both a
+fresh local Postgres 16 instance and SQLite.
