@@ -157,3 +157,61 @@ def test_scheduler_diagnostics_flags_still_running_job(monkeypatch):
     match = next(r for r in body["recent_runs"] if r["job_name"] == "test_stuck_job")
     assert match["still_running_or_crashed"] is True
     assert match["finished_at"] is None
+
+
+def test_map_query_plan_requires_api_key_when_configured(monkeypatch):
+    monkeypatch.setenv("API_KEY", "fixture-debug-key")
+    response = client.get("/api/v1/debug/map-query-plan?lat=37.7749&lng=-122.4194")
+    assert response.status_code == 401
+
+
+def test_map_query_plan_no_ops_safely_on_non_postgres_db(monkeypatch):
+    # The test suite runs on SQLite -- EXPLAIN (FORMAT JSON) is Postgres-only
+    # syntax, so this must degrade to a clean error response, never a 500.
+    monkeypatch.delenv("API_KEY", raising=False)
+    response = client.get("/api/v1/debug/map-query-plan?lat=37.7749&lng=-122.4194")
+    assert response.status_code == 200
+    body = response.json()
+    assert "error" in body
+    assert "Postgres" in body["error"]
+
+
+def test_categories_query_plan_requires_api_key_when_configured(monkeypatch):
+    monkeypatch.setenv("API_KEY", "fixture-debug-key")
+    response = client.get("/api/v1/debug/categories-query-plan?lat=37.7749&lng=-122.4194")
+    assert response.status_code == 401
+
+
+def test_categories_query_plan_no_ops_safely_on_non_postgres_db(monkeypatch):
+    monkeypatch.delenv("API_KEY", raising=False)
+    response = client.get("/api/v1/debug/categories-query-plan?lat=37.7749&lng=-122.4194")
+    assert response.status_code == 200
+    body = response.json()
+    assert "error" in body
+    assert "Postgres" in body["error"]
+
+
+def test_map_query_timing_requires_api_key_when_configured(monkeypatch):
+    monkeypatch.setenv("API_KEY", "fixture-debug-key")
+    response = client.get("/api/v1/debug/map-query-timing?lat=37.8044&lng=-122.2712")
+    assert response.status_code == 401
+
+
+def test_map_query_timing_reports_per_phase_breakdown(monkeypatch):
+    # Uses conftest.py's seeded place (lat=37.8044, lng=-122.2712) -- unlike
+    # map-query-plan, this hits real ORM code paths that work on SQLite too,
+    # so it's a genuine (not no-op) exercise of the production functions.
+    monkeypatch.delenv("API_KEY", raising=False)
+    response = client.get(
+        "/api/v1/debug/map-query-timing?lat=37.8044&lng=-122.2712&radius_km=5"
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["place_ids_count"] >= 1
+    assert body["categories_bulk_error"] is None
+    assert body["images_bulk_error"] is None
+    for key in (
+        "base_query_seconds", "categories_bulk_seconds",
+        "images_bulk_seconds", "total_seconds",
+    ):
+        assert isinstance(body[key], (int, float))
