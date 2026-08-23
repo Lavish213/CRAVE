@@ -98,6 +98,16 @@ export function formatPrice(place: PlaceOut): string | null {
   return '$'.repeat(tier);
 }
 
+// ─── Distance ────────────────────────────────────────────────────────────────
+
+/** Was duplicated identically in PlaceCard.tsx and PlaceCardCompact.tsx. */
+export function formatDistance(distanceMiles: number | null | undefined): string | null {
+  if (distanceMiles == null) return null;
+  if (distanceMiles < 0.1) return 'Here';
+  if (distanceMiles < 10) return `${distanceMiles.toFixed(1)} mi`;
+  return `${Math.round(distanceMiles)} mi`;
+}
+
 // ─── Badges (emoji chips) ────────────────────────────────────────────────────
 
 export interface Badge {

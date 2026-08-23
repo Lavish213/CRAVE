@@ -5,7 +5,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional, Set, Tuple
 
 from sqlalchemy import exists, func, not_, or_, select, update
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from app.db.models.place import Place
 from app.db.models.place_image import PlaceImage, VISIBILITY_HIDDEN
@@ -239,7 +239,16 @@ class ImageWorker:
         place_ids: Optional[List[str]],
     ) -> Tuple[List[Place], Set[str]]:
 
-        base_stmt = select(Place).where(
+        # ImageIngestService (._has_existing_images) reads place.images, and
+        # ProviderImageExtractor (reached via ImageReader further down this
+        # same pipeline) reads place.claims -- both default to lazy loading
+        # now (see category.py's comment for why), so this batch fetch needs
+        # its own explicit eager-load options to avoid a per-place query for
+        # each in the loop below. Same pattern recompute_scores.py already
+        # uses for Place.categories.
+        base_stmt = select(Place).options(
+            selectinload(Place.images), selectinload(Place.claims),
+        ).where(
             Place.is_active.is_(True),
         )
 
@@ -308,7 +317,9 @@ class ImageWorker:
         # Base filters only (is_active, place_ids, image_blocked) — NOT
         # _needs_image_work_clause, since a stale-but-present primary image
         # deliberately doesn't match that clause at all.
-        stale_base_stmt = select(Place).where(Place.is_active.is_(True))
+        stale_base_stmt = select(Place).options(
+            selectinload(Place.images), selectinload(Place.claims),
+        ).where(Place.is_active.is_(True))
         if place_ids:
             stale_base_stmt = stale_base_stmt.where(Place.id.in_(place_ids))
         stale_base_stmt = stale_base_stmt.where(Place.image_blocked.is_not(True))

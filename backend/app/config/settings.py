@@ -66,6 +66,21 @@ class Settings(BaseSettings):
 
     database_url: str | None = None
 
+    # Previously hardcoded pool_size=20/max_overflow=40 (60 max connections
+    # per process) directly in app/db/session.py. That was sized for a
+    # single process; now that the scheduler runs as a separate Railway
+    # service (see run_embedded_scheduler above), TWO processes each
+    # maintain their own pool against the same database -- worst case
+    # 120 combined connections, which already exceeds Railway Postgres's
+    # default max_connections of 100 on its own, before counting Alembic
+    # migration connections, the Railway Console, or Postgres's own
+    # reserved_connections. Made configurable (not just lowered) so each
+    # service can be tuned independently via its own Railway env vars
+    # without a code change -- the busier web service and the mostly-
+    # sequential worker don't need the same ceiling.
+    db_pool_size: int = 10
+    db_max_overflow: int = 10
+
     # --------------------------------------------------
     # CACHE
     # --------------------------------------------------

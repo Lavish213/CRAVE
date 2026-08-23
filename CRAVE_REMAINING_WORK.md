@@ -2493,3 +2493,307 @@ stability after this change with no code touched.
 **Still open**: waiting on the user to re-run `./deploy.sh` and re-curl
 `/api/v1/debug/version` to confirm `commit` is finally non-null and
 matches `git rev-parse HEAD`, then re-test the map.
+
+### Follow-up — the map/geojson fix finally confirmed working, and the real root cause turned out to be different from the working theory
+
+`/version` came back non-null and matching `HEAD` this time, confirming
+the deploy mechanism itself was finally trustworthy. The map/geojson
+timing re-test still showed ~58s though — expected, since the deploy
+just confirmed didn't yet include the scheduler-worker split (Railway
+config-as-code only). That split was completed this pass: a second
+Railway service was created from the same repo running
+`cd backend && python -m app.scheduler_worker` (its Start Command field
+had to be set directly rather than via `railway.scheduler-worker.toml`,
+since Railway's Config-as-Code feature was found to be deprecated —
+existing files keep working until 2026-12-01, but a brand-new service
+can't opt in after 2026-08-28), then `RUN_EMBEDDED_SCHEDULER=false` set
+on the web service. Confirmed live: the worker service's own logs show
+`scheduler_worker_started jobs=9`, and the web service's logs show
+`scheduler_embedded_disabled` with no `apscheduler` activity at all.
+
+**But the map endpoint was still ~60-67s after the split — proving the
+embedded scheduler was never the actual cause of this specific latency**,
+despite being a real, separate problem (correctly fixed anyway, and
+worth keeping fixed for its own sake — request handling and background
+jobs no longer compete for the same process). Root-caused for real this
+time via three new diagnostic endpoints (`/api/v1/debug/map-query-plan`,
+`/api/v1/debug/map-query-timing`, `/api/v1/debug/categories-query-plan`,
+all gated behind `require_api_key`), verified live against production
+step by step instead of guessing:
+
+1. `EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)` on the base bounding-box
+   query: 4.45ms, clean index usage on `ix_places_places_rank_score`.
+   Ruled out the base query and the "missing spatial index" theories
+   entirely (this app doesn't use PostGIS — plain float columns + a
+   regular B-tree index, which is sufficient at this table size).
+2. Per-phase timing of `fetch_places_for_map`'s three steps: base query
+   0.61s, **`get_categories_for_places_bulk` 62.27s**, images bulk
+   lookup 0.18s. Isolated the culprit to one specific function.
+3. `EXPLAIN ANALYZE` on that exact categories-join query: 2.7ms, clean
+   index usage (`place_categories` has both a composite PK and a
+   dedicated `place_id` index; only 34,926 rows total — not remotely
+   bloated). This proved the SQL itself wasn't the problem, pointing at
+   ORM-level behavior instead of the database.
+4. Read `Category.places`'s relationship config directly:
+   `lazy="selectin"` (eager) — and `grep -rn "\.places\b"` across the
+   entire `app/` tree confirmed **nothing anywhere ever reads
+   `category.places`**. Every call to `get_categories_for_places_bulk()`
+   (used by the map endpoint, and transitively by search/feed) was
+   silently triggering SQLAlchemy to fully hydrate every returned
+   category's *entire* list of places (each Place carrying its own
+   eager relationships) — for a relationship no code path ever touches.
+   `EXPLAIN ANALYZE` couldn't see this because it only tests the literal
+   SQL text, not what the ORM does with the result rows afterward.
+
+Fixed: `Category.places` changed from `lazy="selectin"` to `lazy="select"`
+(true lazy, SQLAlchemy's own default) in `app/db/models/category.py`.
+Added `tests/test_place_category_query.py`, including a regression test
+that counts real SQL statements via a SQLAlchemy engine event listener —
+a timing or functional assertion alone wouldn't catch a reintroduced
+eager load on a small test dataset. Verified by temporarily reverting
+the fix locally: the test correctly failed (7 statements instead of 1),
+then passed again once the fix was restored.
+
+`Place.categories`/`city`/`claims`/`truths`/`images` are also configured
+`lazy="selectin"` — the same pattern, just not yet confirmed to be
+costing anything in practice the way `Category.places` was. Deliberately
+**not** touched in this pass: unlike `Category.places`, those
+relationships may genuinely be relied on by serialization code
+elsewhere, and changing them blindly risks a real regression rather than
+removing dead weight. Worth a dedicated, careful audit later — check
+each one's actual callers the same way this fix did, one at a time.
+
+Live-verified end to end after deploying the fix (commit
+`1a563262e8e3ebadf6299587ef9570b84decdc83`): cold cache with real
+categories/images populated dropped from **~60-67s to 1.45s**; warm
+cache to **0.007s**. Reviewed via the `code-review` skill (high effort)
+before merging — no genuine defects found; confirmed independently that
+the full suite (627 tests) passes stably and that the regression test
+is real, not decorative.
+
+Also fixed along the way, unrelated but discovered mid-investigation:
+`main` on GitHub was missing 3 migrations (`user_blocks`,
+`menu_submissions`, `user_streaks`) that were already live in
+production — applied via `railway up` from this feature branch over the
+course of many earlier sessions, but never merged to `main`. Since the
+web service's Railway source is `main` with auto-deploy-on-push enabled,
+any future GitHub-triggered redeploy would have failed identically to
+how a freshly-created second Railway service failed the moment it tried
+`alembic upgrade head` against `main`'s stale migration history. Merged
+via PR #43 (resolving real conflicts with an already-merged R2
+durable-photo-refresh PR along the way, keeping this branch's more
+complete `r2_client.py`/`stale_image_refresher.py` versions), then PR
+#45 for the fix described above. `main` now matches what's actually
+deployed.
+
+Verified: 627 backend tests passing (623 previous + 4 new), stable
+across two runs. `npx tsc --noEmit -p .` clean (no frontend changes this
+pass beyond what PR #43 already carried).
+
+**Nothing still open from this specific investigation** — root-caused,
+fixed, live-verified, reviewed, and merged to `main`.
+
+### Follow-up — asked to keep going: researched DB pool sizing, audited every other eager-loading relationship in the app, fixed 3 small frontend items, then a broader bug-hunting sweep
+
+Web-researched Railway Postgres's actual connection limits before
+touching anything: default `max_connections = 100`. The engine's
+pool config (`pool_size=20, max_overflow=40` — 60 max connections per
+process, hardcoded in `app/db/session.py`) was sized for a single
+process; now that the scheduler is a separate Railway service, two
+processes each maintaining their own pool against the same database
+could combine to 120 connections — already over that limit on its own,
+before counting Alembic, the Console, or Postgres's own reserved
+connections. Made configurable via `settings.db_pool_size`/
+`db_max_overflow` (env vars `DB_POOL_SIZE`/`DB_MAX_OVERFLOW`), defaulted
+conservatively to 10/10 (20 max per process, 40 combined) so each
+Railway service can be tuned independently without a code change. Added
+`test_db_session_pool_config.py`.
+
+Then audited every other `lazy="selectin"` relationship in the app the
+same way `Category.places` was audited in the previous entry — found 13
+more (across `place.py`, `city.py`, `menu_item.py`, `menu_snapshot.py`,
+`place_claim.py`, `place_feed_snapshot.py`, `place_image_fetch_log.py`,
+`place_image.py`), confirmed via grep across the entire backend
+(including Pydantic schema field names, to catch implicit access through
+`from_attributes` serialization) that only `Place.categories` is ever
+actually read anywhere — the other 13 were pure eager-load waste, same
+bug class, same fix (`lazy="select"`).
+
+One of these turned out to be a second live, previously-undetected
+instance of the map bug's exact mechanism: `PlaceImage.place` being eager
+meant `GET /api/v1/place/{place_id}` (one of the most frequently-hit
+endpoints in the app) — which fetches gallery images via
+`get_public_gallery()`, itself a full-`PlaceImage`-entity query — silently
+reloaded each image's *entire* parent `Place` object graph on every
+request, which then cascaded into Place's own (equally dead) eager
+relationships. Found by writing a regression test for a smaller,
+already-suspected fix (`place_detail_router.py`'s own `select(Place)` →
+specific columns, mirroring `map_query.py`'s established pattern) and
+watching the statement count come back as 9 instead of the expected ~3 —
+traced the extra queries' stack trace directly to SQLAlchemy's
+`_load_via_child`, which pointed straight at `PlaceImage.place`. Added
+`test_place_detail_no_eager_load.py` (same statement-counting technique
+as `test_place_category_query.py`).
+
+Also fixed the 3 remaining "Low Impact" items from an earlier audit pass
+that had never actually been done (confirmed via direct code checks, not
+assumed from an old note):
+- Distance-formatting logic was duplicated identically in `PlaceCard.tsx`
+  and `PlaceCardCompact.tsx` — extracted to `scoring.ts`'s new
+  `formatDistance()`, tested.
+- `MenuSubmissionSheet`'s invalid-price error now renders inline next to
+  the specific item that failed, instead of a generic banner with no
+  indication of which item was wrong. The "add at least one item" error
+  (not tied to any item) stays as the global banner.
+- `rank/[placeId].tsx`'s "See my list" button now uses `router.push`
+  instead of `router.replace`, so back navigation after ranking a place
+  isn't lost.
+
+Verified: 631 backend tests passing (627 + 4 new), frontend `tsc --noEmit`
+clean, full jest suite 94/94 (90 + 4 new `formatDistance` tests), stable
+across repeated runs.
+
+Launched a broader bug-hunting sweep (N+1 query patterns, frontend
+stale-response races in screens not yet audited, cache-key correctness
+in other cached endpoints, missing `db.rollback()` after failed
+statements sharing a session).
+
+**The sweep caught a real gap in this session's own earlier work**: the
+whole-app grep used to confirm `Place.city`/`.claims`/`.images` were
+"never read anywhere" searched for literal `.attr` dot-access, which
+missed the same data read via `getattr(place, "attr", default)` — the
+exact "invisible to naive grep" trap already worried about for Pydantic
+schema fields, just a different shape. Three real, confirmed usages:
+
+- `app/workers/recompute_scores_worker.py::_score_batch()` reads
+  `getattr(place, "city", None)` for city-aware scoring weights, looping
+  over up to 500 places every 15 minutes
+  (`app/scheduler.py::_job_score_recompute`).
+- `app/services/images/image_ingest_service.py` reads
+  `getattr(place, "images", ...)`, and
+  `app/services/images/provider_image_extractor.py` reads
+  `getattr(place, "claims", None)` — both looped over up to 100 places
+  every ~5 minutes via `ImageWorker._select_places()`.
+
+Rather than reverting the model-level `lazy="select"` default (correctly
+removed everywhere it's genuinely unused, including the live, frequently-
+hit map and place-detail endpoints), added explicit
+`.options(selectinload(...))` at the three specific batch-fetch queries
+that actually need it — the same pattern
+`app/services/scoring/recompute_scores.py` already established for
+`Place.categories`. Along the way, found `recompute_scores_worker.py`'s
+own `_iter_place_batches()` is legacy/unused (per its own docstring —
+`app/scheduler.py`'s real job builds its own query directly); fixed the
+real, live site in `scheduler.py` and left a harmless option on the
+legacy path too, in case it's ever revived.
+
+Added two regression tests using real statement counting (a functional
+assertion alone wouldn't distinguish "batched" from "one query per
+place" — both return correct data): `test_recompute_scores_worker_
+city_lookup.py` (5 places across 5 *distinct* cities, so the per-session
+identity map can't accidentally dedupe repeated lookups of the *same*
+city — confirmed reverting the fix costs 5 more statements, 12 vs 7) and
+`test_image_worker_eager_load.py` (checks SQLAlchemy's own inspection
+API directly rather than running the full ingestion pipeline, which
+makes real outbound HTTP calls — confirmed by temporarily reverting the
+fix and watching it fail).
+
+Also found and fixed 3 more frontend stale-response races, same bug
+class already fixed in `place/[id].tsx`, `craves.tsx`/`cravesStore.ts`,
+`useTrending.ts`, and `rank/[placeId].tsx`:
+- `app/user/[id].tsx` — tapping from one user's profile into another's
+  could show stale data if the old request outraced the new one.
+- `app/taste-profile/[userId].tsx` — same shape.
+- `app/(tabs)/profile.tsx` — signing out and into a different account
+  while a previous load was in flight could populate the new account's
+  profile screen with the previous account's data.
+
+No further findings survived verification for the other two bug
+classes hunted (cache-key correctness in other cached endpoints;
+missing `db.rollback()` elsewhere) — also applied one small consistency
+fix along the way: `map_query_plan`'s own `EXPLAIN` failure branch was
+missing the same `db.rollback()` its sibling `categories_query_plan`
+already has (harmless in practice, since nothing else used `db`
+afterward in that request, but fixed for consistency).
+
+Verified: 633 backend tests passing (631 + 2 new), frontend `tsc
+--noEmit` clean, full jest suite 94/94, stable across repeated runs.
+
+### Follow-up — this repo's own CI caught a real, standing production bug none of this session's own testing could
+
+Opened PR #46 with everything above. Subscribed to its activity, and its
+"Backend (same suite, against real Postgres)" CI job — a second run of
+the exact same suite, but against a real Postgres instance instead of
+SQLite — failed with `psycopg2.errors.InvalidColumnReference: for
+SELECT DISTINCT, ORDER BY expressions must appear in select list`, in
+`search_query.py::search_places()`, not in anything touched this
+session. `search_places()` builds `select(Place).distinct()`, then
+(when the caller supplies `lat`/`lng`) orders by a computed distance
+expression that was never part of the SELECT list — SQLite doesn't
+enforce this rule at all, so it silently "worked" in every local test
+run and never surfaced until run against real Postgres, which is also
+what production actually runs. Same bug class already hit twice this
+session while building the map-latency debug endpoints, just this time
+in live search code.
+
+**Practical impact**: any real search request that included `lat`/`lng`
+— i.e. CRAVE's own location-aware "nearby search" feature, the exact
+fix this proximity-ordering code exists for — would 500 against
+production Postgres, every time, for as long as this code has existed.
+
+Fixed with `add_columns()` to add the distance expression to the select
+list explicitly, without disturbing `.scalars()`'s entity extraction.
+Set up a real local Postgres 16 instance (available in this sandbox)
+and ran the full suite directly against it, matching the exact
+environment that caught the bug — confirmed all 5
+`test_search_query.py` tests (which already existed, asserting real
+sort-order correctness, not just "doesn't crash") fail before the fix
+and pass after, on a fresh database each time (a first pass at this
+reused the same Postgres database across runs and got misleading
+results from leftover state — recreated it fresh per run to match how
+CI actually behaves).
+
+Also fixed two of this session's own new debug-route tests that
+assumed the suite always runs on SQLite — they failed for a different
+reason (a bad assumption, not a bug) once actually run against
+Postgres. Made them conditional on the real configured database, and
+added the missing positive-path coverage for the Postgres branch that
+had previously only been verified manually via curl against production.
+
+Verified: 633 backend tests passing (2 conditionally skipped depending
+on which DB is active), stable across two runs each against both a
+fresh local Postgres 16 instance and SQLite.
+
+### Follow-up — root requirements.txt drift (pyarrow), caught by CI on PR #46
+
+A second CI job on the same PR — "Backend (syntax + import check)" —
+failed independently on the fix commit above, for a completely
+unrelated, pre-existing reason: this repo intentionally keeps root
+`requirements.txt` (Railway's actual build entry point — see the long
+comment at the top of that file explaining why `-r backend/requirements.txt`
+indirection breaks Railpack's build-context copying) as a byte-for-byte
+duplicate of `backend/requirements.txt`, and CI has a dedicated step that
+fails the build the moment the two drift apart. They had already drifted:
+`backend/requirements.txt` gained `pyarrow>=18.0.0` at some earlier point
+(for Overture Maps discovery ingestion — reads public Parquet directly off
+S3), but the copy in the root file was never updated to match.
+
+Confirmed via:
+```
+diff <(grep -v "^#" requirements.txt | grep -v "^$" | sort) \
+     <(grep -v "^#" backend/requirements.txt | grep -v "^$" | sort)
+```
+which showed exactly one line of drift (`pyarrow>=18.0.0` present only in
+`backend/requirements.txt`). Nothing else in either file had diverged.
+
+**Practical impact**: root `requirements.txt` is what Railway's zero-config
+Python build actually installs from — if this had reached a real deploy,
+pyarrow would be missing from the production install and every Overture
+Maps discovery ingestion call would fail at import time.
+
+Fixed by copying the `pyarrow>=18.0.0` line (with its full explanatory
+comment) verbatim into root `requirements.txt`, matching the file's own
+documented convention ("Edit backend/requirements.txt first, then copy its
+package lines here verbatim"). Verified the sync-check diff is now empty,
+and re-ran the full backend suite (633 passed, 2 skipped) against both
+SQLite and a freshly-recreated local Postgres 16 instance — clean on both.

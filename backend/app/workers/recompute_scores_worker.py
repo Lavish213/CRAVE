@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional, Set
 
 from sqlalchemy import func, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from app.db.session import SessionLocal
 from app.db.models.place import Place
@@ -284,7 +284,12 @@ def _iter_place_batches(
     batch_size: int = 500,
 ):
     limit = _clamp_limit(limit)
-    stmt = select(Place).order_by(Place.id.asc())
+    # _score_batch() below reads place.city (for city-aware scoring
+    # weights) via getattr -- Place.city defaults to lazy loading (see
+    # category.py's comment for why), so this batch fetch needs its own
+    # explicit eager-load option to avoid a per-place query in the loop.
+    # Same pattern recompute_scores.py already uses for Place.categories.
+    stmt = select(Place).options(selectinload(Place.city)).order_by(Place.id.asc())
     if city_id:
         stmt = stmt.where(Place.city_id == city_id)
 

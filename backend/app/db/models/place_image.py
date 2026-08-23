@@ -258,9 +258,16 @@ class PlaceImage(Base, TimestampMixin):
     # RELATIONSHIP
     # --------------------------------------------------
 
+    # Confirmed via grep across the entire app: nothing ever reads
+    # place_image.place. This was the actual live-confirmed instance of the
+    # bug: loading PlaceImage entities (e.g. get_public_gallery(), used by
+    # the place-detail endpoint) silently reloaded each image's *entire*
+    # parent Place object graph -- which itself then cascaded into Place's
+    # own (equally dead) eager relationships -- on every single request,
+    # for data nothing reads. Same bug class as Category.places.
     place: Mapped["Place"] = relationship(
         "Place",
         back_populates="images",
-        lazy="selectin",
+        lazy="select",
         passive_deletes=True,
     )

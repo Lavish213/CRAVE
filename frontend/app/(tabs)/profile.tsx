@@ -8,7 +8,7 @@
 // know this city.") instead of a bare metric, because that's the line
 // someone screenshots. Settings live behind the gear here rather than in
 // their own tab — the same place every comparable app puts them.
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import {
   RefreshControl,
   ScrollView,
@@ -84,7 +84,15 @@ export default function ProfileScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [authVisible, setAuthVisible] = useState(false);
 
+  // Signing out and back in as a different account while a previous
+  // load() is still in flight (or useFocusEffect re-firing mid-request)
+  // could otherwise let a stale response overwrite state for the new
+  // account — same account-switch race already fixed in
+  // craves.tsx/cravesStore.ts.
+  const loadGenerationRef = useRef(0);
+
   const load = useCallback(async () => {
+    const myGeneration = ++loadGenerationRef.current;
     if (!user) {
       setLoading(false);
       return;
@@ -99,13 +107,14 @@ export default function ProfileScreen() {
         fetchFollowers().catch(() => [] as string[]),
         fetchMyStreak().catch(() => null),
       ]);
+      if (myGeneration !== loadGenerationRef.current) return;
       setProfile(p);
       setRankings(r);
       setFollowingCount(following.length);
       setFollowerCount(followers.length);
       setStreak(s);
     } finally {
-      setLoading(false);
+      if (myGeneration === loadGenerationRef.current) setLoading(false);
     }
   }, [user?.id]);
 

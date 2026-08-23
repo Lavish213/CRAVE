@@ -128,11 +128,20 @@ def _job_score_recompute() -> None:
     from app.core.job_run_tracker import track_job_run
     from sqlalchemy import or_
 
+    from sqlalchemy.orm import selectinload
+
     db = SessionLocal()
     try:
         with track_job_run("score_recompute") as run:
+            # recompute_places_v4 -> _score_batch reads place.city for
+            # city-aware scoring weights -- Place.city defaults to lazy
+            # loading now (see category.py's comment for why), so this
+            # batch fetch needs its own explicit eager-load option to
+            # avoid a per-place query for each of up to 500 places, every
+            # 15 minutes.
             places = (
                 db.query(Place)
+                .options(selectinload(Place.city))
                 .filter(Place.is_active.is_(True))
                 .filter(
                     or_(Place.rank_score == 0, Place.last_scored_at.is_(None))

@@ -20,6 +20,18 @@ from app.api.v1.routes import debug as debug_route
 client = TestClient(app, raise_server_exceptions=False)
 
 
+def _running_on_postgres() -> bool:
+    # This repo's own CI runs the whole suite a second time against a real
+    # Postgres instance (that's how a real production bug in
+    # search_query.py's SELECT DISTINCT + ORDER BY was caught -- SQLite
+    # silently allows what Postgres rejects). The map/categories-query-plan
+    # endpoints behave differently by design depending on which database is
+    # actually connected, so these tests need to know which one that is
+    # rather than assuming SQLite.
+    from app.db.session import engine
+    return str(engine.url).startswith("postgresql")
+
+
 def test_sentry_test_endpoint_bypasses_auth_when_api_key_unset(monkeypatch):
     monkeypatch.delenv("API_KEY", raising=False)
     response = client.get("/api/v1/debug/sentry-test")
@@ -165,9 +177,10 @@ def test_map_query_plan_requires_api_key_when_configured(monkeypatch):
     assert response.status_code == 401
 
 
+@pytest.mark.skipif(_running_on_postgres(), reason="this checks the non-Postgres no-op path")
 def test_map_query_plan_no_ops_safely_on_non_postgres_db(monkeypatch):
-    # The test suite runs on SQLite -- EXPLAIN (FORMAT JSON) is Postgres-only
-    # syntax, so this must degrade to a clean error response, never a 500.
+    # EXPLAIN (FORMAT JSON) is Postgres-only syntax, so on SQLite this must
+    # degrade to a clean error response, never a 500.
     monkeypatch.delenv("API_KEY", raising=False)
     response = client.get("/api/v1/debug/map-query-plan?lat=37.7749&lng=-122.4194")
     assert response.status_code == 200
@@ -176,12 +189,24 @@ def test_map_query_plan_no_ops_safely_on_non_postgres_db(monkeypatch):
     assert "Postgres" in body["error"]
 
 
+@pytest.mark.skipif(not _running_on_postgres(), reason="this checks the real Postgres path")
+def test_map_query_plan_returns_a_real_explain_plan_on_postgres(monkeypatch):
+    monkeypatch.delenv("API_KEY", raising=False)
+    response = client.get("/api/v1/debug/map-query-plan?lat=37.7749&lng=-122.4194")
+    assert response.status_code == 200
+    body = response.json()
+    assert "error" not in body
+    assert body["explain_plan_error"] is None
+    assert body["explain_plan"] is not None
+
+
 def test_categories_query_plan_requires_api_key_when_configured(monkeypatch):
     monkeypatch.setenv("API_KEY", "fixture-debug-key")
     response = client.get("/api/v1/debug/categories-query-plan?lat=37.7749&lng=-122.4194")
     assert response.status_code == 401
 
 
+@pytest.mark.skipif(_running_on_postgres(), reason="this checks the non-Postgres no-op path")
 def test_categories_query_plan_no_ops_safely_on_non_postgres_db(monkeypatch):
     monkeypatch.delenv("API_KEY", raising=False)
     response = client.get("/api/v1/debug/categories-query-plan?lat=37.7749&lng=-122.4194")
@@ -189,6 +214,22 @@ def test_categories_query_plan_no_ops_safely_on_non_postgres_db(monkeypatch):
     body = response.json()
     assert "error" in body
     assert "Postgres" in body["error"]
+
+
+@pytest.mark.skipif(not _running_on_postgres(), reason="this checks the real Postgres path")
+def test_categories_query_plan_finds_place_ids_on_postgres(monkeypatch):
+    # conftest.py seeds a place at exactly this lat/lng -- a generous
+    # radius guarantees a non-empty bbox so this actually exercises the
+    # EXPLAIN query rather than short-circuiting on "no place_ids in bbox".
+    monkeypatch.delenv("API_KEY", raising=False)
+    response = client.get(
+        "/api/v1/debug/categories-query-plan?lat=37.8044&lng=-122.2712&radius_km=5"
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert "error" not in body
+    assert body["place_ids_count"] >= 1
+    assert body["explain_plan_error"] is None
 
 
 def test_map_query_timing_requires_api_key_when_configured(monkeypatch):

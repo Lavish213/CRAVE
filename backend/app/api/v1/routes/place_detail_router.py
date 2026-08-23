@@ -54,12 +54,29 @@ def get_place_detail(
     # Fetch place
     # --------------------------------------------------
 
-    stmt = select(Place).where(
+    # Selects specific columns rather than the full Place entity
+    # (`select(Place)`) deliberately -- Place.city/claims/truths/images are
+    # all configured lazy="selectin" (eager) at the model level, so loading
+    # the full entity silently triggered four extra queries pulling in
+    # every claim, truth, and image row for this place on every single
+    # place-detail request, none of which are ever read below (images and
+    # categories are both re-fetched separately, correctly scoped, just a
+    # few lines down). Same bug class, same fix pattern, as the one found
+    # and fixed in get_categories_for_places_bulk() for the map endpoint --
+    # confirmed via the same method: grep across the whole app for real
+    # usages of place.city/.claims/.truths, all zero.
+    stmt = select(
+        Place.id, Place.name, Place.city_id, Place.address,
+        Place.lat, Place.lng, Place.price_tier, Place.has_menu,
+        Place.rank_score, Place.master_score, Place.confidence_score,
+        Place.operational_confidence, Place.local_validation,
+        Place.website, Place.grubhub_url, Place.created_at, Place.updated_at,
+    ).where(
         Place.id == place_id,
         Place.is_active.is_(True),
     )
 
-    place = db.execute(stmt).scalar_one_or_none()
+    place = db.execute(stmt).one_or_none()
 
     if not place:
         raise HTTPException(

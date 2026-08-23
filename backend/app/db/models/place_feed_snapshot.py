@@ -122,9 +122,12 @@ class PlaceFeedSnapshot(Base):
     # RELATIONSHIP
     # -----------------------------------------------------
 
+    # Confirmed via grep across the entire app: nothing ever reads
+    # place_feed_snapshot.place (same dead-eager-load bug class as
+    # Category.places).
     place: Mapped["Place"] = relationship(
         "Place",
         back_populates="feed_snapshots",
         passive_deletes=True,
-        lazy="selectin",
+        lazy="select",
     )

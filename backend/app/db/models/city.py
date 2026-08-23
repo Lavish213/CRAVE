@@ -93,12 +93,15 @@ class City(Base, TimestampMixin):
     # RELATIONSHIPS
     # -----------------------------------------------------
 
+    # Confirmed via grep across the entire app: nothing ever reads
+    # city.places (same dead-eager-load bug class as Category.places --
+    # see that model's comment for the full story).
     places: Mapped[list["Place"]] = relationship(
         "Place",
         back_populates="city",
         cascade="all, delete-orphan",
         passive_deletes=True,
-        lazy="selectin",
+        lazy="select",
     )
 
     # -----------------------------------------------------
