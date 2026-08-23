@@ -1606,3 +1606,42 @@ rather than assumed:
 ("Menus arent there either" for the places shown matches the real 2.3%
 menu coverage number above — expected given current backlog, not a
 separate bug.)
+
+### Follow-up — built email/password sign-in and sign-up
+
+Closed the "we need regualr emails also" gap. `AuthSheet.tsx` previously
+only had Apple/Google OAuth buttons; added a "Continue with email" option
+below a divider that switches the sheet into an email/password form
+(back chevron returns to the OAuth options), with a toggle between
+sign-in and "create account" (sign-up) modes.
+
+- Sign-in calls `supabase.auth.signInWithPassword`; sign-up calls
+  `supabase.auth.signUp`. Neither needed any new plumbing to actually log
+  the user in — `useAuthStore`'s existing `supabase.auth.onAuthStateChange`
+  listener picks up the resulting session exactly the same way it already
+  does for OAuth, and the existing username-claim gate
+  (`app/profile-setup.tsx`, triggered from the profile tab when a user has
+  no profile row yet) applies identically regardless of which auth method
+  created the account — nothing else in the app is auth-method-aware.
+- Handled the case Supabase's default project settings produce on sign-up
+  (email confirmation required, so `signUp` returns no session): shows a
+  toast telling the user to check their email and confirm, then switches
+  the sheet back to sign-in mode rather than silently doing nothing.
+- Added `humanizeAuthError()` to translate the handful of raw Supabase
+  error strings users will actually hit ("Invalid login credentials",
+  "already registered", password-too-short, unconfirmed email, rate
+  limit) into actionable copy instead of showing Supabase's internal
+  wording verbatim.
+- Client-side validation only (real email format, 6+ char password) —
+  Supabase enforces the authoritative rules server-side regardless.
+- Explicitly **not** built here: a forgot-password / reset flow. That
+  needs its own deep-link-handling screen (consuming a recovery-type
+  token the same way `createSessionFromUrl` already consumes an OAuth
+  token) — a real follow-up, not done as a silent gap, just kept out of
+  this change to stay scoped to what was asked.
+
+Verified: `npx tsc --noEmit` clean, full frontend Jest suite passes (82,
+unaffected — no existing test file covers `AuthSheet.tsx` itself, so this
+was also manually reasoned through against the existing OAuth code path
+rather than caught by a new automated test). Backend untouched, no
+re-run needed.
