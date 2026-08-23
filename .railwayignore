@@ -1,0 +1,12 @@
+# railway up uploads this directory as the build context for the backend
+# web service (see railway.toml/railway.json — its only startCommand is
+# `cd backend && ... uvicorn app.main:app`, nothing here ever touches
+# frontend/). It's meant to respect .gitignore, but that appears to only
+# cover the root .gitignore, not frontend/.gitignore -- confirmed live:
+# frontend/ios (a 938MB native Expo prebuild directory, gitignored via
+# frontend/.gitignore, not tracked by git at all) was still being packed
+# into the upload, ballooning it toward ~1.7GB and reliably timing out the
+# `railway up` request to Railway's backboard API before it could finish
+# sending. Excluding frontend/ entirely here is correct regardless of why
+# the nested .gitignore wasn't honored -- this service never needs it.
+frontend/
