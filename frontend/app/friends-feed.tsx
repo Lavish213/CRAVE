@@ -25,6 +25,7 @@ import { SkeletonRowList } from '../src/components/SkeletonCard';
 import { ActivityEvent, fetchFriendsFeed } from '../src/api/social';
 import { formatScore, tierColor } from '../src/utils/rankScore';
 import { relativeTime } from '../src/utils/time';
+import { withImageWidth, AVATAR_IMAGE_WIDTH } from '../src/utils/imageUrl';
 
 function actorName(event: ActivityEvent): string {
   const a = event.actor;
@@ -110,7 +111,12 @@ export default function FriendsFeedScreen() {
             }
           >
             {item.actor?.avatar_url ? (
-              <Image source={item.actor.avatar_url} style={styles.avatar} contentFit="cover" />
+              <Image
+                source={withImageWidth(item.actor.avatar_url, AVATAR_IMAGE_WIDTH)}
+                style={styles.avatar}
+                contentFit="cover"
+                cachePolicy="memory-disk"
+              />
             ) : (
               <View style={[styles.avatar, styles.avatarFallback]}>
                 <Text style={styles.avatarInitial}>

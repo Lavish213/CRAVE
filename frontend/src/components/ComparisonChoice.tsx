@@ -60,6 +60,7 @@ export function ComparisonChoice({
           contentFit="cover"
           transition={150}
           placeholder={{ blurhash: 'L6PZfSi_.AyE_3t7t7R**0o#DgR4' }}
+          cachePolicy="memory-disk"
         />
       ) : (
         <View style={[StyleSheet.absoluteFill, styles.fallback]}>

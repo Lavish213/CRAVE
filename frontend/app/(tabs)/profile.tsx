@@ -26,6 +26,7 @@ import { EmptyState } from '../../src/components/EmptyState';
 import { AuthSheet } from '../../src/components/AuthSheet';
 import { RankedPlaceRow } from '../../src/components/RankedPlaceRow';
 import { SkeletonRowList } from '../../src/components/SkeletonCard';
+import { withImageWidth, AVATAR_IMAGE_WIDTH } from '../../src/utils/imageUrl';
 import { useAuthStore } from '../../src/stores/authStore';
 import {
   Profile,
@@ -173,7 +174,12 @@ export default function ProfileScreen() {
     >
       <View style={styles.header}>
         {profile.avatar_url ? (
-          <Image source={profile.avatar_url} style={styles.avatar} contentFit="cover" />
+          <Image
+            source={withImageWidth(profile.avatar_url, AVATAR_IMAGE_WIDTH)}
+            style={styles.avatar}
+            contentFit="cover"
+            cachePolicy="memory-disk"
+          />
         ) : (
           <View style={[styles.avatar, styles.avatarFallback]}>
             <Text style={styles.avatarInitial}>

@@ -7,7 +7,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  Image,
   RefreshControl,
   StyleSheet,
   Text,
@@ -15,6 +14,7 @@ import {
   View,
 } from 'react-native';
 import { FlashList } from '@shopify/flash-list';
+import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
@@ -22,6 +22,7 @@ import { SkeletonRowList } from '../../src/components/SkeletonCard';
 import { useCravesStore } from '../../src/stores/cravesStore';
 import { useToast } from '../../src/hooks/useToast';
 import { Colors, Spacing, Radius } from '../../src/constants/colors';
+import { withImageWidth, AVATAR_IMAGE_WIDTH } from '../../src/utils/imageUrl';
 import { PlaceCardCompact } from '../../src/components/PlaceCardCompact';
 import { EmptyState } from '../../src/components/EmptyState';
 import { ErrorState } from '../../src/components/ErrorState';
@@ -293,7 +294,12 @@ export default function CravesScreen() {
                 {craves.map((item) => (
                   <View key={item.id} style={styles.craveRow}>
                     {item.thumbnail_url ? (
-                      <Image source={{ uri: item.thumbnail_url }} style={styles.craveThumb} />
+                      <Image
+                        source={withImageWidth(item.thumbnail_url, AVATAR_IMAGE_WIDTH)}
+                        style={styles.craveThumb}
+                        contentFit="cover"
+                        cachePolicy="memory-disk"
+                      />
                     ) : null}
                     <View style={styles.craveMeta}>
                       <Text style={styles.craveName} numberOfLines={1}>

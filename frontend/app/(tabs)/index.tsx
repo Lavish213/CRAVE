@@ -196,7 +196,11 @@ export default function FeedScreen() {
     });
   }, [places, filters]);
 
-  const rows = buildFeedRows(filteredPlaces);
+  // Previously recomputed on every render (re-bucketing every place into
+  // tiers) even when triggered by unrelated state like filterVisible or
+  // authVisible toggling -- filteredPlaces just above already gets this
+  // memoization, buildFeedRows didn't.
+  const rows = useMemo(() => buildFeedRows(filteredPlaces), [filteredPlaces]);
 
   return (
     <View style={styles.container}>

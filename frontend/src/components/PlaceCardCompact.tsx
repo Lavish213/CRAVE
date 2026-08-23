@@ -15,7 +15,7 @@ interface Props {
   style?: ViewStyle;
 }
 
-export function PlaceCardCompact({ place, onPress, rightAction, style }: Props) {
+function PlaceCardCompactImpl({ place, onPress, rightAction, style }: Props) {
   const tier = getTier(place.rank_score);
   const price = place.price ?? formatPrice(place);
   const badges = getBadges(place);
@@ -42,6 +42,7 @@ export function PlaceCardCompact({ place, onPress, rightAction, style }: Props) 
           style={styles.thumb}
           contentFit="cover"
           placeholder={{ blurhash: 'L6PZfSi_.AyE_3t7t7R**0o#DgR4' }}
+          cachePolicy="memory-disk"
         />
       ) : (
         <View style={styles.thumbFallback}>
@@ -73,6 +74,11 @@ export function PlaceCardCompact({ place, onPress, rightAction, style }: Props) 
     </View>
   );
 }
+
+// See PlaceCard.tsx's identical note -- this renders as a FlashList row
+// in Search/Craves/TrendingStrip and shouldn't re-render on every parent
+// state change unrelated to its own props.
+export const PlaceCardCompact = React.memo(PlaceCardCompactImpl);
 
 const styles = StyleSheet.create({
   shadowWrap: {

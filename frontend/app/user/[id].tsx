@@ -36,6 +36,7 @@ import {
   unfollowUser,
 } from '../../src/api/social';
 import { rankedListHeadline } from '../../src/utils/rankScore';
+import { withImageWidth, AVATAR_IMAGE_WIDTH } from '../../src/utils/imageUrl';
 
 export default function UserProfileScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -199,7 +200,12 @@ export default function UserProfileScreen() {
 
       <View style={styles.header}>
         {profile.avatar_url ? (
-          <Image source={profile.avatar_url} style={styles.avatar} contentFit="cover" />
+          <Image
+            source={withImageWidth(profile.avatar_url, AVATAR_IMAGE_WIDTH)}
+            style={styles.avatar}
+            contentFit="cover"
+            cachePolicy="memory-disk"
+          />
         ) : (
           <View style={[styles.avatar, styles.avatarFallback]}>
             <Text style={styles.avatarInitial}>

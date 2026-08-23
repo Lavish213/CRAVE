@@ -25,6 +25,7 @@ import { Colors, Radius, Spacing } from '../src/constants/colors';
 import { EmptyState } from '../src/components/EmptyState';
 import { SkeletonRowList } from '../src/components/SkeletonCard';
 import { LeaderboardRow, fetchLeaderboard } from '../src/api/social';
+import { withImageWidth, AVATAR_IMAGE_WIDTH } from '../src/utils/imageUrl';
 import { useAuthStore } from '../src/stores/authStore';
 
 type Scope = 'global' | 'friends';
@@ -137,7 +138,12 @@ export default function LeaderboardScreen() {
                 <Text style={styles.rank}>{medal ?? item.rank}</Text>
 
                 {item.avatar_url ? (
-                  <Image source={item.avatar_url} style={styles.avatar} contentFit="cover" />
+                  <Image
+                    source={withImageWidth(item.avatar_url, AVATAR_IMAGE_WIDTH)}
+                    style={styles.avatar}
+                    contentFit="cover"
+                    cachePolicy="memory-disk"
+                  />
                 ) : (
                   <View style={[styles.avatar, styles.avatarFallback]}>
                     <Text style={styles.avatarInitial}>

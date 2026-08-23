@@ -46,7 +46,7 @@ export const ShareRankCard = forwardRef<View, ShareRankCardProps>(function Share
     // nothing to snapshot.
     <View ref={ref} collapsable={false} style={styles.card}>
       {imageUrl ? (
-        <Image source={imageUrl} style={StyleSheet.absoluteFill} contentFit="cover" />
+        <Image source={imageUrl} style={StyleSheet.absoluteFill} contentFit="cover" cachePolicy="memory-disk" />
       ) : (
         <View style={[StyleSheet.absoluteFill, styles.fallback]} />
       )}

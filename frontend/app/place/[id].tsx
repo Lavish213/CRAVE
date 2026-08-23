@@ -2,7 +2,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  Image,
   Linking,
   ScrollView,
   Share,
@@ -11,6 +10,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
@@ -29,6 +29,7 @@ import { getTier, getBadges, formatPrice } from '../../src/utils/scoring';
 import { fetchMyRankings, fetchFriendRankings, FriendRanking } from '../../src/api/social';
 import { formatScore, tierColor, TIER_LABELS } from '../../src/utils/rankScore';
 import { relativeTime } from '../../src/utils/time';
+import { withImageWidth, AVATAR_IMAGE_WIDTH } from '../../src/utils/imageUrl';
 import { ImageGallery } from '../../src/components/ImageGallery';
 import { ReportPhotoSheet } from '../../src/components/ReportPhotoSheet';
 import { MenuSubmissionSheet } from '../../src/components/MenuSubmissionSheet';
@@ -596,7 +597,12 @@ export default function PlaceDetailScreen() {
                 accessibilityLabel={`View ${r.username}'s profile — ranked ${TIER_LABELS[r.tier]}`}
               >
                 {r.avatar_url ? (
-                  <Image source={{ uri: r.avatar_url }} style={styles.friendRankAvatar} />
+                  <Image
+                    source={withImageWidth(r.avatar_url, AVATAR_IMAGE_WIDTH)}
+                    style={styles.friendRankAvatar}
+                    contentFit="cover"
+                    cachePolicy="memory-disk"
+                  />
                 ) : (
                   <View style={[styles.friendRankAvatar, styles.friendRankAvatarFallback]}>
                     <Ionicons name="person" size={18} color={Colors.textMuted} />
@@ -631,7 +637,12 @@ export default function PlaceDetailScreen() {
                 accessibilityLabel={`Open ${item.source_type} post${item.author_name ? ` by ${item.author_name}` : ''}`}
               >
                 {item.thumbnail_url ? (
-                  <Image source={{ uri: item.thumbnail_url }} style={styles.socialThumb} />
+                  <Image
+                    source={withImageWidth(item.thumbnail_url, AVATAR_IMAGE_WIDTH)}
+                    style={styles.socialThumb}
+                    contentFit="cover"
+                    cachePolicy="memory-disk"
+                  />
                 ) : (
                   <View style={[styles.socialThumb, styles.socialThumbFallback]}>
                     <Ionicons name="play-circle-outline" size={28} color={Colors.textMuted} />

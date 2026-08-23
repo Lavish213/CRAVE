@@ -22,7 +22,7 @@ interface Props {
   rightAction?: React.ReactNode;
 }
 
-export function RankedPlaceRow({
+function RankedPlaceRowImpl({
   position,
   name,
   imageUrl,
@@ -43,6 +43,7 @@ export function RankedPlaceRow({
           contentFit="cover"
           transition={120}
           placeholder={{ blurhash: 'L6PZfSi_.AyE_3t7t7R**0o#DgR4' }}
+          cachePolicy="memory-disk"
         />
       ) : (
         <View style={[styles.thumb, styles.thumbFallback]}>
@@ -84,6 +85,11 @@ export function RankedPlaceRow({
     </TouchableOpacity>
   );
 }
+
+// See PlaceCard.tsx's identical note -- this renders as a row in ranked
+// lists and shouldn't re-render on every parent state change unrelated
+// to its own props.
+export const RankedPlaceRow = React.memo(RankedPlaceRowImpl);
 
 const styles = StyleSheet.create({
   row: {
