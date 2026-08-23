@@ -157,3 +157,20 @@ def test_scheduler_diagnostics_flags_still_running_job(monkeypatch):
     match = next(r for r in body["recent_runs"] if r["job_name"] == "test_stuck_job")
     assert match["still_running_or_crashed"] is True
     assert match["finished_at"] is None
+
+
+def test_map_query_plan_requires_api_key_when_configured(monkeypatch):
+    monkeypatch.setenv("API_KEY", "fixture-debug-key")
+    response = client.get("/api/v1/debug/map-query-plan?lat=37.7749&lng=-122.4194")
+    assert response.status_code == 401
+
+
+def test_map_query_plan_no_ops_safely_on_non_postgres_db(monkeypatch):
+    # The test suite runs on SQLite -- EXPLAIN (FORMAT JSON) is Postgres-only
+    # syntax, so this must degrade to a clean error response, never a 500.
+    monkeypatch.delenv("API_KEY", raising=False)
+    response = client.get("/api/v1/debug/map-query-plan?lat=37.7749&lng=-122.4194")
+    assert response.status_code == 200
+    body = response.json()
+    assert "error" in body
+    assert "Postgres" in body["error"]

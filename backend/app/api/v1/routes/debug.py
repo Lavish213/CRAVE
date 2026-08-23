@@ -162,3 +162,90 @@ def scheduler_diagnostics(db: Session = Depends(get_db)) -> dict:
         "run_embedded_scheduler": settings.run_embedded_scheduler,
         "recent_runs": recent_runs,
     }
+
+
+@router.get("/map-query-plan", dependencies=[Depends(require_api_key)])
+def map_query_plan(
+    lat: float,
+    lng: float,
+    radius_km: float = 5.0,
+    limit: int = 250,
+    db: Session = Depends(get_db),
+) -> dict:
+    """
+    Answers "is the map bounding-box query itself slow, and why?" with real
+    EXPLAIN ANALYZE output, instead of guessing further. Built after ruling
+    out both the embedded scheduler (split into its own service, latency
+    unchanged) and Redis (REDIS_URL unset, never even attempted) as the
+    cause of the map/geojson endpoint's ~60-67s stalls -- the app's own
+    request logs show the entire delay happens inside the DB query itself,
+    before fetch_places_for_map_geojson even returns.
+
+    No-ops safely (returns an error string, not a 500) on SQLite/local dev,
+    since EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) is Postgres-only syntax.
+    """
+    from sqlalchemy import text
+    from app.services.geo.bounding_box import bounding_box
+
+    if not str(db.bind.url).startswith("postgresql"):
+        return {"error": "map-query-plan is Postgres-only; this DB is not Postgres"}
+
+    bb = bounding_box(lat, lng, radius_km)
+
+    counts = {}
+    try:
+        counts["place_total"] = db.execute(text("SELECT count(*) FROM place")).scalar()
+        counts["place_active"] = db.execute(
+            text("SELECT count(*) FROM place WHERE is_active = true")
+        ).scalar()
+        counts["place_active_in_bbox"] = db.execute(
+            text(
+                "SELECT count(*) FROM place WHERE is_active = true "
+                "AND lat IS NOT NULL AND lng IS NOT NULL "
+                "AND lat >= :min_lat AND lat <= :max_lat "
+                "AND lng >= :min_lng AND lng <= :max_lng"
+            ),
+            {
+                "min_lat": bb.min_lat, "max_lat": bb.max_lat,
+                "min_lng": bb.min_lng, "max_lng": bb.max_lng,
+            },
+        ).scalar()
+    except Exception as exc:
+        counts["error"] = str(exc)
+
+    explain_query = text(
+        "EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) "
+        "SELECT DISTINCT id, name, lat, lng, city_id, price_tier, rank_score, has_menu "
+        "FROM place "
+        "WHERE is_active = true "
+        "AND lat IS NOT NULL AND lng IS NOT NULL "
+        "AND lat >= :min_lat AND lat <= :max_lat "
+        "AND lng >= :min_lng AND lng <= :max_lng "
+        "ORDER BY rank_score DESC, id ASC "
+        "LIMIT :limit"
+    )
+
+    plan = None
+    plan_error = None
+    try:
+        row = db.execute(
+            explain_query,
+            {
+                "min_lat": bb.min_lat, "max_lat": bb.max_lat,
+                "min_lng": bb.min_lng, "max_lng": bb.max_lng,
+                "limit": limit,
+            },
+        ).scalar()
+        plan = row
+    except Exception as exc:
+        plan_error = str(exc)
+
+    return {
+        "bounding_box": {
+            "min_lat": bb.min_lat, "max_lat": bb.max_lat,
+            "min_lng": bb.min_lng, "max_lng": bb.max_lng,
+        },
+        "counts": counts,
+        "explain_plan": plan,
+        "explain_plan_error": plan_error,
+    }
