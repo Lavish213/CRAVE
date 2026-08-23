@@ -254,3 +254,94 @@ def map_query_plan(
         "explain_plan": plan,
         "explain_plan_error": plan_error,
     }
+
+
+@router.get("/map-query-timing", dependencies=[Depends(require_api_key)])
+def map_query_timing(
+    lat: float,
+    lng: float,
+    radius_km: float = 5.0,
+    limit: int = 250,
+    city_id: Optional[str] = None,
+    category_id: Optional[str] = None,
+    db: Session = Depends(get_db),
+) -> dict:
+    """
+    map-query-plan proved the base place-selection query itself is fast
+    (4.45ms EXPLAIN ANALYZE execution time against 33k places) -- so the
+    ~60-67s the live /map/geojson endpoint spends has to be in one of the
+    two steps that run *after* that query inside fetch_places_for_map:
+    the bulk category lookup and the bulk primary-image lookup for the
+    resulting place IDs. Neither was measured independently until now.
+
+    Calls the exact same production functions (not a re-implementation)
+    with a timer around each phase, so this reflects reality rather than
+    a plausible-looking approximation.
+    """
+    import time
+
+    from app.services.geo.bounding_box import bounding_box
+    from app.db.models.place import Place
+    from app.db.models.place_categories import place_categories
+    from app.services.query.place_image_visibility_query import get_primary_image_urls_bulk
+    from app.services.query.place_category_query import get_categories_for_places_bulk
+
+    bb = bounding_box(lat, lng, radius_km)
+
+    t0 = time.perf_counter()
+
+    q = db.query(Place.id).filter(
+        Place.is_active.is_(True),
+        Place.lat.isnot(None),
+        Place.lng.isnot(None),
+        Place.lat >= bb.min_lat,
+        Place.lat <= bb.max_lat,
+        Place.lng >= bb.min_lng,
+        Place.lng <= bb.max_lng,
+    )
+    if city_id:
+        q = q.filter(Place.city_id == city_id)
+    if category_id:
+        q = q.join(
+            place_categories, place_categories.c.place_id == Place.id
+        ).filter(place_categories.c.category_id == category_id)
+
+    place_ids = [
+        r.id
+        for r in q.distinct()
+        .order_by(Place.rank_score.desc(), Place.id.asc())
+        .limit(limit)
+        .all()
+    ]
+
+    t1 = time.perf_counter()
+
+    category_error = None
+    try:
+        category_map = get_categories_for_places_bulk(db, place_ids=place_ids)
+    except Exception as exc:
+        category_map = {}
+        category_error = str(exc)
+
+    t2 = time.perf_counter()
+
+    image_error = None
+    try:
+        image_map = get_primary_image_urls_bulk(db, place_ids=place_ids)
+    except Exception as exc:
+        image_map = {}
+        image_error = str(exc)
+
+    t3 = time.perf_counter()
+
+    return {
+        "place_ids_count": len(place_ids),
+        "base_query_seconds": round(t1 - t0, 4),
+        "categories_bulk_seconds": round(t2 - t1, 4),
+        "categories_bulk_error": category_error,
+        "categories_matched": len(category_map),
+        "images_bulk_seconds": round(t3 - t2, 4),
+        "images_bulk_error": image_error,
+        "images_matched": len(image_map),
+        "total_seconds": round(t3 - t0, 4),
+    }
