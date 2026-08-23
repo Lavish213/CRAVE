@@ -35,11 +35,19 @@ export default function SearchScreen() {
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Deliberately NOT scoped to selectedCity -- a search should find a
+  // real match anywhere in the catalog, not just within whatever city
+  // happens to be selected (live-reported bug: searching a real place's
+  // name while "Alameda" was selected returned nothing, because the
+  // match existed but was filtered out for being in a different city).
+  // lat/lng (when available) drive proximity ranking instead, both at
+  // the database level (search_query.py orders by distance so a real
+  // nearby match is never crowded out of the fetch window by unrelated,
+  // higher-rank_score places elsewhere) and in the final display order.
   const { data: searchData, isLoading: searchLoading, isError: searchError, refetch: refetchSearch, isRefetching: searchRefetching } = useQuery({
-    queryKey: ['search', debouncedQuery, selectedCity?.id, userLocation],
+    queryKey: ['search', debouncedQuery, userLocation?.lat, userLocation?.lng],
     queryFn: () => searchPlaces({
       query: debouncedQuery,
-      city_id: selectedCity?.id,
       lat: userLocation?.lat,
       lng: userLocation?.lng,
       page_size: 30,
@@ -107,7 +115,7 @@ export default function SearchScreen() {
           )}
         </View>
         <Text style={styles.cityContext}>
-          {selectedCity ? `Searching in ${selectedCity.name}` : 'Searching everywhere'}
+          {userLocation ? 'Searching everywhere, nearest first' : 'Searching everywhere'}
         </Text>
       </View>
 

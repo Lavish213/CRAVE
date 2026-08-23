@@ -2320,3 +2320,51 @@ passes (90, unaffected — no dedicated test for `_layout.tsx`'s
 AppState-driven ping effect, consistent with this session's convention
 for similarly-scoped root-level wiring; covered by the service/route
 tests plus a clean typecheck).
+
+### Follow-up — live-reported bug: search only searched the selected city, missing a real match entirely
+
+User reported searching "Thai me" while "Alameda" was selected returned
+"No results," even though the place exists (just not in Alameda). Root
+cause was two-layered:
+
+1. `app/(tabs)/search.tsx` always sent `city_id: selectedCity?.id` to
+   `/api/v1/search` whenever a city was selected — even though the
+   backend route's own docstring already says `city_id` is optional,
+   "omit for global search." The frontend was the one forcing a hard
+   city scope on every search; a real match outside that one city was
+   filtered out before it could ever be found.
+2. Even fixing that isn't enough on its own: `search_query.py`'s SQL
+   query ordered strictly by `rank_score DESC` before applying `LIMIT`.
+   A real, nearby match with a modest `rank_score` can lose to unrelated,
+   higher-ranked places in *other* cities and never even make it into
+   the fetched page — `search_ranker.py`'s post-fetch proximity re-sort
+   can't rescue a match that was never fetched in the first place, since
+   it only reorders whatever page `rank_score` already selected.
+
+Fixed both: `search.tsx` no longer sends `city_id` at all (global search
+is now the only mode). `search_query.py::search_places` now orders the
+SQL query itself by squared distance first (when the caller has a
+location), rank_score only breaking ties among similarly-distant
+results — guaranteeing a real nearby match is never crowded out of the
+fetch window regardless of how it compares nationally. A place with no
+coordinates sorts after every real distance via a large sentinel value
+(avoids relying on dialect-specific `NULLS LAST` support, since the test
+suite runs on SQLite but production is Postgres). The "Searching in
+{city}" caption was also misleading now that search isn't city-scoped —
+changed to "Searching everywhere, nearest first" when location is
+available.
+
+`tests/test_search_query.py` (new, 5 tests — this file had zero prior
+coverage): a global search finds a match outside the "selected" city; a
+nearby lower-`rank_score` match still outranks several distant
+higher-`rank_score` ones under a small `limit` (the specific failure
+mode a naive post-fetch-only re-rank can't fix); no location falls back
+to the original `rank_score` ordering; a place with no coordinates still
+appears, sorted last; an explicitly-passed `city_id` still filters
+correctly (the parameter still exists for a future explicit "search in
+this city" control — only the frontend's automatic use of it was
+removed).
+
+Verified: backend suite passes (603 — 598 previous + 5 new), stable
+across two runs. Frontend: `npx tsc --noEmit` clean, full Jest suite
+passes (90, unaffected).

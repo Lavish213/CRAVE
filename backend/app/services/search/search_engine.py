@@ -36,6 +36,8 @@ def execute_search(
         city_id=city_id,
         category_id=category_id,
         price_tier=price_tier,
+        lat=lat,
+        lng=lng,
         limit=limit,
         offset=offset,
     )
