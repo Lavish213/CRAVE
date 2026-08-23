@@ -4,8 +4,23 @@ from typing import Optional
 
 
 FEED_TTL = 300          # 5 minutes
-MAP_TTL = 45
-SEARCH_TTL = 120
+
+# Previously 30-60s -- far shorter than how often the underlying data
+# actually changes (discovery runs every 5min, score_recompute every
+# 15min, ranking_update every 30min), and combined with map_key()'s old
+# 4-decimal coordinate rounding (~11m grid cells), two different requests
+# almost never landed on the same key anyway. Now that map_key() rounds to
+# a coarser ~1.1km grid (see cache_keys.py), a longer TTL actually gets
+# used instead of expiring before a second request could ever reuse it.
+MAP_TTL = 180           # 3 minutes
+
+# search_cache_key() now includes a grid-rounded lat/lng (fixing a real
+# cache-key bug -- distance-based ordering depends on the searcher's
+# location, but the key never accounted for it, so one caller's
+# location-sorted results could be served straight back to a different
+# caller). Bumped alongside MAP_TTL for the same reason: the underlying
+# rank_score/proximity data changes on the order of minutes, not seconds.
+SEARCH_TTL = 180
 PLACE_DETAIL_TTL = 300
 PLACE_MENU_TTL = 1800   # 30 minutes — menu changes infrequently
 
@@ -35,12 +50,12 @@ def map_ttl(
 ) -> int:
 
     if radius_km <= 2:
-        return 30
+        return 120
 
     if radius_km <= 5:
         return MAP_TTL
 
-    return 60
+    return 300
 
 
 def search_ttl(
@@ -51,7 +66,7 @@ def search_ttl(
     q = (query or "").strip()
 
     if len(q) <= 3:
-        return 60
+        return 90
 
     return SEARCH_TTL
 

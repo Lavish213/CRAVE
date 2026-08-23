@@ -44,16 +44,31 @@ def invalidate_search(
     city_id: str,
     category_id: Optional[str] = None,
     price_tier: Optional[int] = None,
+    lat: Optional[float] = None,
+    lng: Optional[float] = None,
     page: int = 1,
     page_size: int = 20,
 ) -> None:
-    """Invalidate a specific search cache entry."""
+    """
+    Invalidate one specific search cache entry.
+
+    search_cache_key() is keyed per location grid cell (see that function's
+    docstring), so this only clears the exact (query, filters, location
+    bucket) combination passed in -- omitting lat/lng clears only the
+    no-location variant, not every location bucket a query might be cached
+    under. To clear a query everywhere regardless of location, or to clear
+    all search results after a bulk data change, use
+    response_cache.delete_prefix("search:") instead (see
+    invalidate_all_image_caches for that pattern).
+    """
     from app.services.cache.cache_keys import search_cache_key
     key = search_cache_key(
         query=query,
         city_id=city_id,
         category_id=category_id,
         price_tier=price_tier,
+        lat=lat,
+        lng=lng,
         page=page,
         page_size=page_size,
     )

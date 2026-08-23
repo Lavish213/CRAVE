@@ -9,8 +9,25 @@ def _norm(value: Optional[str]) -> str:
     return value.strip().lower()
 
 
-def _round_coord(v: float) -> float:
-    return round(v, 4)
+def _round_grid(v: Optional[float], decimals: int = 2) -> str:
+    """
+    Coarse-grid rounding for geo cache keys.
+
+    A shared cache only pays off when different requests actually land on
+    the same key -- rounding to 4 decimal places (~11m) meant two different
+    users a block apart, or the same user panning slightly, would almost
+    never share a cache entry, making the cache real but nearly useless in
+    practice. 2 decimals (~1.1km at the equator) is coarse enough that
+    "nearby" requests actually collide and share one cached computation,
+    while still being far finer than any city/neighborhood-scale query.
+
+    Returns "none" (a string, distinct from any numeric "0.00"-style
+    value) when the coordinate wasn't supplied at all, so "no location
+    given" never collides with a real rounded coordinate.
+    """
+    if v is None:
+        return "none"
+    return f"{round(v, decimals):.{decimals}f}"
 
 
 def feed_key(
@@ -40,8 +57,8 @@ def map_key(
 
     return (
         f"map:"
-        f"{_round_coord(lat)}:"
-        f"{_round_coord(lng)}:"
+        f"{_round_grid(lat)}:"
+        f"{_round_grid(lng)}:"
         f"{radius_km}:"
         f"{limit}:"
         f"{city}:"
@@ -55,6 +72,8 @@ def search_cache_key(
     city_id: str,
     category_id: Optional[str],
     price_tier: Optional[int],
+    lat: Optional[float] = None,
+    lng: Optional[float] = None,
     page: int,
     page_size: int,
 ) -> str:
@@ -64,12 +83,23 @@ def search_cache_key(
     cat = _norm(category_id)
     price = price_tier if price_tier is not None else "all"
 
+    # lat/lng must be part of the key: when supplied, search_query.py makes
+    # distance the *primary* sort key (and, combined with LIMIT/OFFSET,
+    # this changes which rows page 1 even contains) -- without them here,
+    # one caller's location-sorted results would get served straight back
+    # to a completely different caller who happened to search the same
+    # term within the TTL window. Grid-rounded (not raw) for the same
+    # reason map_key is: a shared cache only helps if nearby requests
+    # actually collide on the same key.
+    loc = f"{_round_grid(lat)}:{_round_grid(lng)}"
+
     return (
         f"search:"
         f"{q}:"
         f"{city}:"
         f"{cat}:"
         f"{price}:"
+        f"{loc}:"
         f"{page}:"
         f"{page_size}"
     )
