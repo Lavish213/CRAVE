@@ -243,6 +243,10 @@ def map_query_plan(
         ).scalar()
         plan = row
     except Exception as exc:
+        # Matches the counts block above and categories_query_plan's
+        # equivalent block -- a failed statement leaves the transaction
+        # aborted for anything else on this connection afterward.
+        db.rollback()
         plan_error = str(exc)
 
     return {
