@@ -21,15 +21,26 @@ import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import MapScreen from '../app/(tabs)/map';
 import { fetchMapGeoJSON } from '../src/api/map';
 import { useCityStore } from '../src/stores/cityStore';
+import { useAuthStore } from '../src/stores/authStore';
+import { fetchSavedPlacesGeoJSON } from '../src/api/map';
 // Imported by relative path, not the package specifier — Jest substitutes
 // this same mock file for the 'react-native-maps' import inside map.tsx
 // automatically (manual __mocks__ dir), but tsc has no notion of that
 // runtime swap and would otherwise type-check against the real package's
 // (mock-symbol-free) types.
-import { animateToRegionMock, mapViewProps } from '../__mocks__/react-native-maps';
+import { animateToRegionMock, fitToCoordinatesMock, mapViewProps } from '../__mocks__/react-native-maps';
 
 jest.mock('../src/api/map', () => ({
   fetchMapGeoJSON: jest.fn(),
+  fetchSavedPlacesGeoJSON: jest.fn().mockResolvedValue([]),
+}));
+jest.mock('../src/stores/authStore', () => ({
+  // Mocking this avoids pulling in the real Supabase client (which needs
+  // real env vars) via authStore's own import chain. A jest.fn() (rather
+  // than a fixed selector result) lets individual tests control whether
+  // "user" is signed in, since the "my saved places" toggle only renders
+  // when it is.
+  useAuthStore: jest.fn(),
 }));
 jest.mock('../src/api/cities', () => ({
   fetchCities: jest.fn().mockResolvedValue([]),
@@ -43,6 +54,8 @@ jest.mock('expo-haptics', () => ({
 }));
 
 const mockedFetch = fetchMapGeoJSON as jest.MockedFunction<typeof fetchMapGeoJSON>;
+const mockedSavedFetch = fetchSavedPlacesGeoJSON as jest.MockedFunction<typeof fetchSavedPlacesGeoJSON>;
+const mockedUseAuthStore = useAuthStore as unknown as jest.Mock;
 
 const SF_CITY = {
   id: 'city-sf',
@@ -71,6 +84,10 @@ describe('MapScreen — onMapReady / spurious first-region fix', () => {
     mapViewProps.current = null;
     useCityStore.setState({ selectedCity: SF_CITY, cities: [SF_CITY] });
     mockedFetch.mockResolvedValue([REAL_FEATURE]);
+    mockedSavedFetch.mockResolvedValue([]);
+    mockedUseAuthStore.mockImplementation((selector: (s: { user: unknown }) => unknown) =>
+      selector({ user: null }),
+    );
   });
 
   it('ignores a spurious pre-ready onRegionChangeComplete instead of letting it clobber real results', async () => {
@@ -193,5 +210,99 @@ describe('MapScreen — onMapReady / spurious first-region fix', () => {
     expect(secondArgs.lng).toBeCloseTo(firstArgs.lng, 5);
     expect(firstArgs.radius_km).toBeDefined();
     expect(secondArgs.radius_km).toBeCloseTo(firstArgs.radius_km as number, 5);
+  });
+});
+
+describe('MapScreen — "my saved places" toggle', () => {
+  const SAVED_FEATURE_A = { ...REAL_FEATURE, id: 'saved-a', coordinate: { lat: 37.79, lng: -122.40 } };
+  const SAVED_FEATURE_B = { ...REAL_FEATURE, id: 'saved-b', coordinate: { lat: 37.76, lng: -122.43 } };
+  // A single stable reference, not recreated per call — map.tsx's `user`
+  // is a dependency of a useEffect, and a fresh object literal here on
+  // every mock invocation would make React see it as "changed" on every
+  // render, looping the effect forever. The real Zustand hook this mocks
+  // only returns a new reference when the store's state actually changes.
+  const MOCK_SIGNED_IN_USER = { id: 'user-1' };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    animateToRegionMock.mockClear();
+    mapViewProps.current = null;
+    useCityStore.setState({ selectedCity: SF_CITY, cities: [SF_CITY] });
+    mockedFetch.mockResolvedValue([REAL_FEATURE]);
+    mockedSavedFetch.mockResolvedValue([SAVED_FEATURE_A, SAVED_FEATURE_B]);
+    // Signed in for this whole describe block — the toggle only renders
+    // when there's a user.
+    mockedUseAuthStore.mockImplementation((selector: (s: { user: unknown }) => unknown) =>
+      selector({ user: MOCK_SIGNED_IN_USER }),
+    );
+  });
+
+  it('does not render the toggle when signed out', async () => {
+    mockedUseAuthStore.mockImplementation((selector: (s: { user: unknown }) => unknown) =>
+      selector({ user: null }),
+    );
+    const { queryByLabelText } = render(<MapScreen />);
+    await waitFor(() => expect(mockedFetch).toHaveBeenCalledTimes(1));
+
+    expect(queryByLabelText('Show my saved places')).toBeNull();
+  });
+
+  it('switching to saved mode fetches saved places and fits the map to them, not a viewport fetch', async () => {
+    const { getByLabelText } = render(<MapScreen />);
+    await waitFor(() => expect(mockedFetch).toHaveBeenCalledTimes(1));
+
+    await act(async () => {
+      fireEvent.press(getByLabelText('Show my saved places'));
+    });
+
+    await waitFor(() => expect(mockedSavedFetch).toHaveBeenCalledTimes(1));
+    // The global-catalog fetch must not have fired again for the mode switch.
+    expect(mockedFetch).toHaveBeenCalledTimes(1);
+    // Two saved places -> fits the map to both, rather than a single
+    // animateToRegion (which is what a 0- or 1-place result would use).
+    await waitFor(() => expect(fitToCoordinatesMock).toHaveBeenCalledTimes(1));
+    const [coords] = fitToCoordinatesMock.mock.calls[0];
+    expect(coords).toEqual([
+      { latitude: SAVED_FEATURE_A.coordinate.lat, longitude: SAVED_FEATURE_A.coordinate.lng },
+      { latitude: SAVED_FEATURE_B.coordinate.lat, longitude: SAVED_FEATURE_B.coordinate.lng },
+    ]);
+  });
+
+  it('panning while in saved mode does not trigger a viewport-scoped fetch', async () => {
+    const { getByLabelText } = render(<MapScreen />);
+    await waitFor(() => expect(mockedFetch).toHaveBeenCalledTimes(1));
+
+    await act(async () => {
+      fireEvent.press(getByLabelText('Show my saved places'));
+    });
+    await waitFor(() => expect(mockedSavedFetch).toHaveBeenCalledTimes(1));
+
+    await act(async () => {
+      mapViewProps.current.onRegionChangeComplete({
+        latitude: 37.9, longitude: -122.5, latitudeDelta: 0.08, longitudeDelta: 0.08,
+      });
+      await new Promise((r) => setTimeout(r, 600));
+    });
+
+    // Still just the one saved-places fetch and the one original city
+    // fetch from before the switch — panning in saved mode fetches nothing.
+    expect(mockedSavedFetch).toHaveBeenCalledTimes(1);
+    expect(mockedFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('switching back to city mode re-fetches the global catalog', async () => {
+    const { getByLabelText } = render(<MapScreen />);
+    await waitFor(() => expect(mockedFetch).toHaveBeenCalledTimes(1));
+
+    await act(async () => {
+      fireEvent.press(getByLabelText('Show my saved places'));
+    });
+    await waitFor(() => expect(mockedSavedFetch).toHaveBeenCalledTimes(1));
+
+    await act(async () => {
+      fireEvent.press(getByLabelText('Show all places'));
+    });
+
+    await waitFor(() => expect(mockedFetch).toHaveBeenCalledTimes(2));
   });
 });

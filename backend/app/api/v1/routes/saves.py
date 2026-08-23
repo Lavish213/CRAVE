@@ -8,6 +8,8 @@ Routes:
     POST   /saves              create save
     DELETE /saves/{place_id}   remove save
     GET    /saves              list saved places with full PlaceOut data
+    GET    /saves/map          saved places as GeoJSON, for the Map tab's
+                                "my places" layer
 """
 from __future__ import annotations
 
@@ -26,7 +28,9 @@ from app.db.session import get_db
 from app.db.models.hitlist_save import HitlistSave
 from app.db.models.place import Place
 from app.api.v1.schemas.places import PlaceOut, PlacesResponse
+from app.api.v1.schemas.map import GeoJSONFeatureCollection
 from app.services.query.place_image_visibility_query import get_primary_image_urls_bulk
+from app.services.query.saved_places_map_query import get_saved_places_geojson
 
 logger = logging.getLogger(__name__)
 
@@ -196,3 +200,26 @@ def list_saves(
         user_id, len(items),
     )
     return PlacesResponse(total=len(items), page=1, page_size=limit, items=items)
+
+
+# -------------------------------------------------------
+# GET /saves/map — saved places as GeoJSON, for the Map tab's "my
+# places" layer (Beli/Biter's "your own curated map," which the global
+# catalog view on the Map tab never provided).
+# -------------------------------------------------------
+
+@router.get(
+    "/map",
+    response_model=GeoJSONFeatureCollection,
+    dependencies=[Depends(rate_limit), Depends(require_api_key)],
+)
+def get_saved_places_map(
+    db: Session = Depends(get_db),
+    user_id: str = Depends(get_current_user_id),
+) -> GeoJSONFeatureCollection:
+    result = get_saved_places_geojson(db, user_id=user_id)
+    logger.info(
+        "API_RESPONSE endpoint=/saves/map user_id=%s count=%s",
+        user_id, len(result.get("features", [])),
+    )
+    return GeoJSONFeatureCollection.model_validate(result)

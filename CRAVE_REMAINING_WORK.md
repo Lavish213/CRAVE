@@ -2020,3 +2020,79 @@ the Biter-specific ones):
   already has, but a new screen/design, not a one-line fix.
 - (Still open from the Biter audit) native iOS Share Sheet, a
   personal-saves layer on the Map tab, and proximity alerts.
+
+### Follow-up — full research pass on all 6 remaining big gaps, then built the "my saved places" Map layer (item #1 of the agreed build order)
+
+Researched each remaining gap against real sources (library docs, Apple's
+own guidelines, established algorithm patterns) rather than guessing, then
+asked the user to resolve the decisions that actually block work:
+
+- **Native share sheet** (`expo-share-intent`) — confirmed via its own
+  docs: requires ejecting off Expo Go entirely (custom dev client / EAS
+  Build, `expo prebuild`), an Apple Developer account ($99/yr), and an
+  App Group entitlement. User doesn't have the Apple Developer account
+  yet and chose to hold off on ejecting until other work is done first.
+- **Proximity alerts** — researched Apple's Guideline 5.1.1 and
+  confirmed geofencing is one of the accepted justified uses for
+  "Always" location (user is fine asking for it), but background
+  geofencing via `expo-task-manager` also effectively requires a
+  development build, same as the share sheet — a finding that wasn't
+  obvious going in and changes sequencing: this now groups with the
+  share sheet as a second, later push, not something to build alongside
+  the others now.
+- **Personalized recommendations** — confirmed user-based collaborative
+  filtering (similarity between users' `PlaceRanking` rows) is the
+  standard, lightweight approach — no ML infra needed at CRAVE's scale.
+- **Gamification (streaks)** — confirmed Duolingo's own documented
+  pattern: server is the source of truth (never trust device time),
+  compare by calendar day in the user's IANA timezone (not raw hour
+  math — the most common place this gets built wrong), plus a "streak
+  freeze" concept.
+- Agreed build order (least-rework-first): personal-saves map layer →
+  Taste Profile stats → personalized recommendations → gamification, all
+  buildable in the current Expo Go workflow; share sheet + proximity
+  alerts bundled together later as their own dedicated push once the
+  Apple Developer account exists and ejecting is worth doing.
+
+Built the first item: **the personal-saves Map layer.**
+
+- `app/services/query/saved_places_map_query.py` (new) —
+  `get_saved_places_geojson`: every place the user has saved
+  (`HitlistSave`, `dedup_key="save:{user_id}:{place_id}"`), returned in
+  full rather than viewport-scoped like the global map query — a
+  personal list is small enough to just fetch entirely and let the
+  client fit the map to it. Every feature's `tier` is fixed to
+  `"default"` rather than reusing the global map query's percentile
+  logic, since a percentile computed over a handful of personal saves
+  wouldn't mean anything (your one save would trivially be "elite").
+- `GET /api/v1/saves/map` (new route in `saves.py`) — GeoJSON-shaped,
+  reuses the same schema as the global map endpoint for frontend code
+  reuse.
+- Frontend: `fetchSavedPlacesGeoJSON` (`src/api/map.ts`), and a new
+  bookmark-icon toggle button on the Map tab (only visible when signed
+  in) that switches between the existing global-catalog view and this
+  new "my places" view. Switching to saved mode fits the map to all
+  saved pins (`fitToCoordinates` for 2+, a direct region for exactly 1);
+  the existing city-based fetch/pan/recenter effects are all guarded to
+  no-op while in saved mode, and re-activate cleanly on switching back.
+- `tests/test_saved_places_map_query.py` (4 tests): returns saved
+  places as GeoJSON, excludes other users' saves, empty when nothing's
+  saved, and excludes non-place-backed hitlist rows (raw/unresolved
+  wishlist entries, or craves-flow entries that aren't dedup_key
+  "save:"-prefixed).
+- `__tests__/map.test.tsx` (+4 tests): toggle hidden when signed out,
+  switching to saved mode fetches and fits bounds without firing a
+  viewport fetch, panning while in saved mode fetches nothing, switching
+  back to city mode re-fetches the global catalog. Caught and fixed a
+  real test-only bug while writing these: the `useAuthStore` mock
+  created a fresh `{ user: {...} }` object on every call, which made
+  React see the `user` dependency as "changed" every render and spun the
+  saved-mode effect into an infinite loop — confirmed via a genuinely
+  hung test run, not a guess. Fixed by giving the mock a single stable
+  object reference (matching how the real Zustand hook behaves — it
+  only returns a new reference when the store's state actually
+  changes). Not a bug in `map.tsx` itself.
+
+Verified: backend suite passes (571 — 567 previous + 4 new), stable
+across two runs. Frontend: `npx tsc --noEmit` clean, full suite passes
+(90 — 86 previous + 4 new).
