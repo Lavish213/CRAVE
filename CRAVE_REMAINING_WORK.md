@@ -1667,3 +1667,43 @@ the real cause.
 
 Verified: `npx tsc --noEmit` clean, full frontend Jest suite passes (82,
 unaffected — no test file covers this screen either).
+
+### Follow-up — map showed zero pins in every city; root-caused via real device logs, not a guess
+
+Got the actual Metro console output from the running app (real production
+data — Feed and Search both loaded correctly, e.g. a 30-result "Kl" search
+with real SF/Oakland places). The Map tab's own logs told the whole story:
+
+```
+[MAP] FEATURES_LOADED {"count": 0, "radiusKm": 1.0163933861884407, ...}
+[MAP] FEATURES_LOADED {"count": 0, "radiusKm": 1.0163857800932163, ...}
+```
+
+Both actual fetches used a ~1km radius — nothing like the ~7km the app's
+real `initialRegion` (0.08° delta) computes to, and this happened
+regardless of which city was selected (confirmed live: still blank after
+switching to a specific city, ruling out the GPS/default-location theory
+first). Root cause: a known `react-native-maps`/iOS MapKit quirk — the
+very first `onRegionChangeComplete` fired right after the MapView mounts
+reports a bogus, heavily-zoomed-in transient region that has nothing to
+do with the `initialRegion` prop, because the native view reports its
+"settled" state before layout has actually finished applying the
+requested region. `map.tsx`'s existing `programmaticMoveRef` guard only
+covers events caused by *our own* `animateToRegion` calls (city switch,
+cluster tap) — it does nothing for this native-internal one. That bogus
+event's fetch starts after the mount effect's correct fetch, so it wins
+`requestIdRef`'s race and silently clobbers the real (correct, non-empty)
+results with an empty one — explaining why the map was blank in every
+city, every time.
+
+Fix: added `hasHandledFirstRegionRef`, and `handleRegionChangeComplete`
+now unconditionally ignores the very first invocation per mount (no
+`setMapRegion`, no fetch) before falling through to the existing
+programmatic-move / debounce-and-fetch logic. The initial real load is
+already handled correctly by the separate mount effect, so nothing is
+lost by ignoring this one spurious event.
+
+Verified: `npx tsc --noEmit` clean, full frontend Jest suite passes (82,
+unaffected — no test file exercises `MapView` callbacks). Have not yet
+had the user re-test in the simulator to confirm pins now render — that
+confirmation is still outstanding.

@@ -174,6 +174,20 @@ export default function MapScreen() {
   const programmaticMoveRef = useRef(false);
   const fetchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Live-confirmed via device logs: the very first onRegionChangeComplete
+  // firing after MapView mounts reports a bogus, heavily-zoomed-in transient
+  // region (~1km radius) that has nothing to do with `initialRegion` — an
+  // iOS MapKit/react-native-maps quirk where the view reports its settle
+  // state before layout has actually finished applying the requested
+  // region. Because that spurious event starts its fetch AFTER the mount
+  // effect's correct one, it wins the requestIdRef race and silently
+  // clobbers the real results with an empty response — the map showed zero
+  // pins in every city, every time, confirmed against real production data
+  // that Feed/Search both loaded correctly in the same session. Skipping
+  // only this one first call is safe: the mount effect below already
+  // performs the real initial load.
+  const hasHandledFirstRegionRef = useRef(false);
+
   const [features, setFeatures] = useState<NormalizedMapFeature[]>([]);
   const [selectedFeature, setSelectedFeature] = useState<SelectedFeature | null>(null);
   const [mapLoading, setMapLoading] = useState(false);
@@ -274,6 +288,11 @@ export default function MapScreen() {
 
   const handleRegionChangeComplete = useCallback(
     (region: Region) => {
+      if (!hasHandledFirstRegionRef.current) {
+        hasHandledFirstRegionRef.current = true;
+        return;
+      }
+
       setMapRegion(region);
 
       if (programmaticMoveRef.current) {
