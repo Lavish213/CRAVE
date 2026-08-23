@@ -290,7 +290,12 @@ def map_query_timing(
 
     t0 = time.perf_counter()
 
-    q = db.query(Place.id).filter(
+    # Postgres requires every SELECT DISTINCT query's ORDER BY expressions to
+    # appear in the select list -- rank_score has to be selected here even
+    # though only .id is used below, to match Postgres's own requirement
+    # (this is the exact error the production query avoids by selecting
+    # rank_score as one of its real output columns).
+    q = db.query(Place.id, Place.rank_score).filter(
         Place.is_active.is_(True),
         Place.lat.isnot(None),
         Place.lng.isnot(None),
