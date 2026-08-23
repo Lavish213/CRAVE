@@ -19,8 +19,17 @@ from app.workers.recompute_scores_worker import recompute_places_v4
 logger = logging.getLogger(__name__)
 
 
-BATCH_SIZE = 25
-MAX_PLACES_PER_RUN = 200
+# Bumped from 25/200 — with the discovery pipeline now finding real
+# places (OSM confidence fix + Overture Maps), the sourced-but-unchecked
+# backlog (12,123 places with a website/Grubhub/menu URL, only 761 with an
+# extracted menu as of the live check that prompted this) is growing
+# faster than extraction can work through it at the old rate. Kept
+# moderate rather than maxed out: the scheduler runs embedded in the same
+# single process serving web requests (no separate worker service is
+# actually deployed), so this isn't free — a much larger jump risks
+# competing with real traffic instead of just catching up on backlog.
+BATCH_SIZE = 40
+MAX_PLACES_PER_RUN = 300
 SLEEP_BETWEEN_BATCHES = 1.0
 
 MENU_TRUTH_TYPE = "menu"

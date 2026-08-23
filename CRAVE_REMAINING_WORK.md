@@ -1518,3 +1518,43 @@ page" as a blocker.
 
 Verified: 555 backend tests passing (551 + 2 leaderboard + 3 net
 menu_worker change, stable across repeated full-suite runs).
+
+### Follow-up — live production check, and a throughput bump for menu_worker's growing backlog
+
+First real production check since the OSM/Overture/staleness/blocking
+work went live. Real numbers: 32,788 active places (up from 29,626 — real
+catalog growth, almost entirely from OSM: 7,326 candidates found, 6,224
+promoted, an 85% hit rate). Places with some source (website/Grubhub/menu
+URL) grew 10,754 → 12,123. Menu coverage itself barely moved (738 → 761,
+2.5% → 2.3%) — not a red flag, just discovery currently outpacing
+extraction: `menu_worker` only processes up to 200 places per 10-minute
+run, and the sourced-but-unchecked backlog (12,123 minus 761) is now
+larger than before. Overture Maps showed **zero** candidates in
+production — confirmed the pyarrow-missing issue has been silently
+killing every run since deploy, not just failing to enrich; re-ran the
+manual `pip install pyarrow` console workaround on the (also newly
+resource-exhausted-then-restarted) container to unblock it again, same
+known limitation as before (doesn't survive the next restart/redeploy).
+
+Also checked photo coverage the same way, expecting it to mirror the
+weak menu number — it doesn't. **43.5% of places have a visible primary
+photo**, dramatically healthier than menus, because most photo coverage
+comes from Google Places' readily-available photo data rather than
+needing real extraction the way menus do. Caught and corrected my own
+mid-query error here: initially reported "31,113 places never had an
+image fetch attempted" as if it were a red flag — `Place.
+image_fetch_attempts` turned out to only increment on *failure*
+(confirmed by reading `image_worker.py` directly), not on every attempt,
+so that number actually meant "never failed," which is expected for the
+huge majority that just succeeded on the first try. Retracted that
+framing before it was taken as a real problem.
+
+Given the growing sourced-but-unchecked backlog, bumped `menu_worker.py`'s
+throughput: `BATCH_SIZE` 25→40, `MAX_PLACES_PER_RUN` 200→300. Kept
+moderate rather than maxed out — the scheduler runs embedded in the same
+single process serving web requests (confirmed via deploy logs: no
+separate worker service is actually deployed, despite one existing as an
+option in the codebase), so a much larger jump risks competing with real
+traffic rather than just working through the backlog faster. Pure config
+change, no new tests needed; verified the full suite still passes (555,
+unaffected).
