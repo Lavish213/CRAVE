@@ -201,7 +201,14 @@ def _job_image_ingestion() -> None:
     db = SessionLocal()
     try:
         with track_job_run("image_ingestion") as run:
-            result = ImageWorker().run(db=db, limit=50)
+            # Bumped from 50 — live-confirmed (a real photo URL returned
+            # "Image not found" because Google's photo reference had
+            # expired) that the stale-refresh backlog is large enough to
+            # visibly affect what users see right now, same as
+            # menu_worker's backlog. Still under MAX_BATCH_SIZE (200) and
+            # moderate for the same reason as that change: this scheduler
+            # runs embedded in the same process serving web requests.
+            result = ImageWorker().run(db=db, limit=100)
             logger.info("scheduler_image_ingestion_complete %s", result)
             run.set_summary(str(result)[:500])
     except Exception as exc:

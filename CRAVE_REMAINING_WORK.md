@@ -1558,3 +1558,51 @@ option in the codebase), so a much larger jump risks competing with real
 traffic rather than just working through the backlog faster. Pure config
 change, no new tests needed; verified the full suite still passes (555,
 unaffected).
+
+### Follow-up — real device/simulator testing surfaced 3 app bugs; one confirmed and fixed (expired photo refs), two still open
+
+User actually ran the app (`npx expo start` + iOS simulator) against the
+live production API for the first time this session and shared real
+screenshots. Three complaints, each checked against actual code/behavior
+rather than assumed:
+
+1. **"Pages blank ... no places hve photos"** — confirmed real. Read
+   `app/api/v1/routes/image.py` (`proxy_image`), `src/utils/imageUrl.ts`,
+   and `src/api/normalize.ts` (`resolveImageUrl`) end to end — all
+   structurally correct (relative `/api/...` image paths are correctly
+   resolved to the real API base, the proxy correctly streams Google's
+   response and 404s as `"Image not found"` only when Google's own
+   response isn't 200). Had the user hit a real production image URL
+   directly in a browser to settle it either way: got back
+   `{"detail":"Image not found"}` — proof the specific stored Google
+   Places photo reference had expired (these are ephemeral/session-scoped
+   by design on Google's side), not a bug in our proxy or in the RN
+   `<Image>` component. Same "backlog outpaces worker throughput" shape
+   already fixed for `menu_worker`, so applied the same fix here: bumped
+   `ImageWorker().run(db=db, limit=...)` in `scheduler.py`'s
+   `_job_image_ingestion()` from 50 → 100 (still under
+   `image_worker.py`'s own `MAX_BATCH_SIZE = 200`). Verified: full backend
+   suite passes (555, twice in a row, unaffected — this is a scheduler
+   call-site config change only, no logic touched).
+
+2. **"I cant sign in"** ("Safari can't open the page because the server
+   can't be found" after tapping Continue with Apple/Google) — read
+   `AuthSheet.tsx` in full; the OAuth code itself (`signInWithOAuth` →
+   `WebBrowser.openAuthSessionAsync`, redirect URI via
+   `AuthSession.makeRedirectUri({scheme:'crave'})`) looks structurally
+   correct. That specific error is a DNS-resolution-level failure, most
+   consistent with a **paused Supabase free-tier project** (auto-pauses
+   after inactivity — and this app hadn't actually been run end-to-end
+   before this session). Asked the user to check the Supabase dashboard
+   for a "paused" banner and unpause if so — **not yet confirmed either
+   way, still open**, not something fixable from here without seeing the
+   dashboard.
+
+3. **"we need regualr emails also"** — confirmed real, not a bug: there
+   is no email/password sign-in/sign-up form anywhere in the codebase —
+   `AuthSheet.tsx` only wires up Apple and Google OAuth. **Not yet
+   built.**
+
+("Menus arent there either" for the places shown matches the real 2.3%
+menu coverage number above — expected given current backlog, not a
+separate bug.)
