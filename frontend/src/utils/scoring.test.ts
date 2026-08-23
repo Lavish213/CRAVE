@@ -1,4 +1,4 @@
-import { getTier, inferPrice, formatPrice, getBadges, TIERS } from './scoring';
+import { getTier, inferPrice, formatPrice, getBadges, formatDistance, TIERS } from './scoring';
 import type { PlaceOut } from '../api/places';
 
 function makePlace(overrides: Partial<PlaceOut> = {}): PlaceOut {
@@ -124,5 +124,26 @@ describe('getBadges', () => {
       makePlace({ rank_score: 0.5, has_menu: true, grubhub_url: 'https://grubhub.com/x' }),
     );
     expect(badges.length).toBeLessThanOrEqual(3);
+  });
+});
+
+describe('formatDistance', () => {
+  // Was duplicated identically in PlaceCard.tsx and PlaceCardCompact.tsx --
+  // extracted here so both consume the same tested implementation.
+  it('returns null when distance is not available', () => {
+    expect(formatDistance(null)).toBeNull();
+    expect(formatDistance(undefined)).toBeNull();
+  });
+
+  it('shows "Here" for sub-tenth-mile distances', () => {
+    expect(formatDistance(0.05)).toBe('Here');
+  });
+
+  it('shows one decimal place under 10 miles', () => {
+    expect(formatDistance(2.34)).toBe('2.3 mi');
+  });
+
+  it('rounds to a whole number at 10 miles and above', () => {
+    expect(formatDistance(12.7)).toBe('13 mi');
   });
 });

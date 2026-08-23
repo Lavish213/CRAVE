@@ -50,10 +50,16 @@ export function MenuSubmissionSheet({ visible, placeId, onClose, onSubmitted }: 
   const [items, setItems] = useState<DraftItem[]>([_newDraft()]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Set alongside `error` only for the invalid-price case, which is about
+  // one specific item -- lets that message render next to the offending
+  // item's input instead of a generic banner the user has to go hunting
+  // from. Stays null for whole-form errors (no items, sign-in, network).
+  const [errorItemKey, setErrorItemKey] = useState<string | null>(null);
 
   const reset = () => {
     setItems([_newDraft()]);
     setError(null);
+    setErrorItemKey(null);
   };
 
   const handleClose = () => {
@@ -65,6 +71,7 @@ export function MenuSubmissionSheet({ visible, placeId, onClose, onSubmitted }: 
   const updateItem = (key: string, patch: Partial<DraftItem>) => {
     setItems((prev) => prev.map((it) => (it.key === key ? { ...it, ...patch } : it)));
     if (error) setError(null);
+    if (errorItemKey) setErrorItemKey(null);
   };
 
   const removeItem = (key: string) => {
@@ -83,6 +90,7 @@ export function MenuSubmissionSheet({ visible, placeId, onClose, onSubmitted }: 
 
     if (valid.length === 0) {
       setError('Add at least one item with a name');
+      setErrorItemKey(null);
       return;
     }
 
@@ -92,12 +100,14 @@ export function MenuSubmissionSheet({ visible, placeId, onClose, onSubmitted }: 
       return Number.isNaN(n) || n < 0;
     });
     if (badPrice) {
-      setError(`"${badPrice.name}" has an invalid price`);
+      setError('Enter a valid price');
+      setErrorItemKey(badPrice.key);
       return;
     }
 
     setSubmitting(true);
     setError(null);
+    setErrorItemKey(null);
     try {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       const payload: MenuItemSubmission[] = valid.map((it) => ({
@@ -207,6 +217,10 @@ export function MenuSubmissionSheet({ visible, placeId, onClose, onSubmitted }: 
                 />
               </View>
 
+              {errorItemKey === item.key ? (
+                <Text style={styles.itemError}>{error}</Text>
+              ) : null}
+
               <TextInput
                 style={styles.input}
                 placeholder="Description (optional)"
@@ -231,7 +245,7 @@ export function MenuSubmissionSheet({ visible, placeId, onClose, onSubmitted }: 
           </TouchableOpacity>
         </ScrollView>
 
-        {error ? <Text style={styles.error}>{error}</Text> : null}
+        {error && !errorItemKey ? <Text style={styles.error}>{error}</Text> : null}
 
         <TouchableOpacity
           style={[styles.submitBtn, submitting && styles.submitBtnDisabled]}
@@ -337,6 +351,12 @@ const styles = StyleSheet.create({
     fontSize: 13,
     paddingHorizontal: Spacing.xl,
     paddingTop: Spacing.sm,
+  },
+  itemError: {
+    color: Colors.error,
+    fontSize: 12,
+    marginTop: -Spacing.xs,
+    marginBottom: Spacing.sm,
   },
   submitBtn: {
     marginTop: Spacing.md,

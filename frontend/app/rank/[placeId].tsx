@@ -235,7 +235,7 @@ export default function RankPlaceScreen() {
 
           <TouchableOpacity
             style={styles.primaryBtn}
-            onPress={() => router.replace('/profile')}
+            onPress={() => router.push('/profile')}
             accessibilityRole="button"
             accessibilityLabel="See my list"
           >

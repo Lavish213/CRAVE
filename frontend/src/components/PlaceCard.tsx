@@ -6,7 +6,7 @@ import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { PlaceOut } from '../api/places';
-import { getTier, formatPrice, getBadges } from '../utils/scoring';
+import { getTier, formatPrice, getBadges, formatDistance } from '../utils/scoring';
 // formatPrice imported for fallback; normalized places already have place.price
 import { TierBadge } from './TierBadge';
 import { Colors, Spacing, Radius, Shadows } from '../constants/colors';
@@ -39,11 +39,7 @@ function PlaceCardImpl({ place, onPress, onPressIn, onSave, saved, style }: Prop
   };
 
   const categoryLabel = place.category ?? null;
-  const distanceLabel = place.distance_miles != null
-    ? place.distance_miles < 0.1 ? 'Here'
-    : place.distance_miles < 10 ? `${place.distance_miles.toFixed(1)} mi`
-    : `${Math.round(place.distance_miles)} mi`
-    : null;
+  const distanceLabel = formatDistance(place.distance_miles);
   const metaParts = [categoryLabel, price, distanceLabel].filter(Boolean);
 
   return (
