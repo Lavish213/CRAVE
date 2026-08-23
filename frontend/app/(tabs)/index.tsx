@@ -109,7 +109,29 @@ export default function FeedScreen() {
     staleTime: 2 * 60 * 1000,
   });
 
-  const places = data?.pages.flatMap(p => p.items) ?? [];
+  // Pages are fetched by 1-indexed page number against an offset/limit
+  // backend query ordered by rank_score, not a stable cursor — live-
+  // confirmed via a real "duplicate key" crash that the discovery
+  // pipeline inserting new places between page fetches (it runs on a
+  // 5-minute interval, and now processes a growing OSM/Overture backlog
+  // faster than before this session) shifts every subsequent page's
+  // offset window, so the same place can land in both an already-loaded
+  // page and the next one fetched. De-duping here fixes the actual user-
+  // visible crash regardless of the underlying pagination-shift cause —
+  // a real cursor-based fix is a much larger backend change than
+  // warranted for this.
+  const places = useMemo(() => {
+    const seen = new Set<string>();
+    const result: PlaceOut[] = [];
+    for (const page of data?.pages ?? []) {
+      for (const p of page.items) {
+        if (seen.has(p.id)) continue;
+        seen.add(p.id);
+        result.push(p);
+      }
+    }
+    return result;
+  }, [data]);
   const total = data?.pages[0]?.total ?? 0;
   const initialLoaded = data !== undefined;
 

@@ -1868,3 +1868,24 @@ at all gets `None` rather than erroring.
 
 Verified: full backend suite passes (559 — 555 previous + 4 new), stable
 across two consecutive runs.
+
+### Follow-up — Feed crashed with a React "duplicate key" error mid-session, unrelated to the map
+
+Live-confirmed via the same testing session: `app/(tabs)/index.tsx`'s
+`FlatList` threw "Encountered two children with the same key" for a real
+place id appearing in both an already-loaded page and the next one
+fetched. Root cause: the feed paginates by 1-indexed page number against
+a plain offset/limit query ordered by `rank_score`, not a stable cursor.
+The discovery pipeline runs every 5 minutes and (especially after this
+session's own throughput bumps) keeps inserting new places between page
+fetches — each insertion shifts every later page's offset window, so a
+place already shown on an earlier page can reappear inside a
+subsequently-fetched page's window. A real fix (keyset/cursor
+pagination) is a bigger backend change than warranted mid-session;
+de-duplicated the flattened `places` list by `id` instead, which
+directly eliminates the actual user-visible crash regardless of why a
+duplicate ID showed up.
+
+Verified: `npx tsc --noEmit` clean, full frontend suite passes (86,
+unaffected — no existing test covers this screen). Backend untouched,
+no re-run needed.
