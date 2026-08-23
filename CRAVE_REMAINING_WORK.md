@@ -1760,3 +1760,38 @@ if `onMapReady` fully addresses it, pins should now render on first load
 without any pan needed; if "Could not load places" still appears, the
 `[MAP] LOAD_FAILED` log added earlier will finally show the real HTTP
 status/error instead of a guess.
+
+### Follow-up — built the first real automated test coverage for map.tsx, reproducing the exact production bug sequence
+
+Given there was no way to hand a real iOS simulator to verify the
+`onMapReady` fix, built an actual regression test instead of just
+asserting the fix "should" work: `app/(tabs)/map.test.tsx`, using
+`@testing-library/react-native` against a manual mock of
+`react-native-maps` (`__mocks__/react-native-maps.tsx` — a `MapView`
+stand-in that captures whatever props it was given and exposes an
+`animateToRegion` spy through the ref) so the exact event sequence seen
+in production could be driven directly: mount → a simulated spurious
+native `onRegionChangeComplete` (same ~1km-radius shape logged live) →
+`onMapReady` → a genuine user pan.
+
+Four tests, all passing, each proving one specific claim rather than
+just re-describing the code:
+- the spurious first event does not trigger a second fetch or clobber
+  the real (already-loaded) results,
+- `onMapReady` calls `animateToRegion` with the correct city region,
+- a genuine pan *after* `onMapReady` still triggers a real fetch with
+  the right lat/lng (proving the fix doesn't accidentally suppress real
+  panning),
+- the retryable error banner (added in the same change) actually shows
+  on failure and re-issues the identical request on tap.
+
+Also had to add `__mocks__/@react-native-async-storage/async-storage.js`
+(pointing at that package's own officially-documented jest mock) — this
+was previously not needed because no test imported anything that
+transitively pulled in the real Supabase client (which requires
+AsyncStorage) until this one did via `cityStore`. This is a repo-wide
+enabler, not map-specific — any future test that touches a Zustand store
+backed by `persist`/AsyncStorage benefits from it too.
+
+Verified: `npx tsc --noEmit` clean, full frontend Jest suite passes (86 —
+82 previous + 4 new), stable across a second run.
