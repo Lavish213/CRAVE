@@ -2152,3 +2152,30 @@ across two runs. Frontend: `npx tsc --noEmit` clean, full suite passes
 (90, unaffected — no dedicated test for the new screen itself, same as
 other similarly-scoped screen additions this session; covered by the
 service-level tests plus a clean typecheck).
+
+### Follow-up — audited every remaining list-surface route for the same primary-image N+1 pattern found in map_query.py; one dead-code cleanup found, no other bugs
+
+Asked to keep looking for anything else to improve. Since `map_query.py`
+turned out to have a real production timeout from a per-row correlated
+subquery instead of the shared `get_primary_image_urls_bulk` bulk
+lookup, audited every other route/service file that touches
+`primary_image` to rule out the same bug elsewhere:
+`rankings.py`, `search.py`, `trending.py`, `place_detail_router.py`,
+`places.py`, `feed_social.py`, `saves.py`, `discovery_places.py`,
+`places_query.py`, `place_detail_query.py`. All the list-returning ones
+(`rankings.py`, `search.py`, `trending.py`, `feed_social.py`,
+`places_query.py`) already call `get_primary_image_urls_bulk` correctly;
+`place_detail_query.py` only ever resolves one place at a time (not a
+list), so `images[0] if images else None` there was never an N+1 risk.
+
+The one thing this turned up: `discovery_places.py` had its own
+`get_primary_image(db, place_id)` — a single-place, non-bulk helper with
+no visibility filtering — that was never imported or called anywhere in
+`app/` or `tests/` (confirmed via a repo-wide grep for both the function
+name and the module's other exports). It predates the shared
+`place_image_visibility_query.py` helpers and was fully superseded by
+them; nothing depended on it. Removed the dead function and its
+now-unused `PlaceImage` import.
+
+Verified: full backend suite passes (578, unchanged — nothing referenced
+the removed function, so no test count change), stable across two runs.
