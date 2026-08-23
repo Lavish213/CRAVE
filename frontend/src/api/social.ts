@@ -151,6 +151,28 @@ export interface Ranking {
   visited_at: string | null;
 }
 
+// "X of your friends ranked this" — the direct equivalent of Beli's
+// friend-rating feature. Separate call from the main place-detail fetch
+// since that response is cached globally by place_id (shared across
+// every viewer) — this one is per-viewer (scoped to the caller's own
+// follow graph) and deliberately never cached, same pattern as
+// getCravesForPlace's separate "seen on social" call.
+export interface FriendRanking {
+  user_id: string;
+  username: string;
+  display_name: string | null;
+  avatar_url: string | null;
+  tier: RankTier;
+  rank_score: number;
+}
+
+export async function fetchFriendRankings(placeId: string): Promise<FriendRanking[]> {
+  const { data } = await client.get<{ rankings: FriendRanking[]; count: number }>(
+    `/api/v1/place/${placeId}/friends`,
+  );
+  return Array.isArray(data?.rankings) ? data.rankings : [];
+}
+
 /**
  * A ranking hydrated with enough of its place to render a list row without
  * a follow-up request per item. List endpoints return this; the ranking

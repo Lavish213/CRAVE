@@ -1939,3 +1939,84 @@ planning pass rather than built solo:
 
 Verified: full backend suite passes (563 — 559 previous + 4 new), stable
 across two consecutive runs. Frontend untouched, no re-run needed.
+
+### Follow-up — built the "friend rating" feature (Beli's other core hook), audited Beli directly too
+
+Asked to also check Beli (the other named competitor) and close any more
+small, self-contained gaps, leaving bigger ones for a joint planning
+pass. Beli's advertised feature set: forced-order pairwise ranking (CRAVE
+already has this — the binary-insertion comparison algorithm built
+earlier this session), a friend-rating average per place, personalized
+"prediction score" recommendations based on ranking history + friends'
+taste, gamified streaks/yearly goals, an interactive personal map of
+your own ranked places, and "Taste Profile" stats (total eaten, favorite
+cuisines, top cities).
+
+One of these was small and self-contained enough to build now: **friend
+ratings on place detail**. CRAVE already had 100% of the underlying data
+(`PlaceRanking` + the follow graph) but never surfaced it — the place
+detail screen had no notion of "your friends" at all. Also found, while
+scoping this, that the "unlock recommendations" progress card on the
+profile screen (`rankScore.ts`'s `RECOMMENDATION_THRESHOLD`/
+`recommendationProgress`) has been a dead promise — grep across the
+whole app turns up literally zero code implementing an actual
+recommendation feed once "unlocked." That's real, but a whole missing
+subsystem (needs a taste-similarity/prediction algorithm), not a
+same-day fix — added to the big list below rather than attempted here.
+
+Built:
+- `app/services/social/friend_rankings_service.py` (new) —
+  `get_friend_rankings_for_place`: rankings of a place by people the
+  caller follows, best-to-worst, block-safe for free (a blocked user can
+  never appear in `list_following`'s result — same reasoning
+  `leaderboard_service`'s `among="friends"` branch already relies on).
+- `GET /api/v1/place/{place_id}/friends` (new route in
+  `place_detail_router.py`) — deliberately a **separate** endpoint from
+  `GET /place/{place_id}`, not a field folded into it: that response is
+  cached globally by `place_id` alone, shared across every viewer —
+  adding per-viewer follow-graph data there would either leak one user's
+  friend rankings to another through the shared cache, or force
+  disabling that cache entirely. This one is never cached and always
+  scoped to the caller's own follow graph, same pattern
+  `GET /craves/for-place/{id}`'s separate "seen on social" call already
+  uses for the identical reason.
+- Frontend: `fetchFriendRankings` (`src/api/social.ts`) and a "Ranked by
+  N friends" horizontal card row on the place detail screen (avatar,
+  username, tier label/color reusing the already-built
+  `TIER_LABELS`/`tierColor` utilities from the ranking flow), fetched
+  only when signed in, tapping a friend opens their profile.
+- `tests/test_friend_rankings_service.py` (4 tests): rankings ordered
+  best-first, a non-followed user's ranking is excluded, following
+  nobody returns empty, and a followed user who hasn't ranked the place
+  doesn't appear.
+
+Caught and fixed a real test-isolation bug while adding this: the new
+test file's `Place` rows (rank_score defaults to 0.0, zero images) had
+no teardown, and depending on file-run order they leaked into
+`test_image_worker_starvation.py`'s own *unscoped* query — confirmed via
+full-suite runs that it flaked specifically because ImageWorker's
+starvation-reserve logic deliberately goes looking for exactly that
+shape of neglected place. Fixed by adding proper create/teardown
+tracking to the new test's `db` fixture (mirrors the cleanup pattern
+`test_share_parser_worker_retry.py`'s `make_item` fixture already uses).
+
+Verified: full backend suite passes (567 — 563 previous + 4 new), stable
+across two consecutive fresh-DB runs. Frontend: `npx tsc --noEmit`
+clean, full suite passes (86, unaffected).
+
+**Bigger gaps found across the Biter + Beli audit, left for a joint
+planning pass rather than built solo** (see the earlier entry above for
+the Biter-specific ones):
+- **No personalized recommendation engine** — the profile screen
+  promises one ("rank 15+ places to unlock recommendations") but nothing
+  is actually built behind that promise. Beli computes this from ranking
+  history + friends' taste; needs real algorithm design.
+- **No gamification** (streaks, yearly goals) — Beli's Duolingo-style
+  streak tracking and "rank N places in 2026" goals. Needs product
+  decisions (what counts as a streak day, notification hooks) as much as
+  code.
+- **No "Taste Profile" stats page** — total places ranked, favorite
+  cuisine, top city, etc. Straightforward aggregation over data CRAVE
+  already has, but a new screen/design, not a one-line fix.
+- (Still open from the Biter audit) native iOS Share Sheet, a
+  personal-saves layer on the Map tab, and proximity alerts.

@@ -11,6 +11,8 @@ logger = logging.getLogger(__name__)
 
 from app.db.session import get_db
 from app.core.rate_limit import rate_limit
+from app.core.auth import require_api_key
+from app.core.user_auth import get_current_user_id
 from app.db.models.place import Place
 from app.db.models.category import Category
 from app.db.models.place_categories import place_categories
@@ -20,6 +22,7 @@ from app.services.cache.cache_keys import place_detail_key
 from app.services.cache.cache_ttl import place_detail_ttl
 from app.services.query.place_image_query import _to_proxy_url
 from app.services.query.place_image_visibility_query import get_public_gallery
+from app.services.social.friend_rankings_service import get_friend_rankings_for_place
 
 
 router = APIRouter(
@@ -176,3 +179,33 @@ def get_place_detail(
     )
 
     return result
+
+
+@router.get(
+    "/{place_id}/friends",
+    dependencies=[Depends(rate_limit), Depends(require_api_key)],
+)
+def get_place_friend_rankings(
+    *,
+    place_id: str,
+    db: Session = Depends(get_db),
+    user_id: str = Depends(get_current_user_id),
+) -> dict:
+    """
+    "X of your friends ranked this" — the direct equivalent of Beli's
+    friend-rating feature. Deliberately a separate endpoint rather than a
+    field on GET /place/{place_id}: that endpoint's response is cached
+    globally by place_id alone (see place_detail_key above), shared
+    across every viewer — folding in per-viewer follow-graph data there
+    would either leak one user's friend rankings to another via the
+    shared cache, or force disabling that cache entirely. This one is
+    never cached and always scoped to the caller's own follow graph,
+    same pattern as GET /craves/for-place/{id}'s separate "seen on
+    social" call.
+    """
+    place_id = (place_id or "").strip()
+    if not place_id:
+        raise HTTPException(status_code=400, detail="Invalid place_id")
+
+    rankings = get_friend_rankings_for_place(db, place_id=place_id, user_id=user_id)
+    return {"rankings": rankings, "count": len(rankings)}

@@ -26,8 +26,8 @@ import { useUploadImage } from '../../src/hooks/useUploadImage';
 import { useImageStatusPoll } from '../../src/hooks/useImageStatusPoll';
 import { Colors, Spacing, Radius } from '../../src/constants/colors';
 import { getTier, getBadges, formatPrice } from '../../src/utils/scoring';
-import { fetchMyRankings } from '../../src/api/social';
-import { formatScore, tierColor } from '../../src/utils/rankScore';
+import { fetchMyRankings, fetchFriendRankings, FriendRanking } from '../../src/api/social';
+import { formatScore, tierColor, TIER_LABELS } from '../../src/utils/rankScore';
 import { relativeTime } from '../../src/utils/time';
 import { ImageGallery } from '../../src/components/ImageGallery';
 import { ReportPhotoSheet } from '../../src/components/ReportPhotoSheet';
@@ -180,6 +180,32 @@ export default function PlaceDetailScreen() {
         setCraves([]);
       });
   }, [id]);
+
+  const [friendRankings, setFriendRankings] = useState<FriendRanking[]>([]);
+  const friendRankingsGenerationRef = useRef(0);
+
+  // "X of your friends ranked this" — the direct equivalent of Beli's
+  // friend-rating feature. Authenticated (needs the caller's own follow
+  // graph), so only fetched when signed in — silently empty otherwise,
+  // same "supplementary content, not worth its own error state" treatment
+  // as the craves/social fetch above.
+  useEffect(() => {
+    if (!id || !user) {
+      setFriendRankings([]);
+      return;
+    }
+    const myGeneration = ++friendRankingsGenerationRef.current;
+    setFriendRankings([]);
+    fetchFriendRankings(id)
+      .then((rankings) => {
+        if (myGeneration !== friendRankingsGenerationRef.current) return;
+        setFriendRankings(rankings);
+      })
+      .catch(() => {
+        if (myGeneration !== friendRankingsGenerationRef.current) return;
+        setFriendRankings([]);
+      });
+  }, [id, user]);
 
   const handleShare = useCallback(() => {
     if (!place) return;
@@ -553,6 +579,39 @@ export default function PlaceDetailScreen() {
         )}
       </View>
 
+      {/* Friend rankings — "X of your friends ranked this," the direct
+          equivalent of Beli's friend-rating feature. */}
+      {friendRankings.length > 0 && (
+        <View style={styles.socialSection}>
+          <Text style={styles.sectionTitle}>
+            Ranked by {friendRankings.length} {friendRankings.length === 1 ? 'friend' : 'friends'}
+          </Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.socialRow}>
+            {friendRankings.map((r) => (
+              <TouchableOpacity
+                key={r.user_id}
+                style={styles.friendRankCard}
+                onPress={() => router.push(`/user/${r.user_id}`)}
+                accessibilityRole="link"
+                accessibilityLabel={`View ${r.username}'s profile — ranked ${TIER_LABELS[r.tier]}`}
+              >
+                {r.avatar_url ? (
+                  <Image source={{ uri: r.avatar_url }} style={styles.friendRankAvatar} />
+                ) : (
+                  <View style={[styles.friendRankAvatar, styles.friendRankAvatarFallback]}>
+                    <Ionicons name="person" size={18} color={Colors.textMuted} />
+                  </View>
+                )}
+                <Text style={styles.friendRankUsername} numberOfLines={1}>@{r.username}</Text>
+                <Text style={[styles.friendRankTier, { color: tierColor(r.tier) }]}>
+                  {TIER_LABELS[r.tier]}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
+      )}
+
       {/* Seen on social — matched TikTok/YouTube/IG shares. Tapping opens
           the original post; true inline playback would need react-native-webview,
           not currently a dependency, so this links out instead. */}
@@ -749,4 +808,20 @@ const styles = StyleSheet.create({
   },
   socialPlatformChipText: { color: '#fff', fontSize: 10, fontWeight: '700' },
   socialAuthor: { color: Colors.textSecondary, fontSize: 12, marginTop: 6 },
+  friendRankCard: { width: 84, alignItems: 'center' },
+  friendRankAvatar: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: Colors.surface,
+  },
+  friendRankAvatarFallback: { alignItems: 'center', justifyContent: 'center' },
+  friendRankUsername: {
+    color: Colors.text,
+    fontSize: 12,
+    fontWeight: '600',
+    marginTop: 6,
+    maxWidth: 84,
+  },
+  friendRankTier: { fontSize: 11, fontWeight: '700', marginTop: 2 },
 });
