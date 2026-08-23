@@ -72,6 +72,11 @@ export default function SearchScreen() {
 
   const showTrending = !searched && !searchLoading && query.length === 0;
   const showNoResults = searched && results.length === 0 && !searchError;
+  // Below the 2-char query threshold, nothing else here renders anything —
+  // no trending (query isn't empty), no results/no-results state (search
+  // never actually fires). Without this, that gap between "empty" and
+  // "searched" reads as a blank, broken screen instead of "keep typing."
+  const showBelowThreshold = query.length > 0 && query.length < 2;
 
   return (
     <View style={styles.container}>
@@ -147,6 +152,13 @@ export default function SearchScreen() {
         />
       )}
 
+      {/* Below the query-length threshold */}
+      {showBelowThreshold && (
+        <View style={styles.loadingRow}>
+          <Text style={styles.hintText}>Keep typing to search…</Text>
+        </View>
+      )}
+
       {/* No results */}
       {showNoResults && (
         <EmptyState
@@ -200,6 +212,7 @@ const styles = StyleSheet.create({
   input: { flex: 1, color: Colors.text, fontSize: 15 },
   cityContext: { color: Colors.textMuted, fontSize: 12, fontWeight: '500', paddingLeft: Spacing.xs },
   loadingRow: { paddingVertical: 20, alignItems: 'center' },
+  hintText: { color: Colors.textMuted, fontSize: 13 },
   list: { padding: Spacing.md, gap: Spacing.sm, paddingBottom: Spacing.xxl },
   browseIntro: {
     fontSize: 22,

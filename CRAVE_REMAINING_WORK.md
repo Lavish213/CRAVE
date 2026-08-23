@@ -1645,3 +1645,25 @@ unaffected — no existing test file covers `AuthSheet.tsx` itself, so this
 was also manually reasoned through against the existing OAuth code path
 rather than caught by a new automated test). Backend untouched, no
 re-run needed.
+
+### Follow-up — search screen showed nothing below the 2-character query threshold
+
+User reported "search doesnt wkork either nothing is popping up" — the
+screenshot showed a single character typed ("K"). `search.tsx` only
+fires a query once `debouncedQuery.length >= 2` (deliberate — avoids a
+request per keystroke), but nothing else in the render tree covers the
+gap below that: `showTrending` requires `query.length === 0`, and
+`showNoResults`/results both require an actual completed search. Below 2
+characters, the screen showed only the search bar with a totally blank
+body — indistinguishable from broken. Added `showBelowThreshold` (`0 <
+query.length < 2`) rendering a plain "Keep typing to search…" hint in
+that gap. Also actively investigating a separate, real report from the
+same message that the Map tab shows no pins at all, even after
+selecting a specific city (ruling out the GPS/default-region fallback as
+the cause) — still open, waiting on Metro console log output
+(`[API] MAP_RAW` / `[MAP] FEATURES_LOADED`) to see the actual API
+response before changing anything, since guessing here risks masking
+the real cause.
+
+Verified: `npx tsc --noEmit` clean, full frontend Jest suite passes (82,
+unaffected — no test file covers this screen either).
