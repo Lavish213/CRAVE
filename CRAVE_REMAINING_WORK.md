@@ -2656,5 +2656,65 @@ across repeated runs.
 Launched a broader bug-hunting sweep (N+1 query patterns, frontend
 stale-response races in screens not yet audited, cache-key correctness
 in other cached endpoints, missing `db.rollback()` after failed
-statements sharing a session) — findings and fixes logged separately
-once that pass completes.
+statements sharing a session).
+
+**The sweep caught a real gap in this session's own earlier work**: the
+whole-app grep used to confirm `Place.city`/`.claims`/`.images` were
+"never read anywhere" searched for literal `.attr` dot-access, which
+missed the same data read via `getattr(place, "attr", default)` — the
+exact "invisible to naive grep" trap already worried about for Pydantic
+schema fields, just a different shape. Three real, confirmed usages:
+
+- `app/workers/recompute_scores_worker.py::_score_batch()` reads
+  `getattr(place, "city", None)` for city-aware scoring weights, looping
+  over up to 500 places every 15 minutes
+  (`app/scheduler.py::_job_score_recompute`).
+- `app/services/images/image_ingest_service.py` reads
+  `getattr(place, "images", ...)`, and
+  `app/services/images/provider_image_extractor.py` reads
+  `getattr(place, "claims", None)` — both looped over up to 100 places
+  every ~5 minutes via `ImageWorker._select_places()`.
+
+Rather than reverting the model-level `lazy="select"` default (correctly
+removed everywhere it's genuinely unused, including the live, frequently-
+hit map and place-detail endpoints), added explicit
+`.options(selectinload(...))` at the three specific batch-fetch queries
+that actually need it — the same pattern
+`app/services/scoring/recompute_scores.py` already established for
+`Place.categories`. Along the way, found `recompute_scores_worker.py`'s
+own `_iter_place_batches()` is legacy/unused (per its own docstring —
+`app/scheduler.py`'s real job builds its own query directly); fixed the
+real, live site in `scheduler.py` and left a harmless option on the
+legacy path too, in case it's ever revived.
+
+Added two regression tests using real statement counting (a functional
+assertion alone wouldn't distinguish "batched" from "one query per
+place" — both return correct data): `test_recompute_scores_worker_
+city_lookup.py` (5 places across 5 *distinct* cities, so the per-session
+identity map can't accidentally dedupe repeated lookups of the *same*
+city — confirmed reverting the fix costs 5 more statements, 12 vs 7) and
+`test_image_worker_eager_load.py` (checks SQLAlchemy's own inspection
+API directly rather than running the full ingestion pipeline, which
+makes real outbound HTTP calls — confirmed by temporarily reverting the
+fix and watching it fail).
+
+Also found and fixed 3 more frontend stale-response races, same bug
+class already fixed in `place/[id].tsx`, `craves.tsx`/`cravesStore.ts`,
+`useTrending.ts`, and `rank/[placeId].tsx`:
+- `app/user/[id].tsx` — tapping from one user's profile into another's
+  could show stale data if the old request outraced the new one.
+- `app/taste-profile/[userId].tsx` — same shape.
+- `app/(tabs)/profile.tsx` — signing out and into a different account
+  while a previous load was in flight could populate the new account's
+  profile screen with the previous account's data.
+
+No further findings survived verification for the other two bug
+classes hunted (cache-key correctness in other cached endpoints;
+missing `db.rollback()` elsewhere) — also applied one small consistency
+fix along the way: `map_query_plan`'s own `EXPLAIN` failure branch was
+missing the same `db.rollback()` its sibling `categories_query_plan`
+already has (harmless in practice, since nothing else used `db`
+afterward in that request, but fixed for consistency).
+
+Verified: 633 backend tests passing (631 + 2 new), frontend `tsc
+--noEmit` clean, full jest suite 94/94, stable across repeated runs.
