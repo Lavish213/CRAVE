@@ -9,6 +9,7 @@ from __future__ import annotations
 from fastapi.testclient import TestClient
 
 from app.main import app
+from app.api.v1.routes import debug as debug_route
 
 # raise_server_exceptions=False: this route deliberately raises, and by
 # default TestClient re-raises unhandled exceptions instead of running them
@@ -44,9 +45,30 @@ def test_sentry_test_endpoint_raises_with_correct_api_key(monkeypatch):
     assert response.status_code == 500
 
 
-def test_version_reports_railways_own_commit_env_var_when_set(monkeypatch):
+def test_version_reads_the_deploy_stamped_commit_file_first(monkeypatch, tmp_path):
+    commit_file = tmp_path / "GIT_COMMIT.txt"
+    commit_file.write_text("fileeeeef456abc123def456abc123def456abc\n")
+    monkeypatch.setattr(debug_route, "_GIT_COMMIT_FILE", commit_file)
+    # Present to prove the file wins even when an env var also resolves —
+    # this project's actual deploy method (railway up, a local-directory
+    # upload) doesn't set this at all, but a future GitHub-connected
+    # deploy might, and the file should still take priority since it's
+    # stamped from the exact commit that was actually uploaded.
+    monkeypatch.setenv("RAILWAY_GIT_COMMIT_SHA", "envvarrrf456abc123def456abc123def456abc")
+
+    response = client.get("/api/v1/debug/version")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["commit"] == "fileeeeef456abc123def456abc123def456abc"
+    assert body["commit_short"] == "fileeeeef456"
+
+
+def test_version_falls_back_to_railways_env_var_when_no_commit_file_exists(monkeypatch, tmp_path):
+    monkeypatch.setattr(debug_route, "_GIT_COMMIT_FILE", tmp_path / "does-not-exist.txt")
     monkeypatch.setenv("RAILWAY_GIT_COMMIT_SHA", "abc123def456abc123def456abc123def456abc")
     monkeypatch.setenv("RAILWAY_ENVIRONMENT_NAME", "production")
+
     response = client.get("/api/v1/debug/version")
 
     assert response.status_code == 200

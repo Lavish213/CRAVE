@@ -2414,3 +2414,51 @@ is not yet confirmed — waiting on the user to redeploy, then compare
 `GET /api/v1/debug/version`'s `commit` against `git rev-parse HEAD` on
 this branch, and re-test with the now-more-complete `[MAP]
 FEATURES_LOADED` / `[MAP] LOAD_FAILED` logging.
+
+### Follow-up — /version came back `"commit": null` in production; RAILWAY_GIT_COMMIT_SHA doesn't apply to this project's deploy method
+
+User actually hit the new endpoint against
+`crave-production.up.railway.app` and got back `{"commit": null, ...}`
+— both of the previous fix's sources came up empty. Root cause, worth
+recording since it wasn't obvious going in: `RAILWAY_GIT_COMMIT_SHA` is
+only populated for a GitHub-connected deploy, where Railway itself
+clones the repo. This project deploys via `railway up`, which uploads
+the local working directory as a build artifact instead — no git clone
+happens on Railway's side at all, so that env var was never going to be
+set, and the git-fallback (`git rev-parse HEAD` run inside the
+container) came up empty too, meaning Railpack's build doesn't carry
+`.git` into the image either. Confirmed the deploy log the user pasted
+separately: `railway.toml`/`railway.json`'s `startCommand` already runs
+`alembic upgrade head` automatically on every deploy, so that part
+requires no separate manual step (a correction to earlier advice in
+this same thread to run it separately via `railway run`).
+
+Since neither mechanism this project actually uses could ever populate
+`commit`, switched the primary source to a file stamped fresh right
+before each deploy: `backend/GIT_COMMIT.txt` (gitignored — regenerated
+every time, never committed), read via
+`Path(__file__).resolve().parents[4] / "GIT_COMMIT.txt"`. Added
+`deploy.sh` at the repo root specifically so this isn't one more manual
+step to forget (the exact failure mode that caused the original "still
+broken" report) — it stamps the file from `git rev-parse HEAD`, warns
+if there are uncommitted changes (since the file would then reflect
+HEAD, not the actual working tree being uploaded), runs `railway up`,
+and prints the exact `curl` command plus expected commit to verify
+against afterward. `RAILWAY_GIT_COMMIT_SHA` and the git-fallback stay in
+the code as secondary sources in case the deploy method ever changes to
+a GitHub-connected one.
+
+`tests/test_debug_routes.py` (+2, net +1 after removing the now-
+inapplicable env-var-only test): the stamped file wins even when
+`RAILWAY_GIT_COMMIT_SHA` also resolves (proves priority order), and the
+env var is still used as a fallback when no file exists.
+
+Verified: backend suite passes (606 — 605 previous, net +1), stable
+across two runs. No frontend changes in this follow-up.
+
+**Next step for the user**: run `./deploy.sh` from the repo root instead
+of `railway up` directly, then `curl
+https://crave-production.up.railway.app/api/v1/debug/version` — its
+`commit` should now match `git rev-parse HEAD`. Once that's confirmed,
+re-test the map and paste whatever `[MAP] FEATURES_LOADED` or `[MAP]
+LOAD_FAILED` line appears.
