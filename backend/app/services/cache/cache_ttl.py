@@ -27,6 +27,12 @@ PLACE_MENU_TTL = 1800   # 30 minutes — menu changes infrequently
 CATEGORIES_TTL = 3600
 CITIES_TTL = 3600
 
+# The global leaderboard's ranking changes at the pace of ranking activity
+# app-wide (similar cadence to FEED_TTL) -- previously it wasn't cached at
+# all, so every single request re-ran a full GROUP BY/COUNT/ORDER BY
+# aggregate over place_rankings from scratch.
+LEADERBOARD_TTL = 300   # 5 minutes
+
 # Negative-result cache TTLs (provider probe / blocked domain)
 NEGATIVE_PROBE_TTL_TIMEOUT = 1800     # 30 min — timeouts may recover
 NEGATIVE_PROBE_TTL_BLOCKED = 43200    # 12 h  — 4xx / captcha / blocked HTML

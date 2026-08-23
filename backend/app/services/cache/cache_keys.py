@@ -113,6 +113,23 @@ def place_detail_key(
     return f"place:{place_id}"
 
 
+def leaderboard_global_base_key(
+    *,
+    city_slug: Optional[str],
+) -> str:
+    """
+    Cache key for the global leaderboard's *base* ranking -- deliberately
+    keyed only on city, not on the caller, not on `limit`, and not on
+    blocked users: the underlying ranked list is identical for every
+    viewer. Per-viewer block-filtering is applied in Python after reading
+    this cached (or freshly computed) pool, the same reason
+    /place/{id}/friends is never folded into the shared place-detail
+    cache -- baking a per-viewer filter into the cached value itself
+    would either leak data across viewers or force disabling the cache.
+    """
+    return f"leaderboard:global:{_norm(city_slug)}"
+
+
 def categories_cache_key() -> str:
     return "categories:all"
 

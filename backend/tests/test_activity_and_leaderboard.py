@@ -25,6 +25,11 @@ from app.services.social.activity_service import (
     list_friend_feed,
 )
 from app.services.social.leaderboard_service import get_leaderboard, LeaderboardError
+from app.services.cache.response_cache import response_cache
+from app.services.cache.cache_keys import leaderboard_global_base_key
+
+# Cross-test leaderboard cache isolation is handled suite-wide by
+# tests/conftest.py's autouse _clear_leaderboard_cache fixture.
 
 
 @pytest.fixture
@@ -243,3 +248,55 @@ def test_leaderboard_unknown_city_slug_raises(db, users):
 def test_leaderboard_invalid_among_raises(db, users):
     with pytest.raises(LeaderboardError):
         get_leaderboard(db, user_id=users["alice"], among="nonsense")
+
+
+# ---------------------------------------------------------------------------
+# Leaderboard caching — the global scope's base ranking is now cached
+# (previously recomputed a full GROUP BY/COUNT/ORDER BY aggregate on every
+# request, with no caching at all).
+# ---------------------------------------------------------------------------
+
+def test_leaderboard_global_scope_reads_from_cache_when_present(db, users):
+    # Planted directly, bypassing the DB entirely -- these counts don't
+    # correspond to anything real for these fresh, zero-ranking uuid
+    # users. The only way they can appear in the result is if
+    # get_leaderboard actually read this cached base instead of
+    # recomputing from PlaceRanking.
+    fake_base = [
+        {"user_id": users["alice"], "places_logged": 999, "username": "alice",
+         "display_name": None, "avatar_url": None},
+        {"user_id": users["bob"], "places_logged": 1, "username": "bob",
+         "display_name": None, "avatar_url": None},
+    ]
+    response_cache.set(leaderboard_global_base_key(city_slug=None), fake_base, 60)
+
+    rows = get_leaderboard(db, user_id=users["carol"], among="global", limit=100)
+    by_user = {r["user_id"]: r["places_logged"] for r in rows}
+    assert by_user[users["alice"]] == 999
+    assert by_user[users["bob"]] == 1
+
+
+def test_leaderboard_global_scope_filters_cached_base_per_viewer(db, users):
+    # Same idea, but proves block-filtering is applied *after* the cache
+    # read, per viewer -- not baked into the cached value itself (which
+    # would either leak across viewers or force disabling the cache).
+    fake_base = [
+        {"user_id": users["alice"], "places_logged": 5, "username": "alice",
+         "display_name": None, "avatar_url": None},
+        {"user_id": users["bob"], "places_logged": 3, "username": "bob",
+         "display_name": None, "avatar_url": None},
+    ]
+    response_cache.set(leaderboard_global_base_key(city_slug=None), fake_base, 60)
+    block_service.block_user(db, blocker_id=users["carol"], blocked_id=users["bob"])
+
+    carol_rows = get_leaderboard(db, user_id=users["carol"], among="global", limit=100)
+    carol_ids = {r["user_id"] for r in carol_rows}
+    assert users["alice"] in carol_ids
+    assert users["bob"] not in carol_ids
+
+    # A different viewer, no block of their own, reads the exact same
+    # cached pool and still sees bob -- proving the filter is per-viewer,
+    # not baked into what's cached.
+    alice_rows = get_leaderboard(db, user_id=users["alice"], among="global", limit=100)
+    alice_ids = {r["user_id"] for r in alice_rows}
+    assert users["bob"] in alice_ids
