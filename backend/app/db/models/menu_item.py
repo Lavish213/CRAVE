@@ -165,9 +165,11 @@ class MenuItem(Base, TimestampMixin):
     # RELATIONSHIP
     # --------------------------------------------------
 
+    # Confirmed via grep across the entire app: nothing ever reads
+    # menu_item.place (same dead-eager-load bug class as Category.places).
     place: Mapped["Place"] = relationship(
         "Place",
-        lazy="selectin",
+        lazy="select",
         passive_deletes=True,
     )
 

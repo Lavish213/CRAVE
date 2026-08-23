@@ -37,8 +37,17 @@ def _build_engine() -> Engine:
             future=True,
             echo=settings.debug,
             pool_pre_ping=True,   # validate connections before use (handles stale connections)
-            pool_size=20,
-            max_overflow=40,
+            # See settings.py's db_pool_size/db_max_overflow comment: this
+            # engine is built fresh in every process that imports this
+            # module, so the web service and the standalone scheduler
+            # worker (app/scheduler_worker.py) each get their own pool
+            # against the same Postgres instance -- sized conservatively
+            # by default since Railway Postgres's own max_connections
+            # limit (100 by default) has to cover both services combined,
+            # plus Alembic, the Console, and Postgres's own reserved
+            # connections.
+            pool_size=settings.db_pool_size,
+            max_overflow=settings.db_max_overflow,
             pool_recycle=1800,    # recycle connections every 30 min
             pool_timeout=30,
         )

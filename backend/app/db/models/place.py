@@ -218,10 +218,25 @@ class Place(Base, TimestampMixin):
         server_default=text("false"),
     )
 
+    # city/claims/truths/images/feed_snapshots below were all lazy="selectin"
+    # (eager) -- confirmed via grep across the entire app (including every
+    # Pydantic schema field name, to catch implicit access through
+    # from_attributes serialization) that none of them are ever read
+    # anywhere. Every place that loads a full Place entity (12+ call sites:
+    # recommendation_service.py, discovery_places.py, places_query.py,
+    # proximity_query.py, menu_enrichment_worker.py, menu_trigger.py,
+    # ranking_service.py, menu_worker.py, rankings.py, feed_social.py, and
+    # place_detail_router.py before this fix) was silently paying for 5
+    # extra eager-loaded queries per relationship, every time, for data
+    # nothing reads. This is the same bug class as Category.places, found
+    # while auditing every other lazy="selectin" relationship in the app
+    # after that fix. Place.categories is the one exception here --
+    # confirmed genuinely used (promote_service_v2.py, ranking_service.py,
+    # place_seed.py) -- so it keeps its eager default.
     city: Mapped["City"] = relationship(
         "City",
         back_populates="places",
-        lazy="selectin",
+        lazy="select",
     )
 
     categories: Mapped[list["Category"]] = relationship(
@@ -237,7 +252,7 @@ class Place(Base, TimestampMixin):
         back_populates="place",
         cascade="all, delete-orphan",
         passive_deletes=True,
-        lazy="selectin",
+        lazy="select",
     )
 
     truths: Mapped[list["PlaceTruth"]] = relationship(
@@ -245,7 +260,7 @@ class Place(Base, TimestampMixin):
         back_populates="place",
         cascade="all, delete-orphan",
         passive_deletes=True,
-        lazy="selectin",
+        lazy="select",
     )
 
     images: Mapped[list["PlaceImage"]] = relationship(
@@ -253,7 +268,7 @@ class Place(Base, TimestampMixin):
         back_populates="place",
         cascade="all, delete-orphan",
         passive_deletes=True,
-        lazy="selectin",
+        lazy="select",
     )
 
     feed_snapshots: Mapped[list["PlaceFeedSnapshot"]] = relationship(
@@ -261,7 +276,7 @@ class Place(Base, TimestampMixin):
         back_populates="place",
         cascade="all, delete-orphan",
         passive_deletes=True,
-        lazy="selectin",
+        lazy="select",
     )
 
     def __init__(

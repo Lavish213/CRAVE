@@ -146,9 +146,11 @@ class PlaceClaim(Base, TimestampMixin):
     # RELATIONSHIP
     # --------------------------------------------------
 
+    # Confirmed via grep across the entire app: nothing ever reads
+    # place_claim.place (same dead-eager-load bug class as Category.places).
     place: Mapped["Place"] = relationship(
         "Place",
         back_populates="claims",
-        lazy="selectin",
+        lazy="select",
         passive_deletes=True,
     )
