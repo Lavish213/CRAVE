@@ -1812,3 +1812,59 @@ was never affected (it already lived outside `app/`).
 
 Verified: `npx tsc --noEmit` clean, full suite passes (86, same count,
 same assertions — only import paths changed).
+
+### Follow-up — the real root cause of "Could not load places": map's primary-image lookup was the one list surface never converted to the bulk pattern, and it was timing out in production
+
+After the `onMapReady` fix landed, the user reproduced again with a fresh
+build and got the actual signal needed:
+
+```
+[MAP] LOAD_FAILED {"lat": 37.7652, "lng": -122.2416, "message": "timeout
+of 25000ms exceeded", "radiusKm": 7.12448, "status": undefined}
+```
+
+Two important things this confirmed: `radiusKm: 7.12448` is the correct
+~7km region (proving `onMapReady` genuinely fixed the earlier ~1km-region
+bug), and `status: undefined` with a client-side timeout means the
+backend never responded at all in 25s — a real slow-query problem, not
+empty results or a crash. Feed, Search, Trending, and Detail all loaded
+normally in the same session, narrowing it to something map-specific.
+
+Root cause, found by comparing `map_query.py` against every other list
+surface: `fetch_places_for_map`'s primary-image lookup was a **correlated
+scalar subquery embedded directly in the main SELECT** — one extra
+filtered/sorted lookup against `place_images` for every one of up to
+`limit` (default 250, max 1000) rows in the bounding-box result. Every
+other list surface (feed, search) resolves this the same way categories
+already are here (see the existing "avoids N+1 per pin" comment on the
+categories lookup two lines above it) — as a single separate bulk query
+(`get_primary_image_urls_bulk`: one `place_id IN (...)` query, grouped in
+Python) specifically to avoid this exact cost. `map_query.py` was the one
+surface that never got that treatment; it even had its own third,
+inline-duplicated copy of the same subquery logic that
+`place_image_visibility_query.py` already exposes as a shared helper
+explicitly documented as "for use in larger queries, e.g. map" — that
+helper existed and was never actually wired up here.
+
+Fixed by dropping the per-row subquery from the main query entirely and
+adding a `get_primary_image_urls_bulk` call alongside the existing
+categories bulk lookup, merged into the response the same way categories
+already are. Also removed the now-redundant second `_to_proxy_url` call
+in the GeoJSON wrapper (the bulk helper already returns proxy-formatted
+URLs) — confirmed `_to_proxy_url` is idempotent on an already-proxied URL
+either way, so this was never a correctness bug, just dead work.
+
+No test previously exercised `fetch_places_for_map` against a real DB
+with actual `PlaceImage` rows at all (the existing `tests/map/
+test_map_geojson.py` only covers the GeoJSON transform layer given
+pre-built data, and the tier-threshold helpers) — a real, pre-existing
+gap independent of this change. Added `tests/test_map_query.py`: a place
+with a visible primary image resolves it correctly, a place whose only
+primary image is hidden gets `None` (visibility filtering preserved), two
+places in the same result set each get their own correct image with no
+cross-contamination from the bulk lookup (the specific failure mode a
+careless bulk-query rewrite could introduce), and a place with no image
+at all gets `None` rather than erroring.
+
+Verified: full backend suite passes (559 — 555 previous + 4 new), stable
+across two consecutive runs.
