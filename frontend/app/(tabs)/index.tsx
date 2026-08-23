@@ -21,6 +21,7 @@ import { useToast } from '../../src/hooks/useToast';
 import { useTrending } from '../../src/hooks/useTrending';
 import { useRecommendations } from '../../src/hooks/useRecommendations';
 import { useLocation } from '../../src/hooks/useLocation';
+import { usePrefetchPlace } from '../../src/hooks/usePrefetchPlace';
 import { Colors, Spacing, Radius } from '../../src/constants/colors';
 import { getTier, TIERS, TierKey } from '../../src/utils/scoring';
 import { PlaceCard } from '../../src/components/PlaceCard';
@@ -65,6 +66,7 @@ function buildFeedRows(places: PlaceOut[]): FeedRow[] {
 
 export default function FeedScreen() {
   const router = useRouter();
+  const prefetchPlace = usePrefetchPlace();
   const selectedCity = useCityStore((s) => s.selectedCity);
   const initCities = useCityStore((s) => s.initCities);
   const { addSave, removeSave, isSaved } = useCravesStore();
@@ -226,9 +228,14 @@ export default function FeedScreen() {
           places={recommendations}
           heading="RECOMMENDED FOR YOU"
           onPress={(id) => router.push(`/place/${id}`)}
+          onPressIn={prefetchPlace}
         />
       ) : null}
-      <TrendingStrip places={trending} onPress={(id) => router.push(`/place/${id}`)} />
+      <TrendingStrip
+        places={trending}
+        onPress={(id) => router.push(`/place/${id}`)}
+        onPressIn={prefetchPlace}
+      />
 
       {!initialLoaded ? (
         <View style={styles.skeletonWrap}><SkeletonFeed count={4} /></View>
@@ -265,6 +272,7 @@ export default function FeedScreen() {
                     <PlaceCard
                       place={row.place}
                       onPress={() => router.push(`/place/${row.place.id}`)}
+                      onPressIn={() => prefetchPlace(row.place.id)}
                       onSave={async () => {
                         if (!user) {
                           setAuthVisible(true);

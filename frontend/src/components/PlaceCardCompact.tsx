@@ -11,11 +11,13 @@ import { Colors, Radius, Shadows } from '../constants/colors';
 interface Props {
   place: PlaceOut;
   onPress: () => void;
+  /** Fires before onPress -- e.g. to prefetch the destination screen's data. */
+  onPressIn?: () => void;
   rightAction?: React.ReactNode;
   style?: ViewStyle;
 }
 
-function PlaceCardCompactImpl({ place, onPress, rightAction, style }: Props) {
+function PlaceCardCompactImpl({ place, onPress, onPressIn, rightAction, style }: Props) {
   const tier = getTier(place.rank_score);
   const price = place.price ?? formatPrice(place);
   const badges = getBadges(place);
@@ -31,6 +33,7 @@ function PlaceCardCompactImpl({ place, onPress, rightAction, style }: Props) {
     <View style={[styles.shadowWrap, style]}>
     <TouchableOpacity
       style={styles.row}
+      onPressIn={onPressIn}
       onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onPress(); }}
       activeOpacity={0.85}
       accessibilityRole="button"

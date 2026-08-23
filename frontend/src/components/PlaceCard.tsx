@@ -17,12 +17,14 @@ const IMAGE_HEIGHT = 220;
 interface Props {
   place: PlaceOut;
   onPress: () => void;
+  /** Fires before onPress -- e.g. to prefetch the destination screen's data. */
+  onPressIn?: () => void;
   onSave: () => void;
   saved: boolean;
   style?: ViewStyle;
 }
 
-function PlaceCardImpl({ place, onPress, onSave, saved, style }: Props) {
+function PlaceCardImpl({ place, onPress, onPressIn, onSave, saved, style }: Props) {
   const tier = getTier(place.rank_score);
   const price = place.price ?? formatPrice(place);
   const badges = getBadges(place);
@@ -48,6 +50,7 @@ function PlaceCardImpl({ place, onPress, onSave, saved, style }: Props) {
     <View style={[styles.shadowWrap, style]}>
     <TouchableOpacity
       style={styles.card}
+      onPressIn={onPressIn}
       onPress={() => {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
         onPress();

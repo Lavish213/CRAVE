@@ -13,6 +13,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import { useCityStore } from '../../src/stores/cityStore';
+import { usePrefetchPlace } from '../../src/hooks/usePrefetchPlace';
 import { searchPlaces } from '../../src/api/search';
 import { useLocation } from '../../src/hooks/useLocation';
 import { PlaceOut } from '../../src/api/places';
@@ -25,6 +26,7 @@ import { EmptyState } from '../../src/components/EmptyState';
 
 export default function SearchScreen() {
   const router = useRouter();
+  const prefetchPlace = usePrefetchPlace();
   const selectedCity = useCityStore((s) => s.selectedCity);
   const userLocation = useLocation();
 
@@ -141,7 +143,11 @@ export default function SearchScreen() {
           keyExtractor={(p) => p.id}
           renderItem={({ item }) => (
             <View style={styles.rowSpacer}>
-              <PlaceCardCompact place={item} onPress={() => router.push(`/place/${item.id}`)} />
+              <PlaceCardCompact
+                place={item}
+                onPress={() => router.push(`/place/${item.id}`)}
+                onPressIn={() => prefetchPlace(item.id)}
+              />
             </View>
           )}
           contentContainerStyle={styles.list}
@@ -200,7 +206,11 @@ export default function SearchScreen() {
           keyExtractor={(p) => p.id}
           renderItem={({ item }) => (
             <View style={styles.rowSpacer}>
-              <PlaceCardCompact place={item} onPress={() => router.push(`/place/${item.id}`)} />
+              <PlaceCardCompact
+                place={item}
+                onPress={() => router.push(`/place/${item.id}`)}
+                onPressIn={() => prefetchPlace(item.id)}
+              />
             </View>
           )}
           contentContainerStyle={styles.list}

@@ -23,6 +23,7 @@ import { useCravesStore } from '../../src/stores/cravesStore';
 import { useToast } from '../../src/hooks/useToast';
 import { Colors, Spacing, Radius } from '../../src/constants/colors';
 import { withImageWidth, AVATAR_IMAGE_WIDTH } from '../../src/utils/imageUrl';
+import { usePrefetchPlace } from '../../src/hooks/usePrefetchPlace';
 import { PlaceCardCompact } from '../../src/components/PlaceCardCompact';
 import { EmptyState } from '../../src/components/EmptyState';
 import { ErrorState } from '../../src/components/ErrorState';
@@ -33,6 +34,7 @@ import { ShareLinkSheet } from '../../src/components/ShareLinkSheet';
 
 export default function CravesScreen() {
   const router = useRouter();
+  const prefetchPlace = usePrefetchPlace();
   const { saves, loading: savesLoading, error: savesError, loadSaves, removeSave } = useCravesStore();
   const toast = useToast((s) => s.show);
   const user = useAuthStore((s) => s.user);
@@ -239,6 +241,7 @@ export default function CravesScreen() {
             <PlaceCardCompact
               place={item}
               onPress={() => router.push(`/place/${item.id}`)}
+              onPressIn={() => prefetchPlace(item.id)}
               rightAction={
                 <TouchableOpacity
                   onPress={async () => {

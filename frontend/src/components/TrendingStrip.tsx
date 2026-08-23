@@ -9,10 +9,12 @@ import { Colors, Radius, Spacing } from '../constants/colors';
 interface Props {
   places: PlaceOut[];
   onPress: (id: string) => void;
+  /** Fires before onPress -- e.g. to prefetch the destination screen's data. */
+  onPressIn?: (id: string) => void;
   heading?: string;
 }
 
-export function TrendingStrip({ places, onPress, heading = 'TRENDING' }: Props) {
+export function TrendingStrip({ places, onPress, onPressIn, heading = 'TRENDING' }: Props) {
   if (places.length === 0) return null;
   return (
     <View style={styles.container}>
@@ -24,6 +26,7 @@ export function TrendingStrip({ places, onPress, heading = 'TRENDING' }: Props) 
             <TouchableOpacity
               key={p.id}
               style={styles.chip}
+              onPressIn={onPressIn ? () => onPressIn(p.id) : undefined}
               onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onPress(p.id); }}
               activeOpacity={0.8}
               accessibilityLabel={`${p.name}, ${heading.toLowerCase()}`}
