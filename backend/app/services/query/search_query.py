@@ -99,6 +99,17 @@ def search_places(
             (Place.lng.is_(None), _NO_COORDS_DISTANCE_SQ),
             else_=(Place.lat - lat) * (Place.lat - lat) + (Place.lng - lng) * (Place.lng - lng),
         )
+        # Postgres requires every SELECT DISTINCT query's ORDER BY
+        # expressions to appear in the select list -- distance_sq is a
+        # computed expression, not one of Place's own columns, so it has
+        # to be added explicitly. add_columns() doesn't disturb .scalars()
+        # below, which only extracts the first (Place) entity per row.
+        # Confirmed live: this was a real, standing production bug --
+        # SQLite (used by the local/default test suite) doesn't enforce
+        # this rule, so it only ever surfaced against a real Postgres
+        # instance (this repo's own CI runs the suite against Postgres
+        # too, which is what caught it).
+        stmt = stmt.add_columns(distance_sq.label("distance_sq"))
         order_by = (distance_sq.asc(), Place.rank_score.desc(), Place.id.asc())
     else:
         order_by = (Place.rank_score.desc(), Place.id.asc())
