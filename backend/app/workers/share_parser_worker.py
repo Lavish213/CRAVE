@@ -40,6 +40,7 @@ from app.db.session import SessionLocal
 from app.db.models.crave_item import CraveItem
 from app.db.models.place import Place
 from app.db.models.place_signal import PlaceSignal
+from app.db.models.hitlist_save import HitlistSave
 from app.services.social.oembed_client import get_oembed_data
 from app.services.discovery.discovery_service import ingest_candidate_v2
 
@@ -416,6 +417,55 @@ def _process_item(db: Session, item: CraveItem) -> None:
             place_id,
             confidence,
         )
+
+        # Auto-save the matched place to the submitter's personal list.
+        # Before this, matching a share to a real place did nothing for
+        # the person who shared it beyond showing up in their pending
+        # items — they'd have to separately find and save the place
+        # themselves. This is the actual behavior competing apps in this
+        # space advertise ("share a video, it's on your map"): sharing
+        # should BE saving, not a separate step. Mirrors saves.py's
+        # create_save exactly (same "save:{user_id}:{place_id}" dedup_key
+        # convention) so the result is indistinguishable from a manual
+        # save — shows up in GET /saves, can be un-saved via DELETE
+        # /saves/{place_id}, etc. In its own try/except and commit,
+        # independent of the PlaceSignal handling above, so a failure
+        # here can never affect the "matched" status that's already
+        # committed.
+        if item.submitted_by:
+            try:
+                dedup = f"save:{item.submitted_by}:{place_id}"
+                existing_save = (
+                    db.query(HitlistSave)
+                    .filter(
+                        HitlistSave.user_id == item.submitted_by,
+                        HitlistSave.dedup_key == dedup,
+                    )
+                    .one_or_none()
+                )
+                if not existing_save:
+                    place = db.get(Place, place_id)
+                    if place:
+                        db.add(HitlistSave(
+                            user_id=item.submitted_by,
+                            place_name=place.name,
+                            place_id=place_id,
+                            resolution_status="resolved",
+                            dedup_key=dedup,
+                            source_platform=item.source_type,
+                            source_url=item.url,
+                        ))
+                        db.commit()
+                        logger.info(
+                            "share_auto_saved id=%s user_id=%s place_id=%s",
+                            item.id, item.submitted_by, place_id,
+                        )
+            except Exception as exc:
+                db.rollback()
+                logger.warning(
+                    "share_auto_save_failed id=%s user_id=%s place_id=%s error=%s",
+                    item.id, item.submitted_by, place_id, exc,
+                )
     else:
         item.status = "unmatched"
         _schedule_retry(item, now)

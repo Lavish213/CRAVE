@@ -1889,3 +1889,53 @@ duplicate ID showed up.
 Verified: `npx tsc --noEmit` clean, full frontend suite passes (86,
 unaffected — no existing test covers this screen). Backend untouched,
 no re-run needed.
+
+### Follow-up — audited the Craves/share feature against Biter (a direct competitor), closed the "sharing ≠ saving" gap
+
+Asked to compare CRAVE's Craves feature end-to-end against "Biter" (a
+real competitor app whose core hook is: save a TikTok/Instagram/YouTube
+food video, and it auto-plots that spot onto your personal map). Full
+audit found the backend matching pipeline
+(`share_parser_worker.py`) already genuinely sophisticated — real oEmbed
+caption/thumbnail/author data for TikTok/YouTube, SSRF-safe HTML-scrape
+fallback for plain web links, fuzzy place matching, retry/backoff, and
+unmatched shares feed the discovery-candidate pipeline instead of
+dead-ending. Frontend has a real paste-a-link entry point
+(`ShareLinkSheet.tsx`, in the Craves tab) and matched shares render as
+"seen on TikTok/@author" social-proof cards on the place detail page.
+
+The one *closeable-today* gap found: sharing a link that matched a real
+place did nothing for the person who shared it beyond a status change on
+their own pending item — `CraveItem` (the share pipeline) and
+`HitlistSave` (the actual personal-saves table backing `GET/POST
+/api/v1/saves`) were completely disconnected. You'd have to separately
+go find and save the place yourself after sharing it, unlike Biter's
+"share it and it's on your map" behavior.
+
+Fixed in `share_parser_worker.py`'s matched branch: when a share matches
+a place and `submitted_by` is set, it now also creates a `HitlistSave`
+row for that user — same `"save:{user_id}:{place_id}"` dedup_key
+convention `saves.py`'s manual `create_save` already uses, so the result
+is indistinguishable from a manual save (shows up in `GET /saves`, can
+be un-saved via `DELETE /saves/{place_id}`). Idempotent (checks for an
+existing save first) and isolated in its own try/except + commit so a
+failure here can never affect the "matched" status that's already
+committed. Added `tests/test_share_parser_auto_save.py` (4 tests): a
+matched share creates the save, an already-existing save isn't
+duplicated, an unmatched share creates no save, and a legacy item with
+no `submitted_by` doesn't error.
+
+Bigger gaps found in the same audit, intentionally left for a joint
+planning pass rather than built solo:
+- **No native iOS Share Sheet** — sharing today is copy-link-then-paste,
+  not sharing directly from within TikTok/Instagram's own share menu.
+  Needs `expo-share-intent` and ejecting off Expo Go for a native
+  rebuild — real infra work, not a quick fix.
+- **No personal-saves layer on the Map tab** — Map only ever shows the
+  global catalog; there's no way to see just your own saved/shared spots
+  plotted on their own map (Biter's core "custom food map" feature).
+- **No proximity alerts** — zero push-notification/geofencing
+  infrastructure exists anywhere in the app.
+
+Verified: full backend suite passes (563 — 559 previous + 4 new), stable
+across two consecutive runs. Frontend untouched, no re-run needed.
