@@ -106,12 +106,24 @@ class Category(Base, TimestampMixin):
     # RELATIONSHIPS
     # -----------------------------------------------------
 
+    # Deliberately lazy (SQLAlchemy's default), not "selectin" -- confirmed
+    # nothing in the app ever accesses category.places (grep across app/
+    # turned up zero real usages). "selectin" made this eager: every time
+    # ANY code loads a full Category entity -- e.g.
+    # get_categories_for_places_bulk(), used by the map/geojson endpoint --
+    # SQLAlchemy silently issued extra queries to hydrate every returned
+    # category's *entire* places list, fully materializing every Place row
+    # (each with its own eager relationships) for a relationship nothing
+    # ever reads. Confirmed live: this was the actual ~60-67s map/geojson
+    # stall, previously misattributed to the embedded scheduler -- splitting
+    # the scheduler into its own service (see scheduler_worker.py) changed
+    # nothing about this latency, because the real cost was always here.
     places: Mapped[list["Place"]] = relationship(
         "Place",
         secondary="place_categories",
         back_populates="categories",
         passive_deletes=True,
-        lazy="selectin",
+        lazy="select",
     )
 
     # -----------------------------------------------------
