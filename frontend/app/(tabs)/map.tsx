@@ -245,7 +245,7 @@ export default function MapScreen() {
       })
         .then((normalized) => {
           if (myRequestId !== requestIdRef.current) return;
-          if (__DEV__) console.log('[MAP] FEATURES_LOADED', { count: normalized.length, radiusKm, sample: normalized[0] ? { id: normalized[0].id, lat: normalized[0].coordinate.lat, lng: normalized[0].coordinate.lng, tier: normalized[0].tier } : null });
+          if (__DEV__) console.log('[MAP] FEATURES_LOADED', { count: normalized.length, lat, lng, radiusKm, cityId: selectedCity?.id, sample: normalized[0] ? { id: normalized[0].id, lat: normalized[0].coordinate.lat, lng: normalized[0].coordinate.lng, tier: normalized[0].tier } : null });
           setFeatures(normalized);
           setMapLoaded(true);
           lastFetchCoverageRef.current = { lat, lng, radiusKm };

@@ -42,3 +42,21 @@ def test_sentry_test_endpoint_raises_with_correct_api_key(monkeypatch):
     # thing being verified; that part still requires checking the Sentry
     # project dashboard by hand.
     assert response.status_code == 500
+
+
+def test_version_reports_railways_own_commit_env_var_when_set(monkeypatch):
+    monkeypatch.setenv("RAILWAY_GIT_COMMIT_SHA", "abc123def456abc123def456abc123def456abc")
+    monkeypatch.setenv("RAILWAY_ENVIRONMENT_NAME", "production")
+    response = client.get("/api/v1/debug/version")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["commit"] == "abc123def456abc123def456abc123def456abc"
+    assert body["commit_short"] == "abc123def456"
+    assert body["railway_environment"] == "production"
+
+
+def test_version_never_requires_an_api_key(monkeypatch):
+    monkeypatch.setenv("API_KEY", "fixture-debug-key")
+    response = client.get("/api/v1/debug/version")
+    assert response.status_code == 200

@@ -2368,3 +2368,49 @@ removed).
 Verified: backend suite passes (603 — 598 previous + 5 new), stable
 across two runs. Frontend: `npx tsc --noEmit` clean, full Jest suite
 passes (90, unaffected).
+
+### Follow-up — user reported the map fix "never worked" after 50+ pushes; added a way to actually verify deployment instead of asserting it
+
+Pushed back on with a pasted Metro log showing both the exact
+`jest.fn()`-in-bundle crash (fixed in `5ae90eb`) and the exact
+`timeout of 25000ms exceeded` map error (fixed in `5ba2142`) happening
+*together* — which is only possible on a build older than both fixes.
+The `git pull` output right above it confirmed this directly: `Updating
+8bc9697..fd4690d` — their local branch was only catching up to a commit
+several pushes before either fix. Reasonable pushback, though: after
+being told "should be fixed" multiple times, repeating that assurance
+again isn't useful, and this session has no way to independently query
+their live Railway deployment or production DB to confirm what's
+actually running.
+
+Rather than assert it a third time, added a real, self-serve way to
+settle it: `GET /api/v1/debug/version` (new, unauthenticated — a git SHA
+isn't sensitive) returns `RAILWAY_GIT_COMMIT_SHA` (which Railway sets
+automatically on every GitHub-integration deploy), falling back to a
+local `git rev-parse HEAD` when that env var isn't set (e.g. running
+locally, not on Railway). Comparing this endpoint's `commit` field
+against the branch tip's actual SHA after a deploy answers "is the code
+I think shipped actually running" directly, without digging through the
+Railway dashboard or trusting an assurance.
+
+Also closed a real debugging gap this exposed: `map.tsx`'s success-path
+log (`[MAP] FEATURES_LOADED`) only logged `count`/`radiusKm`/`sample` —
+a *successful* response with zero features (a real, distinct case from
+a timeout, also seen in this session's pasted log) gave no way to tell
+what `lat`/`lng`/`city_id` were actually queried. Added them to match
+the failure-path log, which already included them.
+
+`tests/test_debug_routes.py` (+2 tests): `/version` reports
+`RAILWAY_GIT_COMMIT_SHA` and `RAILWAY_ENVIRONMENT_NAME` when set, and
+never requires the API key (unlike `/sentry-test`, gated deliberately
+since it's a manual trigger, not a passive diagnostic).
+
+Verified: backend suite passes (605 — 603 previous + 2 new), stable
+across two runs. Frontend: `npx tsc --noEmit` clean, full Jest suite
+passes (90, unaffected).
+
+**Still open**: whether the map's actual timeout is fixed in production
+is not yet confirmed — waiting on the user to redeploy, then compare
+`GET /api/v1/debug/version`'s `commit` against `git rev-parse HEAD` on
+this branch, and re-test with the now-more-complete `[MAP]
+FEATURES_LOADED` / `[MAP] LOAD_FAILED` logging.
