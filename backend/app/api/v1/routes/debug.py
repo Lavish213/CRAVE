@@ -256,6 +256,93 @@ def map_query_plan(
     }
 
 
+@router.get("/categories-query-plan", dependencies=[Depends(require_api_key)])
+def categories_query_plan(
+    lat: float,
+    lng: float,
+    radius_km: float = 5.0,
+    limit: int = 250,
+    db: Session = Depends(get_db),
+) -> dict:
+    """
+    map-query-timing isolated the ~60-67s map/geojson delay to
+    get_categories_for_places_bulk specifically -- the base place query
+    and the images bulk lookup are both fast (sub-second) against the
+    same 250 place IDs. This runs EXPLAIN ANALYZE against that exact
+    query, plus a raw row count of place_categories, to see whether it's
+    an unused index or a bloated table (the same "unbounded growth"
+    shape already found once this session in place_images).
+    """
+    from sqlalchemy import text
+    from app.services.geo.bounding_box import bounding_box
+    from app.db.models.place import Place
+
+    if not str(db.bind.url).startswith("postgresql"):
+        return {"error": "categories-query-plan is Postgres-only; this DB is not Postgres"}
+
+    bb = bounding_box(lat, lng, radius_km)
+
+    place_ids = [
+        r.id
+        for r in db.query(Place.id, Place.rank_score)
+        .filter(
+            Place.is_active.is_(True),
+            Place.lat.isnot(None),
+            Place.lng.isnot(None),
+            Place.lat >= bb.min_lat,
+            Place.lat <= bb.max_lat,
+            Place.lng >= bb.min_lng,
+            Place.lng <= bb.max_lng,
+        )
+        .distinct()
+        .order_by(Place.rank_score.desc(), Place.id.asc())
+        .limit(limit)
+        .all()
+    ]
+
+    counts = {}
+    try:
+        counts["place_categories_total"] = db.execute(
+            text("SELECT count(*) FROM place_categories")
+        ).scalar()
+        counts["place_images_total"] = db.execute(
+            text("SELECT count(*) FROM place_images")
+        ).scalar()
+    except Exception as exc:
+        db.rollback()
+        counts["error"] = str(exc)
+
+    if not place_ids:
+        return {"counts": counts, "explain_plan": None, "explain_plan_error": "no place_ids in bbox"}
+
+    placeholders = ", ".join(f":pid{i}" for i in range(len(place_ids)))
+    params = {f"pid{i}": pid for i, pid in enumerate(place_ids)}
+
+    explain_query = text(
+        "EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) "
+        "SELECT place_categories.place_id, categories.* "
+        "FROM place_categories "
+        "JOIN categories ON place_categories.category_id = categories.id "
+        f"WHERE place_categories.place_id IN ({placeholders}) "
+        "ORDER BY place_categories.place_id ASC, categories.name ASC, categories.id ASC"
+    )
+
+    plan = None
+    plan_error = None
+    try:
+        plan = db.execute(explain_query, params).scalar()
+    except Exception as exc:
+        db.rollback()
+        plan_error = str(exc)
+
+    return {
+        "place_ids_count": len(place_ids),
+        "counts": counts,
+        "explain_plan": plan,
+        "explain_plan_error": plan_error,
+    }
+
+
 @router.get("/map-query-timing", dependencies=[Depends(require_api_key)])
 def map_query_timing(
     lat: float,

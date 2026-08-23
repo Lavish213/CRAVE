@@ -176,6 +176,21 @@ def test_map_query_plan_no_ops_safely_on_non_postgres_db(monkeypatch):
     assert "Postgres" in body["error"]
 
 
+def test_categories_query_plan_requires_api_key_when_configured(monkeypatch):
+    monkeypatch.setenv("API_KEY", "fixture-debug-key")
+    response = client.get("/api/v1/debug/categories-query-plan?lat=37.7749&lng=-122.4194")
+    assert response.status_code == 401
+
+
+def test_categories_query_plan_no_ops_safely_on_non_postgres_db(monkeypatch):
+    monkeypatch.delenv("API_KEY", raising=False)
+    response = client.get("/api/v1/debug/categories-query-plan?lat=37.7749&lng=-122.4194")
+    assert response.status_code == 200
+    body = response.json()
+    assert "error" in body
+    assert "Postgres" in body["error"]
+
+
 def test_map_query_timing_requires_api_key_when_configured(monkeypatch):
     monkeypatch.setenv("API_KEY", "fixture-debug-key")
     response = client.get("/api/v1/debug/map-query-timing?lat=37.8044&lng=-122.2712")
