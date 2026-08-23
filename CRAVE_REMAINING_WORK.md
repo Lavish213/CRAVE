@@ -2763,3 +2763,37 @@ had previously only been verified manually via curl against production.
 Verified: 633 backend tests passing (2 conditionally skipped depending
 on which DB is active), stable across two runs each against both a
 fresh local Postgres 16 instance and SQLite.
+
+### Follow-up — root requirements.txt drift (pyarrow), caught by CI on PR #46
+
+A second CI job on the same PR — "Backend (syntax + import check)" —
+failed independently on the fix commit above, for a completely
+unrelated, pre-existing reason: this repo intentionally keeps root
+`requirements.txt` (Railway's actual build entry point — see the long
+comment at the top of that file explaining why `-r backend/requirements.txt`
+indirection breaks Railpack's build-context copying) as a byte-for-byte
+duplicate of `backend/requirements.txt`, and CI has a dedicated step that
+fails the build the moment the two drift apart. They had already drifted:
+`backend/requirements.txt` gained `pyarrow>=18.0.0` at some earlier point
+(for Overture Maps discovery ingestion — reads public Parquet directly off
+S3), but the copy in the root file was never updated to match.
+
+Confirmed via:
+```
+diff <(grep -v "^#" requirements.txt | grep -v "^$" | sort) \
+     <(grep -v "^#" backend/requirements.txt | grep -v "^$" | sort)
+```
+which showed exactly one line of drift (`pyarrow>=18.0.0` present only in
+`backend/requirements.txt`). Nothing else in either file had diverged.
+
+**Practical impact**: root `requirements.txt` is what Railway's zero-config
+Python build actually installs from — if this had reached a real deploy,
+pyarrow would be missing from the production install and every Overture
+Maps discovery ingestion call would fail at import time.
+
+Fixed by copying the `pyarrow>=18.0.0` line (with its full explanatory
+comment) verbatim into root `requirements.txt`, matching the file's own
+documented convention ("Edit backend/requirements.txt first, then copy its
+package lines here verbatim"). Verified the sync-check diff is now empty,
+and re-ran the full backend suite (633 passed, 2 skipped) against both
+SQLite and a freshly-recreated local Postgres 16 instance — clean on both.
