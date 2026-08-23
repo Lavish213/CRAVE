@@ -2493,3 +2493,102 @@ stability after this change with no code touched.
 **Still open**: waiting on the user to re-run `./deploy.sh` and re-curl
 `/api/v1/debug/version` to confirm `commit` is finally non-null and
 matches `git rev-parse HEAD`, then re-test the map.
+
+### Follow-up — the map/geojson fix finally confirmed working, and the real root cause turned out to be different from the working theory
+
+`/version` came back non-null and matching `HEAD` this time, confirming
+the deploy mechanism itself was finally trustworthy. The map/geojson
+timing re-test still showed ~58s though — expected, since the deploy
+just confirmed didn't yet include the scheduler-worker split (Railway
+config-as-code only). That split was completed this pass: a second
+Railway service was created from the same repo running
+`cd backend && python -m app.scheduler_worker` (its Start Command field
+had to be set directly rather than via `railway.scheduler-worker.toml`,
+since Railway's Config-as-Code feature was found to be deprecated —
+existing files keep working until 2026-12-01, but a brand-new service
+can't opt in after 2026-08-28), then `RUN_EMBEDDED_SCHEDULER=false` set
+on the web service. Confirmed live: the worker service's own logs show
+`scheduler_worker_started jobs=9`, and the web service's logs show
+`scheduler_embedded_disabled` with no `apscheduler` activity at all.
+
+**But the map endpoint was still ~60-67s after the split — proving the
+embedded scheduler was never the actual cause of this specific latency**,
+despite being a real, separate problem (correctly fixed anyway, and
+worth keeping fixed for its own sake — request handling and background
+jobs no longer compete for the same process). Root-caused for real this
+time via three new diagnostic endpoints (`/api/v1/debug/map-query-plan`,
+`/api/v1/debug/map-query-timing`, `/api/v1/debug/categories-query-plan`,
+all gated behind `require_api_key`), verified live against production
+step by step instead of guessing:
+
+1. `EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)` on the base bounding-box
+   query: 4.45ms, clean index usage on `ix_places_places_rank_score`.
+   Ruled out the base query and the "missing spatial index" theories
+   entirely (this app doesn't use PostGIS — plain float columns + a
+   regular B-tree index, which is sufficient at this table size).
+2. Per-phase timing of `fetch_places_for_map`'s three steps: base query
+   0.61s, **`get_categories_for_places_bulk` 62.27s**, images bulk
+   lookup 0.18s. Isolated the culprit to one specific function.
+3. `EXPLAIN ANALYZE` on that exact categories-join query: 2.7ms, clean
+   index usage (`place_categories` has both a composite PK and a
+   dedicated `place_id` index; only 34,926 rows total — not remotely
+   bloated). This proved the SQL itself wasn't the problem, pointing at
+   ORM-level behavior instead of the database.
+4. Read `Category.places`'s relationship config directly:
+   `lazy="selectin"` (eager) — and `grep -rn "\.places\b"` across the
+   entire `app/` tree confirmed **nothing anywhere ever reads
+   `category.places`**. Every call to `get_categories_for_places_bulk()`
+   (used by the map endpoint, and transitively by search/feed) was
+   silently triggering SQLAlchemy to fully hydrate every returned
+   category's *entire* list of places (each Place carrying its own
+   eager relationships) — for a relationship no code path ever touches.
+   `EXPLAIN ANALYZE` couldn't see this because it only tests the literal
+   SQL text, not what the ORM does with the result rows afterward.
+
+Fixed: `Category.places` changed from `lazy="selectin"` to `lazy="select"`
+(true lazy, SQLAlchemy's own default) in `app/db/models/category.py`.
+Added `tests/test_place_category_query.py`, including a regression test
+that counts real SQL statements via a SQLAlchemy engine event listener —
+a timing or functional assertion alone wouldn't catch a reintroduced
+eager load on a small test dataset. Verified by temporarily reverting
+the fix locally: the test correctly failed (7 statements instead of 1),
+then passed again once the fix was restored.
+
+`Place.categories`/`city`/`claims`/`truths`/`images` are also configured
+`lazy="selectin"` — the same pattern, just not yet confirmed to be
+costing anything in practice the way `Category.places` was. Deliberately
+**not** touched in this pass: unlike `Category.places`, those
+relationships may genuinely be relied on by serialization code
+elsewhere, and changing them blindly risks a real regression rather than
+removing dead weight. Worth a dedicated, careful audit later — check
+each one's actual callers the same way this fix did, one at a time.
+
+Live-verified end to end after deploying the fix (commit
+`1a563262e8e3ebadf6299587ef9570b84decdc83`): cold cache with real
+categories/images populated dropped from **~60-67s to 1.45s**; warm
+cache to **0.007s**. Reviewed via the `code-review` skill (high effort)
+before merging — no genuine defects found; confirmed independently that
+the full suite (627 tests) passes stably and that the regression test
+is real, not decorative.
+
+Also fixed along the way, unrelated but discovered mid-investigation:
+`main` on GitHub was missing 3 migrations (`user_blocks`,
+`menu_submissions`, `user_streaks`) that were already live in
+production — applied via `railway up` from this feature branch over the
+course of many earlier sessions, but never merged to `main`. Since the
+web service's Railway source is `main` with auto-deploy-on-push enabled,
+any future GitHub-triggered redeploy would have failed identically to
+how a freshly-created second Railway service failed the moment it tried
+`alembic upgrade head` against `main`'s stale migration history. Merged
+via PR #43 (resolving real conflicts with an already-merged R2
+durable-photo-refresh PR along the way, keeping this branch's more
+complete `r2_client.py`/`stale_image_refresher.py` versions), then PR
+#45 for the fix described above. `main` now matches what's actually
+deployed.
+
+Verified: 627 backend tests passing (623 previous + 4 new), stable
+across two runs. `npx tsc --noEmit -p .` clean (no frontend changes this
+pass beyond what PR #43 already carried).
+
+**Nothing still open from this specific investigation** — root-caused,
+fixed, live-verified, reviewed, and merged to `main`.
