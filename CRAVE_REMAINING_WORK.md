@@ -1795,3 +1795,20 @@ backed by `persist`/AsyncStorage benefits from it too.
 
 Verified: `npx tsc --noEmit` clean, full frontend Jest suite passes (86 —
 82 previous + 4 new), stable across a second run.
+
+### Follow-up — the new test file crashed the actual running app; moved it out of app/
+
+Self-inflicted regression: expo-router treats every file inside `app/`
+as a route candidate, so placing `map.test.tsx` in `app/(tabs)/`
+alongside the real route files meant Metro bundled it straight into the
+running app. It crashed instantly with `ReferenceError: Property 'jest'
+doesn't exist` — the mock file's `jest.fn()` calls only exist inside the
+Jest runner, not in a real bundle — confirmed live via a red error
+screen in the user's simulator with that exact message. Fixed by moving
+the test to a new top-level `__tests__/` directory (sibling to `app/`,
+outside expo-router's scan root) and updating its relative imports
+accordingly; no test logic changed. `__mocks__/react-native-maps.tsx`
+was never affected (it already lived outside `app/`).
+
+Verified: `npx tsc --noEmit` clean, full suite passes (86, same count,
+same assertions — only import paths changed).

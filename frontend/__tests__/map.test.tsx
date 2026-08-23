@@ -18,23 +18,23 @@
 // the correct region, and a real pan still triggers a real fetch.
 import React from 'react';
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
-import MapScreen from './map';
-import { fetchMapGeoJSON } from '../../src/api/map';
-import { useCityStore } from '../../src/stores/cityStore';
+import MapScreen from '../app/(tabs)/map';
+import { fetchMapGeoJSON } from '../src/api/map';
+import { useCityStore } from '../src/stores/cityStore';
 // Imported by relative path, not the package specifier — Jest substitutes
 // this same mock file for the 'react-native-maps' import inside map.tsx
 // automatically (manual __mocks__ dir), but tsc has no notion of that
 // runtime swap and would otherwise type-check against the real package's
 // (mock-symbol-free) types.
-import { animateToRegionMock, mapViewProps } from '../../__mocks__/react-native-maps';
+import { animateToRegionMock, mapViewProps } from '../__mocks__/react-native-maps';
 
-jest.mock('../../src/api/map', () => ({
+jest.mock('../src/api/map', () => ({
   fetchMapGeoJSON: jest.fn(),
 }));
-jest.mock('../../src/api/cities', () => ({
+jest.mock('../src/api/cities', () => ({
   fetchCities: jest.fn().mockResolvedValue([]),
 }));
-jest.mock('../../src/hooks/useLocation', () => ({
+jest.mock('../src/hooks/useLocation', () => ({
   useLocation: () => null, // no GPS — matches the repro (default/city fallback)
 }));
 jest.mock('expo-haptics', () => ({
