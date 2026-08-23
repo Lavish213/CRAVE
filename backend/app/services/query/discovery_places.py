@@ -7,7 +7,6 @@ from typing import List, Optional
 from sqlalchemy.orm import Session, load_only
 
 from app.db.models.place import Place
-from app.db.models.place_image import PlaceImage
 
 
 def list_discovery_places(
@@ -74,28 +73,3 @@ def get_place(
         )
         .first()
     )
-
-
-def get_primary_image(
-    db: Session,
-    place_id: str,
-) -> Optional[str]:
-
-    place_id = (place_id or "").strip()
-    if not place_id:
-        return None
-
-    img = (
-        db.query(PlaceImage)
-        .filter(
-            PlaceImage.place_id == place_id,
-            PlaceImage.is_primary.is_(True),
-        )
-        .order_by(
-            PlaceImage.created_at.desc(),
-            PlaceImage.id.asc(),
-        )
-        .first()
-    )
-
-    return img.url if img and img.url else None

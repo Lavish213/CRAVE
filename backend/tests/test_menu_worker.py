@@ -138,11 +138,58 @@ class TestBackoffQuery:
         assert still_backing_off.id not in result_ids
         assert past_ceiling.id in result_ids
 
-    def test_a_place_with_an_existing_menu_truth_is_still_excluded_regardless_of_backoff(self, db):
-        # Backoff must never override the existing "already has a menu"
-        # exclusion — a successfully-materialized place has failure_count
-        # reset to 0 (eligible by backoff) but must stay excluded via the
-        # PlaceTruth join.
+    def test_a_place_with_a_recently_checked_menu_is_excluded(self, db):
+        # A place checked within MENU_STALENESS_DAYS must stay excluded —
+        # failure_count reset to 0 by a recent success (eligible by backoff
+        # in isolation) must not override the "checked recently" exclusion.
+        from app.db.models.place_truth import PlaceTruth
+        from app.services.workers import menu_worker as menu_worker_module
+
+        city = _make_city(db)
+        place = _make_place(
+            db, city,
+            menu_extraction_failure_count=0,
+            menu_extraction_attempted_at=datetime.now(timezone.utc),
+        )
+        db.add(PlaceTruth(
+            place_id=place.id, truth_type="menu", truth_value="menu", confidence=0.9,
+        ))
+        db.commit()
+
+        worker = MenuWorker()
+        results = worker._load_places_requiring_menu(db)
+
+        assert place.id not in {p.id for p in results}
+
+    def test_a_place_with_a_stale_menu_becomes_eligible_again(self, db):
+        # The actual staleness re-verification feature: an existing menu
+        # older than MENU_STALENESS_DAYS since its last real check must
+        # become eligible again — menus go stale (price changes, a
+        # redesign that breaks the extractor, a closed restaurant), and
+        # nothing before this ever re-checked a place once it had one.
+        from app.db.models.place_truth import PlaceTruth
+        from app.services.workers.menu_worker import MENU_STALENESS_DAYS
+
+        city = _make_city(db)
+        stale_at = datetime.now(timezone.utc) - timedelta(days=MENU_STALENESS_DAYS + 1)
+        place = _make_place(
+            db, city, menu_extraction_failure_count=0, menu_extraction_attempted_at=stale_at,
+        )
+        db.add(PlaceTruth(
+            place_id=place.id, truth_type="menu", truth_value="menu", confidence=0.9,
+        ))
+        db.commit()
+
+        worker = MenuWorker()
+        results = worker._load_places_requiring_menu(db)
+
+        assert place.id in {p.id for p in results}
+
+    def test_a_place_with_a_menu_never_stamped_is_eligible(self, db):
+        # Places that got a menu before this staleness mechanism existed
+        # have menu_extraction_attempted_at = NULL (success never stamped
+        # it before this change) — treated as eligible for one catch-up
+        # check rather than needing a data migration to backfill the column.
         from app.db.models.place_truth import PlaceTruth
 
         city = _make_city(db)
@@ -155,7 +202,7 @@ class TestBackoffQuery:
         worker = MenuWorker()
         results = worker._load_places_requiring_menu(db)
 
-        assert place.id not in {p.id for p in results}
+        assert place.id in {p.id for p in results}
 
 
 class TestRunRecordsFailures:
@@ -238,8 +285,18 @@ class TestRunRecordsFailures:
             lambda db, places: None,
         )
 
+        # Naive comparison below — SQLite round-trips DateTime columns as
+        # naive even though the value was written tz-aware; not a
+        # production concern (Postgres preserves tz-awareness), just a
+        # test-storage quirk.
+        before = datetime.now(timezone.utc).replace(tzinfo=None)
         worker.run()
 
         db.refresh(place)
         assert place.has_menu is True
         assert place.menu_extraction_failure_count == 0
+        # Stamped on success too (not just failure) — this is the staleness
+        # clock that eventually makes an already-menu'd place eligible for
+        # re-checking again (see TestBackoffQuery's staleness tests).
+        assert place.menu_extraction_attempted_at is not None
+        assert place.menu_extraction_attempted_at.replace(tzinfo=None) >= before

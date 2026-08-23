@@ -4,8 +4,9 @@ import MapView, { Marker, Region } from 'react-native-maps';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
-import { fetchMapGeoJSON, NormalizedMapFeature } from '../../src/api/map';
+import { fetchMapGeoJSON, fetchSavedPlacesGeoJSON, NormalizedMapFeature } from '../../src/api/map';
 import { useCityStore } from '../../src/stores/cityStore';
+import { useAuthStore } from '../../src/stores/authStore';
 import { useLocation } from '../../src/hooks/useLocation';
 import { Colors, Radius, Shadows, Spacing } from '../../src/constants/colors';
 import { CitySelectorStrip } from '../../src/components/CitySelectorStrip';
@@ -166,13 +167,34 @@ export default function MapScreen() {
   const router = useRouter();
   const selectedCity = useCityStore((s) => s.selectedCity);
   const userLocation = useLocation();
+  const user = useAuthStore((s) => s.user);
   const mapRef = useRef<MapView>(null);
+
+  // 'city' = the global catalog (existing behavior). 'saved' = just this
+  // user's own saved places — the personal, curated map both Beli and
+  // Biter advertise as a core feature, which this screen never had before
+  // (it only ever showed the global catalog).
+  const [viewMode, setViewMode] = useState<'city' | 'saved'>('city');
 
   // True for the one onRegionChangeComplete event caused by our own
   // animateToRegion call (city change / cluster tap) — lets us skip firing a
   // redundant viewport fetch for a move the user didn't make.
   const programmaticMoveRef = useRef(false);
   const fetchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Live-confirmed via device logs: the very first onRegionChangeComplete
+  // firing after MapView mounts reports a bogus, heavily-zoomed-in transient
+  // region (~1km radius) that has nothing to do with `initialRegion` — an
+  // iOS MapKit/react-native-maps quirk where the view reports its settle
+  // state before layout has actually finished applying the requested
+  // region. Because that spurious event starts its fetch AFTER the mount
+  // effect's correct one, it wins the requestIdRef race and silently
+  // clobbers the real results with an empty response — the map showed zero
+  // pins in every city, every time, confirmed against real production data
+  // that Feed/Search both loaded correctly in the same session. Skipping
+  // only this one first call is safe: the mount effect below already
+  // performs the real initial load.
+  const hasHandledFirstRegionRef = useRef(false);
 
   const [features, setFeatures] = useState<NormalizedMapFeature[]>([]);
   const [selectedFeature, setSelectedFeature] = useState<SelectedFeature | null>(null);
@@ -204,9 +226,15 @@ export default function MapScreen() {
   const initialRegion = cityToRegion(mapLat, mapLng);
   const [mapRegion, setMapRegion] = useState<Region>(initialRegion);
 
+  // Last-attempted params (unlike lastFetchCoverageRef, set regardless of
+  // success/failure) — lets a "Retry" tap redo the exact request that just
+  // failed instead of needing the user to pan the map to trigger a new one.
+  const lastAttemptRef = useRef<FetchCoverage | null>(null);
+
   const loadFeatures = useCallback(
     (lat: number, lng: number, radiusKm: number) => {
       const myRequestId = ++requestIdRef.current;
+      lastAttemptRef.current = { lat, lng, radiusKm };
       setMapError(false);
       setMapLoading(true);
       fetchMapGeoJSON({
@@ -217,13 +245,16 @@ export default function MapScreen() {
       })
         .then((normalized) => {
           if (myRequestId !== requestIdRef.current) return;
-          if (__DEV__) console.log('[MAP] FEATURES_LOADED', { count: normalized.length, radiusKm, sample: normalized[0] ? { id: normalized[0].id, lat: normalized[0].coordinate.lat, lng: normalized[0].coordinate.lng, tier: normalized[0].tier } : null });
+          if (__DEV__) console.log('[MAP] FEATURES_LOADED', { count: normalized.length, lat, lng, radiusKm, cityId: selectedCity?.id, sample: normalized[0] ? { id: normalized[0].id, lat: normalized[0].coordinate.lat, lng: normalized[0].coordinate.lng, tier: normalized[0].tier } : null });
           setFeatures(normalized);
           setMapLoaded(true);
           lastFetchCoverageRef.current = { lat, lng, radiusKm };
         })
-        .catch(() => {
+        .catch((err) => {
           if (myRequestId !== requestIdRef.current) return;
+          // Was completely silent before — "Could not load places" gave no
+          // way to tell a timeout from a 4xx/5xx from a network drop.
+          if (__DEV__) console.log('[MAP] LOAD_FAILED', { lat, lng, radiusKm, status: err?.response?.status, message: err?.message, data: err?.response?.data });
           setMapError(true);
         })
         .finally(() => {
@@ -235,7 +266,12 @@ export default function MapScreen() {
   );
 
   // Initial load + reload on city change (or GPS location resolving).
+  // Only in 'city' mode — while browsing "my places", a city selection
+  // elsewhere (or GPS resolving) must not silently steal the map back to
+  // the global catalog; re-running when viewMode flips back to 'city' is
+  // what the dependency on it is for.
   useEffect(() => {
+    if (viewMode !== 'city') return;
     // A pan-triggered debounce scheduled just before this fires would
     // otherwise invoke a stale loadFeatures closure bound to the previous
     // city/region once its timer elapses — since it calls loadFeatures
@@ -254,16 +290,95 @@ export default function MapScreen() {
     setFeatures([]);
     setMapLoaded(false);
     loadFeatures(mapLat, mapLng, prefetchRadiusKmForRegion(cityToRegion(mapLat, mapLng)));
-  }, [selectedCity?.id, mapLat, mapLng, loadFeatures]);
+  }, [selectedCity?.id, mapLat, mapLng, loadFeatures, viewMode]);
 
   // Recenter the map on city change — flagged as programmatic so the
   // resulting onRegionChangeComplete doesn't trigger a duplicate fetch.
+  // Skipped in 'saved' mode for the same reason as the effect above.
   useEffect(() => {
+    if (viewMode !== 'city') return;
     const region = cityToRegion(mapLat, mapLng);
     programmaticMoveRef.current = true;
     setMapRegion(region);
     mapRef.current?.animateToRegion(region, 500);
-  }, [selectedCity?.id, mapLat, mapLng]);
+  }, [selectedCity?.id, mapLat, mapLng, viewMode]);
+
+  // Loads the signed-in user's saved places and fits the map to them.
+  // Never viewport-scoped (unlike loadFeatures) — a personal list is
+  // small enough to fetch in full every time. Factored out of the
+  // mode-change effect below so handleRetryMap can also call it.
+  const loadSavedPlaces = useCallback(() => {
+    const myRequestId = ++requestIdRef.current;
+    setMapError(false);
+    setMapLoading(true);
+    fetchSavedPlacesGeoJSON()
+      .then((normalized) => {
+        if (myRequestId !== requestIdRef.current) return;
+        if (__DEV__) console.log('[MAP] SAVED_FEATURES_LOADED', { count: normalized.length });
+        setFeatures(normalized);
+        setMapLoaded(true);
+        if (normalized.length === 1) {
+          const only = normalized[0];
+          const region = cityToRegion(only.coordinate.lat, only.coordinate.lng);
+          programmaticMoveRef.current = true;
+          setMapRegion(region);
+          mapRef.current?.animateToRegion(region, 400);
+        } else if (normalized.length > 1) {
+          const coords = normalized.map((f) => ({
+            latitude: f.coordinate.lat,
+            longitude: f.coordinate.lng,
+          }));
+          programmaticMoveRef.current = true;
+          mapRef.current?.fitToCoordinates(coords, {
+            edgePadding: { top: 80, right: 60, bottom: 140, left: 60 },
+            animated: true,
+          });
+        }
+      })
+      .catch((err) => {
+        if (myRequestId !== requestIdRef.current) return;
+        if (__DEV__) console.log('[MAP] SAVED_LOAD_FAILED', { message: err?.message, status: err?.response?.status });
+        setMapError(true);
+      })
+      .finally(() => {
+        if (myRequestId !== requestIdRef.current) return;
+        setMapLoading(false);
+      });
+  }, []);
+
+  useEffect(() => {
+    if (viewMode !== 'saved') return;
+    if (!user) {
+      // Shouldn't happen — the toggle only renders when signed in — but
+      // fail safe back to the global catalog rather than showing an
+      // auth-error state on the map.
+      setViewMode('city');
+      return;
+    }
+    setFeatures([]);
+    setMapLoaded(false);
+    loadSavedPlaces();
+  }, [viewMode, user, loadSavedPlaces]);
+
+  // Cross-checked against react-native-maps' own long-documented iOS bug
+  // class (their issue tracker: #1507, #3212, #4244, #4420, #5645 — spanning
+  // years) — `initialRegion` is frequently not honored correctly on iOS: the
+  // native view can settle at some other zoom/position entirely regardless
+  // of what was requested, which is consistent with what we saw live here
+  // (~1km reported radius vs. the real ~7km initialRegion). The effect above
+  // already tries to correct this via animateToRegion, but it fires from a
+  // dependency-change effect that runs immediately after the JS render —
+  // before the native map view has actually finished initializing, so
+  // `mapRef.current` can still be unset and the call silently no-ops. The
+  // library's own documented workaround for this exact class of bug is to
+  // redo the correction from `onMapReady`, which fires once the native view
+  // has genuinely finished initializing — guaranteeing the ref is live.
+  const handleMapReady = useCallback(() => {
+    const region = cityToRegion(mapLat, mapLng);
+    programmaticMoveRef.current = true;
+    setMapRegion(region);
+    mapRef.current?.animateToRegion(region, 300);
+  }, [mapLat, mapLng]);
 
   // Clear any pending debounced fetch on unmount.
   useEffect(() => {
@@ -274,12 +389,22 @@ export default function MapScreen() {
 
   const handleRegionChangeComplete = useCallback(
     (region: Region) => {
+      if (!hasHandledFirstRegionRef.current) {
+        hasHandledFirstRegionRef.current = true;
+        return;
+      }
+
       setMapRegion(region);
 
       if (programmaticMoveRef.current) {
         programmaticMoveRef.current = false;
         return;
       }
+
+      // Exploring your saved pins by panning shouldn't trigger a fetch —
+      // the whole personal list is already loaded; there's nothing new a
+      // viewport-scoped request would find.
+      if (viewMode !== 'city') return;
 
       if (fetchDebounceRef.current) clearTimeout(fetchDebounceRef.current);
       fetchDebounceRef.current = setTimeout(() => {
@@ -299,7 +424,7 @@ export default function MapScreen() {
         loadFeatures(region.latitude, region.longitude, prefetchRadiusKmForRegion(region));
       }, REGION_FETCH_DEBOUNCE_MS);
     },
-    [loadFeatures]
+    [loadFeatures, viewMode]
   );
 
   const clusters = useMemo(() => buildClusters(features, mapRegion), [features, mapRegion]);
@@ -316,6 +441,22 @@ export default function MapScreen() {
     mapRef.current?.animateToRegion(region, 500);
   }, [userLocation]);
 
+  // Re-runs the exact request that just failed, instead of forcing the user
+  // to pan the map (which may not even be possible if they can't tell where
+  // real data exists) just to get another attempt.
+  const handleRetryMap = useCallback(() => {
+    if (viewMode === 'saved') {
+      loadSavedPlaces();
+      return;
+    }
+    const attempt = lastAttemptRef.current;
+    if (attempt) {
+      loadFeatures(attempt.lat, attempt.lng, attempt.radiusKm);
+    } else {
+      loadFeatures(mapLat, mapLng, prefetchRadiusKmForRegion(cityToRegion(mapLat, mapLng)));
+    }
+  }, [viewMode, loadSavedPlaces, loadFeatures, mapLat, mapLng]);
+
   return (
     <View style={styles.container}>
       <MapView
@@ -325,6 +466,7 @@ export default function MapScreen() {
         mapType="mutedStandard"
         onPress={() => setSelectedFeature(null)}
         onRegionChangeComplete={handleRegionChangeComplete}
+        onMapReady={handleMapReady}
       >
         {clusters.map((c) => {
           if (c.count > 1) {
@@ -386,15 +528,40 @@ export default function MapScreen() {
       )}
 
       {mapError && features.length === 0 && (
-        <View style={styles.mapBanner}>
-          <Text style={styles.mapBannerText}>Could not load places</Text>
-        </View>
+        <TouchableOpacity
+          style={styles.mapBanner}
+          onPress={handleRetryMap}
+          accessibilityRole="button"
+          accessibilityLabel="Retry loading places"
+        >
+          <Text style={styles.mapBannerText}>Could not load places — tap to retry</Text>
+        </TouchableOpacity>
       )}
 
       {mapLoaded && !mapLoading && features.length === 0 && (
         <View style={styles.mapBanner}>
-          <Text style={styles.mapBannerText}>No places in this city yet</Text>
+          <Text style={styles.mapBannerText}>
+            {viewMode === 'saved' ? "You haven't saved any places yet" : 'No places in this city yet'}
+          </Text>
         </View>
+      )}
+
+      {user && (
+        <TouchableOpacity
+          style={[styles.savedToggleButton, viewMode === 'saved' && styles.savedToggleButtonActive]}
+          onPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            setViewMode((m) => (m === 'saved' ? 'city' : 'saved'));
+          }}
+          accessibilityLabel={viewMode === 'saved' ? 'Show all places' : 'Show my saved places'}
+          accessibilityRole="button"
+        >
+          <Ionicons
+            name={viewMode === 'saved' ? 'bookmark' : 'bookmark-outline'}
+            size={20}
+            color={viewMode === 'saved' ? Colors.background : Colors.text}
+          />
+        </TouchableOpacity>
       )}
 
       {userLocation && (
@@ -451,6 +618,24 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     ...Shadows.control,
+  },
+  savedToggleButton: {
+    position: 'absolute',
+    right: Spacing.md,
+    bottom: Spacing.xl + 56,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: Colors.surface,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...Shadows.control,
+  },
+  savedToggleButtonActive: {
+    backgroundColor: Colors.primary,
+    borderColor: Colors.primary,
   },
   mapBannerText: {
     color: Colors.textSecondary,

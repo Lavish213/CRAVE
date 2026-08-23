@@ -19,8 +19,17 @@ from app.workers.recompute_scores_worker import recompute_places_v4
 logger = logging.getLogger(__name__)
 
 
-BATCH_SIZE = 25
-MAX_PLACES_PER_RUN = 200
+# Bumped from 25/200 — with the discovery pipeline now finding real
+# places (OSM confidence fix + Overture Maps), the sourced-but-unchecked
+# backlog (12,123 places with a website/Grubhub/menu URL, only 761 with an
+# extracted menu as of the live check that prompted this) is growing
+# faster than extraction can work through it at the old rate. Kept
+# moderate rather than maxed out: the scheduler runs embedded in the same
+# single process serving web requests (no separate worker service is
+# actually deployed), so this isn't free — a much larger jump risks
+# competing with real traffic instead of just catching up on backlog.
+BATCH_SIZE = 40
+MAX_PLACES_PER_RUN = 300
 SLEEP_BETWEEN_BATCHES = 1.0
 
 MENU_TRUTH_TYPE = "menu"
@@ -46,10 +55,26 @@ MENU_TRUTH_TYPE = "menu"
 _BACKOFF_HOURS = {1: 1, 2: 4, 3: 24}
 _BACKOFF_HOURS_MAX = 72  # failure_count >= 4
 
+# How long a successfully-extracted menu is trusted before it's eligible to
+# be re-checked (menus go stale — price changes, a redesign that breaks the
+# extractor, a place that closed). See _load_places_requiring_menu's
+# docstring for the full reasoning.
+MENU_STALENESS_DAYS = 60
+
 
 def _not_in_backoff_clause(now: datetime):
     return or_(
         Place.menu_extraction_attempted_at.is_(None),
+        # 0 (or never-set) failures is never "in backoff" — backoff only
+        # means something once there's been an actual failure. Without this
+        # branch, a healthy place whose menu_extraction_failure_count was
+        # reset to 0 on success (see run()'s materialized branch) would be
+        # wrongly excluded here forever once MENU_STALENESS_DAYS made it
+        # eligible again — none of the count==1/2/3/4+ branches below ever
+        # match count 0, so it would look "in backoff" despite never having
+        # failed at all.
+        Place.menu_extraction_failure_count.is_(None),
+        Place.menu_extraction_failure_count == 0,
         *[
             and_(
                 Place.menu_extraction_failure_count == count,
@@ -108,6 +133,17 @@ class MenuWorker:
                             # Set has_menu flag and recompute score after successful materialization
                             place.has_menu = True
                             place.menu_extraction_failure_count = 0
+                            # Also stamped on success (not just failure) —
+                            # this is the staleness clock _load_places_
+                            # requiring_menu uses to eventually re-check an
+                            # already-menu'd place. materialize_menu_truth
+                            # skips writing PlaceTruth.updated_at when a
+                            # re-extraction hashes identical to what's
+                            # already there (see its own dedup check), so
+                            # that column alone can't be used for this —
+                            # a place whose menu never changes would get
+                            # re-attempted every single cycle forever.
+                            place.menu_extraction_attempted_at = datetime.now(timezone.utc)
                             recompute_places_v4(db, places=[place])
                         else:
                             # No PlaceTruth was written (see module docstring) —
@@ -192,6 +228,21 @@ class MenuWorker:
         # place whose only menu source is a delivery-platform URL (Grubhub)
         # or a directly-discovered menu_source_url without a general website
         # on file — a real and common case, not an edge case.
+        #
+        # Was also: PlaceTruth.id.is_(None) as the ONLY eligibility gate —
+        # meaning a place that ever successfully got a menu was excluded
+        # from every future run, forever, with no way to notice a menu
+        # going stale (prices change, a restaurant closes, a site
+        # redesign breaks the extractor). Now also eligible: an existing
+        # menu whose last real check (Place.menu_extraction_attempted_at,
+        # stamped on both success and failure — see run()'s materialized
+        # branch) is past MENU_STALENESS_DAYS, or was never stamped at all
+        # (every place with a menu from before this staleness mechanism
+        # existed — treated as eligible for one catch-up check rather than
+        # needing a data migration to backfill the column).
+        now = datetime.now(timezone.utc)
+        staleness_cutoff = now - timedelta(days=MENU_STALENESS_DAYS)
+
         base_query = (
             db.query(Place)
             .outerjoin(
@@ -205,8 +256,12 @@ class MenuWorker:
                     (Place.grubhub_url.isnot(None)) & (Place.grubhub_url != ""),
                     (Place.menu_source_url.isnot(None)) & (Place.menu_source_url != ""),
                 ),
-                PlaceTruth.id.is_(None),
-                _not_in_backoff_clause(datetime.now(timezone.utc)),
+                or_(
+                    PlaceTruth.id.is_(None),
+                    Place.menu_extraction_attempted_at.is_(None),
+                    Place.menu_extraction_attempted_at <= staleness_cutoff,
+                ),
+                _not_in_backoff_clause(now),
             )
         )
 

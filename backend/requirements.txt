@@ -54,6 +54,22 @@ python-dotenv>=1.2.0
 # Object storage (Cloudflare R2 image uploads)
 boto3>=1.34.0
 
+# Overture Maps discovery ingestion (app/services/discovery/overture_places.py)
+# — reads public Parquet directly off S3 (anonymous, no API key) via
+# pyarrow's dataset filter pushdown; boto3 above is reused (unsigned client)
+# just to look up the current dated release.
+#
+# Bumped the floor from 15.0.0 deliberately, as a cache-buster: every
+# Railway build after this dependency was first added silently failed to
+# install it, then cached that broken "pip install -r requirements.txt"
+# layer and kept reusing it on every subsequent deploy since
+# requirements.txt's bytes never changed (confirmed live: build logs showed
+# "pip install -r requirements.txt cached 0ms" across multiple otherwise-
+# fresh deploys). Changing this line's content forces a real reinstall;
+# left as a floor (not an exact pin) so pip still resolves whatever's
+# actually current, same as every other dependency in this file.
+pyarrow>=18.0.0
+
 # Image processing (upload pipeline: resize/EXIF/thumbnails + perceptual
 # dedup hashing) — imported eagerly at startup via app.api.v1.endpoints.upload
 # -> app.workers.image_processing_worker, so missing these breaks every boot,

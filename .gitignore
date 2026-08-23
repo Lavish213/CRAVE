@@ -40,3 +40,12 @@ build/
 .grubhub_env
 .env
 .worktrees/
+
+# NOTE: backend/GIT_COMMIT.txt (generated fresh by deploy.sh right before
+# every `railway up`, backing GET /api/v1/debug/version) is deliberately
+# NOT listed here. `railway up` respects .gitignore when deciding what to
+# upload — gitignoring this file would silently exclude it from the very
+# deploy it's meant to verify (confirmed live: this was tried, and
+# /version kept coming back null even after a successful deploy).
+# deploy.sh creates it right before `railway up` and deletes it right
+# after, so it never lingers as an untracked file between deploys.

@@ -30,6 +30,12 @@ import uuid
 
 os.environ.setdefault("DATABASE_URL", "sqlite:///./test_crave.db")
 os.environ.setdefault("APP_ENV", "dev")
+# app.services.upload.r2_client.generate_public_url() raises if this is
+# unset (see that module — it deliberately no longer falls back to the
+# private S3 API endpoint). Tests that exercise the real upload pipeline
+# with a mocked S3 client still call the real generate_public_url(), so
+# it needs *some* value; the actual URL content doesn't matter for tests.
+os.environ.setdefault("R2_PUBLIC_BASE_URL", "https://pub-test.r2.dev")
 
 from app.db.session import engine  # noqa: E402
 from app.db.models import Base  # noqa: E402
@@ -79,3 +85,22 @@ def _seed_db() -> None:
 
 
 _seed_db()
+
+
+@pytest.fixture(autouse=True)
+def _clear_leaderboard_cache():
+    # get_leaderboard's global scope caches its base ranking keyed only on
+    # city_slug (see leaderboard_service.py / cache_keys.py) -- every test
+    # across the whole suite that calls it without a city_slug shares the
+    # exact same cache key ("leaderboard:global:all"). response_cache is a
+    # module-level singleton that persists for the whole pytest process,
+    # so without this, one test's cached snapshot (or deliberately planted
+    # fake data, in tests that verify caching itself) leaks into any other
+    # test file's global-scope leaderboard call that happens to run within
+    # the same session -- confirmed live: test_social_hydration.py's
+    # leaderboard test failed only when run as part of the full suite,
+    # never in isolation, once caching was added.
+    from app.services.cache.response_cache import response_cache
+    response_cache.delete_prefix("leaderboard:")
+    yield
+    response_cache.delete_prefix("leaderboard:")

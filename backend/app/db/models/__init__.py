@@ -32,6 +32,7 @@ from .discovery_candidate import DiscoveryCandidate
 from .menu_item import MenuItem
 from .menu_source import MenuSource
 from .menu_snapshot import MenuSnapshot
+from .menu_submission import MenuSubmission
 
 # ----- Signals / Jobs Layer -----
 from .place_signal import PlaceSignal
@@ -57,8 +58,10 @@ from .job_run import JobRun
 # ----- Social / Identity Layer -----
 from .user_profile import UserProfile
 from .user_follow import UserFollow
+from .user_block import UserBlock
 from .place_ranking import PlaceRanking
 from .activity_event import ActivityEvent
+from .user_streak import UserStreak
 
 # ----- Moderation Layer -----
 from .image_report import ImageReport
@@ -92,6 +95,7 @@ __all__ = [
     "MenuItem",
     "MenuSource",
     "MenuSnapshot",
+    "MenuSubmission",
 
     # Signals / Jobs
     "PlaceSignal",

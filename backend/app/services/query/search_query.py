@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Optional, Tuple, List
 
 from sqlalchemy.orm import Session
-from sqlalchemy import select, func
+from sqlalchemy import case, select, func
 
 from app.db.models.place import Place
 from app.db.models.place_categories import place_categories
@@ -11,6 +11,12 @@ from app.db.models.place_categories import place_categories
 
 DEFAULT_LIMIT = 20
 MAX_LIMIT = 100
+
+# Sentinel "distance" for a place with no coordinates, so it still sorts
+# after every real match instead of needing dialect-specific NULLS LAST
+# handling (SQLite/Postgres both handle a plain numeric ORDER BY the
+# same way).
+_NO_COORDS_DISTANCE_SQ = 1e18
 
 
 def _clamp_limit(limit: int) -> int:
@@ -36,6 +42,8 @@ def search_places(
     city_id: Optional[str] = None,
     category_id: Optional[str] = None,
     price_tier: Optional[int] = None,
+    lat: Optional[float] = None,
+    lng: Optional[float] = None,
     limit: int = DEFAULT_LIMIT,
     offset: int = 0,
 ) -> Tuple[List[Place], int]:
@@ -75,14 +83,27 @@ def search_places(
     count_stmt = select(func.count()).select_from(stmt.subquery())
     total_count = db.execute(count_stmt).scalar_one()
 
-    stmt = (
-        stmt.order_by(
-            Place.rank_score.desc(),
-            Place.id.asc(),
+    # Without an explicit city scope, a name match is fetched from the
+    # entire catalog ordered by rank_score alone — a real nearby match
+    # with a modest rank_score can lose out to unrelated, higher-ranked
+    # places in other cities and never even make it into this LIMIT
+    # window, no matter how search_ranker.py re-sorts what *did* get
+    # fetched. Ordering the fetch itself by proximity when the caller has
+    # a location fixes that at the source: a true match near the caller
+    # is now guaranteed a spot in the window regardless of how it
+    # compares nationally, with rank_score only breaking ties among
+    # similarly-distant results.
+    if lat is not None and lng is not None:
+        distance_sq = case(
+            (Place.lat.is_(None), _NO_COORDS_DISTANCE_SQ),
+            (Place.lng.is_(None), _NO_COORDS_DISTANCE_SQ),
+            else_=(Place.lat - lat) * (Place.lat - lat) + (Place.lng - lng) * (Place.lng - lng),
         )
-        .limit(limit)
-        .offset(offset)
-    )
+        order_by = (distance_sq.asc(), Place.rank_score.desc(), Place.id.asc())
+    else:
+        order_by = (Place.rank_score.desc(), Place.id.asc())
+
+    stmt = stmt.order_by(*order_by).limit(limit).offset(offset)
 
     results = db.execute(stmt).scalars().all()
 

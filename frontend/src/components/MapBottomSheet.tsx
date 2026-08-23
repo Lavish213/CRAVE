@@ -140,6 +140,7 @@ export function MapBottomSheet({ feature, onOpen, onClose }: Props) {
             style={styles.thumb}
             contentFit="cover"
             placeholder={{ blurhash: 'L6PZfSi_.AyE_3t7t7R**0o#DgR4' }}
+            cachePolicy="memory-disk"
           />
         ) : (
           <View style={[styles.thumb, styles.thumbFallback]}>

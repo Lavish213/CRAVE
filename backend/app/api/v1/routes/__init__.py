@@ -14,6 +14,8 @@ from app.api.v1.routes.cities import router as cities_router
 from app.api.v1.routes.hitlist import router as hitlist_router
 from app.api.v1.routes.trending import router as trending_router
 from app.api.v1.routes.signals import router as signals_router
+from app.api.v1.routes.recommendations import router as recommendations_router
+from app.api.v1.routes.streak import router as streak_router
 
 # -------------------------
 # User content (were fully built + JWT-secured but never registered here —
@@ -41,11 +43,17 @@ from app.api.v1.endpoints.upload import router as upload_router
 # Social / Identity / Ranking
 # -------------------------
 from app.api.v1.routes.profile import router as profile_router
+from app.api.v1.routes.account import router as account_router
 from app.api.v1.routes.follows import router as follows_router
+from app.api.v1.routes.blocks import router as blocks_router
 from app.api.v1.routes.rankings import router as rankings_router
 from app.api.v1.routes.feed_social import router as feed_social_router
 from app.api.v1.routes.leaderboard import router as leaderboard_router
 from app.api.v1.routes.moderation import router as moderation_router
+from app.api.v1.routes.menu_submissions import (
+    router as menu_submissions_router,
+    router_moderation as menu_submissions_moderation_router,
+)
 from app.api.v1.routes.debug import router as debug_router
 
 
@@ -68,6 +76,8 @@ router.include_router(cities_router)
 router.include_router(hitlist_router)
 router.include_router(trending_router)
 router.include_router(signals_router)
+router.include_router(recommendations_router)
+router.include_router(streak_router)
 
 router.include_router(saves_router)
 router.include_router(craves_router)
@@ -82,9 +92,13 @@ router.include_router(coverage_router)
 router.include_router(upload_router)
 
 router.include_router(profile_router)
+router.include_router(account_router)
 router.include_router(follows_router)
+router.include_router(blocks_router)
 router.include_router(rankings_router)
 router.include_router(feed_social_router)
 router.include_router(leaderboard_router)
 router.include_router(moderation_router)
+router.include_router(menu_submissions_router)
+router.include_router(menu_submissions_moderation_router)
 router.include_router(debug_router)

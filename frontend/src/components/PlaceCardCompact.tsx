@@ -11,11 +11,13 @@ import { Colors, Radius, Shadows } from '../constants/colors';
 interface Props {
   place: PlaceOut;
   onPress: () => void;
+  /** Fires before onPress -- e.g. to prefetch the destination screen's data. */
+  onPressIn?: () => void;
   rightAction?: React.ReactNode;
   style?: ViewStyle;
 }
 
-export function PlaceCardCompact({ place, onPress, rightAction, style }: Props) {
+function PlaceCardCompactImpl({ place, onPress, onPressIn, rightAction, style }: Props) {
   const tier = getTier(place.rank_score);
   const price = place.price ?? formatPrice(place);
   const badges = getBadges(place);
@@ -31,6 +33,7 @@ export function PlaceCardCompact({ place, onPress, rightAction, style }: Props) 
     <View style={[styles.shadowWrap, style]}>
     <TouchableOpacity
       style={styles.row}
+      onPressIn={onPressIn}
       onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onPress(); }}
       activeOpacity={0.85}
       accessibilityRole="button"
@@ -42,6 +45,7 @@ export function PlaceCardCompact({ place, onPress, rightAction, style }: Props) 
           style={styles.thumb}
           contentFit="cover"
           placeholder={{ blurhash: 'L6PZfSi_.AyE_3t7t7R**0o#DgR4' }}
+          cachePolicy="memory-disk"
         />
       ) : (
         <View style={styles.thumbFallback}>
@@ -73,6 +77,11 @@ export function PlaceCardCompact({ place, onPress, rightAction, style }: Props) 
     </View>
   );
 }
+
+// See PlaceCard.tsx's identical note -- this renders as a FlashList row
+// in Search/Craves/TrendingStrip and shouldn't re-render on every parent
+// state change unrelated to its own props.
+export const PlaceCardCompact = React.memo(PlaceCardCompactImpl);
 
 const styles = StyleSheet.create({
   shadowWrap: {

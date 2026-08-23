@@ -26,6 +26,7 @@ import { EmptyState } from '../../src/components/EmptyState';
 import { AuthSheet } from '../../src/components/AuthSheet';
 import { RankedPlaceRow } from '../../src/components/RankedPlaceRow';
 import { SkeletonRowList } from '../../src/components/SkeletonCard';
+import { withImageWidth, AVATAR_IMAGE_WIDTH } from '../../src/utils/imageUrl';
 import { useAuthStore } from '../../src/stores/authStore';
 import {
   Profile,
@@ -35,16 +36,30 @@ import {
   fetchMyProfile,
   fetchMyRankings,
 } from '../../src/api/social';
+import { Streak, fetchMyStreak } from '../../src/api/streak';
 import {
   RECOMMENDATION_THRESHOLD,
   rankedListHeadline,
   recommendationProgress,
 } from '../../src/utils/rankScore';
 
-function StatTile({ value, label, onPress }: { value: number | string; label: string; onPress?: () => void }) {
+function StatTile({
+  value,
+  label,
+  onPress,
+  icon,
+}: {
+  value: number | string;
+  label: string;
+  onPress?: () => void;
+  icon?: keyof typeof Ionicons.glyphMap;
+}) {
   const inner = (
     <View style={styles.statTile}>
-      <Text style={styles.statValue}>{value}</Text>
+      <View style={styles.statValueRow}>
+        {icon ? <Ionicons name={icon} size={16} color={Colors.primary} /> : null}
+        <Text style={styles.statValue}>{value}</Text>
+      </View>
       <Text style={styles.statLabel}>{label}</Text>
     </View>
   );
@@ -64,6 +79,7 @@ export default function ProfileScreen() {
   const [rankings, setRankings] = useState<RankedPlace[]>([]);
   const [followingCount, setFollowingCount] = useState(0);
   const [followerCount, setFollowerCount] = useState(0);
+  const [streak, setStreak] = useState<Streak | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [authVisible, setAuthVisible] = useState(false);
@@ -76,16 +92,18 @@ export default function ProfileScreen() {
     try {
       // Independent reads — one slow/failing call shouldn't blank the
       // whole screen, so they settle individually rather than all-or-nothing.
-      const [p, r, following, followers] = await Promise.all([
+      const [p, r, following, followers, s] = await Promise.all([
         fetchMyProfile().catch(() => null),
         fetchMyRankings().catch(() => [] as RankedPlace[]),
         fetchFollowing().catch(() => [] as string[]),
         fetchFollowers().catch(() => [] as string[]),
+        fetchMyStreak().catch(() => null),
       ]);
       setProfile(p);
       setRankings(r);
       setFollowingCount(following.length);
       setFollowerCount(followers.length);
+      setStreak(s);
     } finally {
       setLoading(false);
     }
@@ -156,7 +174,12 @@ export default function ProfileScreen() {
     >
       <View style={styles.header}>
         {profile.avatar_url ? (
-          <Image source={profile.avatar_url} style={styles.avatar} contentFit="cover" />
+          <Image
+            source={withImageWidth(profile.avatar_url, AVATAR_IMAGE_WIDTH)}
+            style={styles.avatar}
+            contentFit="cover"
+            cachePolicy="memory-disk"
+          />
         ) : (
           <View style={[styles.avatar, styles.avatarFallback]}>
             <Text style={styles.avatarInitial}>
@@ -188,6 +211,9 @@ export default function ProfileScreen() {
         <StatTile value={rankings.length} label="ranked" />
         <StatTile value={followerCount} label="followers" />
         <StatTile value={followingCount} label="following" />
+        {streak && streak.current_streak > 0 ? (
+          <StatTile value={streak.current_streak} label="day streak" icon="flame" />
+        ) : null}
       </View>
 
       <Text style={styles.headline}>{rankedListHeadline(rankings.length)}</Text>
@@ -196,9 +222,11 @@ export default function ProfileScreen() {
         <View style={styles.unlockCard}>
           <Ionicons name="sparkles-outline" size={18} color={Colors.primary} />
           <Text style={styles.unlockText}>
-            Rank {remaining} more {remaining === 1 ? 'place' : 'places'} to unlock
-            recommendations. Below {RECOMMENDATION_THRESHOLD} there isn't enough
-            signal to match you to anyone's taste.
+            Rank {remaining} more {remaining === 1 ? 'place' : 'places'} for
+            recommendations tailored to your exact taste. Below{' '}
+            {RECOMMENDATION_THRESHOLD} rankings there isn't enough signal to
+            match you to anyone yet, so "Recommended for you" is showing
+            top-rated picks in the meantime.
           </Text>
         </View>
       ) : null}
@@ -222,6 +250,17 @@ export default function ProfileScreen() {
           <Ionicons name="trophy-outline" size={18} color={Colors.primary} />
           <Text style={styles.linkBtnText}>Leaderboard</Text>
         </TouchableOpacity>
+        {rankings.length > 0 && user && (
+          <TouchableOpacity
+            style={styles.linkBtn}
+            onPress={() => router.push(`/taste-profile/${user.id}`)}
+            accessibilityRole="button"
+            accessibilityLabel="Your Taste Profile"
+          >
+            <Ionicons name="restaurant-outline" size={18} color={Colors.primary} />
+            <Text style={styles.linkBtnText}>Taste Profile</Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       <Text style={styles.sectionTitle}>Your list</Text>
@@ -286,6 +325,7 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.md,
     alignItems: 'center',
   },
+  statValueRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   statValue: { color: Colors.text, fontSize: 22, fontWeight: '800' },
   statLabel: { color: Colors.textMuted, fontSize: 12, marginTop: 2 },
 

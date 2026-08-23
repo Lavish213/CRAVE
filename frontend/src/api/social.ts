@@ -56,6 +56,30 @@ export async function updateMyProfile(patch: {
   return data;
 }
 
+// "Taste Profile" — the equivalent of Beli's own stats screen (total
+// places ranked, tier breakdown, favorite cuisine, top city, a global
+// percentile). Deliberately excludes Beli's "Match Score" (taste
+// compatibility with a specific friend) — that's being built alongside
+// the personalized-recommendations feature instead, which needs the
+// same user-similarity computation.
+export interface TasteProfile {
+  total_ranked: number;
+  tier_counts: { liked: number; fine: number; disliked: number };
+  favorite_cuisine: string | null;
+  top_city: { id: string; name: string; count: number } | null;
+  percentile: number | null;
+  /** Taste-compatibility % with the viewer -- only present when the
+   * viewer is signed in and looking at someone else's profile; null if
+   * they haven't shared enough ranked places for the number to mean
+   * anything yet. */
+  match_score: number | null;
+}
+
+export async function fetchTasteProfile(userId: string): Promise<TasteProfile> {
+  const { data } = await client.get<TasteProfile>(`/api/v1/profile/${userId}/taste`);
+  return data;
+}
+
 export async function fetchProfile(userId: string): Promise<Profile> {
   const { data } = await client.get<Profile>(`/api/v1/profile/${userId}`);
   return data;
@@ -100,6 +124,42 @@ export async function fetchFollowers(): Promise<string[]> {
 }
 
 // ---------------------------------------------------------------------------
+// Blocks
+// ---------------------------------------------------------------------------
+
+export async function blockUser(userId: string): Promise<void> {
+  await client.post(`/api/v1/blocks/${userId}`);
+}
+
+export async function unblockUser(userId: string): Promise<void> {
+  await client.delete(`/api/v1/blocks/${userId}`);
+}
+
+export async function fetchBlockStatus(userId: string): Promise<{ blocked: boolean }> {
+  const { data } = await client.get(`/api/v1/blocks/status/${userId}`);
+  return data;
+}
+
+export async function fetchBlockedUsers(): Promise<string[]> {
+  const { data } = await client.get<{ user_ids: string[] }>('/api/v1/blocks');
+  return data.user_ids ?? [];
+}
+
+// ---------------------------------------------------------------------------
+// Account deletion
+// ---------------------------------------------------------------------------
+
+export async function deleteMyAccount(): Promise<{
+  profile_deleted: boolean;
+  supabase_account_deleted: boolean;
+}> {
+  const { data } = await client.delete('/api/v1/account/me', {
+    data: { confirm: true },
+  });
+  return data;
+}
+
+// ---------------------------------------------------------------------------
 // Rankings
 // ---------------------------------------------------------------------------
 
@@ -113,6 +173,28 @@ export interface Ranking {
   note: string | null;
   tags: string[] | null;
   visited_at: string | null;
+}
+
+// "X of your friends ranked this" — the direct equivalent of Beli's
+// friend-rating feature. Separate call from the main place-detail fetch
+// since that response is cached globally by place_id (shared across
+// every viewer) — this one is per-viewer (scoped to the caller's own
+// follow graph) and deliberately never cached, same pattern as
+// getCravesForPlace's separate "seen on social" call.
+export interface FriendRanking {
+  user_id: string;
+  username: string;
+  display_name: string | null;
+  avatar_url: string | null;
+  tier: RankTier;
+  rank_score: number;
+}
+
+export async function fetchFriendRankings(placeId: string): Promise<FriendRanking[]> {
+  const { data } = await client.get<{ rankings: FriendRanking[]; count: number }>(
+    `/api/v1/place/${placeId}/friends`,
+  );
+  return Array.isArray(data?.rankings) ? data.rankings : [];
 }
 
 /**

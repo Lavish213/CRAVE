@@ -2,7 +2,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  Image,
   Linking,
   ScrollView,
   Share,
@@ -11,6 +10,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
@@ -26,11 +26,13 @@ import { useUploadImage } from '../../src/hooks/useUploadImage';
 import { useImageStatusPoll } from '../../src/hooks/useImageStatusPoll';
 import { Colors, Spacing, Radius } from '../../src/constants/colors';
 import { getTier, getBadges, formatPrice } from '../../src/utils/scoring';
-import { fetchMyRankings } from '../../src/api/social';
-import { formatScore, tierColor } from '../../src/utils/rankScore';
+import { fetchMyRankings, fetchFriendRankings, FriendRanking } from '../../src/api/social';
+import { formatScore, tierColor, TIER_LABELS } from '../../src/utils/rankScore';
 import { relativeTime } from '../../src/utils/time';
+import { withImageWidth, AVATAR_IMAGE_WIDTH } from '../../src/utils/imageUrl';
 import { ImageGallery } from '../../src/components/ImageGallery';
 import { ReportPhotoSheet } from '../../src/components/ReportPhotoSheet';
+import { MenuSubmissionSheet } from '../../src/components/MenuSubmissionSheet';
 import { TierBadge } from '../../src/components/TierBadge';
 import { ErrorState } from '../../src/components/ErrorState';
 
@@ -100,6 +102,7 @@ export default function PlaceDetailScreen() {
   const myRanking = myRankings?.find((r) => r.place_id === id);
 
   const [reportImageId, setReportImageId] = useState<string | null>(null);
+  const [menuSubmitVisible, setMenuSubmitVisible] = useState(false);
 
   const [isAddingPhoto, setIsAddingPhoto] = useState(false);
   const [pendingImageId, setPendingImageId] = useState<string | undefined>();
@@ -178,6 +181,32 @@ export default function PlaceDetailScreen() {
         setCraves([]);
       });
   }, [id]);
+
+  const [friendRankings, setFriendRankings] = useState<FriendRanking[]>([]);
+  const friendRankingsGenerationRef = useRef(0);
+
+  // "X of your friends ranked this" — the direct equivalent of Beli's
+  // friend-rating feature. Authenticated (needs the caller's own follow
+  // graph), so only fetched when signed in — silently empty otherwise,
+  // same "supplementary content, not worth its own error state" treatment
+  // as the craves/social fetch above.
+  useEffect(() => {
+    if (!id || !user) {
+      setFriendRankings([]);
+      return;
+    }
+    const myGeneration = ++friendRankingsGenerationRef.current;
+    setFriendRankings([]);
+    fetchFriendRankings(id)
+      .then((rankings) => {
+        if (myGeneration !== friendRankingsGenerationRef.current) return;
+        setFriendRankings(rankings);
+      })
+      .catch(() => {
+        if (myGeneration !== friendRankingsGenerationRef.current) return;
+        setFriendRankings([]);
+      });
+  }, [id, user]);
 
   const handleShare = useCallback(() => {
     if (!place) return;
@@ -269,6 +298,15 @@ export default function PlaceDetailScreen() {
     } finally {
       setIsAddingPhoto(false);
     }
+  };
+
+  const handleOpenMenuSubmit = () => {
+    if (!user) {
+      toast('Sign in to suggest menu items');
+      return;
+    }
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setMenuSubmitVisible(true);
   };
 
   const handleDirections = () => {
@@ -526,7 +564,59 @@ export default function PlaceDetailScreen() {
             )}
           </>
         )}
+
+        {!menuLoading && (
+          <TouchableOpacity
+            style={styles.suggestMenuBtn}
+            onPress={handleOpenMenuSubmit}
+            accessibilityRole="button"
+            accessibilityLabel="Suggest menu items"
+          >
+            <Ionicons name="create-outline" size={16} color={Colors.primary} />
+            <Text style={styles.suggestMenuText}>
+              {menuItems.length === 0 ? 'Add menu items' : 'Suggest a correction'}
+            </Text>
+          </TouchableOpacity>
+        )}
       </View>
+
+      {/* Friend rankings — "X of your friends ranked this," the direct
+          equivalent of Beli's friend-rating feature. */}
+      {friendRankings.length > 0 && (
+        <View style={styles.socialSection}>
+          <Text style={styles.sectionTitle}>
+            Ranked by {friendRankings.length} {friendRankings.length === 1 ? 'friend' : 'friends'}
+          </Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.socialRow}>
+            {friendRankings.map((r) => (
+              <TouchableOpacity
+                key={r.user_id}
+                style={styles.friendRankCard}
+                onPress={() => router.push(`/user/${r.user_id}`)}
+                accessibilityRole="link"
+                accessibilityLabel={`View ${r.username}'s profile — ranked ${TIER_LABELS[r.tier]}`}
+              >
+                {r.avatar_url ? (
+                  <Image
+                    source={withImageWidth(r.avatar_url, AVATAR_IMAGE_WIDTH)}
+                    style={styles.friendRankAvatar}
+                    contentFit="cover"
+                    cachePolicy="memory-disk"
+                  />
+                ) : (
+                  <View style={[styles.friendRankAvatar, styles.friendRankAvatarFallback]}>
+                    <Ionicons name="person" size={18} color={Colors.textMuted} />
+                  </View>
+                )}
+                <Text style={styles.friendRankUsername} numberOfLines={1}>@{r.username}</Text>
+                <Text style={[styles.friendRankTier, { color: tierColor(r.tier) }]}>
+                  {TIER_LABELS[r.tier]}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
+      )}
 
       {/* Seen on social — matched TikTok/YouTube/IG shares. Tapping opens
           the original post; true inline playback would need react-native-webview,
@@ -547,7 +637,12 @@ export default function PlaceDetailScreen() {
                 accessibilityLabel={`Open ${item.source_type} post${item.author_name ? ` by ${item.author_name}` : ''}`}
               >
                 {item.thumbnail_url ? (
-                  <Image source={{ uri: item.thumbnail_url }} style={styles.socialThumb} />
+                  <Image
+                    source={withImageWidth(item.thumbnail_url, AVATAR_IMAGE_WIDTH)}
+                    style={styles.socialThumb}
+                    contentFit="cover"
+                    cachePolicy="memory-disk"
+                  />
                 ) : (
                   <View style={[styles.socialThumb, styles.socialThumbFallback]}>
                     <Ionicons name="play-circle-outline" size={28} color={Colors.textMuted} />
@@ -572,6 +667,13 @@ export default function PlaceDetailScreen() {
         imageId={reportImageId}
         onClose={() => setReportImageId(null)}
         onReported={() => toast('Thanks — we’ll take a look')}
+      />
+
+      <MenuSubmissionSheet
+        visible={menuSubmitVisible}
+        placeId={place.id}
+        onClose={() => setMenuSubmitVisible(false)}
+        onSubmitted={() => toast('Thanks — submitted for review')}
       />
     </ScrollView>
   );
@@ -686,6 +788,15 @@ const styles = StyleSheet.create({
   },
   expandBtn: { marginTop: 8, paddingVertical: 12, alignItems: 'center' },
   expandLabel: { color: Colors.primary, fontSize: 14, fontWeight: '600' },
+  suggestMenuBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    marginTop: 8,
+    paddingVertical: 12,
+  },
+  suggestMenuText: { color: Colors.primary, fontSize: 14, fontWeight: '600' },
   menuSkeletonWrap: { gap: Spacing.sm },
   socialSection: { paddingTop: 20, paddingLeft: 16 },
   socialRow: { gap: Spacing.sm, paddingRight: 16, paddingTop: 4 },
@@ -708,4 +819,20 @@ const styles = StyleSheet.create({
   },
   socialPlatformChipText: { color: '#fff', fontSize: 10, fontWeight: '700' },
   socialAuthor: { color: Colors.textSecondary, fontSize: 12, marginTop: 6 },
+  friendRankCard: { width: 84, alignItems: 'center' },
+  friendRankAvatar: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: Colors.surface,
+  },
+  friendRankAvatarFallback: { alignItems: 'center', justifyContent: 'center' },
+  friendRankUsername: {
+    color: Colors.text,
+    fontSize: 12,
+    fontWeight: '600',
+    marginTop: 6,
+    maxWidth: 84,
+  },
+  friendRankTier: { fontSize: 11, fontWeight: '700', marginTop: 2 },
 });

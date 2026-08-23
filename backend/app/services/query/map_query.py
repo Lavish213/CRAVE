@@ -4,13 +4,11 @@ import logging
 from typing import Any, Dict, List, Optional
 
 from sqlalchemy.orm import Session
-from sqlalchemy import and_, select
 
 from app.db.models.place import Place
-from app.db.models.place_image import PlaceImage, VISIBILITY_HIDDEN
 from app.db.models.place_categories import place_categories
 from app.services.geo.bounding_box import bounding_box
-from app.services.query.place_image_query import _to_proxy_url
+from app.services.query.place_image_visibility_query import get_primary_image_urls_bulk
 from app.services.query.place_category_query import get_categories_for_places_bulk
 
 logger = logging.getLogger(__name__)
@@ -77,30 +75,20 @@ def fetch_places_for_map(
         }
 
     # ---------------------------------------------------------
-    # Primary Image Subquery
-    # ---------------------------------------------------------
-
-    primary_img_url = (
-        select(PlaceImage.url)
-        .where(
-            and_(
-                PlaceImage.place_id == Place.id,
-                PlaceImage.is_primary.is_(True),
-                PlaceImage.visibility_status != VISIBILITY_HIDDEN,
-            )
-        )
-        .order_by(
-            PlaceImage.confidence.desc(),
-            PlaceImage.created_at.desc(),
-            PlaceImage.id.asc(),
-        )
-        .limit(1)
-        .scalar_subquery()
-    )
-
-    # ---------------------------------------------------------
     # Query (fully safe)
     # ---------------------------------------------------------
+    #
+    # Primary image used to be resolved via a correlated scalar subquery
+    # embedded per-row in this SELECT (one extra filtered-sort lookup
+    # against place_images for every one of up to `limit` rows). Every
+    # other list surface in the app (feed, search) resolves it as a
+    # single separate bulk query instead (place_id IN (...), grouped in
+    # Python — see get_primary_image_urls_bulk) specifically to avoid
+    # that N+1-shaped cost. This was the one surface that never got that
+    # treatment, and it's a real, live-confirmed cost: a production map
+    # request timed out client-side at 25s while feed/search/detail all
+    # loaded normally in the same session. Moved to the same bulk lookup
+    # below, after the place rows are fetched.
 
     try:
         q = (
@@ -113,7 +101,6 @@ def fetch_places_for_map(
                 Place.price_tier,
                 Place.rank_score,
                 Place.has_menu,
-                primary_img_url.label("primary_image_url"),
             )
             .filter(
                 Place.is_active.is_(True),
@@ -186,6 +173,19 @@ def fetch_places_for_map(
         category_map = {}
 
     # ---------------------------------------------------------
+    # Primary images (bulk, single query — same reasoning as categories
+    # above; see the module-level comment on why this replaced a
+    # per-row correlated subquery)
+    # ---------------------------------------------------------
+
+    try:
+        image_map = get_primary_image_urls_bulk(
+            db, place_ids=[r.id for r in rows]
+        )
+    except Exception:
+        image_map = {}
+
+    # ---------------------------------------------------------
     # Mapping (safe casting)
     # ---------------------------------------------------------
 
@@ -205,7 +205,7 @@ def fetch_places_for_map(
                     "city_id": r.city_id,
                     "price_tier": r.price_tier,
                     "rank_score": float(r.rank_score or 0.0),
-                    "primary_image_url": _to_proxy_url(r.primary_image_url),
+                    "primary_image_url": image_map.get(r.id),
                     "category": category,
                     "has_menu": bool(r.has_menu),
                 }
@@ -306,7 +306,9 @@ def fetch_places_for_map_geojson(
                 "tier": _assign_tier(p.get("rank_score", 0.0), thresholds),
                 "rank_score": p.get("rank_score", 0.0),
                 "price_tier": p.get("price_tier"),
-                "primary_image_url": _to_proxy_url(p.get("primary_image_url")),
+                # Already proxy-formatted by get_primary_image_urls_bulk
+                # (via fetch_places_for_map) — no second conversion needed.
+                "primary_image_url": p.get("primary_image_url"),
                 "category": p.get("category"),
                 "has_menu": bool(p.get("has_menu", False)),
             },

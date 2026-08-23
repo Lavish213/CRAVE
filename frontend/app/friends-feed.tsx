@@ -5,18 +5,19 @@
 // tab: this one is chronological, small, and empty until you follow people,
 // and pretending otherwise by padding it with recommendations would make it
 // indistinguishable from the home tab.
-import React, { useCallback, useState } from 'react';
+import React, { useCallback } from 'react';
 import {
-  FlatList,
   RefreshControl,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native';
+import { FlashList } from '@shopify/flash-list';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
+import { useQuery } from '@tanstack/react-query';
 
 import { Colors, Radius, Spacing } from '../src/constants/colors';
 import { EmptyState } from '../src/components/EmptyState';
@@ -24,6 +25,7 @@ import { SkeletonRowList } from '../src/components/SkeletonCard';
 import { ActivityEvent, fetchFriendsFeed } from '../src/api/social';
 import { formatScore, tierColor } from '../src/utils/rankScore';
 import { relativeTime } from '../src/utils/time';
+import { withImageWidth, AVATAR_IMAGE_WIDTH } from '../src/utils/imageUrl';
 
 function actorName(event: ActivityEvent): string {
   const a = event.actor;
@@ -32,24 +34,29 @@ function actorName(event: ActivityEvent): string {
 
 export default function FriendsFeedScreen() {
   const router = useRouter();
-  const [events, setEvents] = useState<ActivityEvent[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
+  // Previously raw useState + useFocusEffect with no caching at all -- every
+  // tab focus re-fetched from scratch, unlike every other list screen in the
+  // app. The queryFn swallows errors into an empty array, matching this
+  // screen's original behavior exactly (no distinct error copy existed here
+  // — a failed fetch and a genuinely empty feed both just showed the "follow
+  // people" EmptyState).
+  const {
+    data: events = [],
+    isLoading: loading,
+    isRefetching: refreshing,
+    refetch,
+  } = useQuery({
+    queryKey: ['friends-feed'],
+    queryFn: () => fetchFriendsFeed().catch(() => []),
+    staleTime: 2 * 60 * 1000,
+  });
 
-  const load = useCallback(async () => {
-    try {
-      setEvents(await fetchFriendsFeed());
-    } catch {
-      setEvents([]);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
+  // Cached data shows instantly on refocus; this just revalidates quietly
+  // in the background instead of resetting to a full loading state.
   useFocusEffect(
     useCallback(() => {
-      load();
-    }, [load]),
+      refetch();
+    }, [refetch]),
   );
 
   if (loading) {
@@ -73,7 +80,7 @@ export default function FriendsFeedScreen() {
   }
 
   return (
-    <FlatList
+    <FlashList
       style={styles.container}
       data={events}
       keyExtractor={(e) => e.id}
@@ -81,14 +88,7 @@ export default function FriendsFeedScreen() {
       refreshControl={
         <RefreshControl
           refreshing={refreshing}
-          onRefresh={async () => {
-            setRefreshing(true);
-            try {
-              await load();
-            } finally {
-              setRefreshing(false);
-            }
-          }}
+          onRefresh={() => refetch()}
           tintColor={Colors.primary}
         />
       }
@@ -111,7 +111,12 @@ export default function FriendsFeedScreen() {
             }
           >
             {item.actor?.avatar_url ? (
-              <Image source={item.actor.avatar_url} style={styles.avatar} contentFit="cover" />
+              <Image
+                source={withImageWidth(item.actor.avatar_url, AVATAR_IMAGE_WIDTH)}
+                style={styles.avatar}
+                contentFit="cover"
+                cachePolicy="memory-disk"
+              />
             ) : (
               <View style={[styles.avatar, styles.avatarFallback]}>
                 <Text style={styles.avatarInitial}>
@@ -159,12 +164,16 @@ export default function FriendsFeedScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
-  list: { padding: Spacing.md, gap: Spacing.sm, paddingBottom: Spacing.xxl },
+  // FlashList's contentContainerStyle doesn't reliably support `gap`
+  // (unlike FlatList) -- https://github.com/Shopify/flash-list/issues/2097 --
+  // so inter-row spacing is applied via row's marginBottom instead.
+  list: { padding: Spacing.md, paddingBottom: Spacing.xxl },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.md,
     padding: Spacing.md,
+    marginBottom: Spacing.sm,
     backgroundColor: Colors.surface,
     borderRadius: Radius.md,
     borderWidth: 1,

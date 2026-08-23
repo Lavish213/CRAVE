@@ -27,6 +27,22 @@ from app.db.models.place_image import (
 logger = logging.getLogger(__name__)
 
 
+def _is_ephemeral_google_ref(url: Optional[str]) -> bool:
+    """
+    True for a raw Google Places (New) photo reference — either the bare
+    resource name ("places/{id}/photos/{id}") or the full
+    places.googleapis.com URL. These are session-scoped: the same string
+    can go dead (404/400 upstream) at any time, unlike a durable R2/CDN
+    URL. Used to keep winner-selection below from picking a high-
+    confidence-but-possibly-dead Google reference over a working durable
+    photo just because it scored higher at ingestion time — confidence
+    reflects extraction quality, not whether the URL still resolves.
+    """
+    if not url:
+        return False
+    return url.startswith("places/") or "places.googleapis.com" in url
+
+
 class PlaceImageInvariantService:
     """
     Enforces and repairs hard invariants on place_images.
@@ -170,7 +186,10 @@ class PlaceImageInvariantService:
         if len(primaries) <= 1:
             return False
 
-        # Pick best: prefer non-hidden, highest confidence
+        # Pick best: prefer non-hidden, prefer a durable (non-ephemeral)
+        # URL over a raw Google reference regardless of confidence — see
+        # _is_ephemeral_google_ref's docstring — then highest confidence
+        # within that.
         eligible = [
             img for img in primaries
             if img.visibility_status != VISIBILITY_HIDDEN
@@ -179,7 +198,8 @@ class PlaceImageInvariantService:
         winner = max(
             eligible or primaries,
             key=lambda img: (
-                img.quality_score if img.quality_score is not None else img.confidence or 0.0
+                not _is_ephemeral_google_ref(img.url),
+                img.quality_score if img.quality_score is not None else img.confidence or 0.0,
             ),
         )
 
@@ -219,11 +239,15 @@ class PlaceImageInvariantService:
         if not candidates:
             return None
 
-        # Prefer quality_score (Phase 3 signal) over ingestion confidence.
+        # Prefer a durable (non-ephemeral) URL over a raw Google reference
+        # regardless of confidence — see _is_ephemeral_google_ref's
+        # docstring — then quality_score (Phase 3 signal) over ingestion
+        # confidence.
         best = max(
             candidates,
             key=lambda img: (
-                img.quality_score if img.quality_score is not None else img.confidence or 0.0
+                not _is_ephemeral_google_ref(img.url),
+                img.quality_score if img.quality_score is not None else img.confidence or 0.0,
             ),
         )
         best.is_primary = True

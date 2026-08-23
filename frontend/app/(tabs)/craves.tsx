@@ -7,14 +7,14 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  FlatList,
-  Image,
   RefreshControl,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native';
+import { FlashList } from '@shopify/flash-list';
+import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
@@ -22,6 +22,8 @@ import { SkeletonRowList } from '../../src/components/SkeletonCard';
 import { useCravesStore } from '../../src/stores/cravesStore';
 import { useToast } from '../../src/hooks/useToast';
 import { Colors, Spacing, Radius } from '../../src/constants/colors';
+import { withImageWidth, AVATAR_IMAGE_WIDTH } from '../../src/utils/imageUrl';
+import { usePrefetchPlace } from '../../src/hooks/usePrefetchPlace';
 import { PlaceCardCompact } from '../../src/components/PlaceCardCompact';
 import { EmptyState } from '../../src/components/EmptyState';
 import { ErrorState } from '../../src/components/ErrorState';
@@ -32,6 +34,7 @@ import { ShareLinkSheet } from '../../src/components/ShareLinkSheet';
 
 export default function CravesScreen() {
   const router = useRouter();
+  const prefetchPlace = usePrefetchPlace();
   const { saves, loading: savesLoading, error: savesError, loadSaves, removeSave } = useCravesStore();
   const toast = useToast((s) => s.show);
   const user = useAuthStore((s) => s.user);
@@ -223,7 +226,7 @@ export default function CravesScreen() {
 
   return (
     <View style={styles.container}>
-      <FlatList
+      <FlashList
         data={saves}
         keyExtractor={(p) => p.id}
         refreshControl={
@@ -234,29 +237,32 @@ export default function CravesScreen() {
           />
         }
         renderItem={({ item }) => (
-          <PlaceCardCompact
-            place={item}
-            onPress={() => router.push(`/place/${item.id}`)}
-            rightAction={
-              <TouchableOpacity
-                onPress={async () => {
-                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                  const err = await removeSave(item.id, user.id);
-                  if (err) {
-                    toast(err);
-                  } else {
-                    toast('Removed from Saves');
-                  }
-                }}
-                style={styles.removeBtn}
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                accessibilityLabel={`Remove ${item.name} from saves`}
-                accessibilityRole="button"
-              >
-                <Ionicons name="close" size={18} color={Colors.textMuted} />
-              </TouchableOpacity>
-            }
-          />
+          <View style={styles.rowSpacer}>
+            <PlaceCardCompact
+              place={item}
+              onPress={() => router.push(`/place/${item.id}`)}
+              onPressIn={() => prefetchPlace(item.id)}
+              rightAction={
+                <TouchableOpacity
+                  onPress={async () => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                    const err = await removeSave(item.id, user.id);
+                    if (err) {
+                      toast(err);
+                    } else {
+                      toast('Removed from Saves');
+                    }
+                  }}
+                  style={styles.removeBtn}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  accessibilityLabel={`Remove ${item.name} from saves`}
+                  accessibilityRole="button"
+                >
+                  <Ionicons name="close" size={18} color={Colors.textMuted} />
+                </TouchableOpacity>
+              }
+            />
+          </View>
         )}
         contentContainerStyle={styles.list}
         ListHeaderComponent={
@@ -291,7 +297,12 @@ export default function CravesScreen() {
                 {craves.map((item) => (
                   <View key={item.id} style={styles.craveRow}>
                     {item.thumbnail_url ? (
-                      <Image source={{ uri: item.thumbnail_url }} style={styles.craveThumb} />
+                      <Image
+                        source={withImageWidth(item.thumbnail_url, AVATAR_IMAGE_WIDTH)}
+                        style={styles.craveThumb}
+                        contentFit="cover"
+                        cachePolicy="memory-disk"
+                      />
                     ) : null}
                     <View style={styles.craveMeta}>
                       <Text style={styles.craveName} numberOfLines={1}>
@@ -361,7 +372,11 @@ export default function CravesScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
-  list: { padding: Spacing.md, gap: Spacing.sm, paddingBottom: Spacing.xxl },
+  // FlashList's contentContainerStyle doesn't reliably support `gap`
+  // (unlike FlatList) -- https://github.com/Shopify/flash-list/issues/2097 --
+  // so inter-row spacing is applied per-row via rowSpacer below instead.
+  list: { padding: Spacing.md, paddingBottom: Spacing.xxl },
+  rowSpacer: { marginBottom: Spacing.sm },
   screenHeader: {
     flexDirection: 'row',
     alignItems: 'center',

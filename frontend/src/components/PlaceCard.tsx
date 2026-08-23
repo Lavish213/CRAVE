@@ -17,12 +17,14 @@ const IMAGE_HEIGHT = 220;
 interface Props {
   place: PlaceOut;
   onPress: () => void;
+  /** Fires before onPress -- e.g. to prefetch the destination screen's data. */
+  onPressIn?: () => void;
   onSave: () => void;
   saved: boolean;
   style?: ViewStyle;
 }
 
-export function PlaceCard({ place, onPress, onSave, saved, style }: Props) {
+function PlaceCardImpl({ place, onPress, onPressIn, onSave, saved, style }: Props) {
   const tier = getTier(place.rank_score);
   const price = place.price ?? formatPrice(place);
   const badges = getBadges(place);
@@ -48,6 +50,7 @@ export function PlaceCard({ place, onPress, onSave, saved, style }: Props) {
     <View style={[styles.shadowWrap, style]}>
     <TouchableOpacity
       style={styles.card}
+      onPressIn={onPressIn}
       onPress={() => {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
         onPress();
@@ -71,6 +74,7 @@ export function PlaceCard({ place, onPress, onSave, saved, style }: Props) {
             contentFit="cover"
             placeholder={{ blurhash: 'L6PZfSi_.AyE_3t7t7R**0o#DgR4' }}
             transition={200}
+            cachePolicy="memory-disk"
           />
         ) : (
           <View style={styles.imageFallback}>
@@ -119,6 +123,12 @@ export function PlaceCard({ place, onPress, onSave, saved, style }: Props) {
     </View>
   );
 }
+
+// Every list screen renders this as a row inside FlashList/FlatList --
+// without memo, every parent re-render (filter toggles, auth sheet
+// opening, unrelated state) re-renders every visible card regardless of
+// whether its own props actually changed.
+export const PlaceCard = React.memo(PlaceCardImpl);
 
 const styles = StyleSheet.create({
   // A shadow and `overflow: hidden` can't live on the same view — hidden

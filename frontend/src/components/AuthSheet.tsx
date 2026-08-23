@@ -1,10 +1,13 @@
 import React, { useState } from 'react';
 import {
   ActivityIndicator,
+  KeyboardAvoidingView,
   Modal,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -60,6 +63,30 @@ async function performOAuth(provider: 'google' | 'apple') {
   return null;
 }
 
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+// Supabase's raw error strings are accurate but not user-facing copy —
+// map the handful users will actually hit to something actionable.
+function humanizeAuthError(message: string): string {
+  const m = message.toLowerCase();
+  if (m.includes('invalid login credentials')) {
+    return "That email or password isn't right.";
+  }
+  if (m.includes('already registered') || m.includes('already exists')) {
+    return 'An account already exists for that email. Try signing in instead.';
+  }
+  if (m.includes('password should be at least') || m.includes('password is too short')) {
+    return 'Password must be at least 6 characters.';
+  }
+  if (m.includes('email not confirmed')) {
+    return 'Confirm your email first — check your inbox for the link.';
+  }
+  if (m.includes('rate limit')) {
+    return 'Too many attempts. Wait a bit and try again.';
+  }
+  return message;
+}
+
 interface Props {
   visible: boolean;
   onClose: () => void;
@@ -90,16 +117,28 @@ const REASON_COPY: Record<NonNullable<Props['reason']>, { title: string; body: s
 };
 
 export function AuthSheet({ visible, onClose, reason = 'default' }: Props) {
-  const [loading, setLoading] = useState<'google' | 'apple' | null>(null);
+  const [loading, setLoading] = useState<'google' | 'apple' | 'email' | null>(null);
+  const [view, setView] = useState<'options' | 'email'>('options');
+  const [authMode, setAuthMode] = useState<'signin' | 'signup'>('signin');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const copy = REASON_COPY[reason];
   const toast = useToast((s) => s.show);
+
+  const resetAndClose = () => {
+    setView('options');
+    setAuthMode('signin');
+    setEmail('');
+    setPassword('');
+    onClose();
+  };
 
   const handleGoogle = async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setLoading('google');
     try {
       const session = await performOAuth('google');
-      if (session) onClose();
+      if (session) resetAndClose();
     } catch (err) {
       // Previously silent outside __DEV__ — a real failure here (network,
       // misconfigured redirect, provider error) looked identical to
@@ -117,10 +156,56 @@ export function AuthSheet({ visible, onClose, reason = 'default' }: Props) {
     setLoading('apple');
     try {
       const session = await performOAuth('apple');
-      if (session) onClose();
+      if (session) resetAndClose();
     } catch (err) {
       if (__DEV__) console.log('[AUTH] apple_oauth_failed', err);
       toast("Couldn't sign in with Apple. Try again.");
+    } finally {
+      setLoading(null);
+    }
+  };
+
+  const handleEmailAuth = async () => {
+    const trimmedEmail = email.trim();
+    if (!EMAIL_RE.test(trimmedEmail)) {
+      toast('Enter a valid email address.');
+      return;
+    }
+    if (password.length < 6) {
+      toast('Password must be at least 6 characters.');
+      return;
+    }
+
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setLoading('email');
+    try {
+      if (authMode === 'signup') {
+        const { data, error } = await supabase.auth.signUp({
+          email: trimmedEmail,
+          password,
+        });
+        if (error) throw error;
+        if (data.session) {
+          resetAndClose();
+        } else {
+          // No session back means Supabase requires email confirmation
+          // before the account is usable — not an error, just a different
+          // next step than sign-in gets.
+          toast('Check your email to confirm your account, then sign in.');
+          setAuthMode('signin');
+          setPassword('');
+        }
+      } else {
+        const { data, error } = await supabase.auth.signInWithPassword({
+          email: trimmedEmail,
+          password,
+        });
+        if (error) throw error;
+        if (data.session) resetAndClose();
+      }
+    } catch (err) {
+      if (__DEV__) console.log('[AUTH] email_auth_failed', err);
+      toast(err instanceof Error ? humanizeAuthError(err.message) : "Couldn't sign in. Try again.");
     } finally {
       setLoading(null);
     }
@@ -131,82 +216,194 @@ export function AuthSheet({ visible, onClose, reason = 'default' }: Props) {
       visible={visible}
       transparent
       animationType="slide"
-      onRequestClose={onClose}
+      onRequestClose={resetAndClose}
       statusBarTranslucent
     >
-      <Pressable style={styles.backdrop} onPress={onClose} />
+      <Pressable style={styles.backdrop} onPress={resetAndClose} />
 
-      <View style={styles.sheet}>
-        {/* Handle */}
-        <View style={styles.handle} />
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={styles.keyboardWrap}
+      >
+        <View style={styles.sheet}>
+          {/* Handle */}
+          <View style={styles.handle} />
 
-        {/* Close */}
-        <TouchableOpacity
-          style={styles.closeBtn}
-          onPress={onClose}
-          accessibilityRole="button"
-          accessibilityLabel="Close"
-        >
-          <Ionicons name="close" size={20} color={Colors.textSecondary} />
-        </TouchableOpacity>
-
-        {/* Identity */}
-        <View style={styles.identity}>
-          <Text style={styles.wordmark}>CRAVE</Text>
-          <Text style={styles.title}>{copy.title}</Text>
-          <Text style={styles.body}>{copy.body}</Text>
-        </View>
-
-        {/* Auth buttons */}
-        <View style={styles.buttons}>
-          {/* Apple */}
+          {/* Close / Back */}
           <TouchableOpacity
-            style={[styles.authBtn, styles.authBtnApple]}
-            onPress={handleApple}
-            activeOpacity={0.85}
-            disabled={loading !== null}
+            style={styles.closeBtn}
+            onPress={view === 'email' ? () => setView('options') : resetAndClose}
             accessibilityRole="button"
-            accessibilityLabel="Continue with Apple"
+            accessibilityLabel={view === 'email' ? 'Back' : 'Close'}
           >
-            {loading === 'apple' ? (
-              <ActivityIndicator color={Colors.background} size="small" />
-            ) : (
-              <>
-                <Ionicons name="logo-apple" size={18} color={Colors.background} />
-                <Text style={[styles.authBtnText, styles.authBtnTextApple]}>
-                  Continue with Apple
+            <Ionicons
+              name={view === 'email' ? 'chevron-back' : 'close'}
+              size={20}
+              color={Colors.textSecondary}
+            />
+          </TouchableOpacity>
+
+          {/* Identity */}
+          <View style={styles.identity}>
+            <Text style={styles.wordmark}>CRAVE</Text>
+            <Text style={styles.title}>
+              {view === 'email'
+                ? authMode === 'signup'
+                  ? 'Create your account'
+                  : 'Sign in'
+                : copy.title}
+            </Text>
+            <Text style={styles.body}>
+              {view === 'email'
+                ? authMode === 'signup'
+                  ? 'Use your email to get started.'
+                  : 'Enter your email and password.'
+                : copy.body}
+            </Text>
+          </View>
+
+          {view === 'options' ? (
+            <>
+              {/* Auth buttons */}
+              <View style={styles.buttons}>
+                {/* Apple */}
+                <TouchableOpacity
+                  style={[styles.authBtn, styles.authBtnApple]}
+                  onPress={handleApple}
+                  activeOpacity={0.85}
+                  disabled={loading !== null}
+                  accessibilityRole="button"
+                  accessibilityLabel="Continue with Apple"
+                >
+                  {loading === 'apple' ? (
+                    <ActivityIndicator color={Colors.background} size="small" />
+                  ) : (
+                    <>
+                      <Ionicons name="logo-apple" size={18} color={Colors.background} />
+                      <Text style={[styles.authBtnText, styles.authBtnTextApple]}>
+                        Continue with Apple
+                      </Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+
+                {/* Google */}
+                <TouchableOpacity
+                  style={[styles.authBtn, styles.authBtnGoogle]}
+                  onPress={handleGoogle}
+                  activeOpacity={0.85}
+                  disabled={loading !== null}
+                  accessibilityRole="button"
+                  accessibilityLabel="Continue with Google"
+                >
+                  {loading === 'google' ? (
+                    <ActivityIndicator color={Colors.text} size="small" />
+                  ) : (
+                    <>
+                      <Ionicons name="logo-google" size={16} color={Colors.text} />
+                      <Text style={styles.authBtnText}>Continue with Google</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+
+                {/* Divider */}
+                <View style={styles.divider}>
+                  <View style={styles.dividerLine} />
+                  <Text style={styles.dividerText}>or</Text>
+                  <View style={styles.dividerLine} />
+                </View>
+
+                {/* Email */}
+                <TouchableOpacity
+                  style={[styles.authBtn, styles.authBtnEmail]}
+                  onPress={() => setView('email')}
+                  activeOpacity={0.85}
+                  disabled={loading !== null}
+                  accessibilityRole="button"
+                  accessibilityLabel="Continue with email"
+                >
+                  <Ionicons name="mail-outline" size={18} color={Colors.text} />
+                  <Text style={styles.authBtnText}>Continue with email</Text>
+                </TouchableOpacity>
+              </View>
+
+              <Text style={styles.legal}>
+                By continuing you agree to our{' '}
+                <Text style={styles.legalLink}>Terms</Text>
+                {' & '}
+                <Text style={styles.legalLink}>Privacy Policy</Text>
+              </Text>
+            </>
+          ) : (
+            <View style={styles.buttons}>
+              <View style={styles.field}>
+                <TextInput
+                  style={styles.input}
+                  value={email}
+                  onChangeText={setEmail}
+                  placeholder="Email"
+                  placeholderTextColor={Colors.textMuted}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  keyboardType="email-address"
+                  textContentType="emailAddress"
+                  accessibilityLabel="Email"
+                  editable={loading === null}
+                />
+              </View>
+              <View style={styles.field}>
+                <TextInput
+                  style={styles.input}
+                  value={password}
+                  onChangeText={setPassword}
+                  placeholder="Password"
+                  placeholderTextColor={Colors.textMuted}
+                  secureTextEntry
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  textContentType={authMode === 'signup' ? 'newPassword' : 'password'}
+                  accessibilityLabel="Password"
+                  editable={loading === null}
+                  onSubmitEditing={handleEmailAuth}
+                  returnKeyType="go"
+                />
+              </View>
+
+              <TouchableOpacity
+                style={[styles.authBtn, styles.authBtnApple]}
+                onPress={handleEmailAuth}
+                activeOpacity={0.85}
+                disabled={loading !== null}
+                accessibilityRole="button"
+                accessibilityLabel={authMode === 'signup' ? 'Create account' : 'Sign in'}
+              >
+                {loading === 'email' ? (
+                  <ActivityIndicator color={Colors.background} size="small" />
+                ) : (
+                  <Text style={[styles.authBtnText, styles.authBtnTextApple]}>
+                    {authMode === 'signup' ? 'Create account' : 'Sign in'}
+                  </Text>
+                )}
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={() => setAuthMode(authMode === 'signup' ? 'signin' : 'signup')}
+                disabled={loading !== null}
+                style={styles.switchModeBtn}
+              >
+                <Text style={styles.switchModeText}>
+                  {authMode === 'signup'
+                    ? 'Already have an account? '
+                    : "Don't have an account? "}
+                  <Text style={styles.legalLink}>
+                    {authMode === 'signup' ? 'Sign in' : 'Sign up'}
+                  </Text>
                 </Text>
-              </>
-            )}
-          </TouchableOpacity>
-
-          {/* Google */}
-          <TouchableOpacity
-            style={[styles.authBtn, styles.authBtnGoogle]}
-            onPress={handleGoogle}
-            activeOpacity={0.85}
-            disabled={loading !== null}
-            accessibilityRole="button"
-            accessibilityLabel="Continue with Google"
-          >
-            {loading === 'google' ? (
-              <ActivityIndicator color={Colors.text} size="small" />
-            ) : (
-              <>
-                <Ionicons name="logo-google" size={16} color={Colors.text} />
-                <Text style={styles.authBtnText}>Continue with Google</Text>
-              </>
-            )}
-          </TouchableOpacity>
+              </TouchableOpacity>
+            </View>
+          )}
         </View>
-
-        <Text style={styles.legal}>
-          By continuing you agree to our{' '}
-          <Text style={styles.legalLink}>Terms</Text>
-          {' & '}
-          <Text style={styles.legalLink}>Privacy Policy</Text>
-        </Text>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
@@ -215,6 +412,9 @@ const styles = StyleSheet.create({
   backdrop: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.65)',
+  },
+  keyboardWrap: {
+    justifyContent: 'flex-end',
   },
   sheet: {
     backgroundColor: Colors.surface,
@@ -285,6 +485,11 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.border,
   },
+  authBtnEmail: {
+    backgroundColor: Colors.surfaceElevated,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
   authBtnText: {
     fontSize: 16,
     fontWeight: '700',
@@ -292,6 +497,44 @@ const styles = StyleSheet.create({
   },
   authBtnTextApple: {
     color: Colors.background,
+  },
+  divider: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    marginVertical: Spacing.xs,
+  },
+  dividerLine: {
+    flex: 1,
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: Colors.border,
+  },
+  dividerText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: Colors.textMuted,
+  },
+  field: {
+    backgroundColor: Colors.background,
+    borderRadius: Radius.md,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  input: {
+    height: 52,
+    paddingHorizontal: Spacing.md,
+    fontSize: 16,
+    color: Colors.text,
+  },
+  switchModeBtn: {
+    alignItems: 'center',
+    paddingTop: Spacing.sm,
+    minHeight: 44,
+    justifyContent: 'center',
+  },
+  switchModeText: {
+    fontSize: 14,
+    color: Colors.textSecondary,
   },
   legal: {
     textAlign: 'center',

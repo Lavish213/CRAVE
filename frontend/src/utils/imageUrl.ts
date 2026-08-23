@@ -14,6 +14,12 @@
 /** Max width the backend proxy will honor — larger values are clamped there. */
 export const MAX_IMAGE_WIDTH = 1600;
 
+// Small round-avatar surfaces (leaderboard rows, activity feed rows) were
+// still getting the proxy's 800px thumbnail default for a ~40pt image --
+// several hundred KB fetched and decoded just to be shown at avatar size.
+// 96 covers a 40pt avatar at up to 2.4x device pixel ratio.
+export const AVATAR_IMAGE_WIDTH = 96;
+
 /**
  * Return `url` with the backend image proxy's width param set to `width`.
  *

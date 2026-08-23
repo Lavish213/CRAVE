@@ -1,8 +1,6 @@
 // app/(tabs)/search.tsx
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
-  FlatList,
   RefreshControl,
   StyleSheet,
   Text,
@@ -10,21 +8,25 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { FlashList } from '@shopify/flash-list';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import { useCityStore } from '../../src/stores/cityStore';
+import { usePrefetchPlace } from '../../src/hooks/usePrefetchPlace';
 import { searchPlaces } from '../../src/api/search';
 import { useLocation } from '../../src/hooks/useLocation';
 import { PlaceOut } from '../../src/api/places';
 import { useTrendingWithRefresh } from '../../src/hooks/useTrending';
 import { Colors, Radius, Spacing } from '../../src/constants/colors';
 import { PlaceCardCompact } from '../../src/components/PlaceCardCompact';
+import { SkeletonRowList } from '../../src/components/SkeletonCard';
 import { ErrorState } from '../../src/components/ErrorState';
 import { EmptyState } from '../../src/components/EmptyState';
 
 export default function SearchScreen() {
   const router = useRouter();
+  const prefetchPlace = usePrefetchPlace();
   const selectedCity = useCityStore((s) => s.selectedCity);
   const userLocation = useLocation();
 
@@ -35,11 +37,19 @@ export default function SearchScreen() {
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Deliberately NOT scoped to selectedCity -- a search should find a
+  // real match anywhere in the catalog, not just within whatever city
+  // happens to be selected (live-reported bug: searching a real place's
+  // name while "Alameda" was selected returned nothing, because the
+  // match existed but was filtered out for being in a different city).
+  // lat/lng (when available) drive proximity ranking instead, both at
+  // the database level (search_query.py orders by distance so a real
+  // nearby match is never crowded out of the fetch window by unrelated,
+  // higher-rank_score places elsewhere) and in the final display order.
   const { data: searchData, isLoading: searchLoading, isError: searchError, refetch: refetchSearch, isRefetching: searchRefetching } = useQuery({
-    queryKey: ['search', debouncedQuery, selectedCity?.id, userLocation],
+    queryKey: ['search', debouncedQuery, userLocation?.lat, userLocation?.lng],
     queryFn: () => searchPlaces({
       query: debouncedQuery,
-      city_id: selectedCity?.id,
       lat: userLocation?.lat,
       lng: userLocation?.lng,
       page_size: 30,
@@ -72,6 +82,11 @@ export default function SearchScreen() {
 
   const showTrending = !searched && !searchLoading && query.length === 0;
   const showNoResults = searched && results.length === 0 && !searchError;
+  // Below the 2-char query threshold, nothing else here renders anything —
+  // no trending (query isn't empty), no results/no-results state (search
+  // never actually fires). Without this, that gap between "empty" and
+  // "searched" reads as a blank, broken screen instead of "keep typing."
+  const showBelowThreshold = query.length > 0 && query.length < 2;
 
   return (
     <View style={styles.container}>
@@ -102,14 +117,17 @@ export default function SearchScreen() {
           )}
         </View>
         <Text style={styles.cityContext}>
-          {selectedCity ? `Searching in ${selectedCity.name}` : 'Searching everywhere'}
+          {userLocation ? 'Searching everywhere, nearest first' : 'Searching everywhere'}
         </Text>
       </View>
 
-      {/* Loading */}
+      {/* Loading -- matches search results' actual PlaceCardCompact row
+          shape, same skeleton treatment as Feed/Craves/Profile/Leaderboard/
+          Friends Feed. Search was still a bare spinner, the one list
+          screen in the app not using it. */}
       {searchLoading && (
-        <View style={styles.loadingRow}>
-          <ActivityIndicator color={Colors.primary} size="small" />
+        <View style={styles.list}>
+          <SkeletonRowList count={5} />
         </View>
       )}
 
@@ -120,11 +138,17 @@ export default function SearchScreen() {
 
       {/* Trending empty state */}
       {showTrending && (
-        <FlatList
+        <FlashList
           data={trending}
           keyExtractor={(p) => p.id}
           renderItem={({ item }) => (
-            <PlaceCardCompact place={item} onPress={() => router.push(`/place/${item.id}`)} />
+            <View style={styles.rowSpacer}>
+              <PlaceCardCompact
+                place={item}
+                onPress={() => router.push(`/place/${item.id}`)}
+                onPressIn={() => prefetchPlace(item.id)}
+              />
+            </View>
           )}
           contentContainerStyle={styles.list}
           refreshControl={
@@ -144,7 +168,26 @@ export default function SearchScreen() {
               </>
             ) : null
           }
+          ListEmptyComponent={
+            // Without this, an empty `trending` (the default "Near Me" state
+            // with no city selected never fetches trending at all — see
+            // useTrending.ts) rendered a totally blank area here,
+            // indistinguishable from a stuck load.
+            <View style={styles.loadingRow}>
+              <Ionicons name="flame-outline" size={22} color={Colors.textMuted} />
+              <Text style={[styles.hintText, styles.emptyTrendingText]}>
+                Pick a city to see what's trending, or start typing to search everywhere.
+              </Text>
+            </View>
+          }
         />
+      )}
+
+      {/* Below the query-length threshold */}
+      {showBelowThreshold && (
+        <View style={styles.loadingRow}>
+          <Text style={styles.hintText}>Keep typing to search…</Text>
+        </View>
       )}
 
       {/* No results */}
@@ -158,11 +201,17 @@ export default function SearchScreen() {
 
       {/* Results */}
       {!showTrending && !showNoResults && !searchError && results.length > 0 && (
-        <FlatList
+        <FlashList
           data={results}
           keyExtractor={(p) => p.id}
           renderItem={({ item }) => (
-            <PlaceCardCompact place={item} onPress={() => router.push(`/place/${item.id}`)} />
+            <View style={styles.rowSpacer}>
+              <PlaceCardCompact
+                place={item}
+                onPress={() => router.push(`/place/${item.id}`)}
+                onPressIn={() => prefetchPlace(item.id)}
+              />
+            </View>
           )}
           contentContainerStyle={styles.list}
           refreshControl={
@@ -199,8 +248,14 @@ const styles = StyleSheet.create({
   searchIcon: { marginRight: 2 },
   input: { flex: 1, color: Colors.text, fontSize: 15 },
   cityContext: { color: Colors.textMuted, fontSize: 12, fontWeight: '500', paddingLeft: Spacing.xs },
-  loadingRow: { paddingVertical: 20, alignItems: 'center' },
-  list: { padding: Spacing.md, gap: Spacing.sm, paddingBottom: Spacing.xxl },
+  loadingRow: { paddingVertical: 20, alignItems: 'center', gap: Spacing.sm },
+  hintText: { color: Colors.textMuted, fontSize: 13 },
+  emptyTrendingText: { textAlign: 'center', paddingHorizontal: Spacing.xl },
+  // FlashList's contentContainerStyle doesn't reliably support `gap`
+  // (unlike FlatList) -- https://github.com/Shopify/flash-list/issues/2097 --
+  // so inter-row spacing is applied per-row via rowSpacer below instead.
+  list: { padding: Spacing.md, paddingBottom: Spacing.xxl },
+  rowSpacer: { marginBottom: Spacing.sm },
   browseIntro: {
     fontSize: 22,
     fontWeight: '800',

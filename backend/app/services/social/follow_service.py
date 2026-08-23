@@ -6,11 +6,15 @@ from typing import List
 from sqlalchemy.orm import Session
 
 from app.db.models.user_follow import UserFollow
+from app.services.social.block_service import is_blocked
 
 
 def follow_user(db: Session, *, follower_id: str, followee_id: str) -> UserFollow:
     if follower_id == followee_id:
         raise ValueError("cannot follow yourself")
+
+    if is_blocked(db, user_a=follower_id, user_b=followee_id):
+        raise ValueError("cannot follow a blocked user")
 
     existing = (
         db.query(UserFollow)

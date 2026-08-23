@@ -2,13 +2,13 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Animated,
   ActivityIndicator,
-  FlatList,
   RefreshControl,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native';
+import { FlashList } from '@shopify/flash-list';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
@@ -19,7 +19,9 @@ import { useCityStore } from '../../src/stores/cityStore';
 import { useCravesStore } from '../../src/stores/cravesStore';
 import { useToast } from '../../src/hooks/useToast';
 import { useTrending } from '../../src/hooks/useTrending';
+import { useRecommendations } from '../../src/hooks/useRecommendations';
 import { useLocation } from '../../src/hooks/useLocation';
+import { usePrefetchPlace } from '../../src/hooks/usePrefetchPlace';
 import { Colors, Spacing, Radius } from '../../src/constants/colors';
 import { getTier, TIERS, TierKey } from '../../src/utils/scoring';
 import { PlaceCard } from '../../src/components/PlaceCard';
@@ -64,6 +66,7 @@ function buildFeedRows(places: PlaceOut[]): FeedRow[] {
 
 export default function FeedScreen() {
   const router = useRouter();
+  const prefetchPlace = usePrefetchPlace();
   const selectedCity = useCityStore((s) => s.selectedCity);
   const initCities = useCityStore((s) => s.initCities);
   const { addSave, removeSave, isSaved } = useCravesStore();
@@ -71,6 +74,7 @@ export default function FeedScreen() {
 
   const userLocation = useLocation();
   const trending = useTrending();
+  const recommendations = useRecommendations();
 
   const [filterVisible, setFilterVisible] = useState(false);
   const [filters, setFilters] = useState<FilterState>(EMPTY_FILTERS);
@@ -109,7 +113,29 @@ export default function FeedScreen() {
     staleTime: 2 * 60 * 1000,
   });
 
-  const places = data?.pages.flatMap(p => p.items) ?? [];
+  // Pages are fetched by 1-indexed page number against an offset/limit
+  // backend query ordered by rank_score, not a stable cursor — live-
+  // confirmed via a real "duplicate key" crash that the discovery
+  // pipeline inserting new places between page fetches (it runs on a
+  // 5-minute interval, and now processes a growing OSM/Overture backlog
+  // faster than before this session) shifts every subsequent page's
+  // offset window, so the same place can land in both an already-loaded
+  // page and the next one fetched. De-duping here fixes the actual user-
+  // visible crash regardless of the underlying pagination-shift cause —
+  // a real cursor-based fix is a much larger backend change than
+  // warranted for this.
+  const places = useMemo(() => {
+    const seen = new Set<string>();
+    const result: PlaceOut[] = [];
+    for (const page of data?.pages ?? []) {
+      for (const p of page.items) {
+        if (seen.has(p.id)) continue;
+        seen.add(p.id);
+        result.push(p);
+      }
+    }
+    return result;
+  }, [data]);
   const total = data?.pages[0]?.total ?? 0;
   const initialLoaded = data !== undefined;
 
@@ -172,7 +198,11 @@ export default function FeedScreen() {
     });
   }, [places, filters]);
 
-  const rows = buildFeedRows(filteredPlaces);
+  // Previously recomputed on every render (re-bucketing every place into
+  // tiers) even when triggered by unrelated state like filterVisible or
+  // authVisible toggling -- filteredPlaces just above already gets this
+  // memoization, buildFeedRows didn't.
+  const rows = useMemo(() => buildFeedRows(filteredPlaces), [filteredPlaces]);
 
   return (
     <View style={styles.container}>
@@ -193,7 +223,19 @@ export default function FeedScreen() {
       </View>
 
       <CitySelectorStrip />
-      <TrendingStrip places={trending} onPress={(id) => router.push(`/place/${id}`)} />
+      {user ? (
+        <TrendingStrip
+          places={recommendations}
+          heading="RECOMMENDED FOR YOU"
+          onPress={(id) => router.push(`/place/${id}`)}
+          onPressIn={prefetchPlace}
+        />
+      ) : null}
+      <TrendingStrip
+        places={trending}
+        onPress={(id) => router.push(`/place/${id}`)}
+        onPressIn={prefetchPlace}
+      />
 
       {!initialLoaded ? (
         <View style={styles.skeletonWrap}><SkeletonFeed count={4} /></View>
@@ -208,41 +250,47 @@ export default function FeedScreen() {
               body={selectedCity ? "Try selecting a different city" : "No places found"}
             />
           ) : (
-            <FlatList
+            <FlashList
               data={rows}
               keyExtractor={(row, i) => row.kind === 'place' ? row.place.id : `header-${i}`}
+              getItemType={(row) => row.kind}
               renderItem={({ item: row }) => {
                 if (row.kind === 'header') {
                   const tier = TIERS[row.tierKey];
                   return (
-                    <SectionHeader
-                      label={tier.sectionLabel}
-                      subtext={tier.sectionSubtext}
-                      count={row.count}
-                    />
+                    <View style={styles.rowSpacer}>
+                      <SectionHeader
+                        label={tier.sectionLabel}
+                        subtext={tier.sectionSubtext}
+                        count={row.count}
+                      />
+                    </View>
                   );
                 }
                 return (
-                  <PlaceCard
-                    place={row.place}
-                    onPress={() => router.push(`/place/${row.place.id}`)}
-                    onSave={async () => {
-                      if (!user) {
-                        setAuthVisible(true);
-                        return;
-                      }
-                      if (isSaved(row.place.id)) {
-                        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-                        const err = await removeSave(row.place.id, user.id);
-                        toast(err ?? 'Removed from Saves');
-                      } else {
-                        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-                        const err = await addSave(row.place, user.id);
-                        toast(err ?? 'Saved');
-                      }
-                    }}
-                    saved={isSaved(row.place.id)}
-                  />
+                  <View style={styles.rowSpacer}>
+                    <PlaceCard
+                      place={row.place}
+                      onPress={() => router.push(`/place/${row.place.id}`)}
+                      onPressIn={() => prefetchPlace(row.place.id)}
+                      onSave={async () => {
+                        if (!user) {
+                          setAuthVisible(true);
+                          return;
+                        }
+                        if (isSaved(row.place.id)) {
+                          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+                          const err = await removeSave(row.place.id, user.id);
+                          toast(err ?? 'Removed from Saves');
+                        } else {
+                          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                          const err = await addSave(row.place, user.id);
+                          toast(err ?? 'Saved');
+                        }
+                      }}
+                      saved={isSaved(row.place.id)}
+                    />
+                  </View>
                 );
               }}
               contentContainerStyle={styles.list}
@@ -281,7 +329,11 @@ export default function FeedScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
-  list: { paddingHorizontal: Spacing.md, paddingBottom: Spacing.xxl, gap: Spacing.md },
+  // FlashList's contentContainerStyle doesn't reliably support `gap`
+  // (unlike FlatList) -- https://github.com/Shopify/flash-list/issues/2097 --
+  // so inter-row spacing is applied per-row via rowSpacer below instead.
+  list: { paddingHorizontal: Spacing.md, paddingBottom: Spacing.xxl },
+  rowSpacer: { marginBottom: Spacing.md },
   listFooter: { margin: Spacing.lg },
   skeletonWrap: { flex: 1, paddingHorizontal: 12, paddingTop: 10 },
   header: {

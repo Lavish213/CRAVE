@@ -17,13 +17,19 @@ from app.db.models.place import Place
 from app.db.models.place_ranking import PlaceRanking
 from app.db.models.activity_event import ActivityEvent
 from app.db.models.user_follow import UserFollow
-from app.services.social import follow_service
+from app.db.models.user_block import UserBlock
+from app.services.social import block_service, follow_service
 from app.services.social.activity_service import (
     record_ranked_place,
     record_followed_user,
     list_friend_feed,
 )
 from app.services.social.leaderboard_service import get_leaderboard, LeaderboardError
+from app.services.cache.response_cache import response_cache
+from app.services.cache.cache_keys import leaderboard_global_base_key
+
+# Cross-test leaderboard cache isolation is handled suite-wide by
+# tests/conftest.py's autouse _clear_leaderboard_cache fixture.
 
 
 @pytest.fixture
@@ -70,6 +76,9 @@ def users():
         ).delete(synchronize_session=False)
         cleanup_db.query(UserFollow).filter(
             UserFollow.follower_id.in_(ids.values())
+        ).delete(synchronize_session=False)
+        cleanup_db.query(UserBlock).filter(
+            UserBlock.blocker_id.in_(ids.values())
         ).delete(synchronize_session=False)
         cleanup_db.commit()
 
@@ -199,6 +208,38 @@ def test_leaderboard_friends_scope_excludes_non_followed(db, city, users):
     assert users["carol"] not in user_ids  # not followed
 
 
+def test_leaderboard_global_scope_excludes_blocked_users(db, city, users):
+    """Global scope has no follow-graph filtering to inherit block-safety
+    from (unlike 'friends'), so it needs its own exclusion — a blocked
+    user's name/avatar must not surface here even though every other
+    surface (profile, friends feed) already hides them."""
+    places = [_make_place(db, city) for _ in range(2)]
+    _seed_ranking(db, user_id=users["alice"], place_id=places[0].id)
+    _seed_ranking(db, user_id=users["bob"], place_id=places[1].id)
+    _seed_ranking(db, user_id=users["carol"], place_id=places[1].id)
+
+    block_service.block_user(db, blocker_id=users["alice"], blocked_id=users["bob"])
+
+    rows = get_leaderboard(db, user_id=users["alice"], among="global", limit=100)
+    user_ids = {r["user_id"] for r in rows}
+    assert users["alice"] in user_ids
+    assert users["carol"] in user_ids
+    assert users["bob"] not in user_ids
+
+
+def test_leaderboard_global_scope_excludes_users_who_blocked_you(db, city, users):
+    places = [_make_place(db, city) for _ in range(2)]
+    _seed_ranking(db, user_id=users["alice"], place_id=places[0].id)
+    _seed_ranking(db, user_id=users["bob"], place_id=places[1].id)
+
+    # bob blocked alice, not the other way around — still must be mutual.
+    block_service.block_user(db, blocker_id=users["bob"], blocked_id=users["alice"])
+
+    rows = get_leaderboard(db, user_id=users["alice"], among="global", limit=100)
+    user_ids = {r["user_id"] for r in rows}
+    assert users["bob"] not in user_ids
+
+
 def test_leaderboard_unknown_city_slug_raises(db, users):
     with pytest.raises(LeaderboardError):
         get_leaderboard(db, user_id=users["alice"], city_slug="does-not-exist-anywhere")
@@ -207,3 +248,55 @@ def test_leaderboard_unknown_city_slug_raises(db, users):
 def test_leaderboard_invalid_among_raises(db, users):
     with pytest.raises(LeaderboardError):
         get_leaderboard(db, user_id=users["alice"], among="nonsense")
+
+
+# ---------------------------------------------------------------------------
+# Leaderboard caching — the global scope's base ranking is now cached
+# (previously recomputed a full GROUP BY/COUNT/ORDER BY aggregate on every
+# request, with no caching at all).
+# ---------------------------------------------------------------------------
+
+def test_leaderboard_global_scope_reads_from_cache_when_present(db, users):
+    # Planted directly, bypassing the DB entirely -- these counts don't
+    # correspond to anything real for these fresh, zero-ranking uuid
+    # users. The only way they can appear in the result is if
+    # get_leaderboard actually read this cached base instead of
+    # recomputing from PlaceRanking.
+    fake_base = [
+        {"user_id": users["alice"], "places_logged": 999, "username": "alice",
+         "display_name": None, "avatar_url": None},
+        {"user_id": users["bob"], "places_logged": 1, "username": "bob",
+         "display_name": None, "avatar_url": None},
+    ]
+    response_cache.set(leaderboard_global_base_key(city_slug=None), fake_base, 60)
+
+    rows = get_leaderboard(db, user_id=users["carol"], among="global", limit=100)
+    by_user = {r["user_id"]: r["places_logged"] for r in rows}
+    assert by_user[users["alice"]] == 999
+    assert by_user[users["bob"]] == 1
+
+
+def test_leaderboard_global_scope_filters_cached_base_per_viewer(db, users):
+    # Same idea, but proves block-filtering is applied *after* the cache
+    # read, per viewer -- not baked into the cached value itself (which
+    # would either leak across viewers or force disabling the cache).
+    fake_base = [
+        {"user_id": users["alice"], "places_logged": 5, "username": "alice",
+         "display_name": None, "avatar_url": None},
+        {"user_id": users["bob"], "places_logged": 3, "username": "bob",
+         "display_name": None, "avatar_url": None},
+    ]
+    response_cache.set(leaderboard_global_base_key(city_slug=None), fake_base, 60)
+    block_service.block_user(db, blocker_id=users["carol"], blocked_id=users["bob"])
+
+    carol_rows = get_leaderboard(db, user_id=users["carol"], among="global", limit=100)
+    carol_ids = {r["user_id"] for r in carol_rows}
+    assert users["alice"] in carol_ids
+    assert users["bob"] not in carol_ids
+
+    # A different viewer, no block of their own, reads the exact same
+    # cached pool and still sees bob -- proving the filter is per-viewer,
+    # not baked into what's cached.
+    alice_rows = get_leaderboard(db, user_id=users["alice"], among="global", limit=100)
+    alice_ids = {r["user_id"] for r in alice_rows}
+    assert users["bob"] in alice_ids

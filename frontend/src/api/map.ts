@@ -16,3 +16,14 @@ export async function fetchMapGeoJSON(params: {
   if (__DEV__) console.log('[API] MAP_NORMALIZED', { count: features.length, sample: features[0] ? { id: features[0].id, lat: features[0].coordinate.lat, lng: features[0].coordinate.lng, tier: features[0].tier } : null });
   return features;
 }
+
+// The "my places" Map tab layer — your own saved places, not the global
+// catalog. Unlike fetchMapGeoJSON, never viewport-scoped: a personal
+// saved list is small, so the whole thing comes back at once and the
+// map fits its bounds to it. Requires sign-in.
+export async function fetchSavedPlacesGeoJSON(): Promise<NormalizedMapFeature[]> {
+  const { data } = await client.get('/api/v1/saves/map');
+  const features = normalizeMapFeatures(data);
+  if (__DEV__) console.log('[API] SAVED_MAP_NORMALIZED', { count: features.length });
+  return features;
+}

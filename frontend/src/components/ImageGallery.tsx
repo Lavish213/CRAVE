@@ -63,6 +63,7 @@ export function ImageGallery({ images, gpsVerified }: Props) {
               contentFit="cover"
               placeholder={{ blurhash: 'L6PZfSi_.AyE_3t7t7R**0o#DgR4' }}
               transition={200}
+              cachePolicy="memory-disk"
             />
             {item.verified ? (
               <View style={styles.verifiedBadge}>
