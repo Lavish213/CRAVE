@@ -14,7 +14,7 @@
 // as the public profile itself — see the backend route's docstring) —
 // block enforcement is client-side here, same convention user/[id].tsx
 // already uses.
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useLocalSearchParams } from 'expo-router';
@@ -43,8 +43,16 @@ export default function TasteProfileScreen() {
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
 
+  // expo-router can reuse this screen instance across a param change (e.g.
+  // tapping from one person's taste profile into another's) -- without a
+  // guard, a slow response for the *previous* userId could resolve after
+  // the new one's and silently repaint this screen with the wrong person's
+  // stats.
+  const loadGenerationRef = useRef(0);
+
   const load = useCallback(async () => {
     if (!userId) return;
+    const myGeneration = ++loadGenerationRef.current;
     setLoading(true);
     setNotFound(false);
     try {
@@ -52,15 +60,19 @@ export default function TasteProfileScreen() {
         fetchProfile(userId),
         isSelf ? Promise.resolve({ blocked: false }) : fetchBlockStatus(userId).catch(() => ({ blocked: false })),
       ]);
+      if (myGeneration !== loadGenerationRef.current) return;
       setProfile(p);
       setBlocked(blockStatus.blocked);
       if (!blockStatus.blocked) {
-        setTaste(await fetchTasteProfile(userId));
+        const taste = await fetchTasteProfile(userId);
+        if (myGeneration !== loadGenerationRef.current) return;
+        setTaste(taste);
       }
     } catch (err: any) {
+      if (myGeneration !== loadGenerationRef.current) return;
       if (err?.response?.status === 404) setNotFound(true);
     } finally {
-      setLoading(false);
+      if (myGeneration === loadGenerationRef.current) setLoading(false);
     }
   }, [userId, isSelf]);
 

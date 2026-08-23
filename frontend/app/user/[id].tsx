@@ -4,7 +4,7 @@
 // what the leaderboard and feed link into, and it's the reason a follow
 // graph is worth having — you follow a person because you want to see
 // their list.
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import {
   Alert,
   ScrollView,
@@ -55,10 +55,19 @@ export default function UserProfileScreen() {
 
   const isSelf = !!me && me.id === id;
 
+  // expo-router can reuse this screen instance across a param change (e.g.
+  // tapping from one user's profile into another's, from a shared list) --
+  // without a guard, a slow response for the *previous* id could resolve
+  // after the new one's and silently repaint this screen with the wrong
+  // person's profile/rankings/follow state.
+  const loadGenerationRef = useRef(0);
+
   const load = useCallback(async () => {
     if (!id) return;
+    const myGeneration = ++loadGenerationRef.current;
     try {
       const p = await fetchProfile(id);
+      if (myGeneration !== loadGenerationRef.current) return;
       setProfile(p);
 
       const [r, status, blockStatus] = await Promise.all([
@@ -70,14 +79,16 @@ export default function UserProfileScreen() {
           ? Promise.resolve({ blocked: false })
           : fetchBlockStatus(id).catch(() => ({ blocked: false })),
       ]);
+      if (myGeneration !== loadGenerationRef.current) return;
       setRankings(r);
       setFollowing(status.following);
       setFollowsMe(status.followed_by);
       setBlocked(blockStatus.blocked);
     } catch (err: any) {
+      if (myGeneration !== loadGenerationRef.current) return;
       if (err?.response?.status === 404) setNotFound(true);
     } finally {
-      setLoading(false);
+      if (myGeneration === loadGenerationRef.current) setLoading(false);
     }
   }, [id, isSelf]);
 
