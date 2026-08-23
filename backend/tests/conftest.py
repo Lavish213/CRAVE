@@ -25,9 +25,11 @@ CI sets DATABASE_URL explicitly before invoking pytest (see
 """
 from __future__ import annotations
 
+import contextlib
 import os
 import uuid
 
+_using_default_database_url = "DATABASE_URL" not in os.environ
 os.environ.setdefault("DATABASE_URL", "sqlite:///./test_crave.db")
 os.environ.setdefault("APP_ENV", "dev")
 # app.services.upload.r2_client.generate_public_url() raises if this is
@@ -36,6 +38,21 @@ os.environ.setdefault("APP_ENV", "dev")
 # with a mocked S3 client still call the real generate_public_url(), so
 # it needs *some* value; the actual URL content doesn't matter for tests.
 os.environ.setdefault("R2_PUBLIC_BASE_URL", "https://pub-test.r2.dev")
+
+if _using_default_database_url:
+    # Local safety-net path only -- CI always sets DATABASE_URL explicitly
+    # against a fresh Postgres (see this module's docstring), so it never
+    # reaches here. Nothing else in this file truncates existing tables
+    # between separate local `pytest` invocations, so a test_crave.db left
+    # over from an earlier run silently accumulates rows across runs.
+    # That's not just clutter -- confirmed live: enough leftover high
+    # rank_score Place rows from earlier runs displaced
+    # test_image_worker_starvation.py's own seeded places out of its
+    # fairness-reserve selection, failing two tests for reasons that had
+    # nothing to do with any code change. Deleting the file up front keeps
+    # every local run starting from the same clean slate CI gets.
+    with contextlib.suppress(FileNotFoundError):
+        os.remove("test_crave.db")
 
 from app.db.session import engine  # noqa: E402
 from app.db.models import Base  # noqa: E402

@@ -2,11 +2,26 @@
 // for this feature (the tab bar label was "Saves", and the internal name
 // drifted informally). The whole tab — bookmarked places + shared links —
 // is called Craves. See app/(tabs)/craves.tsx.
+import { AppState } from 'react-native';
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { PlaceOut } from '../api/places';
 import { fetchSaves, createSave, deleteSave } from '../api/saves';
+
+// A save/unsave that failed with a network-level error (no server response
+// at all -- see _classifyError's `!err?.response` check) gets queued here
+// instead of rolled back, so the user's action survives being offline and
+// syncs once connectivity returns. Keyed by placeId rather than an array:
+// an add queued while offline, followed by a remove for the same place
+// before the queue ever flushes, should cancel out to "no network call
+// needed" (the pre-existing server state already matches), not queue two
+// contradictory ops -- see the enqueue logic in addSave/removeSave below.
+export interface PendingSyncAction {
+  type: 'add' | 'remove';
+  userId: string;
+  queuedAt: number;
+}
 
 interface CravesStore {
   saves: PlaceOut[];
@@ -25,6 +40,18 @@ interface CravesStore {
   // account's leftover data still gets caught and cleared.
   savesUserId: string | null;
 
+  // Offline-queued add/remove ops awaiting sync -- see PendingSyncAction.
+  // Persisted (see partialize below) so a queued action survives an app
+  // restart while still offline. Deliberately NOT scoped by savesUserId
+  // the way `saves` is, and NOT cleared by clearSaves() on sign-out: each
+  // entry already carries its own `userId`, flushPendingActions() only
+  // ever acts on entries matching the userId it's called with, and a
+  // queued action represents a real debt owed to that specific account's
+  // server state -- it should still flush next time that account signs
+  // back in and successfully loads, even if another account used the app
+  // in between.
+  pendingSyncActions: Record<string, PendingSyncAction>;
+
   // Load (or reload) saves from backend. Replaces local state.
   loadSaves: (userId: string) => Promise<void>;
 
@@ -40,9 +67,22 @@ interface CravesStore {
   clearSaves: () => void;
 
   isSaved: (placeId: string) => boolean;
+
+  // Attempts every queued action belonging to `userId`, in order, stopping
+  // at the first one that still fails with a network-level error (no point
+  // trying the rest of the queue in the same pass if we're still offline --
+  // it'll get another pass next time this is triggered). A non-network
+  // failure (e.g. a 401 from a long-expired session) drops that single
+  // entry rather than blocking the queue on it forever.
+  flushPendingActions: (userId: string) => Promise<void>;
 }
 
 const _pendingSaves = new Set<string>();
+
+// Guards flushPendingActions() against concurrent overlapping passes -- see
+// its own comment for why this is just a wasted-work concern, not a
+// correctness one.
+let _flushInProgress = false;
 
 // loadSaves() takes a userId but fetchSaves() has no request-cancellation
 // mechanism — without this, a slow loadSaves() call for a just-signed-out
@@ -85,6 +125,37 @@ function _nextMutationToken(placeId: string): number {
 
 function _isCurrentMutation(placeId: string, token: number): boolean {
   return _saveMutationToken.get(placeId) === token;
+}
+
+// Queues (or cancels) an offline add/remove for `placeId`. A placeId with
+// no existing queued entry gets one added. A placeId whose existing queued
+// entry is the *opposite* type gets that entry deleted instead of
+// replaced -- e.g. an add queued while offline, followed by a remove for
+// the same place before the queue ever flushes, means the desired end
+// state already matches what the server believes, so no network call is
+// needed at all. A placeId whose existing entry is the *same* type just
+// gets its queuedAt bumped (harmless overwrite -- same eventual API call).
+function _enqueueSyncAction(
+  set: (partial: Partial<CravesStore>) => void,
+  get: () => CravesStore,
+  placeId: string,
+  type: 'add' | 'remove',
+  userId: string,
+) {
+  const current = get().pendingSyncActions;
+  const existing = current[placeId];
+  if (existing && existing.type !== type) {
+    const next = { ...current };
+    delete next[placeId];
+    set({ pendingSyncActions: next });
+  } else {
+    set({
+      pendingSyncActions: {
+        ...current,
+        [placeId]: { type, userId, queuedAt: Date.now() },
+      },
+    });
+  }
 }
 
 function _resetForNewAccount() {
@@ -157,6 +228,7 @@ export const useCravesStore = create<CravesStore>()(
       loading: false,
       error: null,
       savesUserId: null,
+      pendingSyncActions: {},
 
       loadSaves: async (userId: string) => {
         // Captured *before* awaiting hydration — a clearSaves() (sign-out)
@@ -196,6 +268,12 @@ export const useCravesStore = create<CravesStore>()(
           if (mySequence !== _loadSequence) return;
           if (__DEV__) console.log('[CRAVES_STORE] loadSaves', { count: items.length });
           set({ saves: items, savesUserId: userId, loading: false });
+          // A successful fetch proves connectivity is back -- opportunistic
+          // trigger to drain anything queued while offline. Fire-and-forget:
+          // flushPendingActions() never throws (each entry's own try/catch
+          // handles its outcome), but .catch() is defensive insurance
+          // against that invariant ever slipping.
+          get().flushPendingActions(userId).catch(() => {});
         } catch (err: any) {
           if (mySequence !== _loadSequence) return;
           const msg = _classifyError(err, 'Failed to load saves');
@@ -226,6 +304,22 @@ export const useCravesStore = create<CravesStore>()(
           if (__DEV__) console.log('[CRAVES_STORE] addSave_ok', place.id);
           return null;
         } catch (err: any) {
+          // A network-level failure (no server response at all -- the
+          // request never reached the backend, as opposed to the backend
+          // rejecting it) means we genuinely don't know whether this
+          // succeeded server-side. Rather than rolling back a save the
+          // user clearly asked for, keep the optimistic state and queue it
+          // to retry once connectivity returns -- createSave() is
+          // idempotent (see backend saves.py's "already_saved" path), so
+          // a queued retry landing after a request that actually *did* get
+          // through is harmless.
+          if (!err?.response) {
+            if (myGeneration === _accountGeneration) {
+              _enqueueSyncAction(set, get, place.id, 'add', userId);
+            }
+            if (__DEV__) console.log('[CRAVES_STORE] addSave_queued_offline', place.id);
+            return null;
+          }
           // Rollback — but only into this same account's state. If the
           // account switched while this request was in flight, `saves`
           // now belongs to a different account entirely; touching it here
@@ -263,6 +357,19 @@ export const useCravesStore = create<CravesStore>()(
           if (__DEV__) console.log('[CRAVES_STORE] removeSave_ok', placeId);
           return null;
         } catch (err: any) {
+          // Same offline-queue treatment as addSave: a network-level
+          // failure means we don't know if the DELETE landed, so keep the
+          // optimistic removal and queue a retry instead of restoring the
+          // place. Guarded identically to the rollback below -- a stale,
+          // superseded removeSave call (see the mutation-token comment on
+          // this function) must not queue anything either.
+          if (!err?.response) {
+            if (myGeneration === _accountGeneration && _isCurrentMutation(placeId, myMutation)) {
+              _enqueueSyncAction(set, get, placeId, 'remove', userId);
+              if (__DEV__) console.log('[CRAVES_STORE] removeSave_queued_offline', placeId);
+            }
+            return null;
+          }
           // Rollback — guarded the same way as addSave's: `prev` is this
           // account's full list captured at call time. If the account has
           // since switched (e.g. sign-out ran while this DELETE was still
@@ -295,13 +402,79 @@ export const useCravesStore = create<CravesStore>()(
       },
 
       isSaved: (placeId: string) => get().saves.some((s) => s.id === placeId),
+
+      flushPendingActions: async (userId: string) => {
+        // Cheap re-entrancy guard: loadSaves() and the AppState foreground
+        // listener can both trigger a flush around the same moment (e.g.
+        // app opens, Craves tab happens to already be mounted). Without
+        // this, both passes would race to retry the same entries -- each
+        // individual retry is harmless (idempotent add, 404-tolerant
+        // remove), just wasteful.
+        if (_flushInProgress) return;
+        _flushInProgress = true;
+        try {
+          const entries = Object.entries(get().pendingSyncActions);
+          for (const [placeId, action] of entries) {
+            // Belongs to a different account than the one this flush call
+            // is for -- leave it queued for when that account's own
+            // loadSaves()/foreground flush comes around.
+            if (action.userId !== userId) continue;
+
+            try {
+              if (action.type === 'add') {
+                await createSave(userId, placeId);
+              } else {
+                try {
+                  await deleteSave(userId, placeId);
+                } catch (err: any) {
+                  // Already gone server-side -- exactly the state this
+                  // queued remove was trying to reach, so treat it as
+                  // success rather than an error to drop or retry.
+                  if (err?.response?.status !== 404) throw err;
+                }
+              }
+              if (__DEV__) console.log('[CRAVES_STORE] flush_synced', placeId, action.type);
+              set((state) => {
+                const next = { ...state.pendingSyncActions };
+                delete next[placeId];
+                return { pendingSyncActions: next };
+              });
+            } catch (err: any) {
+              if (!err?.response) {
+                // Still offline -- stop this pass; the rest of the queue
+                // will get another chance next time flush is triggered.
+                return;
+              }
+              // A real (non-network) failure -- e.g. a session that's been
+              // expired since before this device ever reconnected. Drop it
+              // rather than blocking the queue on an entry that will never
+              // succeed; the user's local state simply stays optimistic
+              // until they take the action again.
+              if (__DEV__) console.log('[CRAVES_STORE] flush_drop', placeId, err?.response?.status);
+              set((state) => {
+                const next = { ...state.pendingSyncActions };
+                delete next[placeId];
+                return { pendingSyncActions: next };
+              });
+            }
+          }
+        } finally {
+          _flushInProgress = false;
+        }
+      },
     }),
     {
       name: 'crave-saves',
       storage: createJSONStorage(() => AsyncStorage),
       // saves + savesUserId travel together — see savesUserId's comment.
+      // pendingSyncActions must survive a restart too, or an app killed
+      // while still offline would silently lose the queued action.
       // loading/error are transient, not persisted.
-      partialize: (state) => ({ saves: state.saves, savesUserId: state.savesUserId }),
+      partialize: (state) => ({
+        saves: state.saves,
+        savesUserId: state.savesUserId,
+        pendingSyncActions: state.pendingSyncActions,
+      }),
       // See _waitForHydration's comment — without this, an AsyncStorage
       // read failure would never call onFinishHydration's listeners at
       // all, and any loadSaves() call already waiting on hydration would
@@ -316,3 +489,15 @@ export const useCravesStore = create<CravesStore>()(
     },
   ),
 );
+
+// Drains any offline-queued save/unsave actions whenever the app returns to
+// the foreground. loadSaves()'s own post-fetch flush only fires for
+// whichever account actively reloads its saves (e.g. the Craves tab is
+// visited) -- this covers the case where the user just reopens the app
+// after being offline without necessarily going back to that tab.
+AppState.addEventListener('change', (state) => {
+  if (state !== 'active') return;
+  const userId = useCravesStore.getState().savesUserId;
+  if (!userId) return;
+  useCravesStore.getState().flushPendingActions(userId).catch(() => {});
+});
