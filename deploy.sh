@@ -16,6 +16,12 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
+# Always remove the stamped file when this script exits, success or
+# failure, so it never lingers as an untracked file between deploys —
+# it's deliberately not gitignored (see .gitignore's note on why), so
+# leaving it around would show up in every `git status` otherwise.
+trap 'rm -f backend/GIT_COMMIT.txt' EXIT
+
 if [[ -n "$(git status --porcelain)" ]]; then
   echo "Warning: you have uncommitted changes. GIT_COMMIT.txt will still" >&2
   echo "reflect HEAD, not your working tree — commit first if you want" >&2

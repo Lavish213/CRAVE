@@ -2462,3 +2462,34 @@ https://crave-production.up.railway.app/api/v1/debug/version` — its
 `commit` should now match `git rev-parse HEAD`. Once that's confirmed,
 re-test the map and paste whatever `[MAP] FEATURES_LOADED` or `[MAP]
 LOAD_FAILED` line appears.
+
+### Follow-up — ran deploy.sh, /version STILL came back null: had gitignored the exact file the fix depends on
+
+User ran the new `deploy.sh`, deploy succeeded (health check passed),
+but `curl .../debug/version` still returned `"commit": null`. Checked
+Railway's own CLI docs before guessing again this time: `railway up`
+respects `.gitignore` by default when deciding what to include in the
+upload — and the previous follow-up's own `.gitignore` edit had added
+`backend/GIT_COMMIT.txt` to it (reasoning at the time: "it's generated,
+never meant to be committed"). That reasoning solved the wrong problem
+— it kept the file out of git history, but it also meant `railway up`
+silently excluded the file from the *upload*, so the container never
+had it, and `/version` had nothing to read. A self-inflicted repeat of
+the exact class of mistake this whole sub-thread has been about:
+asserting a fix works without checking the specific mechanism.
+
+Fixed by removing it from `.gitignore` (documented in a comment there
+now, explaining why it's deliberately absent) and having `deploy.sh`
+delete the file itself right after `railway up` returns (via `trap ...
+EXIT`, so it's cleaned up even if the deploy fails partway through) —
+this keeps it out of git history without ever putting it in
+`.gitignore`, so `railway up`'s upload can't exclude it, and it never
+lingers as an untracked file between deploys either.
+
+No app code changed — `.gitignore` and `deploy.sh` only, no new backend
+tests needed. Full backend suite still passes (606), re-run for
+stability after this change with no code touched.
+
+**Still open**: waiting on the user to re-run `./deploy.sh` and re-curl
+`/api/v1/debug/version` to confirm `commit` is finally non-null and
+matches `git rev-parse HEAD`, then re-test the map.
