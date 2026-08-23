@@ -2592,3 +2592,69 @@ pass beyond what PR #43 already carried).
 
 **Nothing still open from this specific investigation** — root-caused,
 fixed, live-verified, reviewed, and merged to `main`.
+
+### Follow-up — asked to keep going: researched DB pool sizing, audited every other eager-loading relationship in the app, fixed 3 small frontend items, then a broader bug-hunting sweep
+
+Web-researched Railway Postgres's actual connection limits before
+touching anything: default `max_connections = 100`. The engine's
+pool config (`pool_size=20, max_overflow=40` — 60 max connections per
+process, hardcoded in `app/db/session.py`) was sized for a single
+process; now that the scheduler is a separate Railway service, two
+processes each maintaining their own pool against the same database
+could combine to 120 connections — already over that limit on its own,
+before counting Alembic, the Console, or Postgres's own reserved
+connections. Made configurable via `settings.db_pool_size`/
+`db_max_overflow` (env vars `DB_POOL_SIZE`/`DB_MAX_OVERFLOW`), defaulted
+conservatively to 10/10 (20 max per process, 40 combined) so each
+Railway service can be tuned independently without a code change. Added
+`test_db_session_pool_config.py`.
+
+Then audited every other `lazy="selectin"` relationship in the app the
+same way `Category.places` was audited in the previous entry — found 13
+more (across `place.py`, `city.py`, `menu_item.py`, `menu_snapshot.py`,
+`place_claim.py`, `place_feed_snapshot.py`, `place_image_fetch_log.py`,
+`place_image.py`), confirmed via grep across the entire backend
+(including Pydantic schema field names, to catch implicit access through
+`from_attributes` serialization) that only `Place.categories` is ever
+actually read anywhere — the other 13 were pure eager-load waste, same
+bug class, same fix (`lazy="select"`).
+
+One of these turned out to be a second live, previously-undetected
+instance of the map bug's exact mechanism: `PlaceImage.place` being eager
+meant `GET /api/v1/place/{place_id}` (one of the most frequently-hit
+endpoints in the app) — which fetches gallery images via
+`get_public_gallery()`, itself a full-`PlaceImage`-entity query — silently
+reloaded each image's *entire* parent `Place` object graph on every
+request, which then cascaded into Place's own (equally dead) eager
+relationships. Found by writing a regression test for a smaller,
+already-suspected fix (`place_detail_router.py`'s own `select(Place)` →
+specific columns, mirroring `map_query.py`'s established pattern) and
+watching the statement count come back as 9 instead of the expected ~3 —
+traced the extra queries' stack trace directly to SQLAlchemy's
+`_load_via_child`, which pointed straight at `PlaceImage.place`. Added
+`test_place_detail_no_eager_load.py` (same statement-counting technique
+as `test_place_category_query.py`).
+
+Also fixed the 3 remaining "Low Impact" items from an earlier audit pass
+that had never actually been done (confirmed via direct code checks, not
+assumed from an old note):
+- Distance-formatting logic was duplicated identically in `PlaceCard.tsx`
+  and `PlaceCardCompact.tsx` — extracted to `scoring.ts`'s new
+  `formatDistance()`, tested.
+- `MenuSubmissionSheet`'s invalid-price error now renders inline next to
+  the specific item that failed, instead of a generic banner with no
+  indication of which item was wrong. The "add at least one item" error
+  (not tied to any item) stays as the global banner.
+- `rank/[placeId].tsx`'s "See my list" button now uses `router.push`
+  instead of `router.replace`, so back navigation after ranking a place
+  isn't lost.
+
+Verified: 631 backend tests passing (627 + 4 new), frontend `tsc --noEmit`
+clean, full jest suite 94/94 (90 + 4 new `formatDistance` tests), stable
+across repeated runs.
+
+Launched a broader bug-hunting sweep (N+1 query patterns, frontend
+stale-response races in screens not yet audited, cache-key correctness
+in other cached endpoints, missing `db.rollback()` after failed
+statements sharing a session) — findings and fixes logged separately
+once that pass completes.
