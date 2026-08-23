@@ -1,0 +1,21 @@
+# Config-as-code for the standalone scheduler worker service (see
+# backend/app/scheduler_worker.py's docstring for why this needs to be its
+# own Railway service, separate from the web service's /railway.toml).
+#
+# Railway's dashboard "Custom Start Command" / "Healthcheck Path" fields
+# are locked read-only whenever a config file governs a service -- and
+# every service in this project defaults to /railway.toml unless told
+# otherwise. Point the scheduler-worker service's "Config File Path"
+# setting (Settings tab, near Start Command) at this file specifically:
+#   /railway.scheduler-worker.toml
+#
+# No [build] section needed -- Railpack auto-detection (same as the web
+# service) works identically here.
+#
+# Deliberately no healthcheckPath: this process runs no web server at
+# all, so an HTTP healthcheck would always fail and crash-loop it.
+
+[deploy]
+startCommand = "cd backend && python -m app.scheduler_worker"
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 10
