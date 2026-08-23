@@ -9,15 +9,16 @@
 // race you can actually place in.
 import React, { useCallback, useState } from 'react';
 import {
-  FlatList,
   RefreshControl,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native';
+import { FlashList } from '@shopify/flash-list';
 import { Image } from 'expo-image';
 import { useFocusEffect, useRouter } from 'expo-router';
+import { useQuery } from '@tanstack/react-query';
 import * as Haptics from 'expo-haptics';
 
 import { Colors, Radius, Spacing } from '../src/constants/colors';
@@ -40,31 +41,38 @@ export default function LeaderboardScreen() {
   const user = useAuthStore((s) => s.user);
 
   const [scope, setScope] = useState<Scope>('global');
-  const [rows, setRows] = useState<LeaderboardRow[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
 
-  const load = useCallback(async (which: Scope) => {
-    try {
-      setRows(await fetchLeaderboard({ among: which }));
-    } catch {
-      setRows([]);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  // Previously raw useState + useFocusEffect with no caching at all -- every
+  // tab focus (including just switching Global/Friends and back) re-fetched
+  // from scratch, unlike every other list screen in the app. staleTime
+  // matches the home feed's -- the leaderboard doesn't need to be fresher
+  // than that. The queryFn swallows errors into an empty array rather than
+  // surfacing isError, matching this screen's original behavior exactly (no
+  // distinct error copy existed here — a failed fetch and a genuinely empty
+  // board both just showed the "nobody yet" EmptyState).
+  const {
+    data: rows = [],
+    isLoading: loading,
+    isRefetching: refreshing,
+    refetch,
+  } = useQuery({
+    queryKey: ['leaderboard', scope],
+    queryFn: () => fetchLeaderboard({ among: scope }).catch(() => []),
+    staleTime: 2 * 60 * 1000,
+  });
 
+  // Cached data shows instantly on refocus; this just revalidates quietly
+  // in the background instead of resetting to a full loading state.
   useFocusEffect(
     useCallback(() => {
-      load(scope);
-    }, [load, scope]),
+      refetch();
+    }, [refetch]),
   );
 
   const switchScope = (next: Scope) => {
     if (next === scope) return;
     Haptics.selectionAsync();
     setScope(next);
-    setLoading(true);
   };
 
   return (
@@ -101,21 +109,14 @@ export default function LeaderboardScreen() {
           }
         />
       ) : (
-        <FlatList
+        <FlashList
           data={rows}
           keyExtractor={(r) => r.user_id}
           contentContainerStyle={styles.list}
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
-              onRefresh={async () => {
-                setRefreshing(true);
-                try {
-                  await load(scope);
-                } finally {
-                  setRefreshing(false);
-                }
-              }}
+              onRefresh={() => refetch()}
               tintColor={Colors.primary}
             />
           }
@@ -195,12 +196,16 @@ const styles = StyleSheet.create({
   toggleText: { color: Colors.textSecondary, fontSize: 14, fontWeight: '700' },
   toggleTextActive: { color: '#FFFFFF' },
 
-  list: { padding: Spacing.md, gap: Spacing.sm, paddingBottom: Spacing.xxl },
+  // FlashList's contentContainerStyle doesn't reliably support `gap`
+  // (unlike FlatList) -- https://github.com/Shopify/flash-list/issues/2097 --
+  // so inter-row spacing is applied via row's marginBottom instead.
+  list: { padding: Spacing.md, paddingBottom: Spacing.xxl },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.md,
     padding: Spacing.md,
+    marginBottom: Spacing.sm,
     backgroundColor: Colors.surface,
     borderRadius: Radius.md,
     borderWidth: 1,

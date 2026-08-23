@@ -7,7 +7,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  FlatList,
   Image,
   RefreshControl,
   StyleSheet,
@@ -15,6 +14,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { FlashList } from '@shopify/flash-list';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
@@ -223,7 +223,7 @@ export default function CravesScreen() {
 
   return (
     <View style={styles.container}>
-      <FlatList
+      <FlashList
         data={saves}
         keyExtractor={(p) => p.id}
         refreshControl={
@@ -234,29 +234,31 @@ export default function CravesScreen() {
           />
         }
         renderItem={({ item }) => (
-          <PlaceCardCompact
-            place={item}
-            onPress={() => router.push(`/place/${item.id}`)}
-            rightAction={
-              <TouchableOpacity
-                onPress={async () => {
-                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                  const err = await removeSave(item.id, user.id);
-                  if (err) {
-                    toast(err);
-                  } else {
-                    toast('Removed from Saves');
-                  }
-                }}
-                style={styles.removeBtn}
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                accessibilityLabel={`Remove ${item.name} from saves`}
-                accessibilityRole="button"
-              >
-                <Ionicons name="close" size={18} color={Colors.textMuted} />
-              </TouchableOpacity>
-            }
-          />
+          <View style={styles.rowSpacer}>
+            <PlaceCardCompact
+              place={item}
+              onPress={() => router.push(`/place/${item.id}`)}
+              rightAction={
+                <TouchableOpacity
+                  onPress={async () => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                    const err = await removeSave(item.id, user.id);
+                    if (err) {
+                      toast(err);
+                    } else {
+                      toast('Removed from Saves');
+                    }
+                  }}
+                  style={styles.removeBtn}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  accessibilityLabel={`Remove ${item.name} from saves`}
+                  accessibilityRole="button"
+                >
+                  <Ionicons name="close" size={18} color={Colors.textMuted} />
+                </TouchableOpacity>
+              }
+            />
+          </View>
         )}
         contentContainerStyle={styles.list}
         ListHeaderComponent={
@@ -361,7 +363,11 @@ export default function CravesScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
-  list: { padding: Spacing.md, gap: Spacing.sm, paddingBottom: Spacing.xxl },
+  // FlashList's contentContainerStyle doesn't reliably support `gap`
+  // (unlike FlatList) -- https://github.com/Shopify/flash-list/issues/2097 --
+  // so inter-row spacing is applied per-row via rowSpacer below instead.
+  list: { padding: Spacing.md, paddingBottom: Spacing.xxl },
+  rowSpacer: { marginBottom: Spacing.sm },
   screenHeader: {
     flexDirection: 'row',
     alignItems: 'center',

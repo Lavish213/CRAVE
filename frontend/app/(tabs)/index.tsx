@@ -2,13 +2,13 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Animated,
   ActivityIndicator,
-  FlatList,
   RefreshControl,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native';
+import { FlashList } from '@shopify/flash-list';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
@@ -239,41 +239,46 @@ export default function FeedScreen() {
               body={selectedCity ? "Try selecting a different city" : "No places found"}
             />
           ) : (
-            <FlatList
+            <FlashList
               data={rows}
               keyExtractor={(row, i) => row.kind === 'place' ? row.place.id : `header-${i}`}
+              getItemType={(row) => row.kind}
               renderItem={({ item: row }) => {
                 if (row.kind === 'header') {
                   const tier = TIERS[row.tierKey];
                   return (
-                    <SectionHeader
-                      label={tier.sectionLabel}
-                      subtext={tier.sectionSubtext}
-                      count={row.count}
-                    />
+                    <View style={styles.rowSpacer}>
+                      <SectionHeader
+                        label={tier.sectionLabel}
+                        subtext={tier.sectionSubtext}
+                        count={row.count}
+                      />
+                    </View>
                   );
                 }
                 return (
-                  <PlaceCard
-                    place={row.place}
-                    onPress={() => router.push(`/place/${row.place.id}`)}
-                    onSave={async () => {
-                      if (!user) {
-                        setAuthVisible(true);
-                        return;
-                      }
-                      if (isSaved(row.place.id)) {
-                        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-                        const err = await removeSave(row.place.id, user.id);
-                        toast(err ?? 'Removed from Saves');
-                      } else {
-                        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-                        const err = await addSave(row.place, user.id);
-                        toast(err ?? 'Saved');
-                      }
-                    }}
-                    saved={isSaved(row.place.id)}
-                  />
+                  <View style={styles.rowSpacer}>
+                    <PlaceCard
+                      place={row.place}
+                      onPress={() => router.push(`/place/${row.place.id}`)}
+                      onSave={async () => {
+                        if (!user) {
+                          setAuthVisible(true);
+                          return;
+                        }
+                        if (isSaved(row.place.id)) {
+                          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+                          const err = await removeSave(row.place.id, user.id);
+                          toast(err ?? 'Removed from Saves');
+                        } else {
+                          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                          const err = await addSave(row.place, user.id);
+                          toast(err ?? 'Saved');
+                        }
+                      }}
+                      saved={isSaved(row.place.id)}
+                    />
+                  </View>
                 );
               }}
               contentContainerStyle={styles.list}
@@ -312,7 +317,11 @@ export default function FeedScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
-  list: { paddingHorizontal: Spacing.md, paddingBottom: Spacing.xxl, gap: Spacing.md },
+  // FlashList's contentContainerStyle doesn't reliably support `gap`
+  // (unlike FlatList) -- https://github.com/Shopify/flash-list/issues/2097 --
+  // so inter-row spacing is applied per-row via rowSpacer below instead.
+  list: { paddingHorizontal: Spacing.md, paddingBottom: Spacing.xxl },
+  rowSpacer: { marginBottom: Spacing.md },
   listFooter: { margin: Spacing.lg },
   skeletonWrap: { flex: 1, paddingHorizontal: 12, paddingTop: 10 },
   header: {

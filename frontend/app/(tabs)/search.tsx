@@ -2,7 +2,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  FlatList,
   RefreshControl,
   StyleSheet,
   Text,
@@ -10,6 +9,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { FlashList } from '@shopify/flash-list';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
@@ -133,11 +133,13 @@ export default function SearchScreen() {
 
       {/* Trending empty state */}
       {showTrending && (
-        <FlatList
+        <FlashList
           data={trending}
           keyExtractor={(p) => p.id}
           renderItem={({ item }) => (
-            <PlaceCardCompact place={item} onPress={() => router.push(`/place/${item.id}`)} />
+            <View style={styles.rowSpacer}>
+              <PlaceCardCompact place={item} onPress={() => router.push(`/place/${item.id}`)} />
+            </View>
           )}
           contentContainerStyle={styles.list}
           refreshControl={
@@ -156,6 +158,18 @@ export default function SearchScreen() {
                 <Text style={styles.sectionLabel}>TRENDING NOW</Text>
               </>
             ) : null
+          }
+          ListEmptyComponent={
+            // Without this, an empty `trending` (the default "Near Me" state
+            // with no city selected never fetches trending at all — see
+            // useTrending.ts) rendered a totally blank area here,
+            // indistinguishable from a stuck load.
+            <View style={styles.loadingRow}>
+              <Ionicons name="flame-outline" size={22} color={Colors.textMuted} />
+              <Text style={[styles.hintText, styles.emptyTrendingText]}>
+                Pick a city to see what's trending, or start typing to search everywhere.
+              </Text>
+            </View>
           }
         />
       )}
@@ -178,11 +192,13 @@ export default function SearchScreen() {
 
       {/* Results */}
       {!showTrending && !showNoResults && !searchError && results.length > 0 && (
-        <FlatList
+        <FlashList
           data={results}
           keyExtractor={(p) => p.id}
           renderItem={({ item }) => (
-            <PlaceCardCompact place={item} onPress={() => router.push(`/place/${item.id}`)} />
+            <View style={styles.rowSpacer}>
+              <PlaceCardCompact place={item} onPress={() => router.push(`/place/${item.id}`)} />
+            </View>
           )}
           contentContainerStyle={styles.list}
           refreshControl={
@@ -219,9 +235,14 @@ const styles = StyleSheet.create({
   searchIcon: { marginRight: 2 },
   input: { flex: 1, color: Colors.text, fontSize: 15 },
   cityContext: { color: Colors.textMuted, fontSize: 12, fontWeight: '500', paddingLeft: Spacing.xs },
-  loadingRow: { paddingVertical: 20, alignItems: 'center' },
+  loadingRow: { paddingVertical: 20, alignItems: 'center', gap: Spacing.sm },
   hintText: { color: Colors.textMuted, fontSize: 13 },
-  list: { padding: Spacing.md, gap: Spacing.sm, paddingBottom: Spacing.xxl },
+  emptyTrendingText: { textAlign: 'center', paddingHorizontal: Spacing.xl },
+  // FlashList's contentContainerStyle doesn't reliably support `gap`
+  // (unlike FlatList) -- https://github.com/Shopify/flash-list/issues/2097 --
+  // so inter-row spacing is applied per-row via rowSpacer below instead.
+  list: { padding: Spacing.md, paddingBottom: Spacing.xxl },
+  rowSpacer: { marginBottom: Spacing.sm },
   browseIntro: {
     fontSize: 22,
     fontWeight: '800',
