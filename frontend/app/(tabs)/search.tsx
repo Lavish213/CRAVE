@@ -1,7 +1,6 @@
 // app/(tabs)/search.tsx
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
   RefreshControl,
   StyleSheet,
   Text,
@@ -20,6 +19,7 @@ import { PlaceOut } from '../../src/api/places';
 import { useTrendingWithRefresh } from '../../src/hooks/useTrending';
 import { Colors, Radius, Spacing } from '../../src/constants/colors';
 import { PlaceCardCompact } from '../../src/components/PlaceCardCompact';
+import { SkeletonRowList } from '../../src/components/SkeletonCard';
 import { ErrorState } from '../../src/components/ErrorState';
 import { EmptyState } from '../../src/components/EmptyState';
 
@@ -119,10 +119,13 @@ export default function SearchScreen() {
         </Text>
       </View>
 
-      {/* Loading */}
+      {/* Loading -- matches search results' actual PlaceCardCompact row
+          shape, same skeleton treatment as Feed/Craves/Profile/Leaderboard/
+          Friends Feed. Search was still a bare spinner, the one list
+          screen in the app not using it. */}
       {searchLoading && (
-        <View style={styles.loadingRow}>
-          <ActivityIndicator color={Colors.primary} size="small" />
+        <View style={styles.list}>
+          <SkeletonRowList count={5} />
         </View>
       )}
 

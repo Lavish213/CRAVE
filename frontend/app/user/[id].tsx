@@ -6,7 +6,6 @@
 // their list.
 import React, { useCallback, useState } from 'react';
 import {
-  ActivityIndicator,
   Alert,
   ScrollView,
   StyleSheet,
@@ -21,6 +20,7 @@ import * as Haptics from 'expo-haptics';
 
 import { Colors, Radius, Spacing } from '../../src/constants/colors';
 import { EmptyState } from '../../src/components/EmptyState';
+import { SkeletonRowList } from '../../src/components/SkeletonCard';
 import { RankedPlaceRow } from '../../src/components/RankedPlaceRow';
 import { useAuthStore } from '../../src/stores/authStore';
 import {
@@ -168,9 +168,13 @@ export default function UserProfileScreen() {
   };
 
   if (loading) {
+    // Matches the ranked-list-of-places shape this screen eventually
+    // shows (RankedPlaceRow), same treatment as app/(tabs)/profile.tsx's
+    // own ranked list -- this screen was still a plain ActivityIndicator,
+    // inconsistent with every other list-shaped screen in the app.
     return (
-      <View style={styles.centered}>
-        <ActivityIndicator color={Colors.primary} size="large" />
+      <View style={styles.content}>
+        <SkeletonRowList count={5} />
       </View>
     );
   }

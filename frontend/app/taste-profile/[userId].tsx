@@ -15,12 +15,13 @@
 // block enforcement is client-side here, same convention user/[id].tsx
 // already uses.
 import React, { useCallback, useState } from 'react';
-import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useLocalSearchParams } from 'expo-router';
 
 import { Colors, Radius, Spacing } from '../../src/constants/colors';
 import { EmptyState } from '../../src/components/EmptyState';
+import { SkeletonRowList } from '../../src/components/SkeletonCard';
 import {
   Profile,
   TasteProfile,
@@ -70,9 +71,12 @@ export default function TasteProfileScreen() {
   );
 
   if (loading) {
+    // Same treatment as app/(tabs)/profile.tsx's own stats+ranked-list
+    // loading state -- this screen was still a plain ActivityIndicator,
+    // inconsistent with every other list/stat-shaped screen in the app.
     return (
-      <View style={styles.centered}>
-        <ActivityIndicator color={Colors.primary} size="large" />
+      <View style={styles.content}>
+        <SkeletonRowList count={4} />
       </View>
     );
   }
