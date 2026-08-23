@@ -6,6 +6,7 @@ for real.
 """
 from __future__ import annotations
 
+import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app
@@ -82,3 +83,77 @@ def test_version_never_requires_an_api_key(monkeypatch):
     monkeypatch.setenv("API_KEY", "fixture-debug-key")
     response = client.get("/api/v1/debug/version")
     assert response.status_code == 200
+
+
+def test_scheduler_diagnostics_requires_api_key_when_configured(monkeypatch):
+    monkeypatch.setenv("API_KEY", "fixture-debug-key")
+    response = client.get("/api/v1/debug/scheduler")
+    assert response.status_code == 401
+
+
+def test_scheduler_diagnostics_reports_flag_and_recent_job_runs(monkeypatch):
+    monkeypatch.delenv("API_KEY", raising=False)
+
+    from datetime import datetime, timedelta, timezone
+    from app.db.session import SessionLocal
+    from app.db.models.job_run import JobRun
+
+    db = SessionLocal()
+    try:
+        started = datetime.now(timezone.utc) - timedelta(seconds=67)
+        finished = started + timedelta(seconds=67)
+        db.add(
+            JobRun(
+                job_name="test_diagnostic_job",
+                started_at=started,
+                finished_at=finished,
+                success=True,
+                summary="processed=1",
+            )
+        )
+        db.commit()
+    finally:
+        db.close()
+
+    response = client.get("/api/v1/debug/scheduler")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert "run_embedded_scheduler" in body
+    names = [r["job_name"] for r in body["recent_runs"]]
+    assert "test_diagnostic_job" in names
+    match = next(r for r in body["recent_runs"] if r["job_name"] == "test_diagnostic_job")
+    assert match["success"] is True
+    assert match["still_running_or_crashed"] is False
+    assert match["duration_seconds"] == pytest.approx(67.0, abs=1.0)
+
+
+def test_scheduler_diagnostics_flags_still_running_job(monkeypatch):
+    monkeypatch.delenv("API_KEY", raising=False)
+
+    from datetime import datetime, timezone
+    from app.db.session import SessionLocal
+    from app.db.models.job_run import JobRun
+
+    db = SessionLocal()
+    try:
+        db.add(
+            JobRun(
+                job_name="test_stuck_job",
+                started_at=datetime.now(timezone.utc),
+                finished_at=None,
+                success=None,
+                summary=None,
+            )
+        )
+        db.commit()
+    finally:
+        db.close()
+
+    response = client.get("/api/v1/debug/scheduler")
+
+    assert response.status_code == 200
+    body = response.json()
+    match = next(r for r in body["recent_runs"] if r["job_name"] == "test_stuck_job")
+    assert match["still_running_or_crashed"] is True
+    assert match["finished_at"] is None
