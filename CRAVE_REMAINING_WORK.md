@@ -1707,3 +1707,56 @@ Verified: `npx tsc --noEmit` clean, full frontend Jest suite passes (82,
 unaffected — no test file exercises `MapView` callbacks). Have not yet
 had the user re-test in the simulator to confirm pins now render — that
 confirmation is still outstanding.
+
+### Follow-up — map still showed "Could not load places" after the fix above; researched against react-native-maps' own issue history and applied the library's documented fix
+
+The `hasHandledFirstRegionRef` fix above stopped the bogus first event from
+clobbering real results, but the user then hit a *different* symptom on
+re-test: an actual "Could not load places" error banner (a real fetch
+failure, not just an empty result). First added real error logging
+(`[MAP] LOAD_FAILED` — the catch handler was previously completely
+silent, logging nothing about the axios error), since guessing at the
+cause without knowing whether it was a timeout, a 4xx, or a 5xx would
+just be more speculation.
+
+In parallel, per a direct request to compare this codebase against real
+working map implementations rather than keep guessing: researched
+`react-native-maps`'s own GitHub issue tracker. `initialRegion` failing
+to be honored correctly on iOS turns out to be a *years-long, recurring,
+well-documented* bug class in that library specifically (issues #1507,
+#3212, #4244, #4420, #5645 — spanning 2017 through 2025), and the
+standard, community-endorsed fix real projects use is consistent across
+all of them: don't trust `initialRegion` alone — use the `onMapReady`
+callback to explicitly `animateToRegion()` once the native view has
+actually finished initializing.
+
+Checking our own code against that pattern found the real gap: `map.tsx`
+already had an effect that calls `animateToRegion` on mount (keyed off
+`[selectedCity?.id, mapLat, mapLng]`), but that effect races the native
+view's own initialization — `mapRef.current` can still be unset when it
+runs, so the correction silently no-ops on the very first mount (later
+city switches work fine because by then the map has long since been
+ready). This explains why our home-grown "ignore the first event" patch
+only fixed the *fetch* — the underlying visual region itself was likely
+still wrong underneath, just no longer driving a bad request.
+
+Added `onMapReady={handleMapReady}`, which redoes the same
+correction (`programmaticMoveRef` + `animateToRegion`) at the moment the
+native view guarantees it's actually ready — the fix the library's own
+issue tracker prescribes for exactly this failure mode, not a
+CRAVE-specific guess.
+
+Also added a same-session, lower-priority gap noticed during the
+research pass: the "Could not load places" banner was static text with
+no retry action, unlike the retry-on-failure pattern seen in comparable
+map implementations. Added a `lastAttemptRef` (tracks the most recent
+attempted lat/lng/radius regardless of success/failure, unlike
+`lastFetchCoverageRef` which only updates on success) and made the
+banner tappable to retry that exact request via `handleRetryMap`.
+
+Verified: `npx tsc --noEmit` clean, full frontend Jest suite passes (82).
+Still waiting on the user to reproduce once more with all of this live —
+if `onMapReady` fully addresses it, pins should now render on first load
+without any pan needed; if "Could not load places" still appears, the
+`[MAP] LOAD_FAILED` log added earlier will finally show the real HTTP
+status/error instead of a guess.

@@ -218,9 +218,15 @@ export default function MapScreen() {
   const initialRegion = cityToRegion(mapLat, mapLng);
   const [mapRegion, setMapRegion] = useState<Region>(initialRegion);
 
+  // Last-attempted params (unlike lastFetchCoverageRef, set regardless of
+  // success/failure) — lets a "Retry" tap redo the exact request that just
+  // failed instead of needing the user to pan the map to trigger a new one.
+  const lastAttemptRef = useRef<FetchCoverage | null>(null);
+
   const loadFeatures = useCallback(
     (lat: number, lng: number, radiusKm: number) => {
       const myRequestId = ++requestIdRef.current;
+      lastAttemptRef.current = { lat, lng, radiusKm };
       setMapError(false);
       setMapLoading(true);
       fetchMapGeoJSON({
@@ -282,6 +288,26 @@ export default function MapScreen() {
     mapRef.current?.animateToRegion(region, 500);
   }, [selectedCity?.id, mapLat, mapLng]);
 
+  // Cross-checked against react-native-maps' own long-documented iOS bug
+  // class (their issue tracker: #1507, #3212, #4244, #4420, #5645 — spanning
+  // years) — `initialRegion` is frequently not honored correctly on iOS: the
+  // native view can settle at some other zoom/position entirely regardless
+  // of what was requested, which is consistent with what we saw live here
+  // (~1km reported radius vs. the real ~7km initialRegion). The effect above
+  // already tries to correct this via animateToRegion, but it fires from a
+  // dependency-change effect that runs immediately after the JS render —
+  // before the native map view has actually finished initializing, so
+  // `mapRef.current` can still be unset and the call silently no-ops. The
+  // library's own documented workaround for this exact class of bug is to
+  // redo the correction from `onMapReady`, which fires once the native view
+  // has genuinely finished initializing — guaranteeing the ref is live.
+  const handleMapReady = useCallback(() => {
+    const region = cityToRegion(mapLat, mapLng);
+    programmaticMoveRef.current = true;
+    setMapRegion(region);
+    mapRef.current?.animateToRegion(region, 300);
+  }, [mapLat, mapLng]);
+
   // Clear any pending debounced fetch on unmount.
   useEffect(() => {
     return () => {
@@ -338,6 +364,18 @@ export default function MapScreen() {
     mapRef.current?.animateToRegion(region, 500);
   }, [userLocation]);
 
+  // Re-runs the exact request that just failed, instead of forcing the user
+  // to pan the map (which may not even be possible if they can't tell where
+  // real data exists) just to get another attempt.
+  const handleRetryMap = useCallback(() => {
+    const attempt = lastAttemptRef.current;
+    if (attempt) {
+      loadFeatures(attempt.lat, attempt.lng, attempt.radiusKm);
+    } else {
+      loadFeatures(mapLat, mapLng, prefetchRadiusKmForRegion(cityToRegion(mapLat, mapLng)));
+    }
+  }, [loadFeatures, mapLat, mapLng]);
+
   return (
     <View style={styles.container}>
       <MapView
@@ -347,6 +385,7 @@ export default function MapScreen() {
         mapType="mutedStandard"
         onPress={() => setSelectedFeature(null)}
         onRegionChangeComplete={handleRegionChangeComplete}
+        onMapReady={handleMapReady}
       >
         {clusters.map((c) => {
           if (c.count > 1) {
@@ -408,9 +447,14 @@ export default function MapScreen() {
       )}
 
       {mapError && features.length === 0 && (
-        <View style={styles.mapBanner}>
-          <Text style={styles.mapBannerText}>Could not load places</Text>
-        </View>
+        <TouchableOpacity
+          style={styles.mapBanner}
+          onPress={handleRetryMap}
+          accessibilityRole="button"
+          accessibilityLabel="Retry loading places"
+        >
+          <Text style={styles.mapBannerText}>Could not load places — tap to retry</Text>
+        </TouchableOpacity>
       )}
 
       {mapLoaded && !mapLoading && features.length === 0 && (
