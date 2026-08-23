@@ -2247,3 +2247,76 @@ across two runs. Frontend: `npx tsc --noEmit` clean, full Jest suite
 passes (90, unaffected — no dedicated test for the new hook/strip
 itself, same convention as other similarly-scoped UI additions this
 session; covered by the service-level tests plus a clean typecheck).
+
+### Daily streak gamification (item #4, last of the agreed roadmap)
+
+Asked what should count as a "streak day" before building this one,
+since it's a real product decision, not an implementation detail — the
+answer was "not sure just yet." Built it so that decision stays cheap to
+change later: `record_activity()` is called from a single place (the
+app's root layout, on open/foreground) with the loosest possible
+trigger for now (just having the app open), so swapping to a stricter
+definition (e.g. "only counts if you ranked a place that day") later
+only means changing *where* it's called from, not the streak math
+itself.
+
+Followed Duolingo's own documented pattern (confirmed via research):
+the server is the source of truth for the current instant
+(`datetime.now(UTC)`), never the device clock, but continuity is judged
+by *calendar day*, which only means something relative to a timezone —
+so the client sends its current IANA timezone name (e.g.
+`Intl.DateTimeFormat().resolvedOptions().timeZone`, built into Hermes,
+no new native dependency needed) and the server converts its own UTC
+instant into that timezone to get "today." An unrecognized/garbled
+timezone string falls back to UTC rather than erroring. No "streak
+freeze" grace mechanic yet (out of scope for this pass) — a missed day
+just resets the current streak to 1 on the next activity, though
+`longest_streak` is preserved.
+
+- `app/db/models/user_streak.py` (new) + migration
+  `z1a2b3c4d5e6_add_user_streaks_table.py` — one row per user:
+  `current_streak`, `longest_streak`, `last_active_date` (a calendar
+  date, not a timestamp).
+- `app/services/social/streak_service.py` (new) — `record_activity`
+  (the day-boundary math: same day is a no-op, +1 day increments, >1 day
+  gap resets to 1, and a negative gap — e.g. an implausible backward
+  timezone jump — never moves the stored state backward, guarding
+  against replaying activity into the past) and `get_streak` (read-only).
+- `GET /api/v1/streak/me` (read, no side effect) and `POST
+  /api/v1/streak/ping` (idempotent per calendar day) — new
+  `streak.py` route.
+- Frontend: `src/api/streak.ts` (`fetchMyStreak`, `pingStreak` — the
+  latter reads the device's IANA timezone via `Intl`). Wired into
+  `app/_layout.tsx`: pings once when the signed-in user becomes known,
+  and again on every `AppState` transition back to `'active'` (covers
+  the common case of backgrounding the app and reopening it the next
+  day without a full remount) — best-effort, a failed ping is never
+  user-visible. `profile.tsx` shows a 4th stat tile ("N day streak" with
+  a flame icon) alongside ranked/followers/following, only once
+  `current_streak > 0` (skips a discouraging "0 day streak" before the
+  first ping has resolved).
+- Also fixed stale copy this touched: `profile.tsx`'s "unlock
+  recommendations" card still said ranking below 15 places meant "there
+  isn't enough signal" and recommendations were locked — no longer true
+  now that the recommendations feature (previous entry) always shows
+  something via its cold-start fallback. Reworded to say what's actually
+  true: below the threshold, "Recommended for you" shows top-rated picks
+  rather than a personalized match.
+- `tests/test_streak_service.py` (8 tests): first-ever ping starts a
+  streak of 1; a same-day repeat is a no-op; a 1-day gap increments;
+  a >1-day gap resets current_streak but preserves longest_streak; the
+  boundary is calendar-day-based, not raw elapsed hours (the specific
+  bug class this whole feature is designed to avoid); an implausible
+  backward timezone jump never moves the streak backward; an
+  unrecognized timezone name falls back to UTC instead of erroring; a
+  user with no history reads as all zeros. `tests/test_streak_routes.py`
+  (4 tests): the route wiring itself — GET has no side effect, POST
+  records and returns the new state, a missing timezone in the request
+  body falls back to UTC.
+
+Verified: backend suite passes (598 — 586 previous + 12 new), stable
+across two runs. Frontend: `npx tsc --noEmit` clean, full Jest suite
+passes (90, unaffected — no dedicated test for `_layout.tsx`'s
+AppState-driven ping effect, consistent with this session's convention
+for similarly-scoped root-level wiring; covered by the service/route
+tests plus a clean typecheck).

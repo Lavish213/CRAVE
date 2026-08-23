@@ -61,6 +61,7 @@ from .user_follow import UserFollow
 from .user_block import UserBlock
 from .place_ranking import PlaceRanking
 from .activity_event import ActivityEvent
+from .user_streak import UserStreak
 
 # ----- Moderation Layer -----
 from .image_report import ImageReport

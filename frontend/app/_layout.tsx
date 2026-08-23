@@ -1,11 +1,12 @@
 import { useEffect, Component, ReactNode } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { AppState, View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useCityStore } from '../src/stores/cityStore';
 import { useAuthStore } from '../src/stores/authStore';
 import { useCravesStore } from '../src/stores/cravesStore';
+import { pingStreak } from '../src/api/streak';
 import { Colors, Spacing } from '../src/constants/colors';
 import { ToastContainer } from '../src/components/Toast';
 
@@ -63,6 +64,23 @@ export default function RootLayout() {
       loadSaves(user.id);
     }
   }, [user?.id, loadSaves]);
+
+  // Streak gamification: what counts as a "streak day" is still an open
+  // product decision (see streak_service.py's module docstring), so this
+  // pings on the loosest possible trigger for now -- any time the app is
+  // opened or returns to the foreground while signed in. Ping is
+  // idempotent server-side for the same calendar day, and best-effort:
+  // a failure here should never be user-visible.
+  useEffect(() => {
+    if (!user?.id) return;
+    pingStreak().catch(() => {});
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'active') {
+        pingStreak().catch(() => {});
+      }
+    });
+    return () => subscription.remove();
+  }, [user?.id]);
 
   return (
     <ErrorBoundary>
