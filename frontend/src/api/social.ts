@@ -56,6 +56,25 @@ export async function updateMyProfile(patch: {
   return data;
 }
 
+// "Taste Profile" — the equivalent of Beli's own stats screen (total
+// places ranked, tier breakdown, favorite cuisine, top city, a global
+// percentile). Deliberately excludes Beli's "Match Score" (taste
+// compatibility with a specific friend) — that's being built alongside
+// the personalized-recommendations feature instead, which needs the
+// same user-similarity computation.
+export interface TasteProfile {
+  total_ranked: number;
+  tier_counts: { liked: number; fine: number; disliked: number };
+  favorite_cuisine: string | null;
+  top_city: { id: string; name: string; count: number } | null;
+  percentile: number | null;
+}
+
+export async function fetchTasteProfile(userId: string): Promise<TasteProfile> {
+  const { data } = await client.get<TasteProfile>(`/api/v1/profile/${userId}/taste`);
+  return data;
+}
+
 export async function fetchProfile(userId: string): Promise<Profile> {
   const { data } = await client.get<Profile>(`/api/v1/profile/${userId}`);
   return data;

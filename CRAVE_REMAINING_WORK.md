@@ -2096,3 +2096,59 @@ Built the first item: **the personal-saves Map layer.**
 Verified: backend suite passes (571 — 567 previous + 4 new), stable
 across two runs. Frontend: `npx tsc --noEmit` clean, full suite passes
 (90 — 86 previous + 4 new).
+
+### Follow-up — built Taste Profile (item #2 of the agreed order), after a proper research pass
+
+Asked to research this "perfectly" rather than guess at a design.
+Cross-referenced across three independent sources (today.com, hercampus,
+and a general search) to confirm Beli's actual Taste Profile shows:
+total restaurants ranked, favorite cuisines, top/highest-ranked cities,
+a percentile rank among other diners, and a "Match Score" taste-
+compatibility feature with a specific friend. Surfaced the one real
+design ambiguity before building rather than guessing: Match Score needs
+the same user-similarity algorithm as the next item in the agreed order
+(personalized recommendations) — asked the user, who left it to my
+judgment; folded it into the recommendations work instead of duplicating
+the computation here, keeping this screen to pure stats.
+
+Also asked (rather than assume) the three other real forks: percentile
+scope (chose global across all users, not city-scoped, since CRAVE's
+current user base is too small for a per-city percentile to mean
+anything — revisit once there's more data per city), placement (own
+screen, matching the existing `/leaderboard`, `/friends-feed` pattern
+rather than bloating profile.tsx), and whether a friend's Taste Profile
+should be viewable too (yes — so the backend endpoint and screen both
+take an arbitrary `user_id`, not just "me").
+
+Built:
+- `app/services/social/taste_profile_service.py` (new) —
+  `get_taste_profile`: total ranked, tier breakdown, favorite cuisine
+  (computed from "liked"-tier places, falling back to all ranked places
+  only if none are liked yet — a cuisine that's only in a "disliked"
+  place isn't your favorite; also excludes generic categories like
+  "Restaurant"/"Bar" the same way `place_detail_router.py` already
+  does), top city (most ranked places in), and percentile (global,
+  computed against every other user who's ranked at least one place).
+- `GET /api/v1/profile/{user_id}/taste` (new route in `profile.py`) —
+  gated on the same `is_public` check as the existing public-profile
+  route, for consistency with whatever visibility the person already
+  chose. Block enforcement stays client-side, same convention
+  `user/[id].tsx` already uses via `GET /blocks/status`.
+- Frontend: `fetchTasteProfile` (`src/api/social.ts`) and a new
+  `app/taste-profile/[userId].tsx` screen (stat tiles, tier breakdown,
+  favorite-cuisine and top-city cards), linked from both your own
+  profile (`profile.tsx`'s existing Friends/Leaderboard link row) and a
+  friend's profile (`user/[id].tsx`, right below the ranked-list
+  headline).
+- `tests/test_taste_profile_service.py` (7 tests): totals/tier counts,
+  favorite cuisine prefers liked places, falls back correctly with no
+  likes yet, excludes generic categories, top city is the city with the
+  most ranked places, percentile reflects real standing among other
+  users, and everything is `None`/zero for a user who hasn't ranked
+  anything.
+
+Verified: backend suite passes (578 — 571 previous + 7 new), stable
+across two runs. Frontend: `npx tsc --noEmit` clean, full suite passes
+(90, unaffected — no dedicated test for the new screen itself, same as
+other similarly-scoped screen additions this session; covered by the
+service-level tests plus a clean typecheck).

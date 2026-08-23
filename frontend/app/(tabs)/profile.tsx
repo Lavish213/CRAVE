@@ -222,6 +222,17 @@ export default function ProfileScreen() {
           <Ionicons name="trophy-outline" size={18} color={Colors.primary} />
           <Text style={styles.linkBtnText}>Leaderboard</Text>
         </TouchableOpacity>
+        {rankings.length > 0 && user && (
+          <TouchableOpacity
+            style={styles.linkBtn}
+            onPress={() => router.push(`/taste-profile/${user.id}`)}
+            accessibilityRole="button"
+            accessibilityLabel="Your Taste Profile"
+          >
+            <Ionicons name="restaurant-outline" size={18} color={Colors.primary} />
+            <Text style={styles.linkBtnText}>Taste Profile</Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       <Text style={styles.sectionTitle}>Your list</Text>

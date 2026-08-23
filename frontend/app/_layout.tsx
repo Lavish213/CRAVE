@@ -96,6 +96,7 @@ export default function RootLayout() {
           <Stack.Screen name="profile-setup" options={{ title: 'Set up profile' }} />
           <Stack.Screen name="friends-feed" options={{ title: 'Friends' }} />
           <Stack.Screen name="leaderboard" options={{ title: 'Leaderboard' }} />
+          <Stack.Screen name="taste-profile/[userId]" options={{ title: 'Taste Profile' }} />
           <Stack.Screen name="settings" options={{ title: 'Settings' }} />
         </Stack>
         <ToastContainer />

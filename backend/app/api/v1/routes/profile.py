@@ -12,6 +12,7 @@ from app.core.rate_limit import rate_limit
 from app.core.user_auth import get_current_user_id
 from app.db.session import get_db
 from app.services.profile import profile_service
+from app.services.social.taste_profile_service import get_taste_profile
 from app.services.upload.r2_client import generate_presigned_upload_url, generate_public_url
 
 router = APIRouter(prefix="/profile", tags=["profile"])
@@ -125,3 +126,27 @@ def get_public_profile(
     if not profile or not profile.is_public:
         raise HTTPException(status_code=404, detail="profile not found")
     return profile
+
+
+@router.get(
+    "/{user_id}/taste",
+    dependencies=[Depends(rate_limit), Depends(require_api_key)],
+)
+def get_taste_profile_route(
+    user_id: str,
+    db: Session = Depends(get_db),
+) -> dict:
+    """
+    "Taste Profile" — the equivalent of Beli's own stats screen (total
+    places ranked, tier breakdown, favorite cuisine, top city,
+    percentile). Gated on the same is_public check as GET /{user_id}
+    (public profile) rather than a separate rule, so it's consistent
+    with whatever visibility the person already chose for their profile.
+    Block enforcement is handled client-side (same convention the
+    existing user/[id] screen already uses via GET /blocks/status),
+    not duplicated here.
+    """
+    profile = profile_service.get_profile(db, user_id)
+    if not profile or not profile.is_public:
+        raise HTTPException(status_code=404, detail="profile not found")
+    return get_taste_profile(db, user_id=user_id)

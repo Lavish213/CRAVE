@@ -253,6 +253,21 @@ export default function UserProfileScreen() {
 
           <Text style={styles.headline}>{rankedListHeadline(rankings.length)}</Text>
 
+          {rankings.length > 0 && (
+            <TouchableOpacity
+              style={styles.tasteProfileLink}
+              onPress={() => router.push(`/taste-profile/${id}`)}
+              accessibilityRole="button"
+              accessibilityLabel={isSelf ? 'View your Taste Profile' : `View ${profile.username}'s Taste Profile`}
+            >
+              <Ionicons name="restaurant-outline" size={16} color={Colors.primary} />
+              <Text style={styles.tasteProfileLinkText}>
+                {isSelf ? 'Your Taste Profile' : 'Taste Profile'}
+              </Text>
+              <Ionicons name="chevron-forward" size={16} color={Colors.textMuted} />
+            </TouchableOpacity>
+          )}
+
           {rankings.length === 0 ? (
             <Text style={styles.emptyText}>
               {isSelf ? "You haven't" : `@${profile.username} hasn't`} ranked anything yet.
@@ -328,6 +343,13 @@ const styles = StyleSheet.create({
   followBtnText: { color: '#FFFFFF', fontSize: 15, fontWeight: '800' },
   followingBtnText: { color: Colors.text },
   headline: { color: Colors.text, fontSize: 16, fontWeight: '700', marginTop: Spacing.sm },
+  tasteProfileLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+    marginTop: Spacing.sm,
+  },
+  tasteProfileLinkText: { flex: 1, color: Colors.primary, fontSize: 14, fontWeight: '700' },
   emptyText: { color: Colors.textMuted, fontSize: 14 },
   list: { gap: Spacing.sm },
 });
