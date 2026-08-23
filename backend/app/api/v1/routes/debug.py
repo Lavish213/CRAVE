@@ -194,13 +194,13 @@ def map_query_plan(
 
     counts = {}
     try:
-        counts["place_total"] = db.execute(text("SELECT count(*) FROM place")).scalar()
+        counts["place_total"] = db.execute(text("SELECT count(*) FROM places")).scalar()
         counts["place_active"] = db.execute(
-            text("SELECT count(*) FROM place WHERE is_active = true")
+            text("SELECT count(*) FROM places WHERE is_active = true")
         ).scalar()
         counts["place_active_in_bbox"] = db.execute(
             text(
-                "SELECT count(*) FROM place WHERE is_active = true "
+                "SELECT count(*) FROM places WHERE is_active = true "
                 "AND lat IS NOT NULL AND lng IS NOT NULL "
                 "AND lat >= :min_lat AND lat <= :max_lat "
                 "AND lng >= :min_lng AND lng <= :max_lng"
@@ -211,12 +211,17 @@ def map_query_plan(
             },
         ).scalar()
     except Exception as exc:
+        # A failed statement leaves the Postgres transaction aborted --
+        # every subsequent statement on this connection (the EXPLAIN
+        # query below included) would fail with "current transaction is
+        # aborted" otherwise, masking the real error.
+        db.rollback()
         counts["error"] = str(exc)
 
     explain_query = text(
         "EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) "
         "SELECT DISTINCT id, name, lat, lng, city_id, price_tier, rank_score, has_menu "
-        "FROM place "
+        "FROM places "
         "WHERE is_active = true "
         "AND lat IS NOT NULL AND lng IS NOT NULL "
         "AND lat >= :min_lat AND lat <= :max_lat "
