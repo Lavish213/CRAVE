@@ -236,8 +236,11 @@ export default function MapScreen() {
           setMapLoaded(true);
           lastFetchCoverageRef.current = { lat, lng, radiusKm };
         })
-        .catch(() => {
+        .catch((err) => {
           if (myRequestId !== requestIdRef.current) return;
+          // Was completely silent before — "Could not load places" gave no
+          // way to tell a timeout from a 4xx/5xx from a network drop.
+          if (__DEV__) console.log('[MAP] LOAD_FAILED', { lat, lng, radiusKm, status: err?.response?.status, message: err?.message, data: err?.response?.data });
           setMapError(true);
         })
         .finally(() => {
