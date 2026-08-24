@@ -250,6 +250,112 @@ def test_successful_pipeline_approves_and_stores_keys(db, place):
     assert video.thumb_key is not None
 
 
+# ---------------------------------------------------------------------------
+# process_one_video -- auto-highlight for source clips longer than
+# video_max_duration_ms but within video_highlight_max_source_duration_ms
+# ---------------------------------------------------------------------------
+
+def test_source_within_normal_window_never_calls_highlight_scoring(db, place):
+    video = _make_video(db, place, status=STATUS_QUEUED)
+
+    with patch("app.services.video.video_processing_worker.download_to_file"), \
+         patch("app.services.video.video_processing_worker.ffmpeg_steps.check_duration_ms",
+               return_value=5000), \
+         patch("app.services.video.video_processing_worker.find_best_highlight_window") as mock_window, \
+         patch("app.services.video.video_processing_worker.ffmpeg_steps.trim_video") as mock_trim, \
+         patch("app.services.video.video_processing_worker.ffmpeg_steps.compress_video",
+               return_value="/tmp/fake-compressed.mp4"), \
+         patch("app.services.video.video_processing_worker.score_video",
+               return_value=0.9), \
+         patch("app.services.video.video_processing_worker.ffmpeg_steps.generate_thumbnail",
+               return_value="/tmp/fake-thumb.jpg"), \
+         patch("app.services.video.video_processing_worker.upload_file"), \
+         patch("app.services.video.video_processing_worker.delete_object"):
+        outcome = process_one_video(db, video)
+
+    assert outcome == STATUS_APPROVED
+    mock_window.assert_not_called()
+    mock_trim.assert_not_called()
+
+
+def test_source_over_max_but_within_highlight_ceiling_is_trimmed_and_approved(db, place):
+    video = _make_video(db, place, status=STATUS_QUEUED)
+
+    with patch("app.services.video.video_processing_worker.download_to_file"), \
+         patch("app.services.video.video_processing_worker.ffmpeg_steps.check_duration_ms",
+               side_effect=[30_000, 10_000]), \
+         patch("app.services.video.video_processing_worker.find_best_highlight_window",
+               return_value=(12.0, 0.85)) as mock_window, \
+         patch("app.services.video.video_processing_worker.ffmpeg_steps.trim_video",
+               return_value="/tmp/fake-trimmed.mp4") as mock_trim, \
+         patch("app.services.video.video_processing_worker.ffmpeg_steps.compress_video",
+               return_value="/tmp/fake-compressed.mp4"), \
+         patch("app.services.video.video_processing_worker.score_video",
+               return_value=0.9), \
+         patch("app.services.video.video_processing_worker.ffmpeg_steps.generate_thumbnail",
+               return_value="/tmp/fake-thumb.jpg"), \
+         patch("app.services.video.video_processing_worker.upload_file"), \
+         patch("app.services.video.video_processing_worker.delete_object"):
+        outcome = process_one_video(db, video)
+
+    assert outcome == STATUS_APPROVED
+    mock_window.assert_called_once()
+    args, _kwargs = mock_window.call_args
+    assert args[1] == 10.0  # settings.video_max_duration_ms (10_000) as seconds
+    mock_trim.assert_called_once_with(args[0], 12.0, 10.0)
+    db.refresh(video)
+    assert video.duration_ms == 10_000  # the trimmed clip's duration, not the source's
+
+
+def test_source_over_highlight_ceiling_is_rejected_without_scoring(db, place):
+    video = _make_video(db, place, status=STATUS_QUEUED)
+
+    with patch("app.services.video.video_processing_worker.download_to_file"), \
+         patch("app.services.video.video_processing_worker.ffmpeg_steps.check_duration_ms",
+               return_value=90_000), \
+         patch("app.services.video.video_processing_worker.find_best_highlight_window") as mock_window, \
+         patch("app.services.video.video_processing_worker.delete_object"):
+        outcome = process_one_video(db, video)
+
+    assert outcome == STATUS_REJECTED
+    mock_window.assert_not_called()
+    db.refresh(video)
+    assert video.reject_reason == REJECT_DURATION
+    assert video.duration_ms == 90_000
+
+
+def test_highlight_scoring_classifier_unavailable_fails_not_rejects(db, place):
+    video = _make_video(db, place, status=STATUS_QUEUED)
+
+    with patch("app.services.video.video_processing_worker.download_to_file"), \
+         patch("app.services.video.video_processing_worker.ffmpeg_steps.check_duration_ms",
+               return_value=30_000), \
+         patch("app.services.video.video_processing_worker.find_best_highlight_window",
+               side_effect=FoodClassifierUnavailableError("no model file")):
+        outcome = process_one_video(db, video)
+
+    assert outcome == STATUS_FAILED
+    db.refresh(video)
+    assert "food_classifier_unavailable" in (video.error_message or "")
+
+
+def test_highlight_trim_failure_fails_the_video(db, place):
+    video = _make_video(db, place, status=STATUS_QUEUED)
+
+    with patch("app.services.video.video_processing_worker.download_to_file"), \
+         patch("app.services.video.video_processing_worker.ffmpeg_steps.check_duration_ms",
+               return_value=30_000), \
+         patch("app.services.video.video_processing_worker.find_best_highlight_window",
+               return_value=(5.0, 0.7)), \
+         patch("app.services.video.video_processing_worker.ffmpeg_steps.trim_video",
+               side_effect=RuntimeError("ffmpeg trim failed")):
+        outcome = process_one_video(db, video)
+
+    assert outcome == STATUS_FAILED
+    db.refresh(video)
+    assert "highlight_trim_failed" in (video.error_message or "")
+
+
 def test_download_failure_fails_the_video_not_the_batch(db, place):
     video = _make_video(db, place, status=STATUS_QUEUED)
 

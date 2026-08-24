@@ -134,6 +134,16 @@ class Settings(BaseSettings):
 
     video_max_duration_ms: int = 10_000
     video_min_duration_ms: int = 1_000
+    # A source clip longer than video_max_duration_ms but no longer than
+    # this is no longer a hard REJECT_DURATION -- see
+    # video_processing_worker.py's auto-highlight step, which finds the
+    # best-scoring video_max_duration_ms-length window inside it (via
+    # food_classifier.find_best_highlight_window) and trims to that
+    # instead of throwing away the whole upload. Only reachable today from
+    # a future looser recording UI or an imported clip -- the current
+    # record screen's own MAX_DURATION_SEC already caps recording at
+    # video_max_duration_ms, so this ceiling exists for when that changes.
+    video_highlight_max_source_duration_ms: int = 60_000
     video_max_upload_mb: int = 50
     video_food_score_threshold: float = 0.5
     video_compression_bitrate: str = "2500k"

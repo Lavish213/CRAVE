@@ -118,6 +118,51 @@ def _score_frame(interpreter, image_path: str) -> float:
     return float(np.max(output))
 
 
+def find_best_highlight_window(video_path: str, window_sec: float) -> tuple[float, float]:
+    """
+    Scores every ~1s sampled frame across the whole clip (same frames
+    score_video() would use) and returns (start_second, avg_score) for
+    the highest-average-scoring contiguous window of length window_sec.
+
+    Used by video_processing_worker.py's auto-highlight step: a source
+    clip longer than settings.video_max_duration_ms but still within
+    settings.video_highlight_max_source_duration_ms gets trimmed to this
+    window (via ffmpeg_steps.trim_video) instead of being hard-rejected
+    for its length. Raises FoodClassifierUnavailableError under the same
+    conditions as score_video().
+    """
+    interpreter = _load_interpreter()  # raises early, before spending time on ffmpeg
+
+    frames = ffmpeg_steps.extract_sample_frames(video_path)
+    if not frames:
+        raise RuntimeError("No frames extracted for highlight scoring")
+
+    frame_dir = os.path.dirname(frames[0])
+    try:
+        scores = [_score_frame(interpreter, p) for p in frames]
+    finally:
+        shutil.rmtree(frame_dir, ignore_errors=True)
+
+    window_frames = max(1, round(window_sec / ffmpeg_steps.FRAME_SAMPLE_INTERVAL_SEC))
+    if window_frames >= len(scores):
+        # Clip isn't meaningfully longer than the target window -- the
+        # whole thing already fits it.
+        return 0.0, sum(scores) / len(scores)
+
+    window_sum = sum(scores[:window_frames])
+    best_avg = window_sum / window_frames
+    best_start_idx = 0
+    for i in range(1, len(scores) - window_frames + 1):
+        window_sum += scores[i + window_frames - 1] - scores[i - 1]
+        avg = window_sum / window_frames
+        if avg > best_avg:
+            best_avg = avg
+            best_start_idx = i
+
+    best_start_sec = best_start_idx * ffmpeg_steps.FRAME_SAMPLE_INTERVAL_SEC
+    return float(best_start_sec), best_avg
+
+
 def score_video(video_path: str) -> float:
     """
     Samples frames from video_path (see ffmpeg_steps.extract_sample_frames)

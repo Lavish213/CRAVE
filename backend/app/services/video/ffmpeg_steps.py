@@ -11,6 +11,7 @@ FFPROBE_TIMEOUT_S = 15
 FFMPEG_COMPRESS_TIMEOUT_S = 60
 FFMPEG_THUMBNAIL_TIMEOUT_S = 30
 FFMPEG_FRAMES_TIMEOUT_S = 30
+FFMPEG_TRIM_TIMEOUT_S = 30
 
 FRAME_SAMPLE_INTERVAL_SEC = 1  # one sampled frame per second, for food scoring
 
@@ -123,6 +124,42 @@ def generate_thumbnail(video_path: str) -> str:
     if result.returncode != 0:
         raise RuntimeError(
             f"ffmpeg thumbnail generation failed (exit {result.returncode}): "
+            f"{result.stderr.decode(errors='replace')[:500]}"
+        )
+    return output_path
+
+
+def trim_video(local_path: str, start_sec: float, duration_sec: float) -> str:
+    """
+    Cuts a window out of a source clip -- used by the auto-highlight step
+    (see video_processing_worker.py) to pull the best-scoring
+    video_max_duration_ms-length window out of a longer upload instead of
+    rejecting it outright. Re-encodes rather than stream-copying: `-ss`
+    placed before `-i` seeks to the nearest keyframe on a copy, which can
+    land noticeably off the requested start on a clip with sparse
+    keyframes, and compress_video() runs on the result next regardless so
+    a second encode pass here costs nothing extra in practice.
+    """
+    output_path = _swap_suffix(local_path, "-trimmed.mp4")
+
+    result = _run(
+        [
+            "ffmpeg",
+            "-y",
+            "-ss", str(start_sec),
+            "-i", local_path,
+            "-t", str(duration_sec),
+            "-c:v", "libx264",
+            "-preset", "veryfast",
+            "-c:a", "aac",
+            "-b:a", "128k",
+            output_path,
+        ],
+        timeout=FFMPEG_TRIM_TIMEOUT_S,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(
+            f"ffmpeg trim failed (exit {result.returncode}): "
             f"{result.stderr.decode(errors='replace')[:500]}"
         )
     return output_path

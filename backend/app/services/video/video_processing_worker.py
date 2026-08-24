@@ -46,7 +46,11 @@ from app.services.upload.key_builder import build_video_processed_key, build_vid
 from app.services.upload.r2_client import delete_object, download_to_file, upload_file
 from app.services.video import ffmpeg_steps
 from app.services.video.ffmpeg_steps import VideoCorruptError
-from app.services.video.food_classifier import score_video, FoodClassifierUnavailableError
+from app.services.video.food_classifier import (
+    score_video,
+    find_best_highlight_window,
+    FoodClassifierUnavailableError,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -149,12 +153,44 @@ def process_one_video(db: Session, video: PlaceVideo) -> str:
             _reject(db, video, REJECT_CORRUPT)
             return STATUS_REJECTED
 
-        if duration_ms > settings.video_max_duration_ms or duration_ms < settings.video_min_duration_ms:
+        if (
+            duration_ms < settings.video_min_duration_ms
+            or duration_ms > settings.video_highlight_max_source_duration_ms
+        ):
             _reject(db, video, REJECT_DURATION, duration_ms=duration_ms)
             return STATUS_REJECTED
 
+        working_path = local_orig
+        if duration_ms > settings.video_max_duration_ms:
+            # Too long for the feed's target window, but within the
+            # highlight ceiling -- find the best-scoring
+            # video_max_duration_ms-length window instead of throwing away
+            # the whole upload (see find_best_highlight_window's
+            # docstring).
+            window_sec = settings.video_max_duration_ms / 1000
+            try:
+                start_sec, _window_score = find_best_highlight_window(local_orig, window_sec)
+            except FoodClassifierUnavailableError as exc:
+                _fail(db, video, f"food_classifier_unavailable: {exc}")
+                return STATUS_FAILED
+            except Exception as exc:
+                _fail(db, video, f"highlight_scoring_failed: {exc}")
+                return STATUS_FAILED
+
+            try:
+                working_path = ffmpeg_steps.trim_video(local_orig, start_sec, window_sec)
+            except Exception as exc:
+                _fail(db, video, f"highlight_trim_failed: {exc}")
+                return STATUS_FAILED
+
+            try:
+                duration_ms = ffmpeg_steps.check_duration_ms(working_path)
+            except VideoCorruptError as exc:
+                _fail(db, video, f"highlight_trim_produced_corrupt_output: {exc}")
+                return STATUS_FAILED
+
         try:
-            compressed_path = ffmpeg_steps.compress_video(local_orig)
+            compressed_path = ffmpeg_steps.compress_video(working_path)
         except Exception as exc:
             _fail(db, video, f"compression_failed: {exc}")
             return STATUS_FAILED
