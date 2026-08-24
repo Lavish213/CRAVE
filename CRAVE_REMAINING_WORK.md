@@ -2998,3 +2998,101 @@ reference scaffold's own stated scope:**
   either offline queue, multi-device concurrent-queue-draining — two
   devices racing the same account's outbox was explicitly scoped out of
   the original design, not just missed) still applies unchanged.
+
+### Follow-up — video moderation, auto-highlight fallback, push notification plumbing, and real backoff (still PR #48)
+
+Closes four of the "still open" items logged directly above: content
+moderation beyond food-score gating, the 30s–1min auto-highlight
+fallback, push notification plumbing, and time-based backoff on the two
+offline queues. Everything here was buildable/testable without external
+access (no device, no model file, no live Railway deploy needed) — the
+food classifier model itself, native-rebuild verification, and live
+on-device testing remain genuinely blocked on those and are unchanged
+below.
+
+- **Video moderation** (`app/db/models/video_report.py`,
+  `app/api/v1/routes/moderation.py`). `VideoReport` mirrors `ImageReport`
+  exactly — same reason vocabulary, same `UniqueConstraint(video_id,
+  reporter_id)`, same `AUTO_HIDE_REPORT_COUNT = 3` threshold, deliberately
+  duplicated rather than imported so video's moderation system stays
+  independent of image's (same precedent `PlaceVideo` itself already set
+  by not sharing a table with `PlaceImage`). The design question flagged
+  when this was scoped — whether to reuse `PlaceVideo.status`/
+  `reject_reason` for reports or add a genuinely separate field — was
+  resolved by mirroring `PlaceImage`'s own precedent: `PlaceVideo` gained
+  `moderation_status`/`moderation_reason`/`reviewed_at`/`reviewed_by`
+  columns (migration `982f61551581`), kept fully separate from `status`
+  (the processing-pipeline lifecycle). A video that clears the pipeline
+  still starts `moderation_status='approved'` and can be pulled by either
+  user reports or an admin decision without touching the field that
+  records *why the pipeline itself* approved or rejected it. Routes:
+  `POST /moderation/videos/{id}/report`, `GET /moderation/videos/queue`,
+  `POST /moderation/videos/{id}/review` — same shape as the existing
+  image routes, reusing `require_admin`. `GET /videos/feed` now filters
+  on both `status='approved'` AND `moderation_status='approved'`.
+- **30s–1min auto-highlight fallback**
+  (`app/services/video/food_classifier.py`'s
+  `find_best_highlight_window`, `app/services/video/ffmpeg_steps.py`'s
+  `trim_video`, wired into `video_processing_worker.py`). New setting
+  `video_highlight_max_source_duration_ms` (60s) replaces the old flat
+  duration-reject ceiling for the upper bound; anything between
+  `video_max_duration_ms` (10s) and the new ceiling gets a best-scoring
+  window found via a sliding-window average over the same per-second
+  frame scores `score_video()` already computes, then trimmed to that
+  window with ffmpeg before compression runs as normal. Only a
+  `REJECT_DURATION` now for a clip under the min or over the highlight
+  ceiling. Not reachable from the current recording UI today — the record
+  screen's own `MAX_DURATION_SEC` still caps at 10s — so this is
+  forward-looking for whenever that cap loosens or a clip gets imported
+  rather than recorded live.
+- **Push notification plumbing** (`app/db/models/device_push_token.py`,
+  `app/services/notifications/`, `POST`/`DELETE /account/push-token`).
+  Backend infra only, exactly as scoped — there's no way to verify actual
+  delivery to a device in this sandbox. `DevicePushToken` is keyed by the
+  push token itself (not `user_id`), so a device logging out of one
+  account and into another moves its existing registration instead of
+  leaving a stale row still pointing notifications at the old account.
+  `expo_push.py` is a thin, best-effort client for Expo's push HTTP API —
+  chunks to its 100-message-per-request cap, and every failure mode is
+  logged and swallowed, never raised, since a notification must never be
+  able to affect the pipeline outcome it's reporting on.
+  `video_processing_worker.py` fires one on every approve/reject (never
+  on `failed`, which is a setup problem, not a verdict on the video).
+  `expo-notifications` still isn't installed on the frontend and there's
+  no token-registration UI flow yet — that half is unchanged from before.
+- **Real exponential backoff** for both offline queues
+  (`cravesStore.ts`'s `pendingSyncActions`, `videoQueueStore.ts`'s
+  `videos`). Both gained a `lastAttemptAt` field; the retry delay (5s,
+  10s, 20s... capped at 5 minutes) is computed from that, not from
+  `queuedAt`/`createdAt` — the reference doc this session ported from had
+  exactly that bug (a delay measured from queue time only ever grows, so
+  an old-enough entry looks "due" on every check no matter how recently
+  it just failed again). `flushPendingActions`/`runSyncPass` now skip
+  (not abort the whole pass on) an entry still inside its backoff window,
+  so a due entry queued behind a not-yet-due one still gets its turn.
+
+Verified: 719 backend tests passing (698 + 21 new) clean against both a
+fresh SQLite and a freshly-created local Postgres 16 database, migration
+chain (`982f61551581`, `df7061f16615`) verified upgrade/downgrade/
+re-upgrade against real Postgres, `requirements.txt` still in sync
+(nothing new needed — `requests` was already a dependency). Frontend:
+`npx tsc --noEmit` clean, 123/123 jest passing (107 + 16 new, split
+across both stores' backoff coverage). Pushed to the same PR #48; PR
+description updated to reflect all four additions.
+
+**Still open, unchanged from the list above:**
+
+- The food classifier model itself (`food_classifier.tflite` doesn't
+  exist, `tflite-runtime`/`tensorflow` aren't installed) — still handed
+  off as its own self-contained task, no network/training compute in this
+  sandbox.
+- Native rebuild required for `expo-camera`/`expo-file-system`/
+  `expo-video` — still nothing has run on a real device or simulator.
+- `expo-notifications` frontend dependency + device-token-registration UI
+  flow (permission request, calling the new `POST /account/push-token`)
+  — the backend half now exists, the frontend half doesn't yet.
+- `video_food_score_threshold` (0.5) and the review-queue's implicit
+  "borderline" band are still unmeasured placeholders — need tuning
+  against real sample clips once the classifier is actually live.
+- Multi-device concurrent-queue-draining (two devices racing the same
+  account's outbox) — still explicitly out of scope, unchanged.
