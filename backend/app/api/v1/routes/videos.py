@@ -19,7 +19,7 @@ from app.core.auth import require_api_key
 from app.core.rate_limit import rate_limit
 from app.core.user_auth import get_current_user_id
 from app.db.session import get_db
-from app.db.models.place_video import PlaceVideo, STATUS_APPROVED
+from app.db.models.place_video import PlaceVideo, STATUS_APPROVED, MOD_APPROVED
 from app.db.models.video_template import VideoTemplate
 from app.services.upload.r2_client import generate_public_url
 from app.services.video.video_upload_service import (
@@ -117,7 +117,10 @@ def get_video_feed(
     offset: int = Query(0, ge=0),
     db: Session = Depends(get_db),
 ):
-    query = db.query(PlaceVideo).filter(PlaceVideo.status == STATUS_APPROVED)
+    query = db.query(PlaceVideo).filter(
+        PlaceVideo.status == STATUS_APPROVED,
+        PlaceVideo.moderation_status == MOD_APPROVED,
+    )
     if place_id:
         query = query.filter(PlaceVideo.place_id == place_id)
 

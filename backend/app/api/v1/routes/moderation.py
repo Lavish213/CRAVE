@@ -42,10 +42,22 @@ from app.db.models.place_image import (
     VISIBILITY_HIDDEN,
 )
 from app.services.images.place_image_invariant_service import PlaceImageInvariantService
+from app.services.upload.r2_client import generate_public_url
 from app.services.images.upload_moderation import (
     MOD_APPROVED,
     MOD_PENDING_REVIEW,
     MOD_REJECTED,
+)
+from app.db.models.video_report import (
+    AUTO_HIDE_REPORT_COUNT as VIDEO_AUTO_HIDE_REPORT_COUNT,
+    VALID_REPORT_REASONS as VALID_VIDEO_REPORT_REASONS,
+    VideoReport,
+)
+from app.db.models.place_video import (
+    PlaceVideo,
+    MOD_APPROVED as VIDEO_MOD_APPROVED,
+    MOD_PENDING_REVIEW as VIDEO_MOD_PENDING_REVIEW,
+    MOD_REJECTED as VIDEO_MOD_REJECTED,
 )
 
 logger = logging.getLogger(__name__)
@@ -235,3 +247,159 @@ def review_image(
         logger.exception("moderation_invariant_repair_failed place_id=%s", image.place_id)
 
     return {"status": image.moderation_status}
+
+
+# -------------------------
+# Video reports + review queue. Same shape as the image endpoints above --
+# see place_video.py's moderation_status/moderation_reason comment for how
+# this is kept separate from PlaceVideo.status (the processing-pipeline
+# lifecycle). No invariant-repair step here: unlike PlaceImage, PlaceVideo
+# has no primary/showcase election to re-run after a review decision.
+# -------------------------
+
+class VideoReportRequest(BaseModel):
+    reason: str = Field(..., description="One of: " + ", ".join(sorted(VALID_VIDEO_REPORT_REASONS)))
+    note: Optional[str] = Field(None, max_length=500)
+
+
+@router.post(
+    "/videos/{video_id}/report",
+    status_code=201,
+    dependencies=[Depends(rate_limit), Depends(require_api_key)],
+)
+def report_video(
+    video_id: str,
+    payload: VideoReportRequest = Body(...),
+    db: Session = Depends(get_db),
+    user_id: str = Depends(get_current_user_id),
+):
+    if payload.reason not in VALID_VIDEO_REPORT_REASONS:
+        raise HTTPException(status_code=400, detail="invalid reason")
+
+    video = db.query(PlaceVideo).filter(PlaceVideo.id == video_id).one_or_none()
+    if not video:
+        raise HTTPException(status_code=404, detail="video not found")
+
+    report = VideoReport(
+        video_id=video_id,
+        reporter_id=user_id,
+        reason=payload.reason,
+        note=(payload.note or "").strip() or None,
+    )
+    db.add(report)
+    try:
+        db.flush()
+    except IntegrityError:
+        # Already reported by this user — idempotent, not an error worth
+        # showing them.
+        db.rollback()
+        return {"status": "already_reported"}
+
+    distinct_reports = (
+        db.query(VideoReport.id).filter(VideoReport.video_id == video_id).count()
+    )
+
+    # Enough independent people flagged it that leaving it live is the
+    # riskier bet. Held for review, never deleted — a coordinated bad-faith
+    # pile-on stays recoverable.
+    hidden = False
+    if (
+        distinct_reports >= VIDEO_AUTO_HIDE_REPORT_COUNT
+        and video.moderation_status == VIDEO_MOD_APPROVED
+    ):
+        video.moderation_status = VIDEO_MOD_PENDING_REVIEW
+        video.moderation_reason = "user_reported"
+        hidden = True
+        logger.warning(
+            "video_auto_hidden_by_reports video_id=%s reports=%s",
+            video_id, distinct_reports,
+        )
+
+    db.commit()
+    return {"status": "reported", "withheld": hidden}
+
+
+class VideoQueueItem(BaseModel):
+    video_id: str
+    place_id: str
+    video_url: Optional[str]
+    thumbnail_url: Optional[str]
+    moderation_status: str
+    moderation_reason: Optional[str]
+    food_score: Optional[float]
+    uploaded_by: str
+    report_count: int
+
+
+@router.get("/videos/queue", dependencies=[Depends(rate_limit), Depends(require_api_key)])
+def video_review_queue(
+    db: Session = Depends(get_db),
+    _admin: str = Depends(require_admin),
+    limit: int = Query(50, ge=1, le=200),
+):
+    videos = (
+        db.query(PlaceVideo)
+        .filter(PlaceVideo.moderation_status == VIDEO_MOD_PENDING_REVIEW)
+        .order_by(PlaceVideo.created_at.asc())
+        .limit(limit)
+        .all()
+    )
+
+    if not videos:
+        return {"queue": []}
+
+    video_ids = [v.id for v in videos]
+    counts = dict(
+        db.query(VideoReport.video_id, func.count(VideoReport.id))
+        .filter(VideoReport.video_id.in_(video_ids))
+        .group_by(VideoReport.video_id)
+        .all()
+    )
+
+    return {
+        "queue": [
+            VideoQueueItem(
+                video_id=v.id,
+                place_id=v.place_id,
+                video_url=generate_public_url(v.processed_key) if v.processed_key else None,
+                thumbnail_url=generate_public_url(v.thumb_key) if v.thumb_key else None,
+                moderation_status=v.moderation_status,
+                moderation_reason=v.moderation_reason,
+                food_score=v.food_score,
+                uploaded_by=v.uploaded_by,
+                report_count=counts.get(v.id, 0),
+            )
+            for v in videos
+        ]
+    }
+
+
+@router.post(
+    "/videos/{video_id}/review",
+    dependencies=[Depends(rate_limit), Depends(require_api_key)],
+)
+def review_video(
+    video_id: str,
+    payload: ReviewRequest = Body(...),
+    db: Session = Depends(get_db),
+    admin_id: str = Depends(require_admin),
+):
+    if payload.decision not in ("approve", "reject"):
+        raise HTTPException(status_code=400, detail="decision must be approve or reject")
+
+    video = db.query(PlaceVideo).filter(PlaceVideo.id == video_id).one_or_none()
+    if not video:
+        raise HTTPException(status_code=404, detail="video not found")
+
+    video.reviewed_at = datetime.now(timezone.utc)
+    video.reviewed_by = admin_id
+
+    if payload.decision == "approve":
+        video.moderation_status = VIDEO_MOD_APPROVED
+        video.moderation_reason = None
+    else:
+        video.moderation_status = VIDEO_MOD_REJECTED
+        video.moderation_reason = video.moderation_reason or "manual_reject"
+
+    db.commit()
+    return {"status": video.moderation_status}

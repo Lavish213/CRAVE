@@ -65,6 +65,7 @@ from .user_streak import UserStreak
 
 # ----- Moderation Layer -----
 from .image_report import ImageReport
+from .video_report import VideoReport
 
 # ----- Video Layer -----
 from .video_template import VideoTemplate
@@ -130,4 +131,5 @@ __all__ = [
 
     # Moderation
     "ImageReport",
+    "VideoReport",
 ]

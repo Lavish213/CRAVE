@@ -4,6 +4,7 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import (
+    DateTime,
     Float,
     ForeignKey,
     Index,
@@ -53,6 +54,20 @@ REJECT_CORRUPT = "corrupt"
 REJECT_TOO_LARGE = "too_large"
 REJECT_ABANDONED_UPLOAD = "abandoned_upload"
 
+# Separate axis from `status` above, mirroring PlaceImage's
+# status/moderation_status split (see place_image.py's comment above its
+# own moderation_status column): `status` is the processing-pipeline
+# lifecycle (did the upload compress, score, and pass the content gates),
+# `moderation_status` is "should this still be shown" -- a video that
+# passed the pipeline cleanly still starts here as MOD_APPROVED and can
+# later be pulled by user reports (see video_report.py) or an admin
+# decision without touching the pipeline outcome that produced it.
+MOD_APPROVED = "approved"
+MOD_PENDING_REVIEW = "pending_review"
+MOD_REJECTED = "rejected"
+
+MOD_STATES = frozenset({MOD_APPROVED, MOD_PENDING_REVIEW, MOD_REJECTED})
+
 
 class PlaceVideo(Base, TimestampMixin):
     """
@@ -73,6 +88,9 @@ class PlaceVideo(Base, TimestampMixin):
         # first) -- see video_processing_worker.py.
         Index("ix_place_videos_status_created", "status", "created_at"),
         Index("ix_place_videos_uploaded_by", "uploaded_by"),
+        # Supports the moderation review queue (moderation_status='pending_review',
+        # oldest first) -- see moderation.py's video_review_queue.
+        Index("ix_place_videos_moderation_status", "moderation_status"),
         # An offline-recorded clip retries /videos/request with the same
         # client_id after a crash/lost-response mid-sync (see
         # video_upload_service.py) -- unique (not just an index) so two
@@ -134,3 +152,23 @@ class PlaceVideo(Base, TimestampMixin):
     reject_reason: Mapped[str | None] = mapped_column(String(32), nullable=True)
 
     error_message: Mapped[str | None] = mapped_column(String(500), nullable=True)
+
+    # --------------------------------------------------
+    # MODERATION (see app/api/v1/routes/moderation.py, video_report.py)
+    # --------------------------------------------------
+    moderation_status: Mapped[str] = mapped_column(
+        String(24),
+        nullable=False,
+        default=MOD_APPROVED,
+        server_default=text(f"'{MOD_APPROVED}'"),
+    )
+
+    # Why it's pending review or was rejected, e.g. "user_reported",
+    # "manual_reject".
+    moderation_reason: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
+    reviewed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True,
+    )
+
+    reviewed_by: Mapped[str | None] = mapped_column(String(128), nullable=True)
