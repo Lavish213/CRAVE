@@ -271,6 +271,55 @@ def test_approving_a_submission_publishes_it_to_menu_items(db, place):
     assert place.has_menu is True
 
 
+def test_approval_failure_leaves_submission_pending_and_retryable(db, place, monkeypatch):
+    """
+    Confirmed bug: the route used to commit status=APPROVED before calling
+    apply_approved_submission, so a failure inside it (materialize_menu_truth
+    is a nontrivial scoring pipeline -- a plausible place for a transient
+    bug) left the submission permanently stuck "approved" with
+    published_items=0, and the 409-on-non-PENDING guard meant there was no
+    way to even retry via this same endpoint.
+    """
+    import app.api.v1.routes.menu_submissions as menu_submissions_route
+
+    _as_user("submitter-b")
+    submission_id = client.post(
+        f"/api/v1/places/{place.id}/menu/submit", json={"items": _TWO_ITEMS},
+    ).json()["id"]
+
+    real_apply = menu_submissions_route.apply_approved_submission
+
+    def _boom(*, db, submission):
+        raise RuntimeError("materialize_menu_truth blew up")
+
+    monkeypatch.setattr(menu_submissions_route, "apply_approved_submission", _boom)
+
+    _as_user(ADMIN_ID)
+    resp = client.post(
+        f"/api/v1/moderation/menu-submissions/{submission_id}/review",
+        json={"decision": "approve"},
+    )
+    assert resp.status_code == 500
+
+    submission = db.query(MenuSubmission).filter(MenuSubmission.id == submission_id).one()
+    assert submission.status == STATUS_PENDING
+    assert submission.reviewed_at is None
+    assert submission.reviewed_by is None
+
+    # Retryable now that the failure is fixed -- a second approve attempt
+    # against the still-PENDING submission succeeds. Restoring just this
+    # one attribute (not monkeypatch.undo(), which would also revert the
+    # autouse _overrides fixture's ADMIN_USER_IDS patch on this same
+    # per-test monkeypatch instance).
+    monkeypatch.setattr(menu_submissions_route, "apply_approved_submission", real_apply)
+    resp = client.post(
+        f"/api/v1/moderation/menu-submissions/{submission_id}/review",
+        json={"decision": "approve"},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["status"] == STATUS_APPROVED
+
+
 def test_approving_a_second_submission_for_the_same_item_updates_the_claim_not_duplicates(db, place):
     """Same place, same item (same fingerprint) submitted twice — the
     second approval must update the existing claim in place, not create a

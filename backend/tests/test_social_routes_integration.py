@@ -140,6 +140,29 @@ def test_follow_unfollow_roundtrip(users):
     assert resp.json()["following"] is False
 
 
+def test_repeated_follow_does_not_duplicate_the_activity_event(users, db):
+    # Simulates a client retry after a lost response: the follow already
+    # succeeded server-side, but the client (never having seen that) POSTs
+    # the same follow again. That must not duplicate "so-and-so followed
+    # you" in the followee's activity feed.
+    _as_user(users["alice"])
+    resp = client.post(f"/api/v1/follows/{users['bob']}")
+    assert resp.status_code == 201
+
+    resp = client.post(f"/api/v1/follows/{users['bob']}")
+    assert resp.status_code == 201
+
+    count = (
+        db.query(ActivityEvent)
+        .filter(
+            ActivityEvent.user_id == users["alice"],
+            ActivityEvent.event_type == "followed_user",
+        )
+        .count()
+    )
+    assert count == 1
+
+
 def test_cannot_follow_self_via_route(users):
     _as_user(users["alice"])
     resp = client.post(f"/api/v1/follows/{users['alice']}")

@@ -11,6 +11,7 @@ from app.core.user_auth import get_current_user_id
 from app.services.upload.upload_service import (
     create_upload_slot,
     confirm_upload,
+    UploadForbiddenError,
 )
 from app.workers.image_processing_worker import process_image_upload
 
@@ -79,15 +80,22 @@ def confirm_upload_endpoint(
     user_id: str = Depends(get_current_user_id),
 ):
     try:
-        confirm_upload(
+        transitioned = confirm_upload(
             db=db,
             image_id=payload.image_id,
+            user_id=user_id,
         )
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
+    except UploadForbiddenError as e:
+        raise HTTPException(status_code=403, detail=str(e))
 
-    # Non-blocking — returns immediately, processing happens after response
-    background_tasks.add_task(process_image_upload, payload.image_id)
+    # Only schedule processing if this call actually moved the image from
+    # "pending" -- a repeat confirm is a no-op (see confirm_upload's
+    # docstring for why re-processing an already-finalized image is
+    # actively destructive, not just wasted work).
+    if transitioned:
+        background_tasks.add_task(process_image_upload, payload.image_id)
 
     return {"ok": True}
 

@@ -194,21 +194,38 @@ def review_submission(
     if submission.status != STATUS_PENDING:
         raise HTTPException(status_code=409, detail="submission already reviewed")
 
-    submission.reviewed_at = datetime.now(timezone.utc)
-    submission.reviewed_by = admin_id
-
     if payload.decision == "approve":
-        submission.status = STATUS_APPROVED
-        db.commit()
+        # Deliberately NOT committing status=APPROVED before
+        # apply_approved_submission runs: that used to commit the status
+        # transition first, so a failure inside apply_approved_submission
+        # (materialize_menu_truth is a nontrivial scoring pipeline, a
+        # plausible place for a transient bug) left the submission
+        # permanently stuck "approved" with published_items=0 -- the
+        # 409-on-non-PENDING guard above means there was then no way to
+        # even retry via this same endpoint. apply_approved_submission's
+        # own PlaceClaim writes are upserted by fingerprint, so re-running
+        # it on a retry (still possible now, since status stays PENDING
+        # until this succeeds) is safe and idempotent.
         try:
             published_count = apply_approved_submission(db=db, submission=submission)
         except Exception:
+            db.rollback()
             logger.exception(
                 "menu_submission_apply_failed submission_id=%s", submission_id
             )
-            published_count = 0
+            raise HTTPException(
+                status_code=500,
+                detail="Approval failed while applying the submission; it has not been marked approved and can be retried.",
+            )
+
+        submission.reviewed_at = datetime.now(timezone.utc)
+        submission.reviewed_by = admin_id
+        submission.status = STATUS_APPROVED
+        db.commit()
         return {"status": submission.status, "published_items": published_count}
 
+    submission.reviewed_at = datetime.now(timezone.utc)
+    submission.reviewed_by = admin_id
     submission.status = STATUS_REJECTED
     submission.rejection_reason = (payload.rejection_reason or "").strip() or None
     db.commit()

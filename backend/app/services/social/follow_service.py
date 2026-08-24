@@ -9,7 +9,16 @@ from app.db.models.user_follow import UserFollow
 from app.services.social.block_service import is_blocked
 
 
-def follow_user(db: Session, *, follower_id: str, followee_id: str) -> UserFollow:
+def follow_user(db: Session, *, follower_id: str, followee_id: str) -> tuple[UserFollow, bool]:
+    """
+    Returns (follow, created). `created` is False when the follow already
+    existed -- callers must check it before writing any first-time-only
+    side effect (e.g. an activity feed event): without it, a client retry
+    of an already-successful follow (the request landed, but the response
+    was lost) would re-record that side effect every time, since this
+    function's own idempotency (returning the existing row instead of
+    erroring) gives no signal that nothing actually changed this call.
+    """
     if follower_id == followee_id:
         raise ValueError("cannot follow yourself")
 
@@ -22,12 +31,12 @@ def follow_user(db: Session, *, follower_id: str, followee_id: str) -> UserFollo
         .one_or_none()
     )
     if existing:
-        return existing
+        return existing, False
 
     follow = UserFollow(follower_id=follower_id, followee_id=followee_id)
     db.add(follow)
     db.commit()
-    return follow
+    return follow, True
 
 
 def unfollow_user(db: Session, *, follower_id: str, followee_id: str) -> bool:

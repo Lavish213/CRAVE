@@ -168,6 +168,36 @@ def test_new_place_losing_every_comparison_lands_at_the_bottom(db, city):
     assert result["ranking"].rank_score >= TIER_SCORE_BANDS["liked"][0]
 
 
+def test_replaying_the_final_comparison_after_a_lost_response_is_idempotent(db, city):
+    # The comparison token is a stateless, replayable JWT by design — if
+    # the client never sees the response to the final round (e.g. a
+    # dropped connection) after the server-side commit already succeeded,
+    # its only option is to resubmit the identical final token+winner.
+    # That must not 500 on PlaceRanking's user+place unique constraint.
+    a, b, new = _make_places(db, city, 3)
+    _seed_ranking(db, user_id="alice", place_id=a.id, tier="liked", score=7.0)
+    _seed_ranking(db, user_id="alice", place_id=b.id, tier="liked", score=8.0)
+
+    result = ranking_service.start_ranking(db, user_id="alice", place_id=new.id, tier="liked")
+    final_token = None
+    while result["status"] == "comparing":
+        final_token = result["comparison_token"]
+        result = ranking_service.submit_comparison(db, token=final_token, winner="new")
+
+    assert result["status"] == "ranked"
+    assert result["already_existed"] is False
+    first_ranking_id = result["ranking"].id
+
+    replay = ranking_service.submit_comparison(db, token=final_token, winner="new")
+
+    assert replay["status"] == "ranked"
+    assert replay["already_existed"] is True
+    assert replay["ranking"].id == first_ranking_id
+    assert db.query(PlaceRanking).filter(
+        PlaceRanking.user_id == "alice", PlaceRanking.place_id == new.id
+    ).count() == 1
+
+
 def test_split_decision_lands_new_place_in_the_middle(db, city):
     a, b, c_, new = _make_places(db, city, 4)
     _seed_ranking(db, user_id="alice", place_id=a.id, tier="liked", score=7.0)
