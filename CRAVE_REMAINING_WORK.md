@@ -2797,3 +2797,204 @@ documented convention ("Edit backend/requirements.txt first, then copy its
 package lines here verbatim"). Verified the sync-check diff is now empty,
 and re-ran the full backend suite (633 passed, 2 skipped) against both
 SQLite and a freshly-recreated local Postgres 16 instance — clean on both.
+
+### Follow-up — offline outbox queue for saves, plus a bug-hunting sweep across the app (PR #47)
+
+Added a persisted `pendingSyncActions` queue to `cravesStore.ts`: a
+network-level failure on save/unsave now keeps the optimistic state and
+queues the action instead of rolling it back, so a genuinely-offline user
+doesn't silently lose their save. Queue is keyed by placeId, not an
+array — an add queued offline followed by a remove for the same place
+before the queue flushes cancels out to nothing (no network call ever
+needed) rather than queuing contradictory ops. Flushes on the next
+successful `loadSaves()` and on app foreground (`AppState`), both proving
+connectivity is back. Deliberately no NetInfo/new native dependency —
+reuses the existing network-error classification already in
+`_classifyError`.
+
+A dedicated bug-hunting review pass (background research agent, same
+technique used earlier this session) found and fixed 5 confirmed bugs,
+each with a regression test:
+- `upload/confirm` had no ownership check (any authenticated user could
+  confirm any `image_id` — they're public via `GET /place/{id}`'s
+  gallery) and no status guard, so re-confirming an already-`ready` image
+  forced it back through processing, where its own dedup check matched
+  it against its own stored phash and marked it `failed` — permanently
+  destroying an already-published photo. Fixed with an ownership check
+  and a pending-only state guard.
+- Menu submission approval committed `status=APPROVED` before applying
+  it, with a bare `except` swallowing any failure — a transient error in
+  `materialize_menu_truth` left the submission stuck `approved` with
+  `published_items=0` and no way to retry. Status now only commits after
+  apply actually succeeds.
+- Follow route wrote a duplicate `ActivityEvent` on a retried follow,
+  since `follow_user`'s idempotent "already following" return gave the
+  caller no signal to skip the side effect.
+- `rankings/compare`'s final round could 500 on a client retry (response
+  lost after the server-side commit already succeeded), hitting the
+  ranking's unique constraint as an uncaught `IntegrityError`. Now
+  returns the already-created ranking instead.
+- `useLocation` cached a permission denial as final for the whole app
+  session, with no way to recover after the user granted access from OS
+  Settings and returned to the app. Now re-checks on every foreground
+  transition.
+
+Also fixed a local-only dev issue found along the way: `test_crave.db`
+(the local pytest sqlite fallback) was never reset between separate local
+runs, silently accumulating rows and causing spurious
+`test_image_worker_starvation.py` failures unrelated to any code change.
+`conftest.py` now deletes it on each local run.
+
+Verified: 641 backend tests passing (633 + 8 new), frontend `tsc --noEmit`
+clean, full jest suite 107/107 (94 + 13 new). Merged as PR #47.
+
+### Follow-up — built a short food-video feature end to end: upload, processing pipeline, offline record/sync, feed (PR #48)
+
+User shared a standalone Node.js/Redis/BullMQ reference scaffold (record
+→ upload → ffmpeg compress → food-score → approve → feed, with an
+offline-first client) for a TikTok-style short food-video feature and
+asked for it adapted to CRAVE's actual stack rather than run as a
+parallel service. Ported the whole thing onto this app's real
+Python/FastAPI/Postgres backend and Expo/React Native frontend, reusing
+patterns already established this session rather than introducing new
+infrastructure:
+
+- New `place_videos`/`video_templates` tables (`aa1bb2cc3dd4` migration,
+  verified upgrade/downgrade/re-upgrade against real Postgres).
+  `video_templates` seeded with 3 starter templates (cheese pull, first
+  cut, drizzle/pour) as data, not code.
+- Upload flow (`app/services/video/video_upload_service.py`) mirrors
+  `upload_service.py`'s request/confirm shape, reusing the exact
+  ownership + pending-only-status guards fixed there in the PR #47
+  follow-up above — this feature was built with that lesson already
+  applied, not discovered again. Also adds a real max-upload-size
+  enforcement via an R2 `HeadObject` call before confirming (a presigned
+  PUT URL can't cap size itself) — something the photo upload flow still
+  doesn't have.
+- Processing pipeline (`app/services/video/video_processing_worker.py`:
+  download → ffprobe duration gate → ffmpeg compress → food-score →
+  thumbnail → approve/reject) runs as a scheduler job
+  (`app/scheduler.py`'s `video_processing`, every 3 minutes), not a
+  Redis/BullMQ queue and not a FastAPI `BackgroundTask` — matches every
+  other worker in this app, and keeps real CPU work (transcoding, ML
+  inference) off the process serving live requests, same reasoning as
+  the scheduler-worker split earlier this session. Being DB-polling
+  rather than queue-based also sidesteps a real bug the reference
+  scaffold had: its orphan sweep aged out (and destructively deleted)
+  any row still "processing," with no way to tell "client never
+  uploaded" apart from "worker's been down a while." Here a stale
+  `processing` row is just re-claimed and retried on the next pass — no
+  sweep needed for that case at all; the sweep that does exist
+  (`reject_abandoned_pending_uploads`) only ever touches `pending` rows
+  nothing else in the system will ever revisit.
+- Food classifier (`app/services/video/food_classifier.py`) calls a
+  TFLite interpreter directly in-process — no subprocess bridge needed
+  now that the backend is already Python, unlike the reference scaffold
+  which had to shell out to a separate Python process from Node. Fails
+  fast with a distinct `FoodClassifierUnavailableError` (→
+  `status='failed'`, retried later) when the model/runtime isn't
+  installed, kept separate from a genuine low-score `status='rejected'`.
+  Deliberately does NOT bundle `tflite-runtime`/`tensorflow` as a hard
+  dependency — this repo has already been burned once by a
+  bad-for-Railway's-build ML dependency (pyarrow, see the follow-up a
+  few sections up). `requirements.txt` gains only `numpy`.
+- Frontend: `videoQueueStore.ts` mirrors `cravesStore`'s offline-outbox
+  pattern from the PR #47 follow-up above (record locally first, sync
+  when connectivity returns), account-scoped so a queued video only
+  syncs under the account that recorded it. Record screen
+  (`app/record-video/[placeId].tsx`, `expo-camera`) with data-driven shot
+  templates and timed beat-cue prompts (no hardcoded template list on
+  the client). Video gallery embedded in place detail
+  (`PlaceVideoGallery.tsx`) with in-place playback (`expo-video`). Added
+  `expo-camera`/`expo-file-system`/`expo-video`, pinned to this
+  project's actual Expo SDK 54 versions from
+  `node_modules/expo/bundledNativeModules.json` after a plain `npm
+  install` first grabbed much newer, incompatible versions from a later
+  SDK line — worth remembering for any future `npm install <expo
+  package>` in this repo: always cross-check against that manifest
+  first, don't trust npm's default "latest" resolution.
+
+Verified: 671 backend tests passing (641 + 30 new) clean against both a
+fresh SQLite and a freshly-created local Postgres 16 database, frontend
+`tsc --noEmit` clean, 116/116 jest passing (107 + 9 new). Migration
+verified upgrade/downgrade/re-upgrade against real Postgres. Every
+pipeline stage (duration reject, food-classifier-unavailable vs.
+low-score rejection, successful approve, stale-processing reclaim,
+abandoned-pending sweep) has a regression test. Opened as PR #48.
+
+**Still open — deliberately out of scope for this pass, same as the
+reference scaffold's own stated scope:**
+
+- **The food classifier model itself.** Nothing scores real content yet
+  — `food_classifier.tflite` doesn't exist, and `tflite-runtime`/
+  `tensorflow` aren't installed (see the constraints above on why
+  they're not just added blind). Handed off as its own self-contained
+  task (a separate chat is working this) rather than attempted in this
+  session, which has no network access to clone/train against the
+  reference model repo or to verify a real Railway build.
+- **Native rebuild required, not just a JS/OTA update.** `expo-camera`,
+  `expo-file-system`, and `expo-video` are brand-new native dependencies
+  added this pass — recording and playback won't work on an existing
+  installed build until `expo prebuild` runs (or a new EAS build ships).
+- **Never verified live.** Camera permission flow, actual recording,
+  template selection, beat-cue timing, upload progress, and playback are
+  typecheck-clean and unit-tested at the store/API level only — nothing
+  in this feature has run on a real device or simulator. This is a
+  materially bigger unknown than the equivalent caveat on the saves
+  outbox (PR #47), which is at least simple state-machine logic with no
+  hardware in the loop; a camera/recording flow is exactly the kind of
+  thing that looks right in code and breaks on first real touch
+  (permission dialogs, camera lifecycle across app backgrounding,
+  device-specific recording quirks).
+- **Content moderation beyond automated food-score gating.** No
+  report/flag path for a live video (the photo pipeline already has this
+  — see `app/db/models/image_report.py`'s `ImageReport` model,
+  `AUTO_HIDE_REPORT_COUNT = 3` distinct-reporter threshold, and
+  `app/api/v1/routes/moderation.py`'s review-queue routes — a
+  `VideoReport` model mirroring that exact shape, keyed on `video_id`
+  instead of `image_id`, is the natural fit). No human review queue for
+  borderline food-scores either — right now a video either clears
+  `video_food_score_threshold` (0.5 default) and auto-approves, or
+  doesn't and auto-rejects; there's no middle band that lands
+  pending-review instead of being decided automatically. Needs: (1) a
+  `VideoReport` table + `POST /videos/{id}/report` route + a
+  `router_moderation`-style admin review router alongside the existing
+  photo one, (2) a product decision on what score range counts as
+  "borderline" (e.g. `threshold - 0.15` to `threshold + 0.15`?) and
+  whether a borderline video defaults to hidden-pending-review or
+  visible-pending-review while awaiting a human call.
+- **The 30s–1min "auto-highlight" fallback.** Right now anything over
+  `video_max_duration_ms` (10s default) is hard-rejected
+  (`reject_reason='duration'`) — there's no path for a longer clip to
+  get automatically trimmed down to a highlight instead of thrown away
+  outright. Would need: new settings
+  (`video_highlight_max_source_duration_ms` — the upper bound before
+  even a highlight attempt gives up, and a target output window length,
+  likely reusing `video_max_duration_ms`), and a new worker step
+  inserted between the duration gate and compression in
+  `video_processing_worker.py` — a sliding-window scorer that samples
+  food-confidence across candidate windows of the source clip (same
+  frame-sampling machinery `food_classifier.py` already has, just run
+  per-window instead of once over the whole clip) and picks the
+  highest-scoring window, then `ffmpeg`-trims to it before the existing
+  compress step runs unchanged.
+- **Push notifications on approved/rejected.** This isn't really a
+  video-specific gap — CRAVE has zero push notification infrastructure
+  of any kind (matches the "push notifications remain fully unbuilt"
+  item logged much earlier in this document, still true). Building this
+  for real needs, at minimum: the `expo-notifications` dependency (not
+  installed), a device-push-token registration flow + a
+  `device_push_tokens` table keyed by user_id, a backend service that
+  calls Expo's push API, and then — only once that plumbing exists at
+  all — two call sites to wire in: `video_processing_worker.py`'s
+  approve and reject paths.
+- **`video_food_score_threshold` (0.5) is an unmeasured placeholder** —
+  needs tuning against real sample clips once the classifier is
+  actually live and producing real scores, not guessed in advance of any
+  real data.
+- Everything else the reference scaffold itself called out as
+  deliberately unbuilt (retry-limit/backoff *tuning* beyond the current
+  flat `MAX_ATTEMPTS = 5` with no time-based backoff between attempts on
+  either offline queue, multi-device concurrent-queue-draining — two
+  devices racing the same account's outbox was explicitly scoped out of
+  the original design, not just missed) still applies unchanged.
