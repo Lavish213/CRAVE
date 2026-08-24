@@ -129,6 +129,33 @@ class Settings(BaseSettings):
     google_places_max_calls_per_run: int = 2000
 
     # --------------------------------------------------
+    # VIDEO (see app/services/video/)
+    # --------------------------------------------------
+
+    video_max_duration_ms: int = 10_000
+    video_min_duration_ms: int = 1_000
+    video_max_upload_mb: int = 50
+    video_food_score_threshold: float = 0.5
+    video_compression_bitrate: str = "2500k"
+    video_compression_max_height: int = 1920
+    # Rows still 'pending' (upload slot created, never confirmed) past this
+    # many minutes are abandoned uploads -- nothing else ever revisits a
+    # pure 'pending' row, unlike 'queued'/'processing' which the worker's
+    # own batch-select query already retries indefinitely on its own.
+    video_orphan_pending_minutes: int = 30
+    # A 'processing' row this old almost certainly means the worker
+    # crashed mid-item (process killed, deploy, OOM) rather than still
+    # being genuinely in progress -- ffmpeg/classifier calls are bounded
+    # by their own timeouts well under this. The batch-select query
+    # re-claims rows this stale instead of leaving them stuck forever.
+    video_stale_processing_minutes: int = 15
+    # Path to the interpreter that has tflite-runtime (or tensorflow)
+    # installed, if it differs from whatever "python3" resolves to on the
+    # worker box (e.g. a dedicated venv). See
+    # app/services/video/food_classifier.py.
+    food_classifier_python: str = "python3"
+
+    # --------------------------------------------------
     # DERIVED PROPERTIES
     # --------------------------------------------------
 

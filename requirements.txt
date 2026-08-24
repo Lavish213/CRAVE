@@ -111,6 +111,11 @@ pyarrow>=18.0.0
 Pillow>=10.4.0
 imagehash>=4.3.1
 
+# Frame-array preprocessing for the video food-classifier
+# (backend/app/services/video/food_classifier.py). tflite-runtime/
+# tensorflow deliberately not bundled here -- see backend/requirements.txt.
+numpy>=1.26.0
+
 # Error monitoring — no-op if SENTRY_DSN is unset (see app/main.py). Without
 # this, a prod crash is only visible by someone reading Railway logs; the
 # service ran crashed for two months once already with nothing to notice.

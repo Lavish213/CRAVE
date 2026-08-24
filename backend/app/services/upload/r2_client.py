@@ -94,3 +94,62 @@ def upload_bytes(*, key: str, data: bytes, content_type: str) -> None:
         Body=data,
         ContentType=content_type,
     )
+
+
+def head_object(key: str) -> dict:
+    """
+    Metadata (notably ContentLength) for an object already in the bucket,
+    without downloading its body. Used by the video upload flow to
+    actually enforce a max-size cap after the client's direct-to-storage
+    PUT finishes — a presigned PUT URL has no built-in size limit, so this
+    is the real enforcement point, same lesson as the confirm_upload fix
+    in app/services/upload/upload_service.py. Raises (botocore's
+    ClientError, 404 on a missing key) rather than returning None — the
+    caller already needs to distinguish "not uploaded yet" from "uploaded,
+    too large" and a raised exception makes that an explicit branch
+    instead of a silent falsy value.
+    """
+    client = _get_s3_client()
+    return client.head_object(Bucket=R2_BUCKET, Key=key)
+
+
+def download_to_file(key: str, dest_path: str) -> None:
+    """
+    Streams an object's body straight to a local file rather than loading
+    it into memory — video files are large enough that reading a whole
+    one into a Python bytes object before writing it out would waste real
+    memory for no benefit, unlike the small photo payloads upload_bytes()
+    above is sized for.
+    """
+    client = _get_s3_client()
+    obj = client.get_object(Bucket=R2_BUCKET, Key=key)
+    body = obj["Body"]
+    try:
+        with open(dest_path, "wb") as f:
+            for chunk in body.iter_chunks(chunk_size=1024 * 1024):
+                f.write(chunk)
+    finally:
+        body.close()
+
+
+def upload_file(
+    *,
+    key: str,
+    local_path: str,
+    content_type: str,
+    cache_control: str | None = None,
+) -> None:
+    """
+    File-based counterpart to upload_bytes() — for content already on
+    local disk (e.g. a worker's ffmpeg output) rather than in memory.
+    """
+    client = _get_s3_client()
+    extra_args = {"ContentType": content_type}
+    if cache_control:
+        extra_args["CacheControl"] = cache_control
+    client.upload_file(local_path, R2_BUCKET, key, ExtraArgs=extra_args)
+
+
+def delete_object(key: str) -> None:
+    client = _get_s3_client()
+    client.delete_object(Bucket=R2_BUCKET, Key=key)

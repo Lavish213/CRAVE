@@ -42,6 +42,13 @@
         {
           "photosPermission": "CRAVE needs access to your photos so you can share pictures of food and menus with a place."
         }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "CRAVE needs camera access so you can record a short video of your food.",
+          "microphonePermission": "CRAVE needs microphone access to record audio with your food videos."
+        }
       ]
     ]
   }

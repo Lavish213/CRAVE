@@ -44,6 +44,40 @@ def _job_discovery() -> None:
             db.close()
 
 
+def _job_video_processing() -> None:
+    """
+    Video processing: picks up 'queued' (client-confirmed uploads) and any
+    stale 'processing' rows (a previous run crashed mid-item -- see
+    video_processing_worker.py's own docstring for why that's a safe,
+    self-healing recovery here and not the bug class it was in the
+    Node.js reference this was ported from), then runs each through
+    download -> ffprobe -> ffmpeg compress -> food-score -> thumbnail ->
+    approve/reject. Deliberately its own scheduler job (not a FastAPI
+    BackgroundTask off the confirm-upload route, unlike photos) -- ffmpeg
+    + ML inference are real CPU work, and this is exactly the kind of
+    work app/scheduler_worker.py's own split exists to keep off the
+    process serving live requests.
+    """
+    from contextlib import suppress
+    from app.db.session import SessionLocal
+    from app.services.video.video_processing_worker import process_pending_videos
+    from app.core.job_run_tracker import track_job_run
+
+    db = SessionLocal()
+    try:
+        with track_job_run("video_processing") as run:
+            result = process_pending_videos(db, limit=20)
+            logger.info("scheduler_video_processing_complete %s", result)
+            run.set_summary(str(result)[:500])
+    except Exception as exc:
+        logger.exception("scheduler_video_processing_failed error=%s", exc)
+        with suppress(Exception):
+            db.rollback()
+    finally:
+        with suppress(Exception):
+            db.close()
+
+
 def _job_menu_enrichment() -> None:
     """Menu enrichment: ingest menu signals for known places."""
     # run_menu_worker() (MenuWorker.run) manages its own DB session lifecycle
@@ -354,6 +388,17 @@ def create_scheduler() -> BackgroundScheduler:
         hours=24,
         id="overture_ingest",
         name="CRAVE Overture Maps acquisition",
+    )
+
+    # video processing — every 3 minutes. Tighter than most other jobs on
+    # purpose: unlike a background enrichment/scoring pass, there's a
+    # real person waiting to see their clip go live.
+    scheduler.add_job(
+        _job_video_processing,
+        trigger="interval",
+        minutes=3,
+        id="video_processing",
+        name="CRAVE video processing",
     )
 
     # menu enrichment — every 10 minutes

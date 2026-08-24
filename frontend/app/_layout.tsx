@@ -6,6 +6,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useCityStore } from '../src/stores/cityStore';
 import { useAuthStore } from '../src/stores/authStore';
 import { useCravesStore } from '../src/stores/cravesStore';
+import { useVideoQueueStore, setActiveUserForVideoSync } from '../src/stores/videoQueueStore';
 import { pingStreak } from '../src/api/streak';
 import { Colors, Spacing } from '../src/constants/colors';
 import { ToastContainer } from '../src/components/Toast';
@@ -52,6 +53,7 @@ export default function RootLayout() {
   const initAuth = useAuthStore((s) => s.init);
   const user = useAuthStore((s) => s.user);
   const loadSaves = useCravesStore((s) => s.loadSaves);
+  const runVideoSyncPass = useVideoQueueStore((s) => s.runSyncPass);
 
   useEffect(() => {
     initAuth();
@@ -64,6 +66,20 @@ export default function RootLayout() {
       loadSaves(user.id);
     }
   }, [user?.id, loadSaves]);
+
+  // Registers which account owns any offline-queued videos for
+  // videoQueueStore's own AppState-foreground listener (see that store's
+  // setActiveUserForVideoSync doc comment for why this can't infer it on
+  // its own), and drains anything already queued right now -- not just on
+  // the next foreground event, so a video recorded in a previous session
+  // doesn't wait for one more background/foreground cycle to start
+  // syncing.
+  useEffect(() => {
+    setActiveUserForVideoSync(user?.id ?? null);
+    if (user?.id) {
+      runVideoSyncPass(user.id).catch(() => {});
+    }
+  }, [user?.id, runVideoSyncPass]);
 
   // Streak gamification: what counts as a "streak day" is still an open
   // product decision (see streak_service.py's module docstring), so this

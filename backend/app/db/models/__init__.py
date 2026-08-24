@@ -66,6 +66,10 @@ from .user_streak import UserStreak
 # ----- Moderation Layer -----
 from .image_report import ImageReport
 
+# ----- Video Layer -----
+from .video_template import VideoTemplate
+from .place_video import PlaceVideo
+
 
 # ---------------------------------------------------------
 # EXPORTS (STRICT + COMPLETE)

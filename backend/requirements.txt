@@ -77,6 +77,18 @@ pyarrow>=18.0.0
 Pillow>=10.4.0
 imagehash>=4.3.1
 
+# Frame-array preprocessing for the video food-classifier
+# (app/services/video/food_classifier.py). Deliberately NOT bundling
+# tflite-runtime or tensorflow here -- both are heavy, and this repo has
+# already been burned once by a bad-for-Railway's-build ML dependency
+# (see pyarrow's own history a few lines up). The classifier module
+# raises a clear, specific error if neither is installed rather than
+# failing to import at all, so the rest of the app boots fine either way
+# — add tflite-runtime (preferred, much smaller) OR tensorflow yourself
+# once you're ready to actually turn scoring on (see that module's
+# docstring for the full setup).
+numpy>=1.26.0
+
 # Error monitoring — no-op if SENTRY_DSN is unset (see app/main.py). Without
 # this, a prod crash is only visible by someone reading Railway logs; the
 # service ran crashed for two months once already with nothing to notice.

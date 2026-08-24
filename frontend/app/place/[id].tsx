@@ -31,6 +31,7 @@ import { formatScore, tierColor, TIER_LABELS } from '../../src/utils/rankScore';
 import { relativeTime } from '../../src/utils/time';
 import { withImageWidth, AVATAR_IMAGE_WIDTH } from '../../src/utils/imageUrl';
 import { ImageGallery } from '../../src/components/ImageGallery';
+import { PlaceVideoGallery } from '../../src/components/PlaceVideoGallery';
 import { ReportPhotoSheet } from '../../src/components/ReportPhotoSheet';
 import { MenuSubmissionSheet } from '../../src/components/MenuSubmissionSheet';
 import { TierBadge } from '../../src/components/TierBadge';
@@ -325,6 +326,9 @@ export default function PlaceDetailScreen() {
         images={allImages}
         gpsVerified={place.images?.length ? place.image_gps_verified : undefined}
       />
+
+      {/* Food videos */}
+      <PlaceVideoGallery placeId={place.id} />
 
       {/* Identity */}
       <View style={styles.identity}>
