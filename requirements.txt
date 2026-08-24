@@ -112,9 +112,20 @@ Pillow>=10.4.0
 imagehash>=4.3.1
 
 # Frame-array preprocessing for the video food-classifier
-# (backend/app/services/video/food_classifier.py). tflite-runtime/
-# tensorflow deliberately not bundled here -- see backend/requirements.txt.
+# (backend/app/services/video/food_classifier.py).
 numpy>=1.26.0
+
+# TFLite interpreter for the video food-classifier
+# (backend/app/services/video/food_classifier.py) -- Google's current
+# package for this (tflite-runtime's successor, same Interpreter API).
+# Confirmed installing cleanly against this same numpy>=1.26.0 pin in a
+# sandbox test (tflite-runtime 2.14.0, the only PyPI version, does NOT --
+# it's built against numpy 1.x and raises on import under numpy 2.x,
+# which this repo's numpy pin already allows). Still needs a real Railway
+# build to confirm before fully trusting it there -- this repo has been
+# burned once already by an ML-adjacent dependency (pyarrow above) not
+# installing cleanly on that platform.
+ai-edge-litert>=1.0.0
 
 # Error monitoring — no-op if SENTRY_DSN is unset (see app/main.py). Without
 # this, a prod crash is only visible by someone reading Railway logs; the

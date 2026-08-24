@@ -3,7 +3,10 @@ app/services/video/food_classifier.py
 
 Scores a video clip 0-1 on "does this actually show food" by sampling
 frames (see ffmpeg_steps.extract_sample_frames) and running each through
-a MobileNetV2-FoodClassifier TFLite model.
+a MobileNetV2-FoodClassifier TFLite model
+(https://github.com/Pramit726/MobileNetV2-FoodClassifier, MIT licensed --
+model file and its 82-class labels.txt both live in this directory,
+copied verbatim from that repo's saved_models/, not retrained here).
 
 Ported from a Node.js reference scaffold that had to shell out to a
 separate Python subprocess to reach a TFLite runtime at all -- since this
@@ -11,19 +14,33 @@ backend already IS Python, that whole subprocess bridge is unnecessary
 complexity this version doesn't have: the interpreter is just called
 directly, in-process.
 
-Setup (deliberately NOT a hard dependency of this app -- see
+Runtime (deliberately NOT a hard dependency of this app until now -- see
 requirements.txt's own comment on why bundling a heavy ML runtime here is
-risky for Railway's build until it's actually needed):
-  1. pip install tflite-runtime  (preferred, much smaller) OR tensorflow
-  2. Download/convert MobileNetV2-FoodClassifier per its own README:
-     https://github.com/Pramit726/MobileNetV2-FoodClassifier
-  3. Place the resulting file at app/services/video/food_classifier.tflite
+risky for Railway's build) is `ai-edge-litert`, Google's current
+TFLite-interpreter package (the successor to the now-legacy
+`tflite-runtime`, same `Interpreter` API, different import path). Chosen
+specifically because `tflite-runtime` 2.14.0 -- the only version PyPI has
+-- was built against numpy 1.x and raises a numpy-C-API `SystemError` on
+import under numpy 2.x, which this repo's own `numpy>=1.26.0` pin already
+allows to resolve to; `ai-edge-litert` has no such conflict. Both are
+still tried as fallbacks (in that order) for an environment that already
+has one of them installed some other way.
 
-Until both of those are done, score_video() raises
-FoodClassifierUnavailableError -- the worker treats that as a pipeline
-failure (status='failed', needs attention) rather than a content
-rejection (status='rejected'), so videos aren't silently rejected for a
-reason that has nothing to do with their actual content.
+IMPORTANT CAVEAT, found by actually running this model against real
+images in the session that wired it up (not a theoretical concern): this
+model has no explicit "not food" class, so its max-softmax confidence is
+NOT a reliable out-of-distribution detector. On real test images, actual
+food photos scored 0.988-1.000 and real non-food photos (dogs) scored
+0.52-0.57 -- a workable gap -- but an abstract gradient logo (no food-like
+content at all) scored 0.972 for "Egg". Softmax classifiers are well
+documented to be overconfident on inputs unlike anything they were
+trained on, and no threshold value fixes that specific failure mode.
+video_food_score_threshold (see settings.py) is set well above the real
+food/real non-food gap found above, but this can still be fooled by
+content that looks nothing like any of the 82 training classes. Treat
+this as a coarse first-pass filter, not a guarantee -- the moderation/
+report system (app/api/v1/routes/moderation.py's video routes) is the
+real backstop for whatever gets through.
 """
 from __future__ import annotations
 
@@ -51,6 +68,11 @@ class FoodClassifierUnavailableError(Exception):
 
 def _load_tflite_module():
     try:
+        import ai_edge_litert.interpreter as tflite  # type: ignore
+        return tflite
+    except ImportError:
+        pass
+    try:
         import tflite_runtime.interpreter as tflite  # type: ignore
         return tflite
     except ImportError:
@@ -60,10 +82,10 @@ def _load_tflite_module():
         return tf.lite
     except ImportError as exc:
         raise FoodClassifierUnavailableError(
-            "Neither tflite-runtime nor tensorflow is installed. Run "
-            "`pip install tflite-runtime` (preferred) or `pip install "
-            "tensorflow`, then see this module's docstring for the model "
-            "file setup step."
+            "None of ai-edge-litert, tflite-runtime, or tensorflow is "
+            "installed. Run `pip install ai-edge-litert` (preferred -- "
+            "see this module's docstring for why) or `pip install "
+            "tensorflow`."
         ) from exc
 
 

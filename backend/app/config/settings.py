@@ -145,7 +145,17 @@ class Settings(BaseSettings):
     # video_max_duration_ms, so this ceiling exists for when that changes.
     video_highlight_max_source_duration_ms: int = 60_000
     video_max_upload_mb: int = 50
-    video_food_score_threshold: float = 0.5
+    # Was a pure guess (0.5) before the classifier model existed. Now
+    # informed by actually running the real model (see
+    # food_classifier.py's module docstring for the full caveat) against
+    # real images: genuine food photos scored 0.988-1.000, real non-food
+    # photos scored 0.52-0.57. 0.8 sits with wide margin above the
+    # non-food scores and below the food ones -- but it's still informed
+    # by a handful of manually-picked images, not a real validation set,
+    # and it does nothing against the model's confirmed blind spot
+    # (content unlike any of its 82 training classes can still score
+    # deceptively high). Revisit once real user-submitted clips exist.
+    video_food_score_threshold: float = 0.8
     video_compression_bitrate: str = "2500k"
     video_compression_max_height: int = 1920
     # Rows still 'pending' (upload slot created, never confirmed) past this
