@@ -40,6 +40,7 @@ from app.db.models.place_video import (
     REJECT_CORRUPT,
     REJECT_DURATION,
     REJECT_FOOD_SCORE,
+    REJECT_TOO_LARGE,
     REJECT_ABANDONED_UPLOAD,
 )
 from app.services.upload.key_builder import build_video_processed_key, build_video_thumb_key
@@ -51,10 +52,53 @@ from app.services.video.food_classifier import (
     find_best_highlight_window,
     FoodClassifierUnavailableError,
 )
+from app.services.notifications.expo_push import send_push_to_user
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_BATCH_LIMIT = 20
+
+# User-facing copy for a push notification's body, keyed by reject_reason.
+# Deliberately vaguer than the internal reason strings (e.g. "food_score"
+# stays unexplained) -- these are shown to the person who recorded the
+# clip, not a debugging surface.
+_REJECT_REASON_COPY = {
+    REJECT_DURATION: "It was outside the length we support.",
+    REJECT_FOOD_SCORE: "It didn't look like it showed food clearly enough.",
+    REJECT_CORRUPT: "We couldn't process the file -- try recording again.",
+    REJECT_TOO_LARGE: "The file was too large.",
+    REJECT_ABANDONED_UPLOAD: "The upload never finished.",
+}
+
+
+def _notify_video_outcome(db: Session, video: PlaceVideo, *, approved: bool) -> None:
+    # Best-effort in the same sense as send_push_to_user itself (which
+    # never raises) -- wrapped again here anyway so a bug in this
+    # notification step can never turn into a lost/uncommitted pipeline
+    # outcome for the video it's reporting on.
+    try:
+        if approved:
+            send_push_to_user(
+                db, video.uploaded_by,
+                title="Your video is live!",
+                body="Your food video was approved and is now live.",
+                data={"type": "video_approved", "videoId": video.id, "placeId": video.place_id},
+            )
+        else:
+            send_push_to_user(
+                db, video.uploaded_by,
+                title="Your video wasn't approved",
+                body=_REJECT_REASON_COPY.get(
+                    video.reject_reason, "It didn't meet our content guidelines."
+                ),
+                data={
+                    "type": "video_rejected",
+                    "videoId": video.id,
+                    "reason": video.reject_reason,
+                },
+            )
+    except Exception:
+        logger.exception("video_push_notification_failed video_id=%s", video.id)
 
 
 def reject_abandoned_pending_uploads(db: Session) -> int:
@@ -118,6 +162,7 @@ def _reject(db: Session, video: PlaceVideo, reason: str, *, duration_ms: int | N
     if food_score is not None:
         video.food_score = food_score
     db.commit()
+    _notify_video_outcome(db, video, approved=False)
 
 
 def _fail(db: Session, video: PlaceVideo, message: str) -> None:
@@ -255,6 +300,7 @@ def process_one_video(db: Session, video: PlaceVideo) -> str:
         video.processed_key = processed_key
         video.thumb_key = thumb_key
         db.commit()
+        _notify_video_outcome(db, video, approved=True)
         return STATUS_APPROVED
     finally:
         shutil.rmtree(workdir, ignore_errors=True)

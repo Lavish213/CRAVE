@@ -356,6 +356,94 @@ def test_highlight_trim_failure_fails_the_video(db, place):
     assert "highlight_trim_failed" in (video.error_message or "")
 
 
+# ---------------------------------------------------------------------------
+# Push notifications on approve/reject (see
+# app/services/notifications/expo_push.py). Every scenario patches
+# send_push_to_user itself rather than letting it run for real -- these
+# tests only need to confirm the worker calls it with the right outcome,
+# not exercise the HTTP client (see test_expo_push.py for that).
+# ---------------------------------------------------------------------------
+
+def test_approval_sends_a_push_notification(db, place):
+    video = _make_video(db, place, status=STATUS_QUEUED)
+
+    with patch("app.services.video.video_processing_worker.download_to_file"), \
+         patch("app.services.video.video_processing_worker.ffmpeg_steps.check_duration_ms",
+               return_value=5000), \
+         patch("app.services.video.video_processing_worker.ffmpeg_steps.compress_video",
+               return_value="/tmp/fake-compressed.mp4"), \
+         patch("app.services.video.video_processing_worker.score_video",
+               return_value=0.9), \
+         patch("app.services.video.video_processing_worker.ffmpeg_steps.generate_thumbnail",
+               return_value="/tmp/fake-thumb.jpg"), \
+         patch("app.services.video.video_processing_worker.upload_file"), \
+         patch("app.services.video.video_processing_worker.delete_object"), \
+         patch("app.services.video.video_processing_worker.send_push_to_user") as mock_push:
+        outcome = process_one_video(db, video)
+
+    assert outcome == STATUS_APPROVED
+    mock_push.assert_called_once()
+    args, kwargs = mock_push.call_args
+    assert args[1] == video.uploaded_by
+    assert kwargs["data"]["type"] == "video_approved"
+
+
+def test_rejection_sends_a_push_notification_with_the_reason(db, place):
+    video = _make_video(db, place, status=STATUS_QUEUED)
+
+    with patch("app.services.video.video_processing_worker.download_to_file"), \
+         patch("app.services.video.video_processing_worker.ffmpeg_steps.check_duration_ms",
+               return_value=999_999), \
+         patch("app.services.video.video_processing_worker.delete_object"), \
+         patch("app.services.video.video_processing_worker.send_push_to_user") as mock_push:
+        outcome = process_one_video(db, video)
+
+    assert outcome == STATUS_REJECTED
+    mock_push.assert_called_once()
+    args, kwargs = mock_push.call_args
+    assert args[1] == video.uploaded_by
+    assert kwargs["data"]["type"] == "video_rejected"
+    assert kwargs["data"]["reason"] == REJECT_DURATION
+
+
+def test_a_failed_pipeline_run_does_not_send_a_push_notification(db, place):
+    # 'failed' is a setup/config problem (see food_classifier.py's
+    # docstring), not a verdict on the video -- the uploader shouldn't be
+    # told anything until it's actually resolved one way or the other.
+    video = _make_video(db, place, status=STATUS_QUEUED)
+
+    with patch("app.services.video.video_processing_worker.download_to_file",
+               side_effect=Exception("connection reset")), \
+         patch("app.services.video.video_processing_worker.send_push_to_user") as mock_push:
+        outcome = process_one_video(db, video)
+
+    assert outcome == STATUS_FAILED
+    mock_push.assert_not_called()
+
+
+def test_a_broken_notification_step_does_not_break_the_pipeline_outcome(db, place):
+    video = _make_video(db, place, status=STATUS_QUEUED)
+
+    with patch("app.services.video.video_processing_worker.download_to_file"), \
+         patch("app.services.video.video_processing_worker.ffmpeg_steps.check_duration_ms",
+               return_value=5000), \
+         patch("app.services.video.video_processing_worker.ffmpeg_steps.compress_video",
+               return_value="/tmp/fake-compressed.mp4"), \
+         patch("app.services.video.video_processing_worker.score_video",
+               return_value=0.9), \
+         patch("app.services.video.video_processing_worker.ffmpeg_steps.generate_thumbnail",
+               return_value="/tmp/fake-thumb.jpg"), \
+         patch("app.services.video.video_processing_worker.upload_file"), \
+         patch("app.services.video.video_processing_worker.delete_object"), \
+         patch("app.services.video.video_processing_worker.send_push_to_user",
+               side_effect=RuntimeError("push provider is down")):
+        outcome = process_one_video(db, video)
+
+    assert outcome == STATUS_APPROVED
+    db.refresh(video)
+    assert video.status == STATUS_APPROVED
+
+
 def test_download_failure_fails_the_video_not_the_batch(db, place):
     video = _make_video(db, place, status=STATUS_QUEUED)
 

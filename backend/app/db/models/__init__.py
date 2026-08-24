@@ -71,6 +71,9 @@ from .video_report import VideoReport
 from .video_template import VideoTemplate
 from .place_video import PlaceVideo
 
+# ----- Notifications Layer -----
+from .device_push_token import DevicePushToken
+
 
 # ---------------------------------------------------------
 # EXPORTS (STRICT + COMPLETE)
@@ -132,4 +135,7 @@ __all__ = [
     # Moderation
     "ImageReport",
     "VideoReport",
+
+    # Notifications
+    "DevicePushToken",
 ]
