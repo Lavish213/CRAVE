@@ -49,6 +49,12 @@
           "cameraPermission": "CRAVE needs camera access so you can record a short video of your food.",
           "microphonePermission": "CRAVE needs microphone access to record audio with your food videos."
         }
+      ],
+      [
+        "expo-notifications",
+        {
+          "color": "#38BDF8"
+        }
       ]
     ]
   }

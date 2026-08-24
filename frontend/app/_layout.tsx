@@ -2,14 +2,32 @@ import { useEffect, Component, ReactNode } from 'react';
 import { AppState, View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import * as Notifications from 'expo-notifications';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useCityStore } from '../src/stores/cityStore';
 import { useAuthStore } from '../src/stores/authStore';
 import { useCravesStore } from '../src/stores/cravesStore';
 import { useVideoQueueStore, setActiveUserForVideoSync } from '../src/stores/videoQueueStore';
+import { usePushNotifications } from '../src/hooks/usePushNotifications';
 import { pingStreak } from '../src/api/streak';
 import { Colors, Spacing } from '../src/constants/colors';
 import { ToastContainer } from '../src/components/Toast';
+
+// Without an explicit handler, expo-notifications silently drops a
+// notification that arrives while the app is in the foreground -- it
+// only shows automatically when backgrounded/killed. CRAVE's push
+// notifications (video approved/rejected) are exactly the kind of thing
+// a user might trigger themselves by re-opening the app right after
+// recording, so showing them in-app matters as much as in the tray.
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldPlaySound: true,
+    shouldSetBadge: false,
+    shouldShowBanner: true,
+    shouldShowList: true,
+  }),
+});
 
 class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean }> {
   state = { hasError: false };
@@ -54,6 +72,8 @@ export default function RootLayout() {
   const user = useAuthStore((s) => s.user);
   const loadSaves = useCravesStore((s) => s.loadSaves);
   const runVideoSyncPass = useVideoQueueStore((s) => s.runSyncPass);
+
+  usePushNotifications(user?.id);
 
   useEffect(() => {
     initAuth();
