@@ -169,7 +169,10 @@ describe('cravesStore', () => {
       expect(result).toBeNull();
       expect(useCravesStore.getState().saves).toEqual([makePlace('p1')]);
       expect(useCravesStore.getState().pendingSyncActions).toEqual({
-        p1: { type: 'add', userId: 'userA', queuedAt: expect.any(Number) },
+        p1: {
+          type: 'add', userId: 'userA', queuedAt: expect.any(Number),
+          attemptCount: 1, lastAttemptAt: expect.any(Number),
+        },
       });
     });
 
@@ -183,7 +186,10 @@ describe('cravesStore', () => {
       expect(result).toBeNull();
       expect(useCravesStore.getState().saves).toEqual([]);
       expect(useCravesStore.getState().pendingSyncActions).toEqual({
-        p1: { type: 'remove', userId: 'userA', queuedAt: expect.any(Number) },
+        p1: {
+          type: 'remove', userId: 'userA', queuedAt: expect.any(Number),
+          attemptCount: 1, lastAttemptAt: expect.any(Number),
+        },
       });
     });
 
@@ -220,7 +226,9 @@ describe('cravesStore', () => {
     it('flushPendingActions syncs a queued add and clears it from the queue', async () => {
       await hydrateWith(null);
       useCravesStore.setState({
-        pendingSyncActions: { p1: { type: 'add', userId: 'userA', queuedAt: 1 } },
+        pendingSyncActions: {
+          p1: { type: 'add', userId: 'userA', queuedAt: 1, attemptCount: 0, lastAttemptAt: null },
+        },
       });
       (savesApi.createSave as jest.Mock).mockResolvedValue(undefined);
 
@@ -233,7 +241,9 @@ describe('cravesStore', () => {
     it('flushPendingActions treats a 404 on a queued remove as already-synced, not a failure', async () => {
       await hydrateWith(null);
       useCravesStore.setState({
-        pendingSyncActions: { p1: { type: 'remove', userId: 'userA', queuedAt: 1 } },
+        pendingSyncActions: {
+          p1: { type: 'remove', userId: 'userA', queuedAt: 1, attemptCount: 0, lastAttemptAt: null },
+        },
       });
       (savesApi.deleteSave as jest.Mock).mockRejectedValue({ response: { status: 404 } });
 
@@ -246,8 +256,8 @@ describe('cravesStore', () => {
       await hydrateWith(null);
       useCravesStore.setState({
         pendingSyncActions: {
-          p1: { type: 'add', userId: 'userA', queuedAt: 1 },
-          p2: { type: 'add', userId: 'userA', queuedAt: 2 },
+          p1: { type: 'add', userId: 'userA', queuedAt: 1, attemptCount: 0, lastAttemptAt: null },
+          p2: { type: 'add', userId: 'userA', queuedAt: 2, attemptCount: 0, lastAttemptAt: null },
         },
       });
       (savesApi.createSave as jest.Mock).mockRejectedValue(new Error('Network Error'));
@@ -256,15 +266,20 @@ describe('cravesStore', () => {
 
       expect(savesApi.createSave).toHaveBeenCalledTimes(1);
       expect(useCravesStore.getState().pendingSyncActions).toEqual({
-        p1: { type: 'add', userId: 'userA', queuedAt: 1 },
-        p2: { type: 'add', userId: 'userA', queuedAt: 2 },
+        // The failed attempt is recorded (attemptCount bumped, lastAttemptAt
+        // stamped) so it backs off before the next pass retries it.
+        p1: { type: 'add', userId: 'userA', queuedAt: 1, attemptCount: 1, lastAttemptAt: expect.any(Number) },
+        // Never reached this pass -- the loop returned after p1's failure.
+        p2: { type: 'add', userId: 'userA', queuedAt: 2, attemptCount: 0, lastAttemptAt: null },
       });
     });
 
     it('flushPendingActions drops an entry that fails with a real (non-network) error', async () => {
       await hydrateWith(null);
       useCravesStore.setState({
-        pendingSyncActions: { p1: { type: 'add', userId: 'userA', queuedAt: 1 } },
+        pendingSyncActions: {
+          p1: { type: 'add', userId: 'userA', queuedAt: 1, attemptCount: 0, lastAttemptAt: null },
+        },
       });
       (savesApi.createSave as jest.Mock).mockRejectedValue({ response: { status: 401 } });
 
@@ -276,14 +291,88 @@ describe('cravesStore', () => {
     it('flushPendingActions leaves entries belonging to a different account untouched', async () => {
       await hydrateWith(null);
       useCravesStore.setState({
-        pendingSyncActions: { p1: { type: 'add', userId: 'userB', queuedAt: 1 } },
+        pendingSyncActions: {
+          p1: { type: 'add', userId: 'userB', queuedAt: 1, attemptCount: 0, lastAttemptAt: null },
+        },
       });
 
       await useCravesStore.getState().flushPendingActions('userA');
 
       expect(savesApi.createSave).not.toHaveBeenCalled();
       expect(useCravesStore.getState().pendingSyncActions).toEqual({
-        p1: { type: 'add', userId: 'userB', queuedAt: 1 },
+        p1: { type: 'add', userId: 'userB', queuedAt: 1, attemptCount: 0, lastAttemptAt: null },
+      });
+    });
+
+    describe('exponential backoff', () => {
+      it('skips a queued entry still within its backoff window', async () => {
+        await hydrateWith(null);
+        const now = Date.now();
+        useCravesStore.setState({
+          pendingSyncActions: {
+            // attemptCount 1 -> 5s backoff; only 1s has actually elapsed.
+            p1: { type: 'add', userId: 'userA', queuedAt: 1, attemptCount: 1, lastAttemptAt: now - 1_000 },
+          },
+        });
+
+        await useCravesStore.getState().flushPendingActions('userA');
+
+        expect(savesApi.createSave).not.toHaveBeenCalled();
+        // Left untouched -- not even attemptCount bumped, since it was
+        // never actually attempted this pass.
+        expect(useCravesStore.getState().pendingSyncActions.p1.attemptCount).toBe(1);
+      });
+
+      it('retries a queued entry once its backoff window has elapsed', async () => {
+        await hydrateWith(null);
+        const now = Date.now();
+        useCravesStore.setState({
+          pendingSyncActions: {
+            // attemptCount 1 -> 5s backoff; 10s have elapsed, so it's due.
+            p1: { type: 'add', userId: 'userA', queuedAt: 1, attemptCount: 1, lastAttemptAt: now - 10_000 },
+          },
+        });
+        (savesApi.createSave as jest.Mock).mockResolvedValue(undefined);
+
+        await useCravesStore.getState().flushPendingActions('userA');
+
+        expect(savesApi.createSave).toHaveBeenCalledWith('userA', 'p1');
+        expect(useCravesStore.getState().pendingSyncActions).toEqual({});
+      });
+
+      it('does not let a due entry block a later, still-backing-off entry from being skipped correctly', async () => {
+        await hydrateWith(null);
+        const now = Date.now();
+        useCravesStore.setState({
+          pendingSyncActions: {
+            p1: { type: 'add', userId: 'userA', queuedAt: 1, attemptCount: 1, lastAttemptAt: now - 10_000 }, // due
+            p2: { type: 'add', userId: 'userA', queuedAt: 2, attemptCount: 1, lastAttemptAt: now - 1_000 },  // not due
+          },
+        });
+        (savesApi.createSave as jest.Mock).mockResolvedValue(undefined);
+
+        await useCravesStore.getState().flushPendingActions('userA');
+
+        expect(savesApi.createSave).toHaveBeenCalledTimes(1);
+        expect(savesApi.createSave).toHaveBeenCalledWith('userA', 'p1');
+        expect(useCravesStore.getState().pendingSyncActions).toEqual({
+          p2: { type: 'add', userId: 'userA', queuedAt: 2, attemptCount: 1, lastAttemptAt: now - 1_000 },
+        });
+      });
+
+      it('grows the delay with each additional failed attempt', async () => {
+        await hydrateWith(null);
+        const now = Date.now();
+        useCravesStore.setState({
+          pendingSyncActions: {
+            // attemptCount 3 -> 20s backoff; only 10s elapsed, still due to wait.
+            p1: { type: 'add', userId: 'userA', queuedAt: 1, attemptCount: 3, lastAttemptAt: now - 10_000 },
+          },
+        });
+
+        await useCravesStore.getState().flushPendingActions('userA');
+
+        expect(savesApi.createSave).not.toHaveBeenCalled();
       });
     });
   });

@@ -47,11 +47,34 @@ export interface QueuedVideo {
   uploadedBy: string; // the signed-in user id at record time -- see below
   syncState: VideoSyncState;
   attemptCount: number;
+  // Timestamp of the most recent sync attempt, or null if never attempted
+  // (or reset by retryFailedVideo). Drives the exponential backoff below
+  // -- without it, runSyncPass retried every queued video on every
+  // foreground/reconnect event regardless of how recently it had just
+  // failed, which for a real multi-MB upload (not cravesStore's tiny JSON
+  // outbox) means repeatedly re-attempting a large PUT against a
+  // connection that was just proven bad seconds ago.
+  lastAttemptAt: number | null;
   lastError: string | null;
   createdAt: number;
 }
 
 const MAX_ATTEMPTS = 5;
+
+// Same formula and reasoning as cravesStore.ts's own backoff (see its
+// comment) -- 5s, 10s, 20s, 40s... capped at 5 minutes, computed from
+// lastAttemptAt rather than createdAt.
+const BACKOFF_BASE_MS = 5_000;
+const BACKOFF_MAX_MS = 5 * 60_000;
+
+function backoffDelayMs(attemptCount: number): number {
+  return Math.min(BACKOFF_MAX_MS, BACKOFF_BASE_MS * 2 ** Math.max(0, attemptCount - 1));
+}
+
+function isReadyToRetry(video: QueuedVideo, now: number): boolean {
+  if (video.attemptCount <= 0 || video.lastAttemptAt == null) return true;
+  return now - video.lastAttemptAt >= backoffDelayMs(video.attemptCount);
+}
 const MAX_QUEUED_VIDEOS = 10;
 // Videos are real, multi-MB files -- a fixed cap here matters far more
 // than for cravesStore's tiny JSON-only outbox entries, both for on-
@@ -135,6 +158,7 @@ export const useVideoQueueStore = create<VideoQueueStore>()(
           uploadedBy,
           syncState: 'recorded',
           attemptCount: 0,
+          lastAttemptAt: null,
           lastError: null,
           createdAt: Date.now(),
         };
@@ -147,12 +171,14 @@ export const useVideoQueueStore = create<VideoQueueStore>()(
         if (syncInFlight) return;
         syncInFlight = true;
         try {
+          const now = Date.now();
           const pending = get().videos.filter(
             (v) =>
               v.uploadedBy === userId &&
               v.syncState !== 'synced' &&
               v.syncState !== 'failed' &&
-              v.attemptCount < MAX_ATTEMPTS
+              v.attemptCount < MAX_ATTEMPTS &&
+              isReadyToRetry(v, now)
           );
 
           for (const video of pending) {
@@ -172,7 +198,7 @@ export const useVideoQueueStore = create<VideoQueueStore>()(
         set({
           videos: get().videos.map((v) =>
             v.id === id && v.syncState === 'failed'
-              ? { ...v, syncState: 'recorded', attemptCount: 0, lastError: null }
+              ? { ...v, syncState: 'recorded', attemptCount: 0, lastAttemptAt: null, lastError: null }
               : v
           ),
         });
@@ -249,6 +275,7 @@ function recordFailure(
       return {
         ...v,
         attemptCount,
+        lastAttemptAt: Date.now(),
         lastError: message,
         syncState: attemptCount >= MAX_ATTEMPTS ? 'failed' : 'recorded',
       };

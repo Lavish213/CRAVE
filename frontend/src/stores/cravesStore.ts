@@ -21,6 +21,16 @@ export interface PendingSyncAction {
   type: 'add' | 'remove';
   userId: string;
   queuedAt: number;
+  // How many sync attempts have failed with a network-level error so far
+  // (0 = never attempted). Drives the exponential backoff below --
+  // without it, every foreground/reconnect event retried every queued
+  // entry immediately regardless of how recently it had just failed.
+  attemptCount: number;
+  // Timestamp of the most recent attempt, or null if never attempted.
+  // Backoff is computed from THIS, not queuedAt -- using queuedAt would
+  // make the delay shrink relative to "now" on every check instead of
+  // resetting after each real attempt.
+  lastAttemptAt: number | null;
 }
 
 interface CravesStore {
@@ -75,6 +85,25 @@ interface CravesStore {
   // failure (e.g. a 401 from a long-expired session) drops that single
   // entry rather than blocking the queue on it forever.
   flushPendingActions: (userId: string) => Promise<void>;
+}
+
+// Exponential backoff for flushPendingActions -- 5s, 10s, 20s... capped at
+// 5 minutes. Ported from the reference offline-sync doc's backoffDelayMs
+// formula, but computed from lastAttemptAt (the most recent real attempt)
+// rather than that reference's createdAt/queuedAt, which was its actual
+// bug: a delay measured from queue time only ever grows, so an entry
+// queued long enough ago would look "due" on literally every check no
+// matter how recently it had just failed again.
+const BACKOFF_BASE_MS = 5_000;
+const BACKOFF_MAX_MS = 5 * 60_000;
+
+function _backoffDelayMs(attemptCount: number): number {
+  return Math.min(BACKOFF_MAX_MS, BACKOFF_BASE_MS * 2 ** Math.max(0, attemptCount - 1));
+}
+
+function _isReadyToRetry(action: PendingSyncAction, now: number): boolean {
+  if (action.attemptCount <= 0 || action.lastAttemptAt == null) return true;
+  return now - action.lastAttemptAt >= _backoffDelayMs(action.attemptCount);
 }
 
 const _pendingSaves = new Set<string>();
@@ -149,10 +178,21 @@ function _enqueueSyncAction(
     delete next[placeId];
     set({ pendingSyncActions: next });
   } else {
+    // Reaching this function at all means the direct addSave/removeSave
+    // call that called it just failed with a network error -- that IS a
+    // real attempt, so it counts toward backoff exactly like a
+    // flushPendingActions retry failing would (see there for the other
+    // half of this bookkeeping).
     set({
       pendingSyncActions: {
         ...current,
-        [placeId]: { type, userId, queuedAt: Date.now() },
+        [placeId]: {
+          type,
+          userId,
+          queuedAt: existing?.queuedAt ?? Date.now(),
+          attemptCount: (existing?.attemptCount ?? 0) + 1,
+          lastAttemptAt: Date.now(),
+        },
       },
     });
   }
@@ -414,11 +454,19 @@ export const useCravesStore = create<CravesStore>()(
         _flushInProgress = true;
         try {
           const entries = Object.entries(get().pendingSyncActions);
+          const now = Date.now();
           for (const [placeId, action] of entries) {
             // Belongs to a different account than the one this flush call
             // is for -- leave it queued for when that account's own
             // loadSaves()/foreground flush comes around.
             if (action.userId !== userId) continue;
+
+            // Still within its backoff window from the last failed
+            // attempt -- skip it this pass (not the same as "stop the
+            // whole pass" below: this is a per-entry timing gate, not a
+            // connectivity signal, so later-queued entries that ARE due
+            // still get their turn).
+            if (!_isReadyToRetry(action, now)) continue;
 
             try {
               if (action.type === 'add') {
@@ -441,8 +489,26 @@ export const useCravesStore = create<CravesStore>()(
               });
             } catch (err: any) {
               if (!err?.response) {
-                // Still offline -- stop this pass; the rest of the queue
-                // will get another chance next time flush is triggered.
+                // Still offline -- record the attempt so this entry backs
+                // off before the next pass retries it, then stop; the
+                // rest of the queue gets another chance next time flush
+                // is triggered. Guarded against the entry having been
+                // cancelled out (opposite action queued) by something
+                // else while this attempt's await was in flight.
+                set((state) => {
+                  const stillQueued = state.pendingSyncActions[placeId];
+                  if (!stillQueued) return state;
+                  return {
+                    pendingSyncActions: {
+                      ...state.pendingSyncActions,
+                      [placeId]: {
+                        ...stillQueued,
+                        attemptCount: stillQueued.attemptCount + 1,
+                        lastAttemptAt: Date.now(),
+                      },
+                    },
+                  };
+                });
                 return;
               }
               // A real (non-network) failure -- e.g. a session that's been
