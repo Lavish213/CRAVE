@@ -3096,3 +3096,88 @@ description updated to reflect all four additions.
   against real sample clips once the classifier is actually live.
 - Multi-device concurrent-queue-draining (two devices racing the same
   account's outbox) — still explicitly out of scope, unchanged.
+
+### Follow-up — wired up the real food classifier model + frontend push notification registration (still PR #48)
+
+Closes two more items from the lists above: "the food classifier model
+itself" and half of "push notifications" (the frontend registration
+flow — the backend infra was already built). Both were previously
+assumed blocked on network access this sandbox doesn't have; that
+assumption turned out to be wrong for GitHub specifically (git clone,
+raw.githubusercontent.com, and PyPI/npm all work through this session's
+proxy, even though generic web browsing doesn't) — worth remembering for
+next time something looks blocked on "no network access."
+
+- **Food classifier model** — cloned Pramit726/MobileNetV2-FoodClassifier
+  (MIT) directly rather than trusting its README, which doesn't actually
+  mention the model file is committed straight into the repo (not a
+  release/LFS asset). Verified by inspection, not assumption: input
+  `(1,224,224,3)` float32 and output `(1,82)` softmax match
+  `food_classifier.py`'s existing preprocessing exactly, and the 82 class
+  names were recovered from the training notebooks (Keras's
+  alphabetically-sorted `class_names` order) for `labels.txt`.
+  - Found a real dependency landmine before it could hit Railway:
+    `tflite-runtime` 2.14.0 (the only version on PyPI) is built against
+    numpy 1.x and throws a `SystemError` importing under numpy 2.x, which
+    this repo's own `numpy>=1.26.0` pin already permits. Switched to
+    `ai-edge-litert` (Google's current package, tflite-runtime's
+    successor, identical `Interpreter` API) instead, confirmed clean
+    under numpy 2.x by actually reproducing the failure and the fix.
+  - Ran the real model against real images (food photo crops from the
+    model's own training-data preview notebook, a real dog photo,
+    an abstract logo) rather than trusting the architecture on paper.
+    Real food scored 0.988-1.000, real non-food scored 0.52-0.57 — a
+    workable gap — but the abstract logo scored 0.972 for "Egg". That's
+    not a tuning problem: softmax classifiers are well documented to be
+    overconfident on inputs unlike anything in their training set, and no
+    threshold fixes it. `video_food_score_threshold` moved from 0.5
+    (a guess) to 0.8 (informed by the real gap found), documented
+    honestly as a coarse filter in both `settings.py` and
+    `food_classifier.py`'s module docstring — moderation/reporting (see
+    the follow-up above) is the real backstop for whatever slips through.
+  - New `test_food_classifier_real_model.py` runs the actual model
+    against committed fixture images — the first test in this suite that
+    isn't mocking the classifier away.
+- **Push notification frontend registration** — `expo-notifications`
+  (pinned to SDK54 via `bundledNativeModules.json`, same process as every
+  other native dep added this session), a foreground notification
+  handler (without one, notifications silently don't show while the app
+  is open — an easy-to-miss expo-notifications default), and
+  `usePushNotifications.ts`: requests permission, fetches the Expo push
+  token, calls the `POST /account/push-token` route that already existed
+  with nothing calling it.
+
+Verified: 722 backend tests passing (719 + 3 new, including the
+non-mocked real-model test) clean against both a fresh SQLite and a
+freshly-created local Postgres 16 database, `requirements.txt` sync
+verified with the new `ai-edge-litert` line. Frontend: `npx tsc --noEmit`
+clean, 129/129 jest passing (123 + 6 new).
+
+**Still open:**
+
+- **A real Railway build has never confirmed `ai-edge-litert` installs
+  cleanly there** — this repo's own established caution (pyarrow's
+  history) applies to any new dependency until a real deploy proves it,
+  and this sandbox has no Railway credentials to run one.
+- **Native rebuild + live device testing** — unchanged from above. Adding
+  `expo-notifications` is one more native module needing the same
+  `expo prebuild`/EAS build the camera/video deps already needed.
+- **`extra.eas.projectId` isn't set in app.json** — a fresh Expo project
+  doesn't have one by default; needs `eas init` against a real EAS
+  account (this sandbox has none). `usePushNotifications.ts` checks for
+  it and no-ops with a clear dev-log message if it's missing, rather than
+  crashing, so this doesn't block anything else — but push tokens
+  genuinely won't register until it's set.
+- **The threshold (0.8) and the model choice itself are still informed by
+  a handful of manually-picked test images, not a real validation set or
+  actual CRAVE video frames.** Revisit both once real user-submitted
+  clips exist to test against.
+- **The 82-class ingredient vocabulary is a domain mismatch with CRAVE's
+  actual content** — trained on raw/whole ingredients (an apple, a raw
+  chicken, a spice jar), not plated restaurant dishes (a burger, a bowl
+  of ramen). It still separated real food from real non-food cleanly in
+  testing, so it's a usable first pass, but a model actually trained on
+  plated dishes (or one with an explicit "not food" class, which would
+  let `_score_frame` do something more principled than max-softmax) would
+  likely perform meaningfully better. Not attempted here — out of scope
+  for "wire up what already exists," a genuinely new modeling task.
