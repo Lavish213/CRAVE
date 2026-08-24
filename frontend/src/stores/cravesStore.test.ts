@@ -153,5 +153,138 @@ describe('cravesStore', () => {
     await remove1;
 
     expect(useCravesStore.getState().saves).toEqual([]);
+    // The stale remove1 must not queue a sync action either -- remove2
+    // already fully completed the deletion server-side.
+    expect(useCravesStore.getState().pendingSyncActions).toEqual({});
+  });
+
+  describe('offline outbox', () => {
+    it('queues an add instead of rolling back when createSave fails with a network error', async () => {
+      await hydrateWith(null);
+      useCravesStore.setState({ saves: [], savesUserId: 'userA' });
+      (savesApi.createSave as jest.Mock).mockRejectedValue(new Error('Network Error'));
+
+      const result = await useCravesStore.getState().addSave(makePlace('p1'), 'userA');
+
+      expect(result).toBeNull();
+      expect(useCravesStore.getState().saves).toEqual([makePlace('p1')]);
+      expect(useCravesStore.getState().pendingSyncActions).toEqual({
+        p1: { type: 'add', userId: 'userA', queuedAt: expect.any(Number) },
+      });
+    });
+
+    it('queues a remove instead of restoring when deleteSave fails with a network error', async () => {
+      await hydrateWith(null);
+      useCravesStore.setState({ saves: [makePlace('p1')], savesUserId: 'userA' });
+      (savesApi.deleteSave as jest.Mock).mockRejectedValue(new Error('Network Error'));
+
+      const result = await useCravesStore.getState().removeSave('p1', 'userA');
+
+      expect(result).toBeNull();
+      expect(useCravesStore.getState().saves).toEqual([]);
+      expect(useCravesStore.getState().pendingSyncActions).toEqual({
+        p1: { type: 'remove', userId: 'userA', queuedAt: expect.any(Number) },
+      });
+    });
+
+    it('cancels a queued add when the same place is removed again before the queue flushes', async () => {
+      await hydrateWith(null);
+      useCravesStore.setState({ saves: [], savesUserId: 'userA' });
+      (savesApi.createSave as jest.Mock).mockRejectedValue(new Error('Network Error'));
+      (savesApi.deleteSave as jest.Mock).mockRejectedValue(new Error('Network Error'));
+
+      await useCravesStore.getState().addSave(makePlace('p1'), 'userA');
+      expect(useCravesStore.getState().pendingSyncActions).toHaveProperty('p1');
+
+      await useCravesStore.getState().removeSave('p1', 'userA');
+
+      // Desired end state (not saved) already matches what the server
+      // believes -- no network call should ever be needed for this place.
+      expect(useCravesStore.getState().pendingSyncActions).toEqual({});
+    });
+
+    it('cancels a queued remove when the same place is saved again before the queue flushes', async () => {
+      await hydrateWith(null);
+      useCravesStore.setState({ saves: [makePlace('p1')], savesUserId: 'userA' });
+      (savesApi.deleteSave as jest.Mock).mockRejectedValue(new Error('Network Error'));
+      (savesApi.createSave as jest.Mock).mockRejectedValue(new Error('Network Error'));
+
+      await useCravesStore.getState().removeSave('p1', 'userA');
+      expect(useCravesStore.getState().pendingSyncActions).toHaveProperty('p1');
+
+      await useCravesStore.getState().addSave(makePlace('p1'), 'userA');
+
+      expect(useCravesStore.getState().pendingSyncActions).toEqual({});
+    });
+
+    it('flushPendingActions syncs a queued add and clears it from the queue', async () => {
+      await hydrateWith(null);
+      useCravesStore.setState({
+        pendingSyncActions: { p1: { type: 'add', userId: 'userA', queuedAt: 1 } },
+      });
+      (savesApi.createSave as jest.Mock).mockResolvedValue(undefined);
+
+      await useCravesStore.getState().flushPendingActions('userA');
+
+      expect(savesApi.createSave).toHaveBeenCalledWith('userA', 'p1');
+      expect(useCravesStore.getState().pendingSyncActions).toEqual({});
+    });
+
+    it('flushPendingActions treats a 404 on a queued remove as already-synced, not a failure', async () => {
+      await hydrateWith(null);
+      useCravesStore.setState({
+        pendingSyncActions: { p1: { type: 'remove', userId: 'userA', queuedAt: 1 } },
+      });
+      (savesApi.deleteSave as jest.Mock).mockRejectedValue({ response: { status: 404 } });
+
+      await useCravesStore.getState().flushPendingActions('userA');
+
+      expect(useCravesStore.getState().pendingSyncActions).toEqual({});
+    });
+
+    it('flushPendingActions stops at the first still-offline entry and leaves the rest queued', async () => {
+      await hydrateWith(null);
+      useCravesStore.setState({
+        pendingSyncActions: {
+          p1: { type: 'add', userId: 'userA', queuedAt: 1 },
+          p2: { type: 'add', userId: 'userA', queuedAt: 2 },
+        },
+      });
+      (savesApi.createSave as jest.Mock).mockRejectedValue(new Error('Network Error'));
+
+      await useCravesStore.getState().flushPendingActions('userA');
+
+      expect(savesApi.createSave).toHaveBeenCalledTimes(1);
+      expect(useCravesStore.getState().pendingSyncActions).toEqual({
+        p1: { type: 'add', userId: 'userA', queuedAt: 1 },
+        p2: { type: 'add', userId: 'userA', queuedAt: 2 },
+      });
+    });
+
+    it('flushPendingActions drops an entry that fails with a real (non-network) error', async () => {
+      await hydrateWith(null);
+      useCravesStore.setState({
+        pendingSyncActions: { p1: { type: 'add', userId: 'userA', queuedAt: 1 } },
+      });
+      (savesApi.createSave as jest.Mock).mockRejectedValue({ response: { status: 401 } });
+
+      await useCravesStore.getState().flushPendingActions('userA');
+
+      expect(useCravesStore.getState().pendingSyncActions).toEqual({});
+    });
+
+    it('flushPendingActions leaves entries belonging to a different account untouched', async () => {
+      await hydrateWith(null);
+      useCravesStore.setState({
+        pendingSyncActions: { p1: { type: 'add', userId: 'userB', queuedAt: 1 } },
+      });
+
+      await useCravesStore.getState().flushPendingActions('userA');
+
+      expect(savesApi.createSave).not.toHaveBeenCalled();
+      expect(useCravesStore.getState().pendingSyncActions).toEqual({
+        p1: { type: 'add', userId: 'userB', queuedAt: 1 },
+      });
+    });
   });
 });

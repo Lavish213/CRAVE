@@ -131,7 +131,13 @@ def submit_comparison(
     except RankingError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
-    if result["status"] == "ranked":
+    # already_existed=True means this call landed on a replay of an
+    # already-fully-processed final comparison (see ranking_service's
+    # IntegrityError handling) -- the activity event and any other
+    # first-time-only side effects were already recorded when the
+    # original request succeeded, and recording them again here would
+    # duplicate them for no reason other than a network retry.
+    if result["status"] == "ranked" and not result.get("already_existed"):
         ranking = result["ranking"]
         record_ranked_place(
             db, user_id=ranking.user_id, place_id=ranking.place_id,

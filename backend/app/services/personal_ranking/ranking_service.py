@@ -43,6 +43,7 @@ import time
 from typing import Optional
 
 import jwt
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.config.settings import settings
@@ -237,12 +238,35 @@ def submit_comparison(
     visited_at = datetime.fromisoformat(state["visited_at"]) if state.get("visited_at") else None
     score = _finalize_score(tier, tier_list, lo)
 
-    ranking = _create_ranking(
-        db, user_id=user_id, place_id=place_id, tier=tier, score=score,
-        visited_at=visited_at, note=state.get("note"), tags=state.get("tags"),
-    )
-    db.commit()
-    return {"status": "ranked", "ranking": ranking}
+    # The comparison token is a stateless, replayable JWT by design (see
+    # module docstring) — nothing marks it "already consumed" once the
+    # final round's winner is submitted. If that response is lost to a
+    # network blip after the server-side commit already succeeded, the
+    # client's only option is to resubmit the identical final token+winner,
+    # which would otherwise hit PlaceRanking's uq_place_rankings_user_place
+    # unique constraint as an uncaught IntegrityError -> bare 500, for an
+    # action that had, in fact, already fully succeeded. Treat that
+    # specific race as success: return the ranking that already exists
+    # rather than trying to create a second one.
+    try:
+        ranking = _create_ranking(
+            db, user_id=user_id, place_id=place_id, tier=tier, score=score,
+            visited_at=visited_at, note=state.get("note"), tags=state.get("tags"),
+        )
+        db.commit()
+        return {"status": "ranked", "ranking": ranking, "already_existed": False}
+    except IntegrityError:
+        db.rollback()
+        existing = (
+            db.query(PlaceRanking)
+            .filter(PlaceRanking.user_id == user_id, PlaceRanking.place_id == place_id)
+            .one_or_none()
+        )
+        if existing is None:
+            # Constraint violation for some other reason than the replay
+            # this is meant to tolerate -- don't swallow it.
+            raise
+        return {"status": "ranked", "ranking": existing, "already_existed": True}
 
 
 def list_user_rankings(db: Session, user_id: str) -> list[PlaceRanking]:

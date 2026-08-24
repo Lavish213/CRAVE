@@ -21,12 +21,16 @@ def follow(
     user_id: str = Depends(get_current_user_id),
 ):
     try:
-        follow_service.follow_user(db, follower_id=user_id, followee_id=target_user_id)
+        _follow, created = follow_service.follow_user(db, follower_id=user_id, followee_id=target_user_id)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
-    record_followed_user(db, user_id=user_id, target_user_id=target_user_id)
-    db.commit()
+    # Only a genuinely new follow gets an activity event -- a retry of an
+    # already-successful follow (request landed, response lost) must not
+    # duplicate "so-and-so followed you" in every follower's feed.
+    if created:
+        record_followed_user(db, user_id=user_id, target_user_id=target_user_id)
+        db.commit()
     return {"status": "following"}
 
 

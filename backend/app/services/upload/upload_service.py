@@ -102,13 +102,41 @@ def create_upload_slot(
 # Step 2: Confirm Upload
 # -------------------------
 
+class UploadForbiddenError(Exception):
+    """Raised when the caller doesn't own the image being confirmed."""
+
+
 def confirm_upload(
     db: Session,
     *,
     image_id: str,
-) -> None:
+    user_id: str,
+) -> bool:
     """
-    Marks upload as ready for processing
+    Marks upload as ready for processing. Returns True if this call
+    actually performed that transition, False if it was a no-op (see
+    below) -- callers should only schedule process_image_upload() when
+    this returns True.
+
+    Two guards, both load-bearing:
+
+    - Ownership: image_ids are public (any place's GET /place/{id}
+      returns them for its gallery), so without this check any
+      authenticated user could confirm-replay any other user's upload.
+
+    - Status must be "pending": this is the actual fix for a confirmed
+      self-inflicted data-loss bug. Without it, re-confirming an
+      already-"ready" image forces its status back to "processing" and
+      re-triggers process_image_upload(), which re-downloads, re-hashes,
+      and re-runs the dedup check (app/services/upload/dedup.py) against
+      the same image's own already-stored phash -- matching itself as a
+      "duplicate" and permanently marking a legitimate, already-published
+      photo status="failed". process_image_upload() itself already
+      refuses to touch anything not in ("processing", "pending") -- the
+      whole hole existed only because this function was unconditionally
+      forcing status back into that set regardless of where it already
+      was. A repeat confirm (client retry, or someone replaying a stale
+      request) is now a silent, idempotent no-op instead.
     """
 
     image = db.query(PlaceImage).filter(PlaceImage.id == image_id).first()
@@ -116,6 +144,12 @@ def confirm_upload(
     if not image:
         raise ValueError("Image not found")
 
-    image.status = "processing"
+    if image.uploaded_by != user_id:
+        raise UploadForbiddenError("You don't own this upload")
 
+    if image.status != "pending":
+        return False
+
+    image.status = "processing"
     db.commit()
+    return True
