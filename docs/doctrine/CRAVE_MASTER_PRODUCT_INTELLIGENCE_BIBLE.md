@@ -518,6 +518,20 @@ Store:
 This is essential for debugging, experimentation, trust, and future
 model evaluation.
 
+**Implementation status (2026-08-25):** Phase 1 exists, deliberately
+smaller than the spec above --- a single `recommendation_events` table
+(surface, event_type, position, rank_percentile-at-event-time, place,
+user, session, city, query), covering impression/click (Feed only so
+far) and *confirmed* save/unsave/rank outcomes. No algorithm version,
+candidate set, component scores, or reason codes yet, since no ranking
+model exists to log them for --- extend when there's a real signal to
+attach, not preemptively. Save/unsave and completed-ranking-outcome
+logging are idempotent (a client-generated `client_event_id` /
+server-side replay guard) and production-verified with direct evidence.
+Search/Craves/Map instrumentation is the deliberate next fast-follow, in
+that order, once Search-session shape is designed (see §24's own
+addendum).
+
 ------------------------------------------------------------------------
 
 # 17. OUTCOME + LEARNING ENGINE
@@ -708,11 +722,26 @@ restaurant names.
 -   visual hierarchy is underdeveloped
 -   placeholder/empty image regions damage trust
 -   cards do not yet communicate why each place matters
--   recommendation chips are weak as a primary personalization device
+-   recommendation chips are weak as a primary personalization device ---
+    **resolved by removal, not redesign (2026-08-25):** the
+    "Recommended for You"/"Trending" chip strips were hidden entirely
+    (`SHOW_FEED_DISCOVERY_STRIPS = false`) rather than restyled, on the
+    call that confident-looking personalization UI on top of
+    not-confident-enough data does more harm than good. They should stay
+    hidden until there's real signal (see the Ledger status above)
+    backing whatever replaces them --- not be revived as a cosmetic fix.
 -   current pagination/log behavior suggests sparse pages and repeated
-    loading states should be audited
--   Feed should not repeatedly fetch empty pages while presenting a tiny
-    accumulated result set
+    loading states should be audited --- **confirmed, not just
+    suspected:** offset-based pagination against a query that reorders
+    as discovery adds inventory every ~5 minutes; a client-side dedup
+    guard prevents visible corruption but wastes real round-trips, and
+    it worsens as discovery throughput rises. Do not jump straight to
+    cursor/keyset pagination without first confirming deterministic
+    ordering and instrumenting round-trips/dedup counts --- see
+    CRAVE_STATE_OF_THE_APP.md §6.
+-   percentile-based tiering (CRAVE Pick/Hidden Gem/Worth Knowing/
+    Explore) is live and self-corrects as the catalog's score
+    distribution shifts --- this part of Feed is done, not aspirational.
 
 ------------------------------------------------------------------------
 
@@ -772,6 +801,19 @@ Potential zero-state modules:
 -   city/location shortcuts
 
 Do not fill zero state with generic decorative recommendations.
+
+**Instrumentation addendum (2026-08-25):** when Search event logging is
+built (queued as the Ledger's next fast-follow), model a *search
+session* --- submitted query + session id, results shown with position,
+a selection event, and reformulation (a new query within the same
+session before a selection) --- never a raw event per keystroke, which
+is noisy behavioral exhaust, not a taste signal. Critically, **search
+intent is not taste evidence by itself.** Searching "vegan restaurant
+for a friend" must not be read as "this user likes vegan food" ---
+search only becomes strong taste evidence once followed by an action on
+the result (`search → detail → save` or `search → detail → positive
+rank`). Keep that distinction structural in whatever gets built, not a
+convention someone has to remember later.
 
 ------------------------------------------------------------------------
 

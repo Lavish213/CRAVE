@@ -1189,6 +1189,20 @@ Do not jump directly to ML.
 5.  Algorithm versioning
 6.  Position/provenance logging
 
+**Status (2026-08-25): partially complete, deliberately flattened.**
+Items 1 and 6 are live: a single `recommendation_events` table
+(surface, event_type, position, rank_percentile-at-event-time, place,
+user, session, city, query) rather than separate Session/Candidate/
+Outcome tables --- correct for this phase, since there's no ranking
+model yet to make those distinctions meaningful. Covers Feed
+impressions/clicks and *confirmed* save/unsave/completed-ranking
+outcomes (idempotent, production-verified with direct evidence, not
+just inference). Item 5 (algorithm versioning) is intentionally not
+started --- nothing to version yet. Items 2-4 as literal separate
+entities should wait until Gate 4 (a real decision engine) actually
+needs to distinguish a session/candidate-set/outcome from a flat event
+stream; building them now would be speculative schema, not observability.
+
 ### Gate 2 - User memory
 
 7.  Explicit preference model
