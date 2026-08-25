@@ -219,3 +219,71 @@ polish pass or the P0/P1 items above.
 4. Live device pass on video (P2 #5) once the above are stable.
 5. Railway/App Store prep (P2 #6-7) whenever you're ready to move toward
    an actual submission.
+
+## Frontend architecture roadmap (post screen-audit, post getTierForPlace)
+
+Written after `getTierForPlace()` shipped as the reference pattern for
+"make an invalid state impossible instead of documenting around it."
+Ten follow-on ideas, roughly in the order they'd pay off — not urgent,
+not blocking, but worth returning to once the P0 production issues are
+resolved:
+
+1. **"Make invalid states impossible" pass across the rest of the
+   frontend** — same treatment as `getTierForPlace()` for every other
+   place the guide documents as "easy to violate": stale-response
+   guards, moderation-vs-processing status, offline outbox semantics.
+   Look for typed helpers that make the mistake a compile error instead
+   of a comment.
+2. **Canonical screen-state helper** (loading / content / empty / error
+   / refreshing / offline_cached) — a shared typed pattern, not a new
+   state library, so screens stop each reinventing this slightly
+   differently.
+3. **Visual regression coverage** — none exists today; layout changes
+   are verified by eye. Belongs on the roadmap before a real Feed/Place
+   Detail/Filters/Craves/Map/You redesign push, not before it.
+4. **A typed recommendation presentation contract** (reason codes,
+   tradeoff codes, role, confidence, dish, place, context) — defined
+   *before* the Recommendation Ledger and Feed redesign start inventing
+   bespoke props screen-by-screen. `PlaceOut` is still place-centric;
+   this would sit alongside it, not replace it.
+5. **Audit `normalizePlaceOut()` as a strategic choke point** — it's the
+   one place a backend field can silently vanish before reaching a
+   screen. Contract tests around `rank_percentile`, `categories`,
+   `price_tier`, `primary_image_url`, and future fields (open_status,
+   recommendation reasons) would catch silent drops.
+6. **Keep tier identity (`crave_pick`/`gem`/`solid`/`new`) and display
+   copy (CRAVE Pick / Hidden Gem / ...) strictly separate** — never
+   branch UI logic on the label. One canonical mapping only.
+7. **Debug-only "Why am I seeing this?" inspector** — long-press a
+   recommendation in dev to see candidate source, percentile, distance,
+   active filters, reason codes, algorithm version. Not user-facing;
+   pure tuning/debugging leverage once ranking work gets serious.
+8. **A single typed `DiscoveryQuery` contract** shared by Feed/Map/Search
+   filtering — the risk being silent semantic drift (Feed says 18
+   results, Map shows 42, Search shows 11, each screen having quietly
+   interpreted the same filters differently).
+9. **Place Detail design spec** (no code yet) — it's already flagged as
+   the highest-priority conversion screen. Define the information order
+   before touching visuals: hero identity → why this fits → open/
+   distance/price → what to order → social/trust → menu → full details.
+   Prevents a Yelp-style everything-everywhere page.
+10. **One hygiene rule for the guide itself**: once a helper encodes a
+    domain invariant, screens must call it instead of re-deriving the
+    logic locally. `getTierForPlace()` is the model; the same idea
+    applies to whatever `getUploadVisibilityState()` /
+    `getRecommendationRole()` / `getFilterCount()` end up looking like.
+
+**Bigger-picture framing, beyond any single item above:** the next phase
+of CRAVE should feel like "invisible intelligence" rather than "added AI
+features" — Craves resurfacing saved spots at the right time, Map
+suppressing irrelevant pins, Feed showing fewer but stronger options,
+Search understanding intent, You explaining learned taste. The product
+should feel sharper, not more instrumented.
+
+**Suggested sequencing for all of this:** production truth + Search
+first, then Feed retrieval, then Recommendation Ledger/event contracts,
+then the Place Detail design spec, then DiscoveryQuery/filter
+unification, then visual regression tooling. Reliability and a clean
+foundation before the bigger product upgrades — consistent with this
+plan's existing "hard constraints before personalization" ordering
+above.
