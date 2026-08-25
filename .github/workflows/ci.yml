@@ -35,6 +35,31 @@ permissions:
   contents: read
 
 jobs:
+  guard-no-conflict-markers:
+    name: Guard (no unresolved merge conflict markers)
+    # Cheap, fast, deliberately independent of every other job here so it
+    # can't be skipped/short-circuited by an unrelated failure elsewhere.
+    # compileall/tsc would already catch a conflict marker sitting in real
+    # code (it's not valid Python or TypeScript), but not one landing
+    # inside a string, comment, or a non-code file (.md, .json, .yml) --
+    # a plain grep across the whole tree closes that gap regardless of
+    # file type or where in a file the marker ends up.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Scan for unresolved conflict markers
+        run: |
+          if grep -rlE '^(<<<<<<<|=======|>>>>>>>)( |$)' \
+              --exclude-dir=.git \
+              --exclude-dir=node_modules \
+              --exclude-dir=.venv \
+              --exclude-dir=__pycache__ \
+              .; then
+            echo "::error::Unresolved merge conflict markers found in the files listed above."
+            exit 1
+          fi
+
   backend:
     name: Backend (syntax + import check)
     runs-on: ubuntu-latest
