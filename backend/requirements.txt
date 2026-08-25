@@ -42,8 +42,10 @@ rapidfuzz>=3.6.0
 # Scheduling
 apscheduler>=3.10.0
 
-# Auth (Supabase JWT verification)
+# Auth (Supabase JWT verification -- cryptography is required for PyJWT's
+# ES256 support, since Supabase signs access tokens with an asymmetric key)
 pyjwt>=2.8.0
+cryptography>=42.0.0
 
 # Cache
 redis>=5.0.0

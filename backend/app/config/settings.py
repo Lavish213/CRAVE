@@ -95,11 +95,15 @@ class Settings(BaseSettings):
 
     secret_key: str = "change-me-in-production"
 
-    # Supabase project's JWT secret (Project Settings > API > JWT Settings >
-    # JWT Secret). Required in prod — used to verify the Authorization: Bearer
-    # token the frontend sends, so the backend knows who's actually calling
-    # instead of trusting a client-supplied user_id. See app/core/user_auth.py.
-    supabase_jwt_secret: str = ""
+    # Supabase project URL (Project Settings > API > Project URL) — same
+    # value as the frontend's EXPO_PUBLIC_SUPABASE_URL. Required in prod —
+    # used to fetch the project's public JWKS and verify the
+    # Authorization: Bearer token the frontend sends, so the backend knows
+    # who's actually calling instead of trusting a client-supplied user_id.
+    # Supabase signs access tokens with an asymmetric key (ES256), not a
+    # shared secret, so there's no separate "secret" value to configure.
+    # See app/core/user_auth.py.
+    supabase_url: str = ""
 
     # CORS — comma-separated list of allowed origins. Leave blank in native-app
     # only deployments (no browser client); set explicitly if a web client is

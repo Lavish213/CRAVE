@@ -81,10 +81,10 @@ def _validate_prod_config() -> None:
             "SECRET_KEY is shorter than 32 bytes — too weak for HMAC-signed tokens"
         )
 
-    if not settings.supabase_jwt_secret:
+    if not settings.supabase_url:
         problems.append(
-            "SUPABASE_JWT_SECRET is unset — user-auth verification cannot run "
-            "(Project Settings > API > JWT Settings > JWT Secret in Supabase)"
+            "SUPABASE_URL is unset — user-auth verification cannot run "
+            "(Project Settings > API > Project URL in Supabase)"
         )
 
     if settings.cors_allow_origins.strip() == "*":

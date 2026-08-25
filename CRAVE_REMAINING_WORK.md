@@ -3255,3 +3255,63 @@ replaced one test with two), clean against both a fresh SQLite and a
 freshly-created local Postgres 16 database. Frontend: `npx tsc --noEmit`
 clean, 129/129 jest passing, `package-lock.json` regenerated from
 scratch and verified installable. Pushed to the same PR #48.
+
+## Live sign-in outage — two real, separate bugs found via actual device testing (2026-08-25)
+
+Live testing on a rebuilt simulator binary surfaced the reason nobody
+could sign in or create an account, even after the Supabase project was
+confirmed unpaused. Two independent, unrelated bugs stacked:
+
+- **Bug 1 — EAS cloud builds never had real Supabase/backend config.**
+  `EXPO_PUBLIC_SUPABASE_URL`, `EXPO_PUBLIC_SUPABASE_ANON_KEY`,
+  `EXPO_PUBLIC_API_URL`, and `EXPO_PUBLIC_API_KEY` only ever existed in
+  a local, gitignored `frontend/.env`. EAS Build has no `.easignore` in
+  this repo, so it falls back to `.gitignore` to decide what to upload
+  to its cloud build servers — meaning `.env` was silently excluded
+  from every cloud build's archive. `frontend/src/lib/supabase.ts`
+  reads these via `process.env.EXPO_PUBLIC_*` with an unvalidated `?? ''`
+  fallback, so every EAS-built app had `createClient('', '')` baked in:
+  looked installed and functional, silently could never reach Supabase.
+  `frontend/app.config.js`'s own comment already documented this exact
+  pattern for `GOOGLE_MAPS_ANDROID_API_KEY` (must be set as an EAS
+  secret/env var, not just local `.env`) — it just was never applied to
+  the other four vars. Fixed by creating all four as EAS project
+  environment variables (`eas env:create`, scoped to
+  development/preview/production) and doing a fresh build. No code
+  change — config only.
+
+- **Bug 2 — backend JWT verification used the wrong algorithm family
+  entirely, not just the wrong secret.** Even after fixing Bug 1,
+  Supabase sign-in itself succeeded (confirmed via a real 200 in
+  Supabase's own auth logs), but every backend call using that access
+  token failed with "Invalid token" — reachable from the app as an
+  unsubmittable profile-setup screen. Root cause: the Crave Supabase
+  project has migrated to Supabase's newer asymmetric JWT signing
+  (confirmed by fetching its `.well-known/jwks.json` — an ES256 EC
+  public key, no HS256 secret). `app/core/user_auth.py` was still doing
+  `jwt.decode(token, settings.supabase_jwt_secret, algorithms=["HS256"])`
+  — structurally unable to verify an ES256-signed token regardless of
+  what value the secret held. There was never a correct value to put in
+  Railway; this needed a real code change.
+
+  Fixed: `get_current_user_id` now verifies against the project's public
+  JWKS (`PyJWKClient`, cached per-process, algorithms `["ES256",
+  "RS256"]` — deliberately excludes HS256, since a shared-secret
+  algorithm has no business being verifiable from a public JWKS at all).
+  `settings.supabase_jwt_secret` replaced with `settings.supabase_url`
+  (same value as the frontend's `EXPO_PUBLIC_SUPABASE_URL`); the prod
+  startup guard in `app/main.py` updated to match. Added
+  `cryptography>=42.0.0` to both requirements files (required by PyJWT
+  for ES256). **Railway's `SUPABASE_URL` env var must be set to
+  `https://thzfsycylzjmofpzdopb.supabase.co` for this to work in prod —
+  the old `SUPABASE_JWT_SECRET` var can be removed, it's unused now.**
+
+  Also closed a real test-coverage gap found while fixing this: every
+  existing route test bypassed `get_current_user_id` via
+  `app.dependency_overrides`, so the actual signature-verification logic
+  had zero direct tests — exactly the kind of gap that let an algorithm
+  mismatch ship silently. Added `tests/test_user_auth.py`: generates a
+  real EC keypair, signs tokens with it, and asserts against forged
+  signatures, expired tokens, wrong audience, and the dev-bypass/prod
+  guard paths — 10 new tests, all passing. Full suite: 735 passed, 2
+  skipped, no regressions.
