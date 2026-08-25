@@ -8,6 +8,7 @@ from typing import List
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
+from app.core.rate_limit import rate_limit
 from app.db.session import get_db
 from app.services.query.cities_query import get_cities
 
@@ -24,6 +25,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(
     prefix="/cities",
     tags=["cities"],
+    dependencies=[Depends(rate_limit)],
 )
 
 
