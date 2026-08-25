@@ -211,6 +211,24 @@ jobs:
           DATABASE_URL: "postgresql://postgres@localhost:5432/postgres"
         run: alembic upgrade head
 
+      - name: Newest migration downgrades and re-upgrades cleanly
+        # The "from empty" step above proves the whole chain applies to a
+        # fresh DB, but a fresh DB never exercises downgrade() at all --
+        # and it can't reproduce the actual production upgrade path, which
+        # is "already at the previous revision, now apply just the new
+        # one". This does exactly that for the newest migration: downgrade
+        # -1 goes back to the head's own down_revision (i.e. production's
+        # pre-deploy state), then upgrade head re-applies only that new
+        # migration. Catches a broken/unimplemented downgrade() and an
+        # upgrade() that isn't safe to re-run after it, neither of which
+        # "from empty" can see.
+        env:
+          APP_ENV: dev
+          DATABASE_URL: "postgresql://postgres@localhost:5432/postgres"
+        run: |
+          python -m alembic downgrade -1
+          python -m alembic upgrade head
+
       - name: Run tests against real Postgres
         env:
           APP_ENV: dev

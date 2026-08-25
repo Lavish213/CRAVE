@@ -3693,3 +3693,29 @@ New test asserts every debug route's dependant tree actually contains
 `rate_limit`, not just present in the router's kwargs.
 
 790 backend tests passing.
+
+## Migration-validation CI job (2026-08-25)
+
+Confirmed production is healthy on `aaf4845`: Railway deploy `2ca9a3a2`
+started clean (migrations ran, `db=ok`, `/health` returned 200).
+
+Added a new step to the existing `backend-postgres` CI job: after the
+already-existing "upgrade head from empty" step, `alembic downgrade -1`
+then `alembic upgrade head` against the same real Postgres container.
+"From empty" proves the whole chain applies to a fresh DB but never
+exercises any `downgrade()` and can't reproduce the actual production
+upgrade path (already at the previous revision, now applying just the
+new one). The round-trip does exactly that for the newest migration —
+catches a broken/unimplemented `downgrade()` and an `upgrade()` that
+isn't safe to re-run after it.
+
+Verified locally against the real chain (local Postgres 16): full
+upgrade from empty succeeds (5 most-recent revisions through
+`f475d1becafc`), `downgrade -1` correctly reverses to `df7061f16615`,
+`upgrade head` reapplies cleanly. Full backend suite: 790 passed, 2
+skipped against both SQLite and a fresh-schema Postgres run (one earlier
+full-suite Postgres run showed 3 failures — `test_hitlist_routes.py`,
+`test_image_worker_starvation.py`, `test_menu_worker.py` — but a repeat
+run against an identically-reset schema passed clean; non-deterministic,
+not reproduced, not caused by this change — worth a closer look if it
+recurs in real CI, but not chased further here).
