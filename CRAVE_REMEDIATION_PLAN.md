@@ -1,5 +1,17 @@
 # Crave — Full Remediation Plan
 
+> **STALE — mostly already fixed.** Spot-checked against the live codebase
+> on 2026-08-25: JWT auth exists and is wired (`app/core/user_auth.py`,
+> applied to saves/hitlist/craves/share), CORS is configured, `/docs` is
+> disabled in prod, `SECRET_KEY` has a startup guard, `ImageWorker` is
+> scheduled, `job_runs`/`/debug/scheduler` exist, `entity_matcher` is
+> imported by live code, `app/pipeline/*`'s dead parallel pipeline is gone,
+> `/enrichment/*` and `/share` both carry real auth + rate limiting. Treat
+> this document as a historical record of a past audit, not current
+> guidance — check `CRAVE_REMAINING_WORK.md` for what's actually still
+> open. Left in place rather than deleted since Phases B/C/F/G/H may still
+> contain unaddressed items not yet re-verified.
+
 Audit-only synthesis. Nine audits across frontend, backend, map, menu, extraction pipeline, security, API contract, and deployment, each compared against how working production apps (Yelp/Beli-class consumer apps, standard data-pipeline startups) handle the same concerns. This document is the "what to do" — no code was changed for the new findings here.
 
 **The one-line diagnosis:** Crave is not one broken app — it's a working skeleton (routes, models, schedulers, a real design system) surrounded by six or seven half-finished systems that were never wired in, plus a production service that has been crashed for two months with no alerting to notice. Getting "fully up and working" is mostly *wiring and operating* work, not rewriting.
