@@ -117,7 +117,7 @@ behavioral data — don't start those yet.
 
 ## P1.5 — Screen-by-screen polish pass before launch (explicit priority)
 
-Two doctrine docs are now in context: `CRAVE_DECISION_INTELLIGENCE_ARCHITECTURE.md`
+Two doctrine docs now live in `docs/doctrine/`: `CRAVE_DECISION_INTELLIGENCE_ARCHITECTURE.md`
 (ranking/recommendation engine spec) and `CRAVE_MASTER_PRODUCT_INTELLIGENCE_BIBLE.md`
 (product/UX doctrine — screen-by-screen purpose, anti-slop banned list,
 100-point audit rubric in its §33). Confirmed priority: screens need to
