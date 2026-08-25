@@ -8,6 +8,22 @@ import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { PlaceOut } from '../api/places';
 import { fetchSaves, createSave, deleteSave } from '../api/saves';
+import { logRecommendationEvent } from '../utils/recommendationEventQueue';
+import { RecommendationSurface } from '../api/recommendationEvents';
+
+// Optional context passed by the calling screen so a *confirmed* save/
+// unsave outcome can be logged to the Recommendation Ledger with the
+// same surface/position/percentile framing as that screen's own
+// impression/click events. Deliberately not required: a caller with no
+// natural surface (or that hasn't been wired up yet) just gets
+// 'place_detail' as a reasonable default -- see addSave/removeSave.
+export interface SaveEventMeta {
+  surface?: RecommendationSurface;
+  position?: number | null;
+  rank_percentile?: number | null;
+  city_id?: string | null;
+  query?: string | null;
+}
 
 // A save/unsave that failed with a network-level error (no server response
 // at all -- see _classifyError's `!err?.response` check) gets queued here
@@ -31,6 +47,13 @@ export interface PendingSyncAction {
   // make the delay shrink relative to "now" on every check instead of
   // resetting after each real attempt.
   lastAttemptAt: number | null;
+  // Carried through from the addSave/removeSave call that first queued
+  // this entry, so the Recommendation Ledger event logged once the sync
+  // actually succeeds (see flushPendingActions) still has the surface/
+  // position/percentile context of the screen the user acted from --
+  // that context would otherwise be long gone by the time a later flush
+  // pass (possibly a whole app restart later) confirms the outcome.
+  meta?: SaveEventMeta;
 }
 
 interface CravesStore {
@@ -66,12 +89,16 @@ interface CravesStore {
   loadSaves: (userId: string) => Promise<void>;
 
   // Optimistic add — fires backend POST, rolls back on failure.
-  // Returns error message string on failure, null on success.
-  addSave: (place: PlaceOut, userId: string) => Promise<string | null>;
+  // Returns error message string on failure, null on success. `meta`
+  // (surface/position/percentile) is only used to log a Recommendation
+  // Ledger 'save' event once the add is actually confirmed -- see the
+  // module-level comment on SaveEventMeta.
+  addSave: (place: PlaceOut, userId: string, meta?: SaveEventMeta) => Promise<string | null>;
 
   // Optimistic remove — fires backend DELETE, rolls back on failure.
-  // Returns error message string on failure, null on success.
-  removeSave: (placeId: string, userId: string) => Promise<string | null>;
+  // Returns error message string on failure, null on success. Same
+  // `meta` treatment as addSave, logging 'unsave' once confirmed.
+  removeSave: (placeId: string, userId: string, meta?: SaveEventMeta) => Promise<string | null>;
 
   // Clear all saves locally (call on sign-out).
   clearSaves: () => void;
@@ -170,6 +197,7 @@ function _enqueueSyncAction(
   placeId: string,
   type: 'add' | 'remove',
   userId: string,
+  meta?: SaveEventMeta,
 ) {
   const current = get().pendingSyncActions;
   const existing = current[placeId];
@@ -192,10 +220,27 @@ function _enqueueSyncAction(
           queuedAt: existing?.queuedAt ?? Date.now(),
           attemptCount: (existing?.attemptCount ?? 0) + 1,
           lastAttemptAt: Date.now(),
+          meta: existing?.meta ?? meta,
         },
       },
     });
   }
+}
+
+function _logSaveOutcome(
+  eventType: 'save' | 'unsave',
+  placeId: string,
+  meta?: SaveEventMeta,
+) {
+  logRecommendationEvent({
+    surface: meta?.surface ?? 'place_detail',
+    event_type: eventType,
+    place_id: placeId,
+    position: meta?.position ?? null,
+    rank_percentile: meta?.rank_percentile ?? null,
+    city_id: meta?.city_id ?? null,
+    query: meta?.query ?? null,
+  });
 }
 
 function _resetForNewAccount() {
@@ -322,7 +367,7 @@ export const useCravesStore = create<CravesStore>()(
         }
       },
 
-      addSave: async (place: PlaceOut, userId: string): Promise<string | null> => {
+      addSave: async (place: PlaceOut, userId: string, meta?: SaveEventMeta): Promise<string | null> => {
         // Guard: skip if already saved or a concurrent add is in flight
         const prev = get().saves;
         if (prev.find((s) => s.id === place.id) || _pendingSaves.has(place.id)) {
@@ -342,6 +387,7 @@ export const useCravesStore = create<CravesStore>()(
         try {
           await createSave(userId, place.id);
           if (__DEV__) console.log('[CRAVES_STORE] addSave_ok', place.id);
+          _logSaveOutcome('save', place.id, meta);
           return null;
         } catch (err: any) {
           // A network-level failure (no server response at all -- the
@@ -352,10 +398,12 @@ export const useCravesStore = create<CravesStore>()(
           // to retry once connectivity returns -- createSave() is
           // idempotent (see backend saves.py's "already_saved" path), so
           // a queued retry landing after a request that actually *did* get
-          // through is harmless.
+          // through is harmless. No Ledger event yet: the outcome isn't
+          // confirmed, only intended -- flushPendingActions logs it once
+          // the retry actually succeeds.
           if (!err?.response) {
             if (myGeneration === _accountGeneration) {
-              _enqueueSyncAction(set, get, place.id, 'add', userId);
+              _enqueueSyncAction(set, get, place.id, 'add', userId, meta);
             }
             if (__DEV__) console.log('[CRAVES_STORE] addSave_queued_offline', place.id);
             return null;
@@ -380,7 +428,7 @@ export const useCravesStore = create<CravesStore>()(
         }
       },
 
-      removeSave: async (placeId: string, userId: string): Promise<string | null> => {
+      removeSave: async (placeId: string, userId: string, meta?: SaveEventMeta): Promise<string | null> => {
         const myGeneration = _accountGeneration;
         // Guards against two overlapping removeSave calls for the same
         // place (e.g. a rapid double-tap, or one from before an account
@@ -395,6 +443,7 @@ export const useCravesStore = create<CravesStore>()(
         try {
           await deleteSave(userId, placeId);
           if (__DEV__) console.log('[CRAVES_STORE] removeSave_ok', placeId);
+          _logSaveOutcome('unsave', placeId, meta);
           return null;
         } catch (err: any) {
           // Same offline-queue treatment as addSave: a network-level
@@ -402,10 +451,12 @@ export const useCravesStore = create<CravesStore>()(
           // optimistic removal and queue a retry instead of restoring the
           // place. Guarded identically to the rollback below -- a stale,
           // superseded removeSave call (see the mutation-token comment on
-          // this function) must not queue anything either.
+          // this function) must not queue anything either. No Ledger
+          // event here either, for the same "not confirmed yet" reason as
+          // addSave's offline branch.
           if (!err?.response) {
             if (myGeneration === _accountGeneration && _isCurrentMutation(placeId, myMutation)) {
-              _enqueueSyncAction(set, get, placeId, 'remove', userId);
+              _enqueueSyncAction(set, get, placeId, 'remove', userId, meta);
               if (__DEV__) console.log('[CRAVES_STORE] removeSave_queued_offline', placeId);
             }
             return null;
@@ -482,6 +533,7 @@ export const useCravesStore = create<CravesStore>()(
                 }
               }
               if (__DEV__) console.log('[CRAVES_STORE] flush_synced', placeId, action.type);
+              _logSaveOutcome(action.type === 'add' ? 'save' : 'unsave', placeId, action.meta);
               set((state) => {
                 const next = { ...state.pendingSyncActions };
                 delete next[placeId];

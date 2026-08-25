@@ -7,8 +7,8 @@
 // against instead of starting blind.
 import { client } from './client';
 
-export type RecommendationSurface = 'feed' | 'search' | 'map' | 'trending' | 'craves';
-export type RecommendationEventType = 'impression' | 'click' | 'save' | 'rank';
+export type RecommendationSurface = 'feed' | 'search' | 'map' | 'trending' | 'craves' | 'place_detail';
+export type RecommendationEventType = 'impression' | 'click' | 'save' | 'unsave' | 'rank';
 
 export interface RecommendationEventInput {
   place_id?: string | null;

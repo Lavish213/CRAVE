@@ -341,13 +341,18 @@ export default function FeedScreen() {
                           setAuthVisible(true);
                           return;
                         }
+                        const saveMeta = {
+                          surface: 'feed' as const,
+                          rank_percentile: row.place.rank_percentile,
+                          city_id: selectedCity?.id ?? null,
+                        };
                         if (isSaved(row.place.id)) {
                           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-                          const err = await removeSave(row.place.id, user.id);
+                          const err = await removeSave(row.place.id, user.id, saveMeta);
                           toast(err ?? 'Removed from Saves');
                         } else {
                           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-                          const err = await addSave(row.place, user.id);
+                          const err = await addSave(row.place, user.id, saveMeta);
                           toast(err ?? 'Saved');
                         }
                       }}

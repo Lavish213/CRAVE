@@ -269,8 +269,13 @@ export default function PlaceDetailScreen() {
 
   const handleSave = async () => {
     if (!user) return;
+    const saveMeta = {
+      surface: 'place_detail' as const,
+      rank_percentile: place.rank_percentile,
+      city_id: place.city_id ?? null,
+    };
     if (saved) {
-      const err = await removeSave(place.id, user.id);
+      const err = await removeSave(place.id, user.id, saveMeta);
       if (err) {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
         toast(err);
@@ -279,7 +284,7 @@ export default function PlaceDetailScreen() {
         toast('Removed from Saves');
       }
     } else {
-      const err = await addSave(place, user.id);
+      const err = await addSave(place, user.id, saveMeta);
       if (err) {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
         toast(err);

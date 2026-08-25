@@ -3719,3 +3719,54 @@ full-suite Postgres run showed 3 failures — `test_hitlist_routes.py`,
 run against an identically-reset schema passed clean; non-deterministic,
 not reproduced, not caused by this change — worth a closer look if it
 recurs in real CI, but not chased further here).
+
+## Recommendation Ledger: save/unsave + ranking outcomes (2026-08-25)
+
+Reprioritized per explicit feedback: NOT cursor pagination yet (Feed's
+ordering has computed distance, mixed ASC/DESC, and previously no
+deterministic tiebreaker -- a keyset conversion is a retrieval
+architecture change that needs its own evidence/design pass, not a
+same-night "fully self-executable" task). Instead, extended the
+Recommendation Ledger with the next-highest-value signal: confirmed
+save/unsave and completed personal-ranking outcomes, not button taps.
+
+**Save/unsave** (frontend, cravesStore.ts): a save or remove only logs
+a Ledger event once the outcome is actually confirmed -- either
+immediately (createSave/deleteSave resolves synchronously) or, for one
+that failed with a network error and got queued in the offline outbox,
+once a later `flushPendingActions` pass actually confirms it synced.
+Tapping "save" while offline logs nothing yet; a non-network failure
+that rolls the optimistic state back logs nothing either. `addSave`/
+`removeSave` now take an optional `meta` (surface/position/
+rank_percentile/city_id/query) so the event carries the same framing as
+that screen's own impression/click events; `PendingSyncAction` carries
+`meta` through so a flush confirming an action queued a while ago (or
+across an app restart) still logs with the right context. Wired at
+Feed's PlaceCard (surface='feed'), Place Detail (surface='place_detail'
+-- new surface, plus new `unsave` event type, both one-line additions
+to the backend model per its own "adding one is not a migration"
+precedent), and the Craves tab's remove action (surface='craves').
+
+**Ranking outcomes** (backend, rankings.py): logged server-side instead
+of from the client -- `start_ranking`'s immediate-placement path and
+`submit_comparison`'s converging-comparison path are the only two places
+a ranking actually *completes*, and both already had an `already_existed`
+replay guard for `record_ranked_place`'s activity-feed write; the new
+`record_rank_outcome` call reuses that same guard, so a client retry
+after a lost response can't double-log. Deliberately does NOT set
+`rank_percentile` on these events -- that field means "this place's
+city-percentile standing," a personal ranking's rank_score is a
+different, unrelated signal, and conflating them would blur the exact
+percentile-vs-personalization line called out as a guardrail earlier
+this session.
+
+New tests: 4 backend (unsave/place_detail acceptance, record_rank_outcome
+persistence, route-level wiring on start_ranking) + 7 frontend
+(cravesStore: confirmed-immediate logging, flush-confirmed logging,
+NOT logging on offline-queue/rollback, default surface). Full suites
+green: 794 backend (SQLite + fresh-schema Postgres, migration round-trip
+re-verified), 150 frontend + clean tsc.
+
+Deliberately not done yet, per explicit instruction: Search/Craves/Map
+recommendation-event instrumentation (fast-follow, in that order, after
+this).

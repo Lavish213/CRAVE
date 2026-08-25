@@ -246,7 +246,11 @@ export default function CravesScreen() {
                 <TouchableOpacity
                   onPress={async () => {
                     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                    const err = await removeSave(item.id, user.id);
+                    const err = await removeSave(item.id, user.id, {
+                      surface: 'craves',
+                      rank_percentile: item.rank_percentile,
+                      city_id: item.city_id ?? null,
+                    });
                     if (err) {
                       toast(err);
                     } else {

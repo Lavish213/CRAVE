@@ -17,6 +17,7 @@ from app.db.models.user_profile import UserProfile
 from app.services.personal_ranking import ranking_service
 from app.services.personal_ranking.ranking_service import RankingError
 from app.services.query.place_image_visibility_query import get_primary_image_urls_bulk
+from app.services.recommendations.recommendation_event_service import record_rank_outcome
 from app.services.social.activity_service import record_ranked_place
 
 router = APIRouter(prefix="/rankings", tags=["rankings"])
@@ -84,6 +85,10 @@ def _hydrate_rankings(db: Session, rankings: list) -> List[RankedPlaceOut]:
     return out
 
 
+def _place_city_id(db: Session, place_id: str) -> Optional[str]:
+    return db.query(Place.city_id).filter(Place.id == place_id).scalar()
+
+
 def _serialize_result(result: dict) -> dict:
     if result["status"] == "ranked":
         return {"status": "ranked", "ranking": RankingOut.model_validate(result["ranking"])}
@@ -112,6 +117,10 @@ def start_ranking(
         record_ranked_place(
             db, user_id=user_id, place_id=payload.place_id,
             tier=payload.tier, score=result["ranking"].rank_score,
+        )
+        record_rank_outcome(
+            db, user_id=user_id, place_id=payload.place_id,
+            city_id=_place_city_id(db, payload.place_id),
         )
         db.commit()
 
@@ -142,6 +151,10 @@ def submit_comparison(
         record_ranked_place(
             db, user_id=ranking.user_id, place_id=ranking.place_id,
             tier=ranking.tier, score=ranking.rank_score,
+        )
+        record_rank_outcome(
+            db, user_id=ranking.user_id, place_id=ranking.place_id,
+            city_id=_place_city_id(db, ranking.place_id),
         )
         db.commit()
 

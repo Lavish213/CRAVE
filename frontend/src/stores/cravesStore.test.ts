@@ -40,6 +40,15 @@ jest.mock('../api/saves', () => ({
   deleteSave: jest.fn(),
 }));
 
+// Real recommendationEventQueue.ts -> recommendationEvents.ts -> client.ts
+// -> lib/supabase.ts, which throws at import time outside a real app
+// process (no EXPO_PUBLIC_SUPABASE_URL env var here) -- same reason
+// recommendationEventQueue.test.ts itself mocks one level down instead of
+// letting that chain load for real.
+jest.mock('../utils/recommendationEventQueue', () => ({
+  logRecommendationEvent: jest.fn(),
+}));
+
 function makePlace(id: string): PlaceOut {
   return { id, name: id } as unknown as PlaceOut;
 }
@@ -56,6 +65,7 @@ async function flush(): Promise<void> {
 describe('cravesStore', () => {
   let useCravesStore: typeof import('./cravesStore').useCravesStore;
   let savesApi: typeof import('../api/saves');
+  let eventQueue: typeof import('../utils/recommendationEventQueue');
 
   beforeEach(() => {
     jest.resetModules();
@@ -66,6 +76,9 @@ describe('cravesStore', () => {
     (savesApi.fetchSaves as jest.Mock).mockReset();
     (savesApi.createSave as jest.Mock).mockReset();
     (savesApi.deleteSave as jest.Mock).mockReset();
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    eventQueue = require('../utils/recommendationEventQueue');
+    (eventQueue.logRecommendationEvent as jest.Mock).mockReset();
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     ({ useCravesStore } = require('./cravesStore'));
   });
@@ -374,6 +387,106 @@ describe('cravesStore', () => {
 
         expect(savesApi.createSave).not.toHaveBeenCalled();
       });
+    });
+  });
+
+  describe('Recommendation Ledger outcome logging', () => {
+    // The whole point: log a *confirmed* domain outcome, never a tap. A
+    // save/remove that only got as far as "queued, network status
+    // unknown" must not log anything -- see the other assertions below.
+    it('logs a save event immediately when createSave confirms synchronously', async () => {
+      await hydrateWith(null);
+      useCravesStore.setState({ saves: [], savesUserId: 'userA' });
+      (savesApi.createSave as jest.Mock).mockResolvedValue(undefined);
+
+      await useCravesStore.getState().addSave(makePlace('p1'), 'userA', {
+        surface: 'feed', rank_percentile: 0.9, city_id: 'city-1',
+      });
+
+      expect(eventQueue.logRecommendationEvent).toHaveBeenCalledTimes(1);
+      expect(eventQueue.logRecommendationEvent).toHaveBeenCalledWith({
+        surface: 'feed', event_type: 'save', place_id: 'p1',
+        position: null, rank_percentile: 0.9, city_id: 'city-1', query: null,
+      });
+    });
+
+    it('logs an unsave event immediately when deleteSave confirms synchronously', async () => {
+      await hydrateWith(null);
+      useCravesStore.setState({ saves: [makePlace('p1')], savesUserId: 'userA' });
+      (savesApi.deleteSave as jest.Mock).mockResolvedValue(undefined);
+
+      await useCravesStore.getState().removeSave('p1', 'userA', { surface: 'craves' });
+
+      expect(eventQueue.logRecommendationEvent).toHaveBeenCalledTimes(1);
+      expect(eventQueue.logRecommendationEvent).toHaveBeenCalledWith(
+        expect.objectContaining({ surface: 'craves', event_type: 'unsave', place_id: 'p1' }),
+      );
+    });
+
+    it('defaults to place_detail surface when no meta is passed', async () => {
+      await hydrateWith(null);
+      useCravesStore.setState({ saves: [], savesUserId: 'userA' });
+      (savesApi.createSave as jest.Mock).mockResolvedValue(undefined);
+
+      await useCravesStore.getState().addSave(makePlace('p1'), 'userA');
+
+      expect(eventQueue.logRecommendationEvent).toHaveBeenCalledWith(
+        expect.objectContaining({ surface: 'place_detail', event_type: 'save' }),
+      );
+    });
+
+    it('does not log anything when a save is only queued offline, not yet confirmed', async () => {
+      await hydrateWith(null);
+      useCravesStore.setState({ saves: [], savesUserId: 'userA' });
+      (savesApi.createSave as jest.Mock).mockRejectedValue(new Error('Network Error'));
+
+      await useCravesStore.getState().addSave(makePlace('p1'), 'userA', { surface: 'feed' });
+
+      expect(eventQueue.logRecommendationEvent).not.toHaveBeenCalled();
+      expect(useCravesStore.getState().pendingSyncActions.p1.meta).toEqual({ surface: 'feed' });
+    });
+
+    it('does not log anything when a real (non-network) failure rolls back the save', async () => {
+      await hydrateWith(null);
+      useCravesStore.setState({ saves: [], savesUserId: 'userA' });
+      (savesApi.createSave as jest.Mock).mockRejectedValue({ response: { status: 500 } });
+
+      await useCravesStore.getState().addSave(makePlace('p1'), 'userA', { surface: 'feed' });
+
+      expect(eventQueue.logRecommendationEvent).not.toHaveBeenCalled();
+    });
+
+    it('logs the save event once a queued add is confirmed by a later flush, using the meta captured at queue time', async () => {
+      await hydrateWith(null);
+      useCravesStore.setState({
+        pendingSyncActions: {
+          p1: {
+            type: 'add', userId: 'userA', queuedAt: 1, attemptCount: 0, lastAttemptAt: null,
+            meta: { surface: 'search', rank_percentile: 0.5 },
+          },
+        },
+      });
+      (savesApi.createSave as jest.Mock).mockResolvedValue(undefined);
+
+      await useCravesStore.getState().flushPendingActions('userA');
+
+      expect(eventQueue.logRecommendationEvent).toHaveBeenCalledWith(
+        expect.objectContaining({ surface: 'search', event_type: 'save', place_id: 'p1', rank_percentile: 0.5 }),
+      );
+    });
+
+    it('does not log anything for an entry flushPendingActions leaves queued (still offline)', async () => {
+      await hydrateWith(null);
+      useCravesStore.setState({
+        pendingSyncActions: {
+          p1: { type: 'add', userId: 'userA', queuedAt: 1, attemptCount: 0, lastAttemptAt: null },
+        },
+      });
+      (savesApi.createSave as jest.Mock).mockRejectedValue(new Error('Network Error'));
+
+      await useCravesStore.getState().flushPendingActions('userA');
+
+      expect(eventQueue.logRecommendationEvent).not.toHaveBeenCalled();
     });
   });
 });

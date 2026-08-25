@@ -15,6 +15,8 @@ from typing import Iterable, List, Optional
 from sqlalchemy.orm import Session
 
 from app.db.models.recommendation_event import (
+    EVENT_RANK,
+    SURFACE_PLACE_DETAIL,
     VALID_EVENT_TYPES,
     VALID_SURFACES,
     RecommendationEvent,
@@ -104,3 +106,40 @@ def record_events(
     db.add_all(events)
     db.commit()
     return len(events)
+
+
+def record_rank_outcome(
+    db: Session,
+    *,
+    user_id: str,
+    place_id: str,
+    city_id: Optional[str] = None,
+) -> RecommendationEvent:
+    """
+    Logs a *completed* personal ranking -- called only from the two
+    rankings.py code paths where a ranking actually lands (immediate
+    top/bottom placement in start_ranking, or the converging comparison
+    in submit_comparison), never per comparison tap, and never on a
+    replayed/already-recorded outcome (callers already guard on
+    `already_existed` for the same reason record_ranked_place is skipped
+    there -- see rankings.py).
+
+    Deliberately doesn't set rank_percentile: that field means "this
+    place's city-percentile standing at event time" (see the model's own
+    docstring) and a personal ranking's rank_score is a different,
+    unrelated signal -- conflating the two would blur exactly the
+    percentile-tier-vs-personalization line this app is trying to keep
+    separate elsewhere. Matches record_ranked_place's own
+    add()-then-let-the-route-commit convention rather than committing
+    here itself.
+    """
+    event = RecommendationEvent(
+        user_id=user_id,
+        place_id=place_id,
+        surface=SURFACE_PLACE_DETAIL,
+        event_type=EVENT_RANK,
+        city_id=city_id,
+    )
+    db.add(event)
+    db.flush()
+    return event

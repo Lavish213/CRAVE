@@ -28,6 +28,7 @@ from app.db.models.user_profile import UserProfile
 from app.db.models.user_follow import UserFollow
 from app.db.models.place_ranking import PlaceRanking
 from app.db.models.activity_event import ActivityEvent
+from app.db.models.recommendation_event import RecommendationEvent
 
 client = TestClient(app)
 
@@ -70,6 +71,9 @@ def city(db):
 
     db.query(ActivityEvent).filter(
         ActivityEvent.place_id.in_(db.query(Place.id).filter(Place.city_id == c.id))
+    ).delete(synchronize_session=False)
+    db.query(RecommendationEvent).filter(
+        RecommendationEvent.place_id.in_(db.query(Place.id).filter(Place.city_id == c.id))
     ).delete(synchronize_session=False)
     db.query(PlaceRanking).filter(
         PlaceRanking.place_id.in_(db.query(Place.id).filter(Place.city_id == c.id))
@@ -188,6 +192,36 @@ def test_ranking_unknown_place_returns_400(users):
     _as_user(users["alice"])
     resp = client.post("/api/v1/rankings", json={"place_id": "does-not-exist", "tier": "liked"})
     assert resp.status_code == 400
+
+
+def test_start_ranking_logs_a_completed_rank_event_to_the_ledger(city, db):
+    # Recommendation Ledger: a completed ranking outcome, not a button tap
+    # -- see recommendation_event_service.record_rank_outcome. This is the
+    # route-wiring half of the coverage; the service-layer behavior itself
+    # (no rank_percentile, correct surface) is covered directly in
+    # test_recommendation_event_service.py.
+    place = Place(name=f"Route Test Place {uuid.uuid4().hex[:6]}", city_id=city.id)
+    with SessionLocal() as setup_db:
+        setup_db.add(place)
+        setup_db.commit()
+        setup_db.refresh(place)
+
+    user_id = f"route-test-ranker-{uuid.uuid4().hex[:8]}"
+    _as_user(user_id)
+    resp = client.post("/api/v1/rankings", json={"place_id": place.id, "tier": "liked"})
+    assert resp.status_code == 201
+    assert resp.json()["status"] == "ranked"
+
+    events = (
+        db.query(RecommendationEvent)
+        .filter(RecommendationEvent.place_id == place.id, RecommendationEvent.event_type == "rank")
+        .all()
+    )
+    assert len(events) == 1
+    assert events[0].user_id == user_id
+    assert events[0].surface == "place_detail"
+    assert events[0].city_id == city.id
+    assert events[0].rank_percentile is None
 
 
 def test_leaderboard_endpoint_reachable(users):

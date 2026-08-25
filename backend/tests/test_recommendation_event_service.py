@@ -23,6 +23,7 @@ from app.db.models.recommendation_event import RecommendationEvent
 from app.services.recommendations.recommendation_event_service import (
     build_valid_events,
     record_events,
+    record_rank_outcome,
 )
 
 
@@ -91,6 +92,24 @@ def test_out_of_range_percentile_is_clamped_not_dropped():
         user_id="user-a",
     )
     assert events[0].rank_percentile == 1.0
+
+
+def test_unsave_event_type_is_accepted():
+    events = build_valid_events(
+        raw_events=[_RawEvent(surface="craves", event_type="unsave")],
+        user_id="user-a",
+    )
+    assert len(events) == 1
+    assert events[0].event_type == "unsave"
+
+
+def test_place_detail_surface_is_accepted():
+    events = build_valid_events(
+        raw_events=[_RawEvent(surface="place_detail", event_type="save")],
+        user_id="user-a",
+    )
+    assert len(events) == 1
+    assert events[0].surface == "place_detail"
 
 
 def test_anonymous_event_has_null_user_id():
@@ -179,3 +198,40 @@ def test_record_events_returns_zero_when_everything_is_invalid(db):
         user_id="user-a",
     )
     assert accepted == 0
+
+
+def test_record_rank_outcome_persists_a_rank_event_with_no_percentile(db):
+    """
+    record_rank_outcome deliberately never sets rank_percentile -- a
+    personal ranking's rank_score is a different signal than the
+    city-percentile value that field means everywhere else it's set
+    (see the function's own docstring). Confirms that stays true even
+    though the row otherwise looks just like any other ledger event.
+    """
+    session, created = db
+    city = City(
+        id=str(uuid.uuid4()), name=f"Ledger Test City {uuid.uuid4().hex[:6]}",
+        slug=f"ledger-test-{uuid.uuid4().hex[:8]}", lat=37.8, lng=-122.27, is_active=True,
+    )
+    session.add(city)
+    session.commit()
+    created["city_ids"].append(city.id)
+
+    place = Place(name="Ledger Test Place", city_id=city.id, rank_score=0.5)
+    session.add(place)
+    session.commit()
+    created["place_ids"].append(place.id)
+
+    event = record_rank_outcome(
+        session, user_id="user-a", place_id=place.id, city_id=city.id,
+    )
+    session.commit()
+    created["event_ids"].append(event.id)
+
+    row = session.query(RecommendationEvent).filter(RecommendationEvent.id == event.id).one()
+    assert row.event_type == "rank"
+    assert row.surface == "place_detail"
+    assert row.user_id == "user-a"
+    assert row.place_id == place.id
+    assert row.city_id == city.id
+    assert row.rank_percentile is None

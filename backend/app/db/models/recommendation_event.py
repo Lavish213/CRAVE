@@ -33,8 +33,14 @@ SURFACE_SEARCH = "search"
 SURFACE_MAP = "map"
 SURFACE_TRENDING = "trending"
 SURFACE_CRAVES = "craves"
+# Where the ranking flow and (for a save/unsave with no closer surface
+# context, e.g. a screen that isn't itself a discovery list) a save
+# outcome actually happens -- distinct from the surfaces above, which are
+# all "where the place was discovered/displayed".
+SURFACE_PLACE_DETAIL = "place_detail"
 VALID_SURFACES = {
     SURFACE_FEED, SURFACE_SEARCH, SURFACE_MAP, SURFACE_TRENDING, SURFACE_CRAVES,
+    SURFACE_PLACE_DETAIL,
 }
 
 # What happened. click = navigated to place detail. save = added to
@@ -62,8 +68,13 @@ VALID_SURFACES = {
 EVENT_IMPRESSION = "impression"
 EVENT_CLICK = "click"
 EVENT_SAVE = "save"
+# unsave is logged only once a removal is *confirmed* -- either the
+# DELETE call itself resolved, or (for one queued while offline) the
+# offline outbox later synced it. A tap that only gets as far as
+# "queued, network status unknown" logs nothing yet; see cravesStore.ts.
+EVENT_UNSAVE = "unsave"
 EVENT_RANK = "rank"
-VALID_EVENT_TYPES = {EVENT_IMPRESSION, EVENT_CLICK, EVENT_SAVE, EVENT_RANK}
+VALID_EVENT_TYPES = {EVENT_IMPRESSION, EVENT_CLICK, EVENT_SAVE, EVENT_UNSAVE, EVENT_RANK}
 
 
 class RecommendationEvent(Base, TimestampMixin):
