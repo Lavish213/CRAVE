@@ -7,8 +7,18 @@ _GENERIC_CATEGORIES = {"restaurant", "restaurants", "bar", "bars", "other", "oth
 # "Other" and blank are truly meaningless — never return as category label
 _VOID_CATEGORIES = {"other", "others", ""}
 
-# Tier thresholds — mirrors scoring.ts getTier()
-def _rank_to_tier(score: float) -> str:
+# Tier thresholds — mirrors scoring.ts getTier(). Percentile-based when a
+# rank_percentile is available (this place's standing within its own city,
+# from CityPlaceRanking), since absolute rank_score thresholds cluster
+# almost the whole catalog into "gem"/"solid" — see scoring.ts's
+# tierFromAbsoluteScore() for the full explanation. Falls back to the
+# absolute score only for a place with no ranking snapshot yet.
+def _rank_to_tier(score: float, percentile: Optional[float] = None) -> str:
+    if percentile is not None:
+        if percentile >= 0.95: return "crave_pick"
+        if percentile >= 0.80: return "gem"
+        if percentile >= 0.40: return "solid"
+        return "new"
     if score >= 0.42: return "crave_pick"
     if score >= 0.32: return "gem"
     if score >= 0.22: return "solid"
@@ -50,6 +60,11 @@ class PlaceOut(BaseModel):
 
     # Computed from rank_score — mirrors scoring.ts getTier()
     tier: str = "new"
+
+    # This place's standing within its own city, in [0.0, 1.0] (1.0 = best
+    # in the city). None when no ranking snapshot exists yet for it. See
+    # app/services/query/rank_percentile_query.py.
+    rank_percentile: Optional[float] = Field(default=None, ge=0.0, le=1.0)
 
     primary_image_url: Optional[str] = None
 
@@ -106,11 +121,15 @@ class PlaceOut(BaseModel):
             if cats and not data.get("category"):
                 data["category"] = _best_category(cats)
             if not data.get("tier"):
-                data["tier"] = _rank_to_tier(float(data.get("rank_score") or 0.0))
+                data["tier"] = _rank_to_tier(
+                    float(data.get("rank_score") or 0.0),
+                    data.get("rank_percentile"),
+                )
         else:
             # ORM object — build a plain dict for Pydantic
             cats = getattr(data, "categories", None) or []
             rank = float(getattr(data, "rank_score", None) or 0.0)
+            percentile = getattr(data, "rank_percentile", None)
             return {
                 "id": getattr(data, "id", None),
                 "name": getattr(data, "name", None),
@@ -120,7 +139,8 @@ class PlaceOut(BaseModel):
                 "distance_miles": getattr(data, "distance_miles", None),
                 "price_tier": getattr(data, "price_tier", None),
                 "rank_score": rank,
-                "tier": _rank_to_tier(rank),
+                "tier": _rank_to_tier(rank, percentile),
+                "rank_percentile": percentile,
                 "primary_image_url": getattr(data, "primary_image_url", None),
                 "categories": cats,
                 "category": _best_category(cats),

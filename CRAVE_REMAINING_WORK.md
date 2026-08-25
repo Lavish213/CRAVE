@@ -3315,3 +3315,69 @@ confirmed unpaused. Two independent, unrelated bugs stacked:
   signatures, expired tokens, wrong audience, and the dev-bypass/prod
   guard paths — 10 new tests, all passing. Full suite: 735 passed, 2
   skipped, no regressions.
+
+## Search screen tier badges — percentile-based tiering (2026-08-25)
+
+Real complaint from live testing: nearly every Search result was tagged
+"Hidden Gem" or "Worth Knowing," almost none "CRAVE Pick" or "Explore" —
+the tier badges had stopped meaning anything.
+
+Root cause, confirmed by reading `place_score_v4.py`'s actual weights
+rather than guessing: the "structural" bucket (images, completeness,
+menu, app links, recency) is hard-capped at 0.28, and any normally-
+populated place — name, coordinates, a few photos, a website or menu —
+hits close to that cap by default. The other buckets (authenticity from
+blog/creator mentions, authority from awards) require real editorial/
+social signal that most places in a cold-start catalog don't have yet, so
+they sit near zero for the bulk of the catalog. Net effect: almost every
+well-populated place clustered tightly around 0.28 — which straddles
+exactly the "solid"/"gem" boundary in `scoring.ts`'s absolute-threshold
+`getTier()` (0.22/0.32/0.42). The tiers were measuring data completeness,
+not quality differentiation, and data completeness barely varies across a
+Google-Places-sourced catalog.
+
+Considered hand-tuning the absolute thresholds instead, but rejected it:
+the app is pre-launch with almost no real hitlist/creator/blog signal
+yet, so any thresholds calibrated against today's distribution would need
+re-tuning again once real usage starts generating that signal and the
+distribution shifts. Percentile-based tiering doesn't have that problem —
+"top 5% of this city" stays true regardless of how the underlying score
+curve moves over time.
+
+Turned out cheaper than expected: `city_place_ranking_worker`
+(`app/services/ranking/city_ranking_worker.py`) already computes and
+stores each place's deterministic `rank_position` within its city, and
+it's already scheduled hourly via `app/scheduler.py`'s `ranking_update`
+job — that data was live and fresh, just never exposed past the backend.
+
+Implemented:
+- `app/services/query/rank_percentile_query.py` (new) — bulk-converts
+  `rank_position` + a per-city count (via a single `COUNT() OVER
+  (PARTITION BY city_id)` window-function query) into a `[0, 1]`
+  percentile per place, keyed by place_id. A place with no ranking
+  snapshot yet is simply absent from the result — callers must treat that
+  as "unknown," not "worst."
+- `rank_percentile` added to both `PlaceOut` (`/places`) and
+  `PlaceCardOut` (`/search`) schemas, injected onto each ORM object
+  before serialization (same pattern already used for
+  `primary_image_url`) in both `routes/places.py` and `routes/search.py`.
+- `scoring.ts`'s `getTier()` now takes an optional `rankPercentile` and
+  uses percentile bands (0.95/0.80/0.40) when available, falling back to
+  the old absolute-score bands only when a place has no ranking snapshot
+  yet (e.g. added since the last hourly run). Same fallback logic mirrored
+  in the backend's own `_rank_to_tier()` in `schemas/places.py` for
+  consistency, though nothing currently reads that field client-side
+  (confirmed by grep — `PlaceCard.tsx`/`PlaceCardCompact.tsx`/
+  `TrendingStrip.tsx` always recompute tier from `rank_score` locally
+  rather than trusting the API's `tier` field).
+- Updated all three real call sites (`PlaceCard.tsx`,
+  `PlaceCardCompact.tsx`, `TrendingStrip.tsx`) to pass
+  `place.rank_percentile` through.
+
+Verified: 7 new backend tests (`test_rank_percentile_query.py`) covering
+percentile math directly — best/worst-in-city, even spread, sole-place-
+in-city edge case, missing-snapshot handling, and per-city independence
+(confirmed a place's percentile isn't polluted by a different city's pool
+size). 7 new frontend tests in `scoring.test.ts` covering percentile
+bands and the absolute-score fallback. Full suite: backend 742 passed (2
+skipped), frontend 136 passed, `tsc --noEmit` clean.

@@ -13,6 +13,7 @@ from app.services.query.proximity_query import list_places_near
 from app.services.feed.feed_bucket_manager import get_feed_places
 from app.services.feed.feed_ranker import rank_feed
 from app.services.query.place_image_visibility_query import get_primary_image_urls_bulk
+from app.services.query.rank_percentile_query import get_rank_percentiles
 from app.api.v1.schemas.places import PlacesResponse, PlaceOut
 from app.db.models.menu_item import MenuItem
 from app.db.models.place import Place
@@ -152,11 +153,13 @@ def get_places(
     # ── Attach images and serialize ───────────────────────────────────────────
     place_ids = [p.id for p in ranked]
     image_urls = get_primary_image_urls_bulk(db, place_ids=place_ids)
+    rank_percentiles = get_rank_percentiles(db, place_ids=place_ids)
 
     items = []
     for p in ranked:
         try:
             p.primary_image_url = image_urls.get(p.id)
+            p.rank_percentile = rank_percentiles.get(p.id)
             items.append(PlaceOut.model_validate(p, from_attributes=True))
         except Exception as exc:
             # Was logger.debug — invisible at the app's default INFO level.

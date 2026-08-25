@@ -89,6 +89,13 @@ class PlaceCardOut(BaseModel):
     operational_confidence: float = Field(default=0.0, ge=0.0)
     local_validation: float = Field(default=0.0, ge=0.0)
 
+    # This place's standing within its own city, in [0.0, 1.0] (1.0 = best
+    # in the city). None when no ranking snapshot exists yet for it (e.g.
+    # added since the last hourly ranking_update run). Injected onto the
+    # ORM object by the search route before validation, same pattern as
+    # primary_image_url -- see app/services/query/rank_percentile_query.py.
+    rank_percentile: Optional[float] = Field(default=None, ge=0.0, le=1.0)
+
     primary_image_url: Optional[str] = None
     primary_image: Optional[str] = None  # alias used by search route
     categories: List[str] = Field(default_factory=list)
@@ -153,6 +160,7 @@ class PlaceCardOut(BaseModel):
                 "confidence_score": float(getattr(data, "confidence_score", None) or 0.0),
                 "operational_confidence": float(getattr(data, "operational_confidence", None) or 0.0),
                 "local_validation": float(getattr(data, "local_validation", None) or 0.0),
+                "rank_percentile": getattr(data, "rank_percentile", None),
                 "primary_image_url": getattr(data, "primary_image_url", None),
                 "primary_image": getattr(data, "primary_image", None),
                 "categories": cats,

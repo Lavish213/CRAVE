@@ -75,6 +75,7 @@ export function normalizePlaceOut(raw: unknown): PlaceOut {
     city_id: String(p.city_id ?? ''),
     rank_score: rankScore,
     tier,
+    rank_percentile: typeof p.rank_percentile === 'number' ? p.rank_percentile : null,
     distance_miles: typeof p.distance_miles === 'number' ? p.distance_miles : null,
     category,
     categories,

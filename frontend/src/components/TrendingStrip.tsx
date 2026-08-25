@@ -21,7 +21,7 @@ export function TrendingStrip({ places, onPress, onPressIn, heading = 'TRENDING'
       <Text style={styles.heading}>{heading}</Text>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.scroll}>
         {places.map((p) => {
-          const tier = getTier(p.rank_score);
+          const tier = getTier(p.rank_score, p.rank_percentile);
           return (
             <TouchableOpacity
               key={p.id}

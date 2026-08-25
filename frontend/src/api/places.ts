@@ -8,6 +8,10 @@ export interface PlaceOut {
   rank_score: number;
   /** Backend-computed tier key. Mirrors scoring.ts getTier(). */
   tier: 'crave_pick' | 'gem' | 'solid' | 'new';
+  /** This place's standing within its own city, in [0, 1] (1 = best in
+   * the city). Null when no ranking snapshot exists for it yet -- callers
+   * should fall back to absolute-score tiering. See getTier() below. */
+  rank_percentile: number | null;
   /** Backend-computed distance in miles. Present when lat/lng was sent. */
   distance_miles: number | null;
   category: string | null;

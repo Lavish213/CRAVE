@@ -43,11 +43,45 @@ export const TIERS: Record<TierKey, Tier> = {
   },
 };
 
-export function getTier(score: number): Tier {
+// Absolute rank_score bands. Kept only as a fallback for places with no
+// ranking snapshot yet (rankPercentile === null/undefined below) -- e.g.
+// a brand-new city, or a place added since the last hourly
+// city_ranking_worker run. NOT used when a percentile is available.
+//
+// Why not the primary mechanism: place_score_v4's structural bucket caps
+// at 0.28, and any normally-populated place (name, location, a few
+// photos, a website or menu) hits close to that cap by default, while
+// the cultural-signal buckets (blog/creator mentions) stay near zero for
+// most places in a cold-start catalog. That clusters almost the entire
+// catalog in a narrow band straddling the 0.22/0.32 boundary -- nearly
+// everything reads as "Hidden Gem" or "Worth Knowing" regardless of
+// actual quality, since the thresholds were never validated against the
+// real score distribution. Confirmed live: a Search screen where 30/30
+// results were tagged one of those two tiers, none "CRAVE Pick", none
+// "Explore".
+function tierFromAbsoluteScore(score: number): Tier {
   if (score >= 0.42) return TIERS.crave_pick;
   if (score >= 0.32) return TIERS.gem;
   if (score >= 0.22) return TIERS.solid;
   return TIERS.new;
+}
+
+// Percentile bands -- a place's standing relative to every other place in
+// its own city, not an absolute score. This is what actually
+// differentiates "genuinely exceptional" from "merely complete," and it
+// self-corrects as the catalog and its signal (saves, mentions, awards)
+// grow, unlike absolute thresholds which would need re-tuning every time
+// the underlying score distribution shifts.
+function tierFromPercentile(percentile: number): Tier {
+  if (percentile >= 0.95) return TIERS.crave_pick;
+  if (percentile >= 0.80) return TIERS.gem;
+  if (percentile >= 0.40) return TIERS.solid;
+  return TIERS.new;
+}
+
+export function getTier(score: number, rankPercentile?: number | null): Tier {
+  if (typeof rankPercentile === 'number') return tierFromPercentile(rankPercentile);
+  return tierFromAbsoluteScore(score);
 }
 
 // ─── Price inference ──────────────────────────────────────────────────────────
@@ -122,7 +156,7 @@ export interface Badge {
 export function getBadges(place: PlaceOut): Badge[] {
   const badges: Badge[] = [];
 
-  const tier = getTier(place.rank_score);
+  const tier = getTier(place.rank_score, place.rank_percentile);
 
   if (tier.key === 'crave_pick') {
     badges.push({ emoji: '⭐', label: 'CRAVE Pick' });

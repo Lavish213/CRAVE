@@ -25,7 +25,7 @@ interface Props {
 }
 
 function PlaceCardImpl({ place, onPress, onPressIn, onSave, saved, style }: Props) {
-  const tier = getTier(place.rank_score);
+  const tier = getTier(place.rank_score, place.rank_percentile);
   const price = place.price ?? formatPrice(place);
   const badges = getBadges(place);
   const saveScale = useRef(new Animated.Value(1)).current;

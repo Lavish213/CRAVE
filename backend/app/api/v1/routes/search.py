@@ -19,6 +19,7 @@ from app.services.cache.cache_ttl import search_ttl
 from app.api.v1.schemas.search import SearchResponse
 from app.api.v1.schemas.place_card import PlaceCardOut
 from app.services.query.place_image_visibility_query import get_primary_image_urls_bulk
+from app.services.query.rank_percentile_query import get_rank_percentiles
 
 
 logger = logging.getLogger(__name__)
@@ -150,14 +151,17 @@ def search(
     # Bulk image lookup — one query for the entire result set
     place_ids = [getattr(p, "id", None) for p in results if getattr(p, "id", None)]
     image_urls = get_primary_image_urls_bulk(db, place_ids=place_ids)
+    rank_percentiles = get_rank_percentiles(db, place_ids=place_ids)
 
     items: List[PlaceCardOut] = []
 
     for p in results:
         try:
-            img = image_urls.get(getattr(p, "id", None))
+            pid = getattr(p, "id", None)
+            img = image_urls.get(pid)
             p.primary_image_url = img
             p.primary_image = img
+            p.rank_percentile = rank_percentiles.get(pid)
             items.append(
                 PlaceCardOut.model_validate(p, from_attributes=True)
             )

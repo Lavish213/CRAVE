@@ -8,6 +8,7 @@ function makePlace(overrides: Partial<PlaceOut> = {}): PlaceOut {
     city_id: 'city-1',
     rank_score: 0,
     tier: 'new',
+    rank_percentile: null,
     distance_miles: null,
     category: null,
     categories: [],
@@ -51,6 +52,51 @@ describe('getTier', () => {
       const tier = getTier(score);
       expect(TIERS[tier.key].key).toBe(tier.key);
     }
+  });
+
+  // Percentile-based tiering: this place's standing within its own city
+  // (0 = worst, 1 = best), used instead of the absolute score whenever
+  // it's available. Fixes the bug where place_score_v4's structural cap
+  // (0.28) clustered almost every normally-populated place into the same
+  // narrow absolute-score band, making "Hidden Gem"/"Worth Knowing" show
+  // up on nearly every result regardless of actual differentiation.
+  describe('with rank_percentile', () => {
+    it('ignores rank_score entirely and uses the percentile bands instead', () => {
+      // A low absolute score that would be "new" on its own, but this
+      // place is still the best in its (small/sparse) city.
+      expect(getTier(0.05, 1.0).key).toBe('crave_pick');
+      // A high absolute score that would be "crave_pick" on its own, but
+      // this place is mid-pack relative to its city.
+      expect(getTier(0.9, 0.5).key).toBe('solid');
+    });
+
+    it('returns crave_pick at and above the 0.95 percentile', () => {
+      expect(getTier(0, 0.95).key).toBe('crave_pick');
+      expect(getTier(0, 1.0).key).toBe('crave_pick');
+    });
+
+    it('returns gem between 0.80 and 0.95 percentile', () => {
+      expect(getTier(0, 0.8).key).toBe('gem');
+      expect(getTier(0, 0.949).key).toBe('gem');
+    });
+
+    it('returns solid between 0.40 and 0.80 percentile', () => {
+      expect(getTier(0, 0.4).key).toBe('solid');
+      expect(getTier(0, 0.799).key).toBe('solid');
+    });
+
+    it('returns new below 0.40 percentile', () => {
+      expect(getTier(0, 0).key).toBe('new');
+      expect(getTier(0, 0.399).key).toBe('new');
+    });
+
+    it('falls back to absolute-score tiering when percentile is null', () => {
+      expect(getTier(0.5, null).key).toBe(getTier(0.5).key);
+    });
+
+    it('falls back to absolute-score tiering when percentile is undefined', () => {
+      expect(getTier(0.5, undefined).key).toBe(getTier(0.5).key);
+    });
   });
 });
 
