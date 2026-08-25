@@ -3442,3 +3442,46 @@ notification-on-review-decision.
 
 Verified: 756 backend tests passing (745 + 11 new/adjusted), 2 skipped,
 no regressions.
+
+## Place Detail screen audit (2026-08-25)
+
+Per the doctrine's suggested screen-priority order (Search → Feed →
+Place Detail → Filters → Craves → Map → You), audited `place/[id].tsx`
+directly rather than starting on ML/personalization work — found two
+real, previously-unnoticed bugs, both fixed same-session:
+
+- **Upload confirmation lied about held photos.** `GET
+  /upload/status/{image_id}` only ever returned the processing-pipeline
+  `status` (pending/processing/ready/failed), never the separate
+  `moderation_status`/`moderation_reason` fields added by tonight's
+  contributor-tier gate (see above). A photo finishes processing
+  (`status="ready"`) the moment it's uploaded, regardless of whether the
+  moderation gate is holding it for review — so an untrusted
+  contributor's photo would show `status: "ready"` and the app would
+  tell them "Photo added" even though the photo was invisible, sitting
+  in the review queue. Fixed by having the endpoint also return
+  `moderation_status`/`moderation_reason`, and having
+  `useImageStatusPoll` + `place/[id].tsx`'s confirmation toast branch on
+  it: "Submitted for review" for `pending_review`, "wasn't approved" for
+  `rejected`, "Photo added" only for `approved`. New dedicated test file
+  `test_upload_status_route.py` (3 tests) — the route had zero prior
+  coverage.
+- **Two missed `getTier()` call sites from earlier tonight's
+  percentile-tiering rollout.** `place/[id].tsx` and `(tabs)/index.tsx`'s
+  `buildFeedRows` both called `getTier(place.rank_score)` without the
+  `rank_percentile` argument that `PlaceCard.tsx`/`PlaceCardCompact.tsx`/
+  `TrendingStrip.tsx` already had — meaning the place detail screen's own
+  tier badge, and the Feed's "CRAVE Picks/Hidden Gems" section bucketing,
+  were silently using the non-percentile fallback path all along. Fixed
+  both call sites to pass `rank_percentile` through.
+
+Verified: 759 backend tests passing (+3 new), 2 skipped; frontend
+`tsc --noEmit` clean, 136 jest tests passing.
+
+Feed pagination drift (background discovery inserting places every 5 min
+shifts the offset-based window in `proximity_query.py`, causing repeats
+across pages — client has a dedup guard as a stopgap) was evaluated for
+a keyset/cursor rewrite and deliberately deferred: the sort key is a
+computed `dist2` expression with no `id` tiebreaker, and there's no live
+prod data available here to validate a rewrite against. Documented in
+`CRAVE_TOMORROW_PLAN.md`, not started.

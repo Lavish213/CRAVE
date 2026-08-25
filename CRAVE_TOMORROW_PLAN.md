@@ -174,7 +174,18 @@ they are.
 Place Detail → Filters → Craves → Map → You → onboarding/ranking.
 Place Detail specifically should get more attention than it's had —
 it's the actual conversion point between "interesting" and "I'm eating
-here," and hasn't been audited at all yet this session.
+here."
+
+**Place Detail: audited (2026-08-25).** Found and fixed two real bugs:
+the upload-confirmation toast always said "Photo added" even for a photo
+silently held by the contributor-tier gate (the status-poll endpoint
+didn't expose `moderation_status`, only the processing-lifecycle
+`status`, which reaches "ready" either way); and the screen's own tier
+badge was calling `getTier(place.rank_score)` without the
+`rank_percentile` arg, a missed call site from the percentile-tiering
+rollout (same bug also found and fixed in Feed's section bucketing).
+Full details in `CRAVE_REMAINING_WORK.md`. Filters → Craves → Map → You
+still unaudited.
 
 Full ranking/taste-graph/event-ledger buildout from both docs is real
 work but should follow the build order both docs already specify (hard
