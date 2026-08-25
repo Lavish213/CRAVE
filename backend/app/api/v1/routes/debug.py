@@ -22,9 +22,19 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.auth import require_api_key
+from app.core.rate_limit import rate_limit
 from app.db.session import get_db
 
-router = APIRouter(prefix="/debug", tags=["debug"])
+# rate_limit at the router level (not per-route like require_api_key,
+# since /version deliberately carries no auth at all -- see its own
+# docstring) closes a real gap: 5 of these 6 endpoints were gated by
+# require_api_key but had no rate limit at all, and that key ships
+# inside the public app bundle (EXPO_PUBLIC_API_KEY) -- not a real
+# secret. Several run genuine DB work (EXPLAIN ANALYZE queries in
+# map-query-plan/categories-query-plan/map-query-timing), so an
+# unbounded caller with the key could hammer them freely. /version
+# itself had neither guard at all before this.
+router = APIRouter(prefix="/debug", tags=["debug"], dependencies=[Depends(rate_limit)])
 
 
 @router.get("/sentry-test", dependencies=[Depends(require_api_key)])

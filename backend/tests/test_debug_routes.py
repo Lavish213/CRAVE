@@ -11,6 +11,7 @@ from fastapi.testclient import TestClient
 
 from app.main import app
 from app.api.v1.routes import debug as debug_route
+from app.core.rate_limit import rate_limit
 
 # raise_server_exceptions=False: this route deliberately raises, and by
 # default TestClient re-raises unhandled exceptions instead of running them
@@ -18,6 +19,19 @@ from app.api.v1.routes import debug as debug_route
 # deployment). Disabling that here is what actually exercises the handler
 # and gets back the real 500 JSON response instead of the raw exception.
 client = TestClient(app, raise_server_exceptions=False)
+
+
+@pytest.fixture(autouse=True)
+def _override_rate_limit():
+    # rate_limit is keyed globally per-IP across every route in the app,
+    # not per-endpoint -- this file alone calls debug endpoints ~20 times,
+    # sharing the same in-memory bucket as every other test file's
+    # TestClient requests in the same run. Added here now that debug.py's
+    # router carries rate_limit at all (previously nothing to override),
+    # matching the override pattern already used elsewhere in this suite.
+    app.dependency_overrides[rate_limit] = lambda: None
+    yield
+    app.dependency_overrides.pop(rate_limit, None)
 
 
 def _running_on_postgres() -> bool:
@@ -95,6 +109,31 @@ def test_version_never_requires_an_api_key(monkeypatch):
     monkeypatch.setenv("API_KEY", "fixture-debug-key")
     response = client.get("/api/v1/debug/version")
     assert response.status_code == 200
+
+
+def test_every_debug_route_enforces_rate_limit():
+    """
+    The actual security gap this covers: 5 of these 6 endpoints were
+    require_api_key-gated but carried no rate_limit at all before this,
+    and /version had neither guard -- a caller with the API key (which
+    ships inside the public app bundle, not a real secret) could hammer
+    the EXPLAIN ANALYZE endpoints freely. Asserts the dependency is
+    actually wired, not just present somewhere in the router's kwargs.
+    """
+    from app.main import app as real_app
+
+    real_app.dependency_overrides.pop(rate_limit, None)
+    try:
+        for route in real_app.router.routes:
+            if not str(getattr(route, "path", "")).startswith("/api/v1/debug/"):
+                continue
+            dependant = getattr(route, "dependant", None)
+            assert dependant is not None
+            assert any(
+                dep.call is rate_limit for dep in dependant.dependencies
+            ), f"{route.path} is missing rate_limit"
+    finally:
+        real_app.dependency_overrides[rate_limit] = lambda: None
 
 
 def test_scheduler_diagnostics_requires_api_key_when_configured(monkeypatch):
