@@ -37,13 +37,28 @@ VALID_SURFACES = {
     SURFACE_FEED, SURFACE_SEARCH, SURFACE_MAP, SURFACE_TRENDING, SURFACE_CRAVES,
 }
 
-# What happened. impression = rendered on screen. click = navigated to
-# place detail. save = added to Craves. rank = completed an "I ate here"
-# comparison. Deliberately not the full doctrine funnel
-# (opened/selected/acted/visited/would_get_again/returns) -- those need
-# product surfaces that don't exist yet (no "mark as visited" flow, no
-# post-visit rating prompt). Add event types as those surfaces get built,
-# not ahead of them.
+# What happened. click = navigated to place detail. save = added to
+# Craves. rank = completed an "I ate here" comparison. Deliberately not
+# the full doctrine funnel (opened/selected/acted/visited/
+# would_get_again/returns) -- those need product surfaces that don't
+# exist yet (no "mark as visited" flow, no post-visit rating prompt).
+# Add event types as those surfaces get built, not ahead of them.
+#
+# impression's actual semantics, as implemented (Feed is the only
+# instrumented surface at this phase): "this place's data arrived in a
+# page response the client fetched" -- logged once, from
+# app/(tabs)/index.tsx's page-load effect, the moment a new page lands.
+# This is NOT viewability -- a place at the bottom of a 40-item page the
+# user never scrolls to still gets counted, and a place the user stares
+# at for ten seconds gets counted exactly the same as one that flashed
+# by during a fast scroll. That's a real, deliberate simplification for
+# this phase (load-based impressions are one `useEffect`; true
+# viewability needs FlashList's onViewableItemsChanged plus a
+# time-on-screen threshold, which is real additional work). Whatever
+# reads this table back for evaluation purposes must not assume
+# "impression" means "the user actually saw this" -- it means "the app
+# had this place's data and could have shown it." Revisit if/when
+# viewability-weighted analysis actually matters.
 EVENT_IMPRESSION = "impression"
 EVENT_CLICK = "click"
 EVENT_SAVE = "save"

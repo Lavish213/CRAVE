@@ -86,5 +86,15 @@ def record_recommendation_events(
             detail=f"Too many events in one batch (max {MAX_BATCH_SIZE})",
         )
 
+    submitted = len(payload.events)
     accepted = record_events(db, raw_events=payload.events, user_id=user_id)
+    # Deliberately INFO, not DEBUG: this is the only signal that the
+    # Ledger is actually receiving real data post-deploy short of
+    # querying the table directly. rejected > 0 on a healthy client
+    # build would mean a real bug (a surface/event_type typo, a stale
+    # app version) -- not just noise to be filtered out.
+    logger.info(
+        "recommendation_events_ingested submitted=%s accepted=%s rejected=%s user=%s",
+        submitted, accepted, submitted - accepted, "anon" if user_id is None else "known",
+    )
     return RecommendationEventBatchOut(accepted=accepted)

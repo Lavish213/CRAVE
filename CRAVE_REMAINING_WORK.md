@@ -3565,6 +3565,47 @@ any actual analysis/dashboard reading this table back. The point of
 this phase was making the data start accumulating now, not building the
 consumer side before there's data to consume.
 
+**Fast-follow instrumentation order (per follow-up review, supersedes
+the "mechanically wire every screen" framing above): save → rank/
+outcome → Search → Craves → Map, not screen-by-screen mechanically.**
+Save and rank/outcome events are much higher-value learning signals
+than more impressions — they're the actual "did the recommendation
+work" data, not just "was it shown." After that:
+- **Search** events should capture query + result position +
+  reformulation (did the user immediately search again after this one —
+  a strong implicit "that didn't work" signal), not just impression/click.
+- **Craves** should capture import/save/resurface outcomes (a shared
+  link that resolved to a match, a manually-saved place later opened
+  again), not a generic impression per row.
+- **Map** should only log meaningful marker exposure/selection (a pin
+  actually tapped, or a cluster expanded), not every rendered pin —
+  logging impressions for every pin on screen during a pan/zoom would
+  be enormous volume for near-zero signal.
+
+**Pre-deploy checks, addressed:**
+1. Migration is purely additive (`create_table` + `create_index` only,
+   no ALTER on any existing table) and cleanly rollback-safe
+   (`downgrade()` is a plain `drop_table`).
+2. Deploy ordering is safe by construction — `railway.toml`'s
+   `startCommand` is `alembic upgrade head && uvicorn ...`; the app
+   cannot start serving the new endpoint until the migration has
+   already completed.
+3. Added `recommendation_events_ingested submitted=/accepted=/rejected=`
+   as an INFO-level log line in the route (was previously only
+   returning the count to the caller, no server-side visibility) — the
+   way to confirm post-deploy that the Ledger is actually receiving
+   data, and rejected > 0 on a healthy client build would itself flag a
+   real bug (typo'd surface/event_type, stale app version).
+4. Impression semantics documented explicitly in
+   `RecommendationEvent`'s own docstring: "impression" today means
+   *load-based* ("this place's data arrived in a page response the
+   client fetched"), not *viewability-based* ("the user actually saw
+   this place on screen"). A place at the bottom of an unscrolled page
+   still counts; a place stared at for ten seconds counts the same as
+   one that flashed by mid-scroll. Deliberate simplification for this
+   phase — revisit with `onViewableItemsChanged` + a time-on-screen
+   threshold if/when viewability-weighted analysis actually matters.
+
 Verified: 774 backend tests passing (760 + 14 new), 143 frontend tests
 passing (139 + 4 new), `tsc --noEmit` clean.
 
