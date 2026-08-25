@@ -174,6 +174,55 @@ def scheduler_diagnostics(db: Session = Depends(get_db)) -> dict:
     }
 
 
+@router.get("/recommendation-events", dependencies=[Depends(require_api_key)])
+def recommendation_events_debug(
+    event_type: Optional[str] = None,
+    limit: int = 20,
+    db: Session = Depends(get_db),
+) -> dict:
+    """
+    Read-only window into the Recommendation Ledger for live production
+    verification (confirming save/unsave/rank events actually land, and
+    that a resubmitted client_event_id dedupes instead of double-counting)
+    without needing a Railway console session or direct DB access for
+    every check -- this is a plain HTTPS endpoint, reachable the same way
+    /version and /scheduler already are.
+
+    `limit` is capped at 100 -- this is a debug aid for eyeballing recent
+    rows, not a paginated export.
+    """
+    from app.db.models.recommendation_event import RecommendationEvent
+
+    limit = max(1, min(limit, 100))
+
+    query = db.query(RecommendationEvent).order_by(RecommendationEvent.created_at.desc())
+    if event_type:
+        query = query.filter(RecommendationEvent.event_type == event_type)
+
+    rows = query.limit(limit).all()
+
+    return {
+        "count": len(rows),
+        "events": [
+            {
+                "id": r.id,
+                "event_type": r.event_type,
+                "client_event_id": r.client_event_id,
+                "place_id": r.place_id,
+                "surface": r.surface,
+                "position": r.position,
+                "rank_percentile": r.rank_percentile,
+                "city_id": r.city_id,
+                "query": r.query,
+                "user_id": r.user_id,
+                "session_id": r.session_id,
+                "created_at": r.created_at.isoformat() if r.created_at else None,
+            }
+            for r in rows
+        ],
+    }
+
+
 @router.get("/map-query-plan", dependencies=[Depends(require_api_key)])
 def map_query_plan(
     lat: float,

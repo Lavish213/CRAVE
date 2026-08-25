@@ -210,6 +210,59 @@ def test_scheduler_diagnostics_flags_still_running_job(monkeypatch):
     assert match["finished_at"] is None
 
 
+def test_recommendation_events_debug_requires_api_key_when_configured(monkeypatch):
+    monkeypatch.setenv("API_KEY", "fixture-debug-key")
+    response = client.get("/api/v1/debug/recommendation-events")
+    assert response.status_code == 401
+
+
+def test_recommendation_events_debug_returns_recent_rows(monkeypatch):
+    monkeypatch.delenv("API_KEY", raising=False)
+
+    from app.db.session import SessionLocal
+    from app.db.models.recommendation_event import RecommendationEvent
+
+    db = SessionLocal()
+    try:
+        event = RecommendationEvent(
+            user_id="debug-route-test-user",
+            place_id=None,
+            surface="feed",
+            event_type="save",
+            client_event_id="debug-route-test-event",
+        )
+        db.add(event)
+        db.commit()
+        event_id = event.id
+    finally:
+        db.close()
+
+    try:
+        response = client.get("/api/v1/debug/recommendation-events?event_type=save&limit=5")
+        assert response.status_code == 200
+        body = response.json()
+        ids = [e["id"] for e in body["events"]]
+        assert event_id in ids
+        match = next(e for e in body["events"] if e["id"] == event_id)
+        assert match["client_event_id"] == "debug-route-test-event"
+        assert match["user_id"] == "debug-route-test-user"
+        assert all(e["event_type"] == "save" for e in body["events"])
+    finally:
+        db = SessionLocal()
+        try:
+            db.query(RecommendationEvent).filter(RecommendationEvent.id == event_id).delete()
+            db.commit()
+        finally:
+            db.close()
+
+
+def test_recommendation_events_debug_limit_is_capped(monkeypatch):
+    monkeypatch.delenv("API_KEY", raising=False)
+    response = client.get("/api/v1/debug/recommendation-events?limit=999")
+    assert response.status_code == 200
+    assert len(response.json()["events"]) <= 100
+
+
 def test_map_query_plan_requires_api_key_when_configured(monkeypatch):
     monkeypatch.setenv("API_KEY", "fixture-debug-key")
     response = client.get("/api/v1/debug/map-query-plan?lat=37.7749&lng=-122.4194")
