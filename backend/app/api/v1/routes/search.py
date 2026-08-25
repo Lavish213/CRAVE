@@ -165,11 +165,14 @@ def search(
             items.append(
                 PlaceCardOut.model_validate(p, from_attributes=True)
             )
-        except Exception as exc:
-            logger.debug(
-                "search_serialize_failed place_id=%s error=%s",
+        except Exception:
+            # Was logger.debug -- invisible at the app's default INFO level,
+            # so every search result silently vanishing produced zero
+            # server-side signal to diagnose from. logger.exception logs at
+            # ERROR with the full traceback.
+            logger.exception(
+                "search_serialize_failed place_id=%s",
                 getattr(p, "id", None),
-                exc,
             )
 
     response = SearchResponse(
