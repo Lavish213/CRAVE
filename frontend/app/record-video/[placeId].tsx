@@ -17,6 +17,7 @@ import { CameraView, useCameraPermissions, useMicrophonePermissions } from 'expo
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Colors, Radius, Spacing } from '../../src/constants/colors';
 import { BeatCueOverlay } from '../../src/components/BeatCueOverlay';
@@ -39,6 +40,7 @@ function contentTypeForUri(uri: string): VideoContentType {
 export default function RecordVideoScreen() {
   const { placeId } = useLocalSearchParams<{ placeId: string }>();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const user = useAuthStore((s) => s.user);
   const toast = useToast((s) => s.show);
   const recordVideo = useVideoQueueStore((s) => s.recordVideo);
@@ -140,14 +142,17 @@ export default function RecordVideoScreen() {
     <View style={styles.container}>
       <CameraView ref={cameraRef} style={StyleSheet.absoluteFill} mode="video" facing="back" />
 
-      <TouchableOpacity style={styles.closeButton} onPress={() => router.back()}>
+      <TouchableOpacity
+        style={[styles.closeButton, { top: insets.top + Spacing.md }]}
+        onPress={() => router.back()}
+      >
         <Ionicons name="close" size={28} color={Colors.text} />
       </TouchableOpacity>
 
       {isRecording && <BeatCueOverlay template={selectedTemplate} elapsedMs={elapsedMs} />}
 
       {!isRecording && (
-        <View style={styles.templateStripWrap}>
+        <View style={[styles.templateStripWrap, { bottom: 140 + insets.bottom }]}>
           <VideoTemplateStrip
             templates={templates}
             selectedId={selectedTemplateId}
@@ -156,7 +161,7 @@ export default function RecordVideoScreen() {
         </View>
       )}
 
-      <View style={styles.controls}>
+      <View style={[styles.controls, { bottom: Spacing.xxl + insets.bottom }]}>
         {isRecording && (
           <Text style={styles.timer}>
             {Math.min(elapsedMs / 1000, MAX_DURATION_SEC).toFixed(1)}s / {MAX_DURATION_SEC}s
@@ -208,7 +213,6 @@ const styles = StyleSheet.create({
   },
   closeButton: {
     position: 'absolute',
-    top: Spacing.xxl,
     left: Spacing.lg,
     width: 40,
     height: 40,
@@ -220,13 +224,11 @@ const styles = StyleSheet.create({
   },
   templateStripWrap: {
     position: 'absolute',
-    bottom: 140,
     left: 0,
     right: 0,
   },
   controls: {
     position: 'absolute',
-    bottom: Spacing.xxl,
     left: 0,
     right: 0,
     alignItems: 'center',
