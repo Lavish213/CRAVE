@@ -192,13 +192,13 @@ export default function MoreScreen() {
         <Row
           icon="shield-checkmark-outline"
           label="Privacy Policy"
-          onPress={() => openLink('https://crave.app/privacy')}
+          onPress={() => router.push('/legal/privacy')}
         />
         <Divider />
         <Row
           icon="document-text-outline"
           label="Terms of Service"
-          onPress={() => openLink('https://crave.app/terms')}
+          onPress={() => router.push('/legal/terms')}
         />
         <Divider />
         <Row

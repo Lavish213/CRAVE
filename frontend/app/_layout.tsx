@@ -152,6 +152,8 @@ export default function RootLayout() {
           <Stack.Screen name="leaderboard" options={{ title: 'Leaderboard' }} />
           <Stack.Screen name="taste-profile/[userId]" options={{ title: 'Taste Profile' }} />
           <Stack.Screen name="settings" options={{ title: 'Settings' }} />
+          <Stack.Screen name="legal/privacy" options={{ title: 'Privacy Policy' }} />
+          <Stack.Screen name="legal/terms" options={{ title: 'Terms of Service' }} />
         </Stack>
         <ToastContainer />
       </View>
