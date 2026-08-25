@@ -3485,3 +3485,43 @@ a keyset/cursor rewrite and deliberately deferred: the sort key is a
 computed `dist2` expression with no `id` tiebreaker, and there's no live
 prod data available here to validate a rewrite against. Documented in
 `CRAVE_TOMORROW_PLAN.md`, not started.
+
+## Production incident: Railway crash-loop on stale `main` (2026-08-25)
+
+Railway's `production` service (tracking the `main` branch) was crash-
+looping on every boot: `alembic upgrade head` failed with `Can't locate
+revision identified by 'df7061f16615'` and the healthcheck timed out.
+Root cause: `main` was 30 commits behind this session's working branch —
+stuck at PR #47 (`24b5001`) — missing the migration file for
+`df7061f16615` (device push tokens), while the production Postgres
+database's `alembic_version` was already stamped past that point (from
+an earlier deploy that had tracked the newer code). Deploying the stale
+`main` meant the running code's own migration scripts didn't include the
+revision the database already expected.
+
+Fix: fast-forwarded `main` to match the working branch (`main` was a
+clean ancestor with zero divergent commits, so this was a pure
+fast-forward, no conflicts) — first to `b97e283`, then to `3e97ebb`.
+Diagnosed by: confirming the migration chain was self-consistent locally
+(`alembic heads`/`alembic history`), confirming the production DB's
+actual `alembic_version` via a Railway Console `psql` session, and
+confirming `DATABASE_URL` matched between the Console and the web
+service's own Variables tab (ruling out a wrong-database theory).
+
+Took several redeploy cycles to actually resolve — Railway's "Redeploy"
+button on an old failed deployment card re-runs *that exact pinned
+commit*, not the branch's current tip, so repeatedly redeploying the
+original failed card kept reproducing the same stale-code failure even
+after `main` was fixed. A fresh deploy of the actual current branch tip
+was needed to pick up the fix. Also ruled out (with hard evidence, not
+just plausibility) a "Wait for CI blocking deploys" theory — checked via
+the GitHub Actions API directly and confirmed both `ci.yml` and
+`codeql.yml` completed successfully on `main` for the relevant commits.
+
+Confirmed resolved: production's Active deployment is now built from
+`3e97ebb`, migrations applied cleanly, healthcheck passing.
+
+Process note for next time: keep `main` and the working branch from
+drifting this far apart in the first place — this whole incident was
+possible only because ~30 commits of real work sat on the feature branch
+while Railway's production tracked a long-stale `main`.
