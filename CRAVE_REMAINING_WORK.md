@@ -3181,3 +3181,77 @@ clean, 129/129 jest passing (123 + 6 new).
   let `_score_frame` do something more principled than max-softmax) would
   likely perform meaningfully better. Not attempted here — out of scope
   for "wire up what already exists," a genuinely new modeling task.
+
+### Follow-up — full bug-hunting pass over the video system + EAS/Railway deploy debugging (still PR #48)
+
+User ran the actual EAS build and Railway deploy from their own machine
+in parallel with this work — surfaced its own real problems, all fixed:
+
+- **`development-simulator` EAS build profile added** (`frontend/eas.json`)
+  — the plain `development` profile targets a real device, which needs
+  a paid Apple Developer Program account to provision. This variant
+  builds for the iOS Simulator instead, skipping Apple Developer Portal
+  auth entirely.
+- **A local `git rebase` went wrong on the user's machine** and got
+  committed with literal `<<<<<<</=======/>>>>>>>` conflict markers
+  still in `frontend/package.json` — git doesn't validate JSON on `git
+  add`, so this landed on the branch and broke `npm install`, the
+  frontend CI check, and every EAS build attempt. Pulled the broken
+  commit into this sandbox, resolved the conflict properly (kept both
+  sides — `expo-camera`/`expo-file-system` and `expo-dev-client`),
+  regenerated `package-lock.json` from scratch rather than hand-merging
+  it, and re-verified typecheck + full jest suite before pushing the fix.
+- Confirmed along the way that this project's Railway deploys
+  (`railway up`, a local-directory upload, not a GitHub-connected clone)
+  make `GET /debug/version`'s `commit` field **structurally always
+  null** — not a bug, already documented elsewhere in this file, but
+  worth restating since it was used (incorrectly) as a deploy-success
+  check this round. Real verification needs a route-existence check
+  instead (hit something added only in the new code and check the
+  status code isn't 404), which is what caught that an early `railway
+  up` had actually shipped code from `83dbf5c` — months before the
+  entire video feature branch even started.
+
+Separately, ran a full review pass (`/code-review --pr 48`, high effort)
+over the entire branch diff looking for real correctness bugs. Two real
+ones found and fixed, both regression-tested:
+
+- **`video_processing_worker.py`: R2 cleanup ran before the DB commit**
+  on both the approve and reject paths. A crash in that window (OOM,
+  deploy, container restart) left the row stuck at `status='processing'`
+  with `orig_key` already deleted from storage — the next
+  stale-processing reclaim would re-download it, 404, and misreport an
+  already-fully-determined outcome as `'failed'`. On the approve path
+  this additionally orphaned the already-uploaded `processed_key`/
+  `thumb_key` objects, unreachable by any future retry. Fixed by
+  committing the status change first, cleaning up storage after —
+  matches the ordering `upload_service.py`'s photo-confirm flow already
+  uses for the same reason.
+- **`image_worker.py`: a failed stale-refresh attempt (`StaleImageRefresher
+  .refresh_primary` returning `False`) shared the same
+  `image_fetch_attempts`/`image_blocked` counter as "no images found for
+  this place at all."** Since `image_blocked` has no reset path anywhere
+  in this codebase once set (confirmed by grep — it's written in exactly
+  one place), 3 transient refresh failures (an API rate limit, an
+  outage) on a place with a perfectly healthy gallery permanently
+  stopped it from ever refreshing its stale primary image again, forever
+  — while correctly leaving alone the counter's actual intended purpose
+  (a place with genuinely no findable images, which still blocks after 3
+  tries, verified by a new contrast test).
+- **Considered and deliberately left unchanged**: `GET /debug/version`
+  has no `require_api_key`, unlike every other route in that file. An
+  existing test (`test_version_never_requires_an_api_key`) explicitly
+  locks that in as intentional, and this very debugging round depended
+  on it being curl-able without a key to verify the Railway deploy. The
+  data exposed (commit hash, Railway environment/deployment id) isn't
+  meaningfully sensitive — the commit is already public via the repo
+  itself. Flagged by the review as an inconsistency with the rest of the
+  file, but overriding a working, tested, actively-relied-upon pattern
+  without a real justification would have been the wrong call.
+
+Verified: 725 backend tests passing (722 + 3 new: 2 for the
+video-worker commit-ordering fix, net +1 for the image_worker fix which
+replaced one test with two), clean against both a fresh SQLite and a
+freshly-created local Postgres 16 database. Frontend: `npx tsc --noEmit`
+clean, 129/129 jest passing, `package-lock.json` regenerated from
+scratch and verified installable. Pushed to the same PR #48.
