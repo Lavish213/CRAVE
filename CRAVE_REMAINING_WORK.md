@@ -3525,3 +3525,49 @@ Process note for next time: keep `main` and the working branch from
 drifting this far apart in the first place — this whole incident was
 possible only because ~30 commits of real work sat on the feature branch
 while Railway's production tracked a long-stale `main`.
+
+## Recommendation Ledger, phase 1 (2026-08-25)
+
+Per both doctrine docs' "instrument recommendations before building any
+real ranking/personalization model" guidance — built now, while retrieval
+(Search, Feed) is finally stable, rather than waiting.
+
+Deliberately smaller than the doctrine's full spec: no algorithm
+version, candidate set, component scores, penalties, or reason codes —
+none of that exists yet, since there's no ranking model to log it for.
+Captures exactly what's real today: which surface showed a place, at
+what position/percentile, and what the user did about it.
+
+- `RecommendationEvent` model + migration (`recommendation_events`
+  table) — `app/db/models/recommendation_event.py`.
+- `POST /api/v1/recommendations/events` — batch ingest, auth-optional
+  (Feed/Search/Map are all browsable signed-out, so an anonymous
+  impression is still real data). Each event in a batch is validated
+  and clamped independently (`recommendation_event_service.py`) so one
+  malformed entry never drops the rest of a batch — same one-bad-item-
+  shouldn't-sink-everything principle as the per-item try/except pattern
+  already used in `search.py`/`places.py`. Capped at 200 events/request.
+- Also fixed the existing `GET /recommendations` route's identical
+  silent-drop bug (`logger.debug` → `logger.exception` on serialize
+  failures) while in that file — the same class of issue just fixed in
+  `/search` and `/places` (see the rank_percentile clamp fix above).
+- Frontend: `src/api/recommendationEvents.ts` +
+  `src/utils/recommendationEventQueue.ts`, a small module-level batching
+  queue (flushes every 4s or at 40 queued events). Fire-and-forget —
+  this is telemetry, not user-critical state, so it deliberately does
+  *not* get cravesStore's offline-outbox/retry treatment.
+- Wired into Feed as the reference instrumentation: one impression event
+  per place per newly-loaded page, one click event on place-card press.
+
+Not done here (intentional fast-follows, not oversights): Search/Map/
+Craves instrumentation using the same queue; save/rank event logging;
+any actual analysis/dashboard reading this table back. The point of
+this phase was making the data start accumulating now, not building the
+consumer side before there's data to consume.
+
+Verified: 774 backend tests passing (760 + 14 new), 143 frontend tests
+passing (139 + 4 new), `tsc --noEmit` clean.
+
+Not yet pushed to `main`/deployed — this adds a new migration, and
+unlike the Search fix this isn't an active outage, so it's queued for
+your go-ahead like the last few `main` pushes.
