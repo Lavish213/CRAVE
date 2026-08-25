@@ -183,6 +183,31 @@ def test_out_of_range_duration_is_rejected(db, place):
     assert video.duration_ms == 999_999
 
 
+def test_rejection_commits_the_status_before_deleting_the_source_object(db, place):
+    # Regression test: delete_object used to run BEFORE the commit that
+    # recorded the rejection. A crash in that window left the row stuck
+    # at 'processing' with orig_key already gone -- the next
+    # stale-processing reclaim would re-download it, 404, and misreport
+    # an already-fully-determined rejection as 'failed' instead. Fixed by
+    # committing first; this asserts that ordering directly rather than
+    # just asserting the eventual outcome.
+    video = _make_video(db, place, status=STATUS_QUEUED)
+
+    def check_committed_before_delete(key):
+        db.refresh(video)
+        assert video.status == STATUS_REJECTED
+        assert video.reject_reason == REJECT_DURATION
+
+    with patch("app.services.video.video_processing_worker.download_to_file"), \
+         patch("app.services.video.video_processing_worker.ffmpeg_steps.check_duration_ms",
+               return_value=999_999), \
+         patch("app.services.video.video_processing_worker.delete_object",
+               side_effect=check_committed_before_delete):
+        outcome = process_one_video(db, video)
+
+    assert outcome == STATUS_REJECTED
+
+
 def test_food_classifier_unavailable_fails_not_rejects(db, place):
     # The key distinction: this is a config/setup problem, not a verdict
     # on the video's content -- it must land in 'failed' (retried once
@@ -245,6 +270,39 @@ def test_successful_pipeline_approves_and_stores_keys(db, place):
     db.refresh(video)
     assert video.status == STATUS_APPROVED
     assert video.duration_ms == 5000
+
+
+def test_approval_commits_the_status_before_deleting_the_source_object(db, place):
+    # Same regression as the rejection-path test above, for the success
+    # path: this used to delete orig_key BEFORE committing
+    # status=APPROVED. A crash in that window left the row stuck
+    # 'processing' with orig_key already gone -- the next
+    # stale-processing reclaim would re-download it, 404, and mark an
+    # already-successfully-processed video as permanently 'failed',
+    # orphaning the processed_key/thumb_key objects already uploaded.
+    video = _make_video(db, place, status=STATUS_QUEUED)
+
+    def check_committed_before_delete(key):
+        db.refresh(video)
+        assert video.status == STATUS_APPROVED
+        assert video.processed_key is not None
+        assert video.thumb_key is not None
+
+    with patch("app.services.video.video_processing_worker.download_to_file"), \
+         patch("app.services.video.video_processing_worker.ffmpeg_steps.check_duration_ms",
+               return_value=5000), \
+         patch("app.services.video.video_processing_worker.ffmpeg_steps.compress_video",
+               return_value="/tmp/fake-compressed.mp4"), \
+         patch("app.services.video.video_processing_worker.score_video",
+               return_value=0.9), \
+         patch("app.services.video.video_processing_worker.ffmpeg_steps.generate_thumbnail",
+               return_value="/tmp/fake-thumb.jpg"), \
+         patch("app.services.video.video_processing_worker.upload_file"), \
+         patch("app.services.video.video_processing_worker.delete_object",
+               side_effect=check_committed_before_delete):
+        outcome = process_one_video(db, video)
+
+    assert outcome == STATUS_APPROVED
     assert video.food_score == 0.9
     assert video.processed_key is not None
     assert video.thumb_key is not None

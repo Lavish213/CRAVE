@@ -161,8 +161,24 @@ class ImageWorker:
                     exc,
                 )
 
+            if attempt_failed and is_stale_refresh:
+                # Deliberately NOT counted toward image_fetch_attempts/
+                # image_blocked below -- this place already has a full,
+                # valid gallery (that's the only way it became eligible
+                # for staleness-based refresh at all, see _select_places'
+                # stale reserve). A transient refresh failure (API rate
+                # limit, outage) sharing that counter with "this place has
+                # no findable images at all" used to permanently block ALL
+                # future image work for it, including ever refreshing its
+                # still-live stale primary again, after just 3 unlucky
+                # runs. Roll back whatever refresh_primary() may have
+                # partially touched before returning False (it manages no
+                # transaction of its own) and let the next scheduled run
+                # try again naturally -- no penalty applied.
+                db.rollback()
+
             # Track fetch attempts and block after MAX_FETCH_ATTEMPTS failures
-            if attempt_failed and not force_refresh and place_id:
+            elif attempt_failed and not force_refresh and place_id:
                 try:
                     new_attempts = getattr(place, "image_fetch_attempts", 0) + 1
                     should_block = new_attempts >= MAX_FETCH_ATTEMPTS

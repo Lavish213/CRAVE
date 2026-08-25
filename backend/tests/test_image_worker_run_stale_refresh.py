@@ -110,9 +110,19 @@ def test_run_routes_stale_places_through_refresher_not_ingest_service(db, city):
         db.commit()
 
 
-def test_run_tracks_stale_refresh_failure_toward_image_blocked(db, city):
+def test_run_does_not_count_a_failed_stale_refresh_toward_image_blocked(db, city):
+    # A failed stale-refresh attempt must NOT share image_fetch_attempts/
+    # image_blocked with "this place has no findable images at all" --
+    # this place already has a full, valid gallery (that's the only way
+    # it became eligible for the stale reserve in the first place). There
+    # is no reset path for image_blocked anywhere in this codebase once
+    # set, so counting a transient refresh failure (API rate limit,
+    # outage) toward it would permanently stop this place from ever
+    # refreshing its still-live stale primary again after 3 unlucky runs
+    # -- previously it did, since this shared exactly that bookkeeping.
+    #
     # place_ids or limit < 2 both bypass the reserve split entirely (see
-    # _select_places' early-return) — this needs the real reserve path to
+    # _select_places' early-return) — this needs the real reserve path
     # engaged, so no place_ids and limit=10, same as the test above.
     stale_place = _make_stale_place(db, city)
     db.commit()
@@ -126,7 +136,35 @@ def test_run_tracks_stale_refresh_failure_toward_image_blocked(db, city):
         worker.run(db=db, limit=10, force_refresh=False)
 
         db.refresh(stale_place)
-        assert stale_place.image_fetch_attempts == 1
+        assert stale_place.image_fetch_attempts == 0
+        assert stale_place.image_blocked is False
+    finally:
+        db.query(PlaceImage).filter(PlaceImage.place_id.in_(all_ids)).delete(synchronize_session=False)
+        db.query(Place).filter(Place.id.in_(all_ids)).delete(synchronize_session=False)
+        db.commit()
+
+
+def test_run_still_blocks_a_place_after_repeated_regular_ingest_failures(db, city):
+    # Contrast case: the counter/blocking mechanism itself is still very
+    # much alive for what it was actually built for -- a place with no
+    # findable images at all, going through the normal (non-stale-refresh)
+    # ingest path. Only the stale-refresh path is exempted above.
+    place = _make_needs_work_place(db, city, rank_score=999.0)
+    db.add(place)
+    db.commit()
+
+    all_ids = [place.id]
+    try:
+        mock_ingest_service = MagicMock()
+        mock_ingest_service.ingest_place_images.return_value = []
+
+        worker = ImageWorker(ingest_service=mock_ingest_service)
+        for _ in range(3):
+            worker.run(db=db, limit=1, place_ids=[place.id], force_refresh=False)
+
+        db.refresh(place)
+        assert place.image_fetch_attempts == 3
+        assert place.image_blocked is True
     finally:
         db.query(PlaceImage).filter(PlaceImage.place_id.in_(all_ids)).delete(synchronize_session=False)
         db.query(Place).filter(Place.id.in_(all_ids)).delete(synchronize_session=False)

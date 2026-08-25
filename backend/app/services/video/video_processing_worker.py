@@ -150,11 +150,6 @@ def _select_batch(db: Session, limit: int) -> List[PlaceVideo]:
 
 
 def _reject(db: Session, video: PlaceVideo, reason: str, *, duration_ms: int | None = None, food_score: float | None = None) -> None:
-    if video.orig_key:
-        try:
-            delete_object(video.orig_key)
-        except Exception:
-            logger.exception("video_cleanup_failed video_id=%s", video.id)
     video.status = STATUS_REJECTED
     video.reject_reason = reason
     if duration_ms is not None:
@@ -162,6 +157,17 @@ def _reject(db: Session, video: PlaceVideo, reason: str, *, duration_ms: int | N
     if food_score is not None:
         video.food_score = food_score
     db.commit()
+    # Cleanup only after the outcome is durably recorded. Deleting the
+    # object first (as this used to) left a crash window where the row
+    # was still 'processing' but orig_key already didn't exist -- the
+    # next stale-processing reclaim would re-download it, 404, and this
+    # already-fully-determined rejection would be misreported as
+    # 'failed' instead, never actually landing as REJECTED.
+    if video.orig_key:
+        try:
+            delete_object(video.orig_key)
+        except Exception:
+            logger.exception("video_cleanup_failed video_id=%s", video.id)
     _notify_video_outcome(db, video, approved=False)
 
 
@@ -285,21 +291,28 @@ def process_one_video(db: Session, video: PlaceVideo) -> str:
             _fail(db, video, f"upload_failed: {exc}")
             return STATUS_FAILED
 
-        # The original uploads/... object is only useful during
-        # processing -- leaving it in place after a successful compress
-        # doubles storage cost for every video, forever, for a copy
-        # nothing ever reads again.
-        try:
-            delete_object(video.orig_key)
-        except Exception:
-            logger.exception("video_orig_cleanup_failed video_id=%s", video.id)
-
         video.status = STATUS_APPROVED
         video.duration_ms = duration_ms
         video.food_score = food_score
         video.processed_key = processed_key
         video.thumb_key = thumb_key
         db.commit()
+
+        # The original uploads/... object is only useful during
+        # processing -- leaving it in place after a successful compress
+        # doubles storage cost for every video, forever, for a copy
+        # nothing ever reads again. Deleted only after the approval is
+        # durably committed: this used to run before the commit, so a
+        # crash in between left the row stuck 'processing' with orig_key
+        # already gone -- the next stale-processing reclaim would
+        # re-download it, 404, and mark a video that had already fully
+        # and successfully processed as permanently 'failed', orphaning
+        # the processed_key/thumb_key objects already uploaded above.
+        try:
+            delete_object(video.orig_key)
+        except Exception:
+            logger.exception("video_orig_cleanup_failed video_id=%s", video.id)
+
         _notify_video_outcome(db, video, approved=True)
         return STATUS_APPROVED
     finally:
