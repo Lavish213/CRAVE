@@ -7,21 +7,35 @@ everything downstream assumes the app works at all.
 
 ## P0 — Broken right now, fix first
 
-### 1. Search returns 0 results for every query
-Confirmed live: `total` count is correct (backend finds real matches),
-but every result silently fails to serialize, so `items` is always empty.
-Not reproducible locally against equivalent test data — something specific
-to the production environment/data.
+### 1. ~~Search returns 0 results for every query~~ — FIXED (2026-08-25)
+Root cause found via the production logging added earlier this session
+(`fca764e`'s upgrade of `search_serialize_failed` to a full traceback):
+every result was failing `PlaceCardOut` validation because
+`rank_percentile` came back as huge out-of-range values (`-111.4`,
+`-106.9`, `-74.0`, ...) — `rank_percentile_query.py`'s percentile formula
+assumed a `CityPlaceRanking` row's `rank_position` always falls within
+`[1, city_total]` for its city, which drifted false in production (a
+stale `rank_position` surviving from before other rows for that city
+were pruned some other way). `PlaceCardOut`/`PlaceOut` both hard-require
+`rank_percentile` in `[0.0, 1.0]`, so Pydantic rejected every row —
+`items` came back empty while `total` (a separate COUNT query) stayed
+correct. Fixed by clamping the computed percentile to `[0.0, 1.0]` in
+`get_rank_percentiles()`. Confirmed live: `/search` now returns real
+results ("Piz" → 30 results). Full incident + root cause also logged in
+`CRAVE_REMAINING_WORK.md`.
 
-- Logging was fixed last (commit `fca764e`) so the real exception will
-  now actually appear in Railway's logs instead of being silently
-  swallowed at debug level.
-- **First step:** confirm this commit is actually deployed (`git pull` +
-  `railway up` from `backend/`), search for anything, then check
-  Railway's dashboard → Logs tab for `search_serialize_failed` — the
-  traceback will say exactly what's throwing.
-- Once the real error is visible, this should be a fast, well-targeted
-  fix rather than more guessing.
+Since `places.py` (the Feed route) shares this exact same
+`get_rank_percentiles()` call with the identical validation constraint,
+this fix likely also resolves a real chunk of the Feed under-counting
+anomaly documented in item #2.5 below — worth re-checking Feed's actual
+pagination behavior in production before assuming the cursor-pagination
+rewrite is still the only remaining cause.
+
+Not yet done: the underlying `city_place_rankings` data-integrity issue
+itself (why `rank_position` can drift out of range) hasn't been
+root-caused — the fix stops it from breaking user-facing responses, but
+some places may still be showing a slightly-off tier badge until that's
+investigated.
 
 ### 2. Confirm which commits are actually live in production
 Multiple backend commits landed this session (JWT/JWKS auth fix,
@@ -211,7 +225,7 @@ polish pass or the P0/P1 items above.
 
 ## Suggested order tomorrow
 
-1. Confirm deploy state, fix search (P0).
+1. ~~Confirm deploy state, fix search (P0).~~ Done — see above.
 2. Decide on record-video discoverability (P1 #4) — quick product call,
    cheap to implement once decided.
 3. Scope and build the photo/menu permission system (P1 #3) — the
