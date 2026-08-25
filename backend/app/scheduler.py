@@ -282,7 +282,7 @@ def _job_moderation_queue_health_check() -> None:
     from app.db.session import SessionLocal
     from app.db.models.place_image import PlaceImage
     from app.services.images.upload_moderation import MOD_PENDING_REVIEW
-    from app.api.v1.routes.moderation import _admin_ids
+    from app.core.contributor_access import admin_ids
 
     db = SessionLocal()
     try:
@@ -293,7 +293,7 @@ def _job_moderation_queue_health_check() -> None:
                 .count()
             )
 
-            if pending_count > 0 and not _admin_ids():
+            if pending_count > 0 and not admin_ids():
                 logger.error(
                     "moderation_queue_undrainable pending_count=%s — "
                     "ADMIN_USER_IDS is unset/empty, so nobody can reach "

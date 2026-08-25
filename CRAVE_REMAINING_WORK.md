@@ -3381,3 +3381,64 @@ in-city edge case, missing-snapshot handling, and per-city independence
 size). 7 new frontend tests in `scoring.test.ts` covering percentile
 bands and the absolute-score fallback. Full suite: backend 742 passed (2
 skipped), frontend 136 passed, `tsc --noEmit` clean.
+
+## Photo/menu contribution permissions (2026-08-25)
+
+Real product request: don't let every signed-in user directly publish
+place photos or menu photos — restrict that to admin/staff/trusted
+contributors (influencers, verified partners), with everyone else's
+upload held for review and a notification if it's approved.
+
+Turned out smaller than it first looked. `upload_moderation.py` already
+had a genuinely sophisticated content pipeline (free local quality check
+→ paid safety scan → GPS-verified/track-record trust logic →
+auto-reject / hold-for-review / auto-publish), built to mirror how Google
+Maps actually screens contributions. The actual gap was narrower: it
+screened for *quality and safety*, not *who's uploading* — any signed-in
+user's sharp, safe, non-flagged photo auto-published regardless of
+identity.
+
+- `app/core/contributor_access.py` (new) — `is_admin()` /
+  `is_trusted_contributor()`, backed by the existing `ADMIN_USER_IDS` env
+  var plus a new `TRUSTED_CONTRIBUTOR_USER_IDS` one. Same crude-allowlist
+  pattern `moderation.py` already established for admin access — no role
+  system exists in this app, and building one is a bigger change than
+  either feature warrants. `moderation.py::require_admin` and
+  `app/scheduler.py`'s moderation-queue health check now both delegate
+  here instead of moderation.py's own now-removed private copy.
+- `upload_moderation.py::screen_upload` — added the contributor-tier gate
+  as the literal last step, after everything else: an upload that would
+  otherwise auto-publish gets held (`MOD_PENDING_REVIEW`, reason
+  `"untrusted_contributor"`) unless the uploader is trusted. A photo that
+  actually fails quality or safety stays rejected regardless of who
+  uploaded it — trust never rescues a bad photo, it only ever affects the
+  would-have-been-approved branch. "Add menu photo" shares this exact
+  pipeline (the menu-OCR pass only runs on an already-published image, so
+  it's correctly blocked too) — one change covered both upload types.
+- `moderation.py::review_image` — now sends a push notification on
+  approve/reject, mirroring the existing video-review pattern
+  (`_notify_video_outcome`) exactly.
+
+Regression-tested two ways: `test_contributor_access.py` (new, 11 tests)
+covers the allowlist logic directly, and `test_upload_moderation.py`
+gained 3 new tests for the gate itself (untrusted → held, trusted →
+publishes, rejected stays rejected regardless of trust). Also had to fix
+8 *existing* tests across `test_upload_moderation.py` and
+`test_image_processing_worker.py` that had encoded the old intended
+behavior ("a plain user always auto-publishes") — correctly updated to
+grant trust explicitly where that's not what the test is actually about
+(quality/safety pipeline, primary-image election), rather than silently
+broken by an intentional behavior change. Also caught and fixed a real
+regression from the `_admin_ids` → `contributor_access.admin_ids` move:
+`app/scheduler.py` imported the old private function directly and would
+have hard-failed at import time.
+
+Still open (tracked in `CRAVE_TOMORROW_PLAN.md`, not launch-blocking):
+frontend button copy still reads "Add photo" for everyone rather than
+"Suggest a photo" for non-privileged users (needs the frontend to know
+the caller's tier — a small real follow-up, not done here), and there's
+no "was this photo actually used as the place's photo" flag yet, just
+notification-on-review-decision.
+
+Verified: 756 backend tests passing (745 + 11 new/adjusted), 2 skipped,
+no regressions.

@@ -104,7 +104,7 @@ def test_pending_images_with_no_admins_configured_logs_error(db, place, monkeypa
 
 
 def test_pending_images_with_blank_admin_ids_still_counts_as_unconfigured(db, place, monkeypatch, caplog):
-    # "" and whitespace-only should behave identically to unset — _admin_ids()
+    # "" and whitespace-only should behave identically to unset — admin_ids()
     # already strips/filters empty parts, this just confirms the health
     # check relies on that same parsing rather than a naive truthiness check.
     monkeypatch.setenv("ADMIN_USER_IDS", "  , ,")

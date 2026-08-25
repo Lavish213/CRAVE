@@ -30,6 +30,14 @@ could accrue the approved uploads needed to become trusted.
 
 Checks run cheapest-first so the paid Vision call only happens for photos
 that already passed the free local ones.
+
+On top of all that, a contributor-tier gate applies last: an upload that
+the pipeline above would otherwise auto-publish still gets held for human
+review unless the uploader is an admin or an explicitly allow-listed
+trusted contributor (see app/core/contributor_access.py) — staff,
+verified local partners, influencers. A photo that fails quality or
+safety is still rejected outright regardless of who uploaded it; trust
+only ever affects the MOD_APPROVED branch, never the reject branch.
 """
 from __future__ import annotations
 
@@ -40,6 +48,7 @@ from typing import Optional
 from PIL import Image
 from sqlalchemy.orm import Session
 
+from app.core.contributor_access import is_trusted_contributor
 from app.db.models.place import Place
 from app.db.models.place_image import PlaceImage
 from app.services.images.exif_reader import ExifReport, gps_matches_place, read_exif
@@ -179,6 +188,17 @@ def screen_upload(
                 reason="scan_unavailable_new_contributor",
                 quality=quality, exif=exif, safety=safety, gps_verified=gps_verified,
             )
+
+    # 5. Contributor-tier gate — last, because everything above still runs
+    #    unconditionally for every uploader. A place's catalog trust is
+    #    worth more than the convenience of instant publish for accounts
+    #    with no earned standing.
+    if not is_trusted_contributor(image.uploaded_by):
+        return ModerationDecision(
+            status=MOD_PENDING_REVIEW,
+            reason="untrusted_contributor",
+            quality=quality, exif=exif, safety=safety, gps_verified=gps_verified,
+        )
 
     return ModerationDecision(
         status=MOD_APPROVED,

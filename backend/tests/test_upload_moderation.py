@@ -215,8 +215,16 @@ def _clean_scan(monkeypatch):
     monkeypatch.setattr(mod, "safety_scanning_configured", lambda: True)
 
 
+def _trusted(monkeypatch):
+    """Grants contributor trust for tests exercising the quality/safety
+    pipeline itself, not the contributor-tier gate -- keeps those tests
+    isolated to the one thing each is actually about."""
+    monkeypatch.setattr(mod, "is_trusted_contributor", lambda user_id: True)
+
+
 def test_good_photo_with_clean_scan_publishes_immediately(db, place, monkeypatch):
     _clean_scan(monkeypatch)
+    _trusted(monkeypatch)
     decision = mod.screen_upload(
         db, image=_image_row(db, place), original=_detailed(),
         public_url="https://example.com/x.jpg",
@@ -276,6 +284,7 @@ def test_unconfigured_scanning_still_publishes(db, place, monkeypatch):
     without bound and never drain."""
     monkeypatch.setattr(mod, "safety_scanning_configured", lambda: False)
     monkeypatch.setattr(mod, "scan_image_url", lambda url: UNSCANNED)
+    _trusted(monkeypatch)
 
     decision = mod.screen_upload(
         db, image=_image_row(db, place, uploaded_by=f"brand-new-{uuid.uuid4().hex[:6]}"),
@@ -299,6 +308,7 @@ def test_scan_failure_holds_a_brand_new_contributor(db, place, monkeypatch):
 def test_scan_failure_does_not_hold_an_established_contributor(db, place, monkeypatch):
     monkeypatch.setattr(mod, "safety_scanning_configured", lambda: True)
     monkeypatch.setattr(mod, "scan_image_url", lambda url: UNSCANNED)
+    _trusted(monkeypatch)
 
     user_id = f"established-{uuid.uuid4().hex[:6]}"
     for _ in range(mod.TRUSTED_UPLOAD_COUNT):
@@ -323,6 +333,7 @@ def test_gps_verification_bypasses_the_trust_wait(db, place, monkeypatch):
         mod, "read_exif",
         lambda img: ExifReport(gps_lat=place.lat, gps_lng=place.lng),
     )
+    _trusted(monkeypatch)
 
     decision = mod.screen_upload(
         db, image=_image_row(db, place, uploaded_by=f"new-{uuid.uuid4().hex[:6]}"),
@@ -333,11 +344,56 @@ def test_gps_verification_bypasses_the_trust_wait(db, place, monkeypatch):
 
 
 # ---------------------------------------------------------------------------
+# Contributor-tier gate -- launch-sensitive: an untrusted user's otherwise-
+# perfect photo must never auto-publish, and a rejected photo must stay
+# rejected regardless of who uploaded it.
+# ---------------------------------------------------------------------------
+
+def test_good_photo_from_untrusted_contributor_is_held_for_review(db, place, monkeypatch):
+    _clean_scan(monkeypatch)
+    monkeypatch.setattr(mod, "is_trusted_contributor", lambda user_id: False)
+
+    decision = mod.screen_upload(
+        db, image=_image_row(db, place, uploaded_by="plain-user"),
+        original=_detailed(), public_url="https://example.com/x.jpg",
+    )
+    assert decision.status == mod.MOD_PENDING_REVIEW
+    assert decision.reason == "untrusted_contributor"
+    assert not decision.is_publishable
+
+
+def test_good_photo_from_trusted_contributor_publishes_immediately(db, place, monkeypatch):
+    _clean_scan(monkeypatch)
+    monkeypatch.setattr(mod, "is_trusted_contributor", lambda user_id: True)
+
+    decision = mod.screen_upload(
+        db, image=_image_row(db, place, uploaded_by="staff-member"),
+        original=_detailed(), public_url="https://example.com/x.jpg",
+    )
+    assert decision.status == mod.MOD_APPROVED
+
+
+def test_rejected_photo_stays_rejected_even_for_a_trusted_contributor(db, place, monkeypatch):
+    """Trust affects only the MOD_APPROVED branch -- it never rescues a
+    photo that actually fails quality."""
+    monkeypatch.setattr(mod, "is_trusted_contributor", lambda user_id: True)
+
+    decision = mod.screen_upload(
+        db, image=_image_row(db, place, uploaded_by="staff-member"),
+        original=_detailed().filter(ImageFilter.GaussianBlur(12)),
+        public_url="https://example.com/x.jpg",
+    )
+    assert decision.status == mod.MOD_REJECTED
+    assert decision.reason == "too_blurry"
+
+
+# ---------------------------------------------------------------------------
 # Writing the decision back
 # ---------------------------------------------------------------------------
 
 def test_apply_decision_writes_every_field(db, place, monkeypatch):
     _clean_scan(monkeypatch)
+    _trusted(monkeypatch)
     image = _image_row(db, place)
     decision = mod.screen_upload(
         db, image=image, original=_detailed(), public_url="https://example.com/x.jpg",

@@ -9,15 +9,16 @@ wrong restaurant, or someone's face, or last year's menu. That's what
 reports are for, and until this existed there was no takedown path at all
 short of direct database access.
 
-The review endpoints are gated on an ADMIN_USER_IDS allowlist. That is
-deliberately the crudest possible mechanism: there is no role system in
-this app, and inventing one here would be a bigger change than the feature
-warrants. It fails closed — an unset allowlist means nobody can review.
+The review endpoints are gated on an ADMIN_USER_IDS allowlist (see
+app/core/contributor_access.py, shared with the trusted-contributor gate
+in upload_moderation.py). That is deliberately the crudest possible
+mechanism: there is no role system in this app, and inventing one here
+would be a bigger change than the feature warrants. It fails closed — an
+unset allowlist means nobody can review.
 """
 from __future__ import annotations
 
 import logging
-import os
 from datetime import datetime, timezone
 from typing import List, Optional
 
@@ -28,9 +29,11 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.auth import require_api_key
+from app.core.contributor_access import is_admin
 from app.core.rate_limit import rate_limit
 from app.core.user_auth import get_current_user_id
 from app.db.session import get_db
+from app.services.notifications.expo_push import send_push_to_user
 from app.db.models.image_report import (
     AUTO_HIDE_REPORT_COUNT,
     VALID_REPORT_REASONS,
@@ -65,13 +68,8 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/moderation", tags=["moderation"])
 
 
-def _admin_ids() -> set[str]:
-    raw = os.getenv("ADMIN_USER_IDS", "")
-    return {part.strip() for part in raw.split(",") if part.strip()}
-
-
 def require_admin(user_id: str = Depends(get_current_user_id)) -> str:
-    if user_id not in _admin_ids():
+    if not is_admin(user_id):
         # 404 rather than 403 — don't advertise that the queue exists.
         raise HTTPException(status_code=404, detail="Not found")
     return user_id
@@ -202,6 +200,30 @@ def review_queue(
     }
 
 
+def _notify_image_outcome(db: Session, image: PlaceImage, *, approved: bool) -> None:
+    # Best-effort in the same sense as send_push_to_user itself (which
+    # never raises) -- wrapped again here anyway so a bug in this
+    # notification step can never turn into a lost/uncommitted review
+    # decision. Mirrors video_processing_worker.py's _notify_video_outcome.
+    try:
+        if approved:
+            send_push_to_user(
+                db, image.uploaded_by,
+                title="Your photo is live!",
+                body="Your photo was approved and is now visible on the place.",
+                data={"type": "photo_approved", "imageId": image.id, "placeId": image.place_id},
+            )
+        else:
+            send_push_to_user(
+                db, image.uploaded_by,
+                title="Your photo wasn't approved",
+                body="It didn't meet our content guidelines.",
+                data={"type": "photo_rejected", "imageId": image.id},
+            )
+    except Exception:
+        logger.exception("image_push_notification_failed image_id=%s", image.id)
+
+
 @router.post(
     "/images/{image_id}/review",
     dependencies=[Depends(rate_limit), Depends(require_api_key)],
@@ -245,6 +267,8 @@ def review_image(
         PlaceImageInvariantService().repair(db=db, place_id=image.place_id)
     except Exception:
         logger.exception("moderation_invariant_repair_failed place_id=%s", image.place_id)
+
+    _notify_image_outcome(db, image, approved=payload.decision == "approve")
 
     return {"status": image.moderation_status}
 

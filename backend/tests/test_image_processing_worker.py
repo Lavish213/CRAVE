@@ -52,6 +52,19 @@ def db():
         session.close()
 
 
+@pytest.fixture(autouse=True)
+def _trusted_contributor(monkeypatch):
+    """
+    This file tests primary-image election, not the contributor-tier
+    review gate added to upload_moderation.py -- grant every upload here
+    trust so a plain "test-user" uploader still reaches MOD_APPROVED,
+    same as every test in this file already assumed before that gate
+    existed.
+    """
+    import app.services.images.upload_moderation as upload_moderation
+    monkeypatch.setattr(upload_moderation, "is_trusted_contributor", lambda user_id: True)
+
+
 def _make_place(db) -> Place:
     city = City(
         id=str(uuid.uuid4()), name="Image Worker Test City",

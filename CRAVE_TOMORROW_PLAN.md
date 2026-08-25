@@ -61,32 +61,50 @@ deliberately rather than leaving to keep degrading.
 
 ## P1 — Real gaps found via live testing today
 
-### 3. Photo/menu contribution permissions
-Right now any signed-in user can upload a place photo or menu photo
-directly, no review. You want that restricted to admin/staff/trusted
-contributors (e.g. influencers), with everyone else going through a
-"suggest a photo" flow that an admin reviews, with a notification if
-their submission gets used.
+### 3. Photo/menu contribution permissions — DONE
+Turned out smaller than originally scoped: `upload_moderation.py` already
+had a real, sophisticated content-moderation pipeline (quality/safety/
+GPS-trust scanning, auto-reject/hold-for-review/auto-publish) — the gap
+was specifically the *identity* dimension, not content safety. Any
+signed-in user's good-quality, safe photo auto-published regardless of
+who they were.
 
-You already have most of the pattern built — `menu_submissions.py`
-implements exactly this shape (submit → pending → admin review →
-approve/reject) for menu *text*, gated by `require_admin` (an
-`ADMIN_USER_IDS` env-var allowlist in `moderation.py`). Photos have no
-equivalent.
+Built:
+- `app/core/contributor_access.py` (new) — shared `is_admin()` /
+  `is_trusted_contributor()`, backed by `ADMIN_USER_IDS` (existing) and a
+  new `TRUSTED_CONTRIBUTOR_USER_IDS` env-var allowlist. `moderation.py`'s
+  `require_admin` and `app/scheduler.py`'s health check now both delegate
+  to this instead of moderation.py's own private copy.
+- `upload_moderation.py::screen_upload` — added a contributor-tier gate as
+  the *last* step: an upload that would otherwise auto-publish (`MOD_APPROVED`)
+  now gets held for human review (`MOD_PENDING_REVIEW`, reason
+  `"untrusted_contributor"`) unless the uploader is admin/trusted. A photo
+  that actually fails quality/safety is still rejected outright regardless
+  of who uploaded it — trust only ever affects the approve branch. Since
+  "Add menu photo" shares the exact same upload/moderation pipeline (the
+  menu-OCR step only runs after this gate, on already-published photos),
+  one change covers both photo types.
+- `moderation.py::review_image` — now sends a push notification on
+  approve/reject, mirroring the existing video-review notification
+  pattern exactly (`"Your photo is live!"` / rejection copy).
+- Tests: `test_contributor_access.py` (new, 11 tests), 3 new tests in
+  `test_upload_moderation.py` covering the gate itself, plus fixed 8
+  tests that had encoded the *old* intended behavior (plain user always
+  auto-publishes) — now correctly require explicit trust for what they're
+  actually testing (quality/safety pipeline, primary-image election), not
+  silently broken by the identity change.
 
-Scoped work:
-- Extend the admin allowlist into a real trust-tier concept (not just a
-  flat env var) — admin / staff / trusted contributor.
-- Gate `upload.py`'s direct photo upload the same way menu submission
-  gates menu text: privileged tiers write directly, everyone else's photo
-  goes to a review queue instead.
-- New `PhotoSubmission` model/migration mirroring `MenuSubmission`.
-- Admin review endpoints, reusing the existing moderation queue pattern.
-- Push notification on approval (plumbing already exists from earlier
-  this session) — needs a real "was this actually used as the place's
-  photo" flag, not just "approved."
-- Frontend: regular users see "Suggest a photo" instead of "Add photo";
-  privileged users keep the direct button.
+Still open, lower priority — genuine UX polish, not launch-blocking:
+- Frontend button copy still says "Add photo"/"Add menu photo" for
+  everyone; a non-privileged user's tap now correctly gets held for
+  review, but the button doesn't yet say "Suggest a photo" to set that
+  expectation up front. Requires the frontend to know the current user's
+  tier (a new field on the user profile response) — real but small
+  follow-up work, not done tonight.
+- No "was this actually used as the place's photo, not just approved"
+  flag yet for the notification — currently notifies on the moderation
+  decision itself (matches the existing video pattern), not on a later
+  "did this specific photo end up as the display image" event.
 
 ### 4. Record-video has no discoverable entry point
 Confirmed: the only way to reach video recording is tapping into a
