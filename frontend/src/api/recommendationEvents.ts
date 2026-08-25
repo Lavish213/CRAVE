@@ -27,6 +27,11 @@ export interface RecommendationEventInput {
   // same id, so the server can no-op the duplicate instead of double-
   // counting a confirmed outcome.
   client_event_id?: string | null;
+  // A single search interaction session -- narrower than session_id
+  // above (which spans a whole app launch). See search.tsx's
+  // searchSessionIdRef for how it's minted; only meaningful when
+  // surface='search'.
+  search_session_id?: string | null;
 }
 
 export async function sendRecommendationEvents(

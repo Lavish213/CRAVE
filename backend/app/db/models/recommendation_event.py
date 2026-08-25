@@ -90,6 +90,9 @@ class RecommendationEvent(Base, TimestampMixin):
         Index("ix_recommendation_events_user_created", "user_id", "created_at"),
         Index("ix_recommendation_events_place_id", "place_id"),
         Index("ix_recommendation_events_surface_type", "surface", "event_type"),
+        # Supports reconstructing one search session's query -> results ->
+        # selection sequence without a full table scan.
+        Index("ix_recommendation_events_search_session", "search_session_id"),
         # See client_event_id's own comment. NULL-safe: a partial unique
         # index ignores rows where the column is NULL, so this never
         # constrains an impression/click/rank event.
@@ -140,6 +143,19 @@ class RecommendationEvent(Base, TimestampMixin):
     # Only meaningful for surface=search -- the query string that
     # produced this impression/click.
     query: Mapped[str | None] = mapped_column(String(200), nullable=True)
+
+    # A single *search interaction session* -- narrower than session_id
+    # above (which spans a whole app launch, for cross-surface
+    # reconstruction like "shown in Feed, then searched"). Generated
+    # client-side once per visit to the Search screen, reused across
+    # every debounced/submitted query in that visit -- lets a later
+    # analysis reconstruct query -> results shown -> selection ->
+    # reformulation (a new query replacing the previous one, sharing
+    # this id, before any click) without a separate logged "reformulated"
+    # event: it's fully derivable from consecutive impression batches
+    # sharing this id with different `query` values. Only meaningful for
+    # surface=search; every other surface leaves this null.
+    search_session_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
     # City the surface was scoped to at event time (nullable -- a
     # location-based Feed/Map query may have no explicit city selected).

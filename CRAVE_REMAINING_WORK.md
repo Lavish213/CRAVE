@@ -3886,3 +3886,48 @@ confirmed clean in a stable session. Re-check next time with a build
 that isn't being actively reloaded (a real EAS build, or a dev-client
 session left untouched for a few minutes after a save) before writing
 this off entirely.
+
+## Search-session instrumentation (2026-08-25)
+
+Ledger fast-follow #2 (after save/unsave), per explicit spec: model a
+search *session*, not per-keystroke noise, and keep search intent
+separate from taste evidence until followed by a real action.
+
+Backend: one additive column, `search_session_id` (migration
+`f8a2c6d90e13`), narrower than the existing app-launch `session_id` --
+groups one search interaction so a later analysis can reconstruct
+query -> results shown -> selection -> reformulation. Reformulation is
+deliberately *not* a logged event type -- it's derivable from
+consecutive impression batches sharing a search_session_id with
+different `query` values before any click, matching this codebase's
+own "don't extend the schema preemptively" precedent. Reuses the
+existing `impression`/`click` event types and `surface='search'`
+exactly -- no new analytics system.
+
+Frontend (`search.tsx`): a `searchSessionIdRef`, re-minted whenever a
+fresh query starts from an empty box (not on every keystroke, not on
+an idle timeout state machine). One impression batch logged the first
+time a genuinely new debounced query's results arrive (capped at the
+top 20 results, guarding against an unwieldy payload on a broad query),
+deduped against re-renders of the same query via a ref. One click event
+logged on result selection with its real position/query/session.
+Trending (the pre-query zero state) is deliberately not instrumented
+under surface='search' -- it isn't a search at all.
+
+New tests: 1 backend (search_session_id pass-through/length-cap) + 2
+frontend (impression batch capped/positioned/deduped-by-query; click
+event carries the real position/query/session and doesn't fire from
+trending). The frontend test is a full `SearchScreen` render via RTL +
+react-query -- the first full-screen-component test in this repo
+alongside `map.test.tsx`; needed `--forceExit`-equivalent awareness (a
+benign "worker didn't exit gracefully" warning from a lingering
+debounce timer, confirmed harmless -- the full suite still exits 0
+without any special flags).
+
+Full suites green: 803 backend (SQLite + fresh-schema Postgres,
+migration round-trip re-verified), 153 frontend, clean tsc.
+
+Deliberately not done yet, per the agreed sequencing: Craves/Map
+instrumentation (queued after the design work), and no consumption of
+these events into personalization -- that's Gate 2+ territory, once
+real behavioral volume exists.

@@ -802,8 +802,8 @@ Potential zero-state modules:
 
 Do not fill zero state with generic decorative recommendations.
 
-**Instrumentation addendum (2026-08-25):** when Search event logging is
-built (queued as the Ledger's next fast-follow), model a *search
+**Instrumentation addendum (2026-08-25): implemented.** Search event
+logging models a *search
 session* --- submitted query + session id, results shown with position,
 a selection event, and reformulation (a new query within the same
 session before a selection) --- never a raw event per keystroke, which
@@ -814,6 +814,18 @@ search only becomes strong taste evidence once followed by an action on
 the result (`search → detail → save` or `search → detail → positive
 rank`). Keep that distinction structural in whatever gets built, not a
 convention someone has to remember later.
+
+Implementation notes: reuses the existing Ledger path exactly
+(surface='search', event_type='impression'/'click') rather than new
+event types --- no separate analytics system. A new
+`search_session_id` column (narrower than the app-launch `session_id`)
+groups one search interaction; reformulation is deliberately **not** a
+logged event type --- it's derived at analysis time from consecutive
+impression batches sharing a search_session_id with different `query`
+values before any click, per this codebase's own precedent of not
+extending the schema preemptively. Impressions are capped at the top 20
+results per query to keep batch payloads bounded, and only logged once
+per genuinely new debounced query, never per keystroke.
 
 ------------------------------------------------------------------------
 

@@ -18,11 +18,24 @@ import { searchPlaces } from '../../src/api/search';
 import { useLocation } from '../../src/hooks/useLocation';
 import { PlaceOut } from '../../src/api/places';
 import { useTrendingWithRefresh } from '../../src/hooks/useTrending';
+import { logRecommendationEvent, logRecommendationEvents } from '../../src/utils/recommendationEventQueue';
 import { Colors, Radius, Spacing } from '../../src/constants/colors';
 import { PlaceCardCompact } from '../../src/components/PlaceCardCompact';
 import { SkeletonRowList } from '../../src/components/SkeletonCard';
 import { ErrorState } from '../../src/components/ErrorState';
 import { EmptyState } from '../../src/components/EmptyState';
+
+// Same pattern as client.ts's requestId / recommendationEventQueue's
+// module-level sessionId -- no external uuid dependency needed.
+function _makeSearchSessionId(): string {
+  return `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
+}
+
+// Bounds a single query's logged impressions to a reasonable "above the
+// fold plus a bit of scroll" window -- capping payload size per the
+// explicit instruction not to encode every result into one giant event
+// batch, not because more than this many results ever render at once.
+const MAX_LOGGED_SEARCH_RESULTS = 20;
 
 export default function SearchScreen() {
   const router = useRouter();
@@ -36,6 +49,21 @@ export default function SearchScreen() {
   const [debouncedQuery, setDebouncedQuery] = useState('');
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // One search interaction session -- narrower than the app-launch
+  // session recommendationEventQueue already tracks. Reminted whenever
+  // a fresh query starts from an empty box (see handleChange below),
+  // so a later analysis can group "query -> results shown -> selection"
+  // into one arc without an idle-timeout state machine, and reformulation
+  // (a new query replacing the previous one before any selection) is
+  // fully derivable from consecutive logged queries sharing this id --
+  // no separate "reformulated" event needed.
+  const searchSessionIdRef = useRef(_makeSearchSessionId());
+  // Which debouncedQuery we've already logged impressions for -- results
+  // re-rendering for the *same* query (a background refetch, an
+  // unrelated state change) must not re-log; only a genuinely new query
+  // actually producing results should.
+  const loggedSearchQueryRef = useRef<string | null>(null);
 
   // Deliberately NOT scoped to selectedCity -- a search should find a
   // real match anywhere in the catalog, not just within whatever city
@@ -61,11 +89,40 @@ export default function SearchScreen() {
   const results = searchData ?? [];
   const searched = debouncedQuery.length >= 2 && !searchLoading && searchData !== undefined;
 
+  // Recommendation Ledger: log one impression per result the first time
+  // a genuinely new query's results actually arrive. Keyed on
+  // debouncedQuery (not `results` itself, which is a fresh array
+  // reference every render) so a re-render that doesn't change the
+  // query -- e.g. the pull-to-refresh spinner toggling -- never re-logs.
+  useEffect(() => {
+    if (!searched || results.length === 0) return;
+    if (loggedSearchQueryRef.current === debouncedQuery) return;
+    loggedSearchQueryRef.current = debouncedQuery;
+
+    logRecommendationEvents(
+      results.slice(0, MAX_LOGGED_SEARCH_RESULTS).map((p, position) => ({
+        surface: 'search',
+        event_type: 'impression',
+        place_id: p.id,
+        position,
+        rank_percentile: p.rank_percentile,
+        query: debouncedQuery,
+        city_id: selectedCity?.id ?? null,
+        search_session_id: searchSessionIdRef.current,
+      })),
+    );
+  }, [searched, debouncedQuery, results, selectedCity?.id]);
+
   if (__DEV__ && searchData) {
     console.log('[SEARCH] RENDER_INPUT', { query: debouncedQuery, count: results.length, sample: results[0] ? { id: results[0].id, category: results[0].category } : null });
   }
 
   const handleChange = (text: string) => {
+    // A fresh query starting from an empty box begins a new search
+    // interaction session -- see searchSessionIdRef's own comment.
+    if (query.length === 0 && text.trim().length > 0) {
+      searchSessionIdRef.current = _makeSearchSessionId();
+    }
     setQuery(text);
     if (debounceRef.current) clearTimeout(debounceRef.current);
     if (!text.trim()) {
@@ -204,11 +261,23 @@ export default function SearchScreen() {
         <FlashList
           data={results}
           keyExtractor={(p) => p.id}
-          renderItem={({ item }) => (
+          renderItem={({ item, index }) => (
             <View style={styles.rowSpacer}>
               <PlaceCardCompact
                 place={item}
-                onPress={() => router.push(`/place/${item.id}`)}
+                onPress={() => {
+                  logRecommendationEvent({
+                    surface: 'search',
+                    event_type: 'click',
+                    place_id: item.id,
+                    position: index,
+                    rank_percentile: item.rank_percentile,
+                    query: debouncedQuery,
+                    city_id: selectedCity?.id ?? null,
+                    search_session_id: searchSessionIdRef.current,
+                  });
+                  router.push(`/place/${item.id}`);
+                }}
                 onPressIn={() => prefetchPlace(item.id)}
               />
             </View>

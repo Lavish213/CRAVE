@@ -32,6 +32,7 @@ MAX_BATCH_SIZE = 200
 _MAX_QUERY_LEN = 200
 _MAX_SESSION_ID_LEN = 64
 _MAX_CLIENT_EVENT_ID_LEN = 64
+_MAX_SEARCH_SESSION_ID_LEN = 64
 
 
 def _clamp_percentile(value) -> Optional[float]:
@@ -71,6 +72,7 @@ def build_valid_events(
         query = getattr(e, "query", None)
         session_id = getattr(e, "session_id", None)
         client_event_id = getattr(e, "client_event_id", None)
+        search_session_id = getattr(e, "search_session_id", None)
 
         valid.append(
             RecommendationEvent(
@@ -84,6 +86,7 @@ def build_valid_events(
                 query=(query or None)[:_MAX_QUERY_LEN] if query else None,
                 city_id=getattr(e, "city_id", None) or None,
                 client_event_id=(client_event_id or None)[:_MAX_CLIENT_EVENT_ID_LEN] if client_event_id else None,
+                search_session_id=(search_session_id or None)[:_MAX_SEARCH_SESSION_ID_LEN] if search_session_id else None,
             )
         )
 

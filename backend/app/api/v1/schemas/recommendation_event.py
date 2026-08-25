@@ -29,6 +29,10 @@ class RecommendationEventIn(BaseModel):
     # RecommendationEvent.client_event_id's own docstring. Absent from
     # every impression/click (those have no retry path to dedupe).
     client_event_id: Optional[str] = None
+    # One search interaction session -- see RecommendationEvent
+    # .search_session_id's own docstring. Only meaningful for
+    # surface=search.
+    search_session_id: Optional[str] = None
 
 
 class RecommendationEventBatchIn(BaseModel):

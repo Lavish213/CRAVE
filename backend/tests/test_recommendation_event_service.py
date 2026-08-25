@@ -38,6 +38,7 @@ class _RawEvent:
     city_id: Optional[str] = None
     session_id: Optional[str] = None
     client_event_id: Optional[str] = None
+    search_session_id: Optional[str] = None
 
 
 def test_valid_event_passes_through():
@@ -102,6 +103,15 @@ def test_unsave_event_type_is_accepted():
     )
     assert len(events) == 1
     assert events[0].event_type == "unsave"
+
+
+def test_search_session_id_passes_through_and_is_length_capped():
+    events = build_valid_events(
+        raw_events=[_RawEvent(surface="search", event_type="impression", search_session_id="y" * 200)],
+        user_id="user-a",
+    )
+    assert len(events) == 1
+    assert len(events[0].search_session_id) == 64
 
 
 def test_place_detail_surface_is_accepted():
