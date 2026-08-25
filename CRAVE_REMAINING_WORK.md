@@ -3770,3 +3770,41 @@ re-verified), 150 frontend + clean tsc.
 Deliberately not done yet, per explicit instruction: Search/Craves/Map
 recommendation-event instrumentation (fast-follow, in that order, after
 this).
+
+## Ledger idempotency: one confirmed save/unsave -> at most one event (2026-08-25)
+
+Follow-up on explicit feedback asking me to inspect whether multiple
+confirmed sync pathways could ever double-log a save/unsave event.
+Traced it through: addSave/removeSave's own immediate-success path and
+the offline outbox's flush-confirmed path are mutually exclusive per
+call (one logs immediately XOR queues, never both), and flushPendingActions
+has a re-entrancy guard against concurrent overlapping passes -- so the
+only real gap is a process kill in the narrow window between (a) a
+successful sync + logged event and (b) that entry's removal from
+pendingSyncActions actually persisting to AsyncStorage (zustand-persist
+writes async, after the in-memory set() already returned). If the app
+dies there, the next launch still sees the entry queued, retries the
+(already-idempotent-server-side) save/unsave call, and would have
+logged a second Ledger event for the same confirmed outcome.
+
+Closed the gap with the same idempotency-key pattern this codebase
+already uses for the identical class of problem (PlaceVideo.client_id,
+see video_upload_service.py): a `client_event_id` generated once per
+save/unsave attempt (reused across every retry of *that* attempt, never
+regenerated), carried through PendingSyncAction so a later flush -- even
+across an app restart -- logs with the same id. Backend: nullable
+`client_event_id` column + NULL-safe partial unique index (migration
+`d1f7127806d5`), `record_events` drops a within-batch duplicate and
+anything already persisted before inserting, with an IntegrityError
+fallback (insert one at a time) for a genuine concurrent-request race.
+Every impression/click/rank event still has `client_event_id=None` and
+is untouched by any of this (the partial index ignores NULLs).
+
+New tests: 6 backend (pass-through/length-cap, within-batch dedup,
+cross-request dedup at both the service and the real HTTP route layer,
+NULLs never dedupe against each other) + 1 frontend (the actual
+invariant: a failed retry then a successful sync reuses the exact same
+client_event_id, asserted end to end through cravesStore). Full suites
+green: 799 backend (SQLite + fresh-schema Postgres, migration
+round-trip re-verified once more with the new column), 151 frontend,
+clean tsc.

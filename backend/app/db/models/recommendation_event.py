@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import Float, ForeignKey, Index, Integer, String
+from sqlalchemy import Float, ForeignKey, Index, Integer, String, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.models.base import Base, TimestampMixin
@@ -90,6 +90,15 @@ class RecommendationEvent(Base, TimestampMixin):
         Index("ix_recommendation_events_user_created", "user_id", "created_at"),
         Index("ix_recommendation_events_place_id", "place_id"),
         Index("ix_recommendation_events_surface_type", "surface", "event_type"),
+        # See client_event_id's own comment. NULL-safe: a partial unique
+        # index ignores rows where the column is NULL, so this never
+        # constrains an impression/click/rank event.
+        Index(
+            "uq_recommendation_events_client_event_id", "client_event_id",
+            unique=True,
+            postgresql_where=text("client_event_id IS NOT NULL"),
+            sqlite_where=text("client_event_id IS NOT NULL"),
+        ),
     )
 
     id: Mapped[str] = mapped_column(
@@ -135,3 +144,19 @@ class RecommendationEvent(Base, TimestampMixin):
     # City the surface was scoped to at event time (nullable -- a
     # location-based Feed/Map query may have no explicit city selected).
     city_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+
+    # Client-generated idempotency key for a *confirmed* save/unsave
+    # outcome (see cravesStore.ts) -- makes a resubmission harmless
+    # instead of a duplicate row. The gap this closes: a save/unsave
+    # queued in the offline outbox is only removed from that queue (and
+    # only stops being retried) once its removal is durably persisted to
+    # AsyncStorage, which happens asynchronously *after* the in-memory
+    # state update that also fires this event -- a process kill in that
+    # narrow window leaves the queue entry on disk, so the next flush
+    # retries the (already-idempotent-server-side) save/unsave call and
+    # would otherwise log a second event for the same confirmed outcome.
+    # NULL-safe unique index (see __table_args__): most events (every
+    # impression/click, and the server-originated rank event) never set
+    # this at all. Mirrors PlaceVideo.client_id's exact same pattern for
+    # the identical class of problem -- see that model's own comment.
+    client_event_id: Mapped[str | None] = mapped_column(String(64), nullable=True)

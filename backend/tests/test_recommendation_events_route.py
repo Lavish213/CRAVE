@@ -126,6 +126,37 @@ def test_empty_batch_is_accepted_as_a_no_op():
     assert resp.json() == {"accepted": 0}
 
 
+def test_resubmitting_the_same_client_event_id_does_not_double_count(db):
+    # Simulates cravesStore.ts's offline outbox retrying a confirmed
+    # save/unsave after a process-kill-before-persist race: the exact
+    # same client_event_id arrives twice, across two separate requests.
+    app.dependency_overrides[get_current_user_id_optional] = lambda: "user-ledger-test"
+    session_id = f"test-session-{uuid.uuid4().hex[:8]}"
+    client_event_id = f"dedup-route-{uuid.uuid4().hex}"
+    payload = {
+        "events": [{
+            "surface": "feed", "event_type": "save", "session_id": session_id,
+            "client_event_id": client_event_id,
+        }]
+    }
+
+    first = client.post("/api/v1/recommendations/events", json=payload)
+    assert first.status_code == 200
+    assert first.json() == {"accepted": 1}
+
+    second = client.post("/api/v1/recommendations/events", json=payload)
+    assert second.status_code == 200
+    assert second.json() == {"accepted": 0}
+
+    rows = db.query(RecommendationEvent).filter(
+        RecommendationEvent.client_event_id == client_event_id
+    ).all()
+    try:
+        assert len(rows) == 1
+    finally:
+        _cleanup(db, [r.id for r in rows])
+
+
 def test_oversized_batch_is_rejected():
     app.dependency_overrides[get_current_user_id_optional] = lambda: None
     events = [{"surface": "feed", "event_type": "impression"} for _ in range(201)]

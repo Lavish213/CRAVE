@@ -25,6 +25,10 @@ class RecommendationEventIn(BaseModel):
     query: Optional[str] = None
     city_id: Optional[str] = None
     session_id: Optional[str] = None
+    # Idempotency key for a confirmed save/unsave outcome -- see
+    # RecommendationEvent.client_event_id's own docstring. Absent from
+    # every impression/click (those have no retry path to dedupe).
+    client_event_id: Optional[str] = None
 
 
 class RecommendationEventBatchIn(BaseModel):

@@ -184,7 +184,7 @@ describe('cravesStore', () => {
       expect(useCravesStore.getState().pendingSyncActions).toEqual({
         p1: {
           type: 'add', userId: 'userA', queuedAt: expect.any(Number),
-          attemptCount: 1, lastAttemptAt: expect.any(Number),
+          attemptCount: 1, lastAttemptAt: expect.any(Number), eventId: expect.any(String),
         },
       });
     });
@@ -201,7 +201,7 @@ describe('cravesStore', () => {
       expect(useCravesStore.getState().pendingSyncActions).toEqual({
         p1: {
           type: 'remove', userId: 'userA', queuedAt: expect.any(Number),
-          attemptCount: 1, lastAttemptAt: expect.any(Number),
+          attemptCount: 1, lastAttemptAt: expect.any(Number), eventId: expect.any(String),
         },
       });
     });
@@ -407,6 +407,7 @@ describe('cravesStore', () => {
       expect(eventQueue.logRecommendationEvent).toHaveBeenCalledWith({
         surface: 'feed', event_type: 'save', place_id: 'p1',
         position: null, rank_percentile: 0.9, city_id: 'city-1', query: null,
+        client_event_id: expect.any(String),
       });
     });
 
@@ -471,7 +472,10 @@ describe('cravesStore', () => {
       await useCravesStore.getState().flushPendingActions('userA');
 
       expect(eventQueue.logRecommendationEvent).toHaveBeenCalledWith(
-        expect.objectContaining({ surface: 'search', event_type: 'save', place_id: 'p1', rank_percentile: 0.5 }),
+        expect.objectContaining({
+          surface: 'search', event_type: 'save', place_id: 'p1', rank_percentile: 0.5,
+          client_event_id: expect.any(String),
+        }),
       );
     });
 
@@ -487,6 +491,48 @@ describe('cravesStore', () => {
       await useCravesStore.getState().flushPendingActions('userA');
 
       expect(eventQueue.logRecommendationEvent).not.toHaveBeenCalled();
+    });
+
+    // The actual invariant this whole idempotency-key mechanism exists
+    // for: "one confirmed state transition -> at most one ledger outcome
+    // event", even across a failed-then-successful retry sequence, so a
+    // resubmission after the offline-outbox's own process-kill-before-
+    // persist race (see PendingSyncAction.eventId's docstring) is safe to
+    // dedupe server-side instead of double-counting.
+    it('reuses the same client_event_id across a failed retry and the eventual successful sync', async () => {
+      await hydrateWith(null);
+      useCravesStore.setState({ saves: [], savesUserId: 'userA' });
+      (savesApi.createSave as jest.Mock).mockRejectedValue(new Error('Network Error'));
+
+      await useCravesStore.getState().addSave(makePlace('p1'), 'userA', { surface: 'feed' });
+      const queuedEventId = useCravesStore.getState().pendingSyncActions.p1.eventId;
+      expect(queuedEventId).toEqual(expect.any(String));
+      expect(eventQueue.logRecommendationEvent).not.toHaveBeenCalled();
+
+      // First flush attempt still fails -- the entry stays queued and
+      // must keep the exact same id, not mint a new one per attempt.
+      await useCravesStore.getState().flushPendingActions('userA');
+      expect(useCravesStore.getState().pendingSyncActions.p1.eventId).toBe(queuedEventId);
+      expect(eventQueue.logRecommendationEvent).not.toHaveBeenCalled();
+
+      // Second flush attempt succeeds -- exactly one log, carrying the
+      // same id that was generated back when this action first queued.
+      // Backs the backoff window up so this attempt is actually due
+      // (not exercising backoff timing itself, covered elsewhere).
+      useCravesStore.setState((state) => ({
+        pendingSyncActions: {
+          ...state.pendingSyncActions,
+          p1: { ...state.pendingSyncActions.p1, lastAttemptAt: Date.now() - 60_000 },
+        },
+      }));
+      (savesApi.createSave as jest.Mock).mockResolvedValue(undefined);
+      await useCravesStore.getState().flushPendingActions('userA');
+
+      expect(eventQueue.logRecommendationEvent).toHaveBeenCalledTimes(1);
+      expect(eventQueue.logRecommendationEvent).toHaveBeenCalledWith(
+        expect.objectContaining({ event_type: 'save', place_id: 'p1', client_event_id: queuedEventId }),
+      );
+      expect(useCravesStore.getState().pendingSyncActions).toEqual({});
     });
   });
 });

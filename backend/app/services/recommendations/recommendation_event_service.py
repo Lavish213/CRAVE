@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from typing import Iterable, List, Optional
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.db.models.recommendation_event import (
@@ -30,6 +31,7 @@ MAX_BATCH_SIZE = 200
 
 _MAX_QUERY_LEN = 200
 _MAX_SESSION_ID_LEN = 64
+_MAX_CLIENT_EVENT_ID_LEN = 64
 
 
 def _clamp_percentile(value) -> Optional[float]:
@@ -68,6 +70,7 @@ def build_valid_events(
 
         query = getattr(e, "query", None)
         session_id = getattr(e, "session_id", None)
+        client_event_id = getattr(e, "client_event_id", None)
 
         valid.append(
             RecommendationEvent(
@@ -80,10 +83,42 @@ def build_valid_events(
                 rank_percentile=_clamp_percentile(getattr(e, "rank_percentile", None)),
                 query=(query or None)[:_MAX_QUERY_LEN] if query else None,
                 city_id=getattr(e, "city_id", None) or None,
+                client_event_id=(client_event_id or None)[:_MAX_CLIENT_EVENT_ID_LEN] if client_event_id else None,
             )
         )
 
     return valid
+
+
+def _drop_already_recorded(db: Session, events: List[RecommendationEvent]) -> List[RecommendationEvent]:
+    """
+    Filters out events whose client_event_id has already been persisted
+    (a resubmission after the process-kill-before-persist race described
+    on that column) -- and, within this same batch, keeps only the first
+    of any duplicate client_event_id a client mistakenly sent twice.
+    Events with no client_event_id (the overwhelming majority --
+    impression/click/rank) always pass through untouched.
+    """
+    ids = [e.client_event_id for e in events if e.client_event_id]
+    if not ids:
+        return events
+
+    already_recorded = {
+        row[0]
+        for row in db.query(RecommendationEvent.client_event_id)
+        .filter(RecommendationEvent.client_event_id.in_(ids))
+        .all()
+    }
+
+    seen_in_batch: set = set()
+    kept: List[RecommendationEvent] = []
+    for e in events:
+        if e.client_event_id:
+            if e.client_event_id in already_recorded or e.client_event_id in seen_in_batch:
+                continue
+            seen_in_batch.add(e.client_event_id)
+        kept.append(e)
+    return kept
 
 
 def record_events(
@@ -95,7 +130,8 @@ def record_events(
     """
     Validates, builds, and persists a batch of recommendation events.
     Returns the number actually accepted (<= len(raw_events) -- some may
-    have been dropped as malformed). Caller is responsible for enforcing
+    have been dropped as malformed or as an already-recorded
+    client_event_id resubmission). Caller is responsible for enforcing
     MAX_BATCH_SIZE before calling this (kept separate so it can be a
     normal 422 at the route layer rather than a silent truncation here).
     """
@@ -103,8 +139,32 @@ def record_events(
     if not events:
         return 0
 
+    events = _drop_already_recorded(db, events)
+    if not events:
+        return 0
+
     db.add_all(events)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        # A genuine race lost to a concurrent request inserting the same
+        # client_event_id between the pre-check above and this commit
+        # (e.g. two flush passes from two devices signed into the same
+        # account). The partial unique index is what actually guarantees
+        # no duplicate ever lands -- fall back to inserting one at a time
+        # so only the entries that actually lost the race get dropped,
+        # not the whole batch.
+        db.rollback()
+        accepted = 0
+        for event in events:
+            db.add(event)
+            try:
+                db.commit()
+                accepted += 1
+            except IntegrityError:
+                db.rollback()
+        return accepted
+
     return len(events)
 
 

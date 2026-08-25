@@ -37,6 +37,7 @@ class _RawEvent:
     query: Optional[str] = None
     city_id: Optional[str] = None
     session_id: Optional[str] = None
+    client_event_id: Optional[str] = None
 
 
 def test_valid_event_passes_through():
@@ -121,6 +122,14 @@ def test_anonymous_event_has_null_user_id():
     assert events[0].user_id is None
 
 
+def test_client_event_id_passes_through_and_is_length_capped():
+    events = build_valid_events(
+        raw_events=[_RawEvent(client_event_id="z" * 200)],
+        user_id="user-a",
+    )
+    assert len(events[0].client_event_id) == 64
+
+
 def test_query_and_session_id_are_length_capped():
     events = build_valid_events(
         raw_events=[_RawEvent(query="x" * 500, session_id="y" * 200)],
@@ -198,6 +207,87 @@ def test_record_events_returns_zero_when_everything_is_invalid(db):
         user_id="user-a",
     )
     assert accepted == 0
+
+
+def test_record_events_drops_a_client_event_id_already_persisted(db):
+    """
+    The core idempotency invariant: a save/unsave outcome resubmitted
+    with the same client_event_id (the offline outbox retrying after a
+    process-kill-before-persist race -- see cravesStore.ts) must not
+    produce a second row, even across two entirely separate
+    record_events() calls (not just within one batch).
+    """
+    session, created = db
+    client_event_id = f"dedup-{uuid.uuid4().hex}"
+
+    first = record_events(
+        session,
+        raw_events=[_RawEvent(surface="feed", event_type="save", client_event_id=client_event_id)],
+        user_id="user-a",
+    )
+    assert first == 1
+
+    second = record_events(
+        session,
+        raw_events=[_RawEvent(surface="feed", event_type="save", client_event_id=client_event_id)],
+        user_id="user-a",
+    )
+    assert second == 0
+
+    rows = (
+        session.query(RecommendationEvent)
+        .filter(RecommendationEvent.client_event_id == client_event_id)
+        .all()
+    )
+    created["event_ids"].extend([r.id for r in rows])
+    assert len(rows) == 1
+
+
+def test_record_events_drops_a_duplicate_client_event_id_within_the_same_batch(db):
+    session, created = db
+    client_event_id = f"dedup-{uuid.uuid4().hex}"
+
+    accepted = record_events(
+        session,
+        raw_events=[
+            _RawEvent(surface="feed", event_type="save", client_event_id=client_event_id),
+            _RawEvent(surface="feed", event_type="save", client_event_id=client_event_id),
+        ],
+        user_id="user-a",
+    )
+    assert accepted == 1
+
+    rows = (
+        session.query(RecommendationEvent)
+        .filter(RecommendationEvent.client_event_id == client_event_id)
+        .all()
+    )
+    created["event_ids"].extend([r.id for r in rows])
+    assert len(rows) == 1
+
+
+def test_record_events_with_no_client_event_id_never_dedupes_against_each_other(db):
+    # Every impression/click/rank event has client_event_id=None -- must
+    # never be treated as "duplicates of each other" by the dedup pass.
+    session, created = db
+    accepted = record_events(
+        session,
+        raw_events=[
+            _RawEvent(surface="feed", event_type="impression"),
+            _RawEvent(surface="feed", event_type="impression"),
+        ],
+        user_id="user-a",
+    )
+    assert accepted == 2
+
+    rows = (
+        session.query(RecommendationEvent)
+        .filter(RecommendationEvent.user_id == "user-a", RecommendationEvent.client_event_id.is_(None))
+        .order_by(RecommendationEvent.id.desc())
+        .limit(2)
+        .all()
+    )
+    created["event_ids"].extend([r.id for r in rows])
 
 
 def test_record_rank_outcome_persists_a_rank_event_with_no_percentile(db):

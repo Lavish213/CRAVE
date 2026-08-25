@@ -54,6 +54,20 @@ export interface PendingSyncAction {
   // that context would otherwise be long gone by the time a later flush
   // pass (possibly a whole app restart later) confirms the outcome.
   meta?: SaveEventMeta;
+  // Idempotency key for the eventual confirmed-outcome Ledger event --
+  // generated once, at the moment this specific save/unsave attempt
+  // first queues (see _makeEventId), and reused by every later retry of
+  // *this same entry* rather than regenerated per attempt. Closes the
+  // gap where a flush's removal of this entry is confirmed in memory and
+  // its event logged, but the app is killed before that removal
+  // persists to disk -- the next launch retries the (already-idempotent
+  // server-side) sync call and would otherwise log a second event for
+  // the same confirmed outcome; reusing the id lets the server drop the
+  // resubmission as a duplicate instead. Optional only because an entry
+  // already sitting in a signed-in user's persisted queue from before
+  // this field existed won't have one -- flushPendingActions mints one
+  // on the fly for that one-time case (see there).
+  eventId?: string;
 }
 
 interface CravesStore {
@@ -191,12 +205,20 @@ function _isCurrentMutation(placeId: string, token: number): boolean {
 // state already matches what the server believes, so no network call is
 // needed at all. A placeId whose existing entry is the *same* type just
 // gets its queuedAt bumped (harmless overwrite -- same eventual API call).
+// Generates a stable idempotency key for one save/unsave attempt's whole
+// lifecycle (see PendingSyncAction.eventId's own comment) -- same shape
+// as client.ts's existing requestId, no external uuid dependency needed.
+function _makeEventId(): string {
+  return `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
+}
+
 function _enqueueSyncAction(
   set: (partial: Partial<CravesStore>) => void,
   get: () => CravesStore,
   placeId: string,
   type: 'add' | 'remove',
   userId: string,
+  eventId: string,
   meta?: SaveEventMeta,
 ) {
   const current = get().pendingSyncActions;
@@ -210,7 +232,10 @@ function _enqueueSyncAction(
     // call that called it just failed with a network error -- that IS a
     // real attempt, so it counts toward backoff exactly like a
     // flushPendingActions retry failing would (see there for the other
-    // half of this bookkeeping).
+    // half of this bookkeeping). eventId/meta are only ever taken from
+    // `existing` when there is one -- this is still the same logical
+    // attempt as whatever first queued this entry, so it must keep that
+    // attempt's id, not mint a new one.
     set({
       pendingSyncActions: {
         ...current,
@@ -221,6 +246,7 @@ function _enqueueSyncAction(
           attemptCount: (existing?.attemptCount ?? 0) + 1,
           lastAttemptAt: Date.now(),
           meta: existing?.meta ?? meta,
+          eventId: existing?.eventId ?? eventId,
         },
       },
     });
@@ -230,6 +256,7 @@ function _enqueueSyncAction(
 function _logSaveOutcome(
   eventType: 'save' | 'unsave',
   placeId: string,
+  eventId: string,
   meta?: SaveEventMeta,
 ) {
   logRecommendationEvent({
@@ -240,6 +267,7 @@ function _logSaveOutcome(
     rank_percentile: meta?.rank_percentile ?? null,
     city_id: meta?.city_id ?? null,
     query: meta?.query ?? null,
+    client_event_id: eventId,
   });
 }
 
@@ -381,13 +409,19 @@ export const useCravesStore = create<CravesStore>()(
         // finishes first would delete the *other's* still-pending marker
         // in its `finally` below, letting a third concurrent add through.
         const myMutation = _nextMutationToken(place.id);
+        // Generated once per attempt and reused by any later flush retry
+        // of this same entry (see PendingSyncAction.eventId) -- not
+        // regenerated per network call, so a resubmission after the
+        // process-kill-before-persist race dedupes server-side instead
+        // of logging a second event for the same confirmed outcome.
+        const eventId = _makeEventId();
         _pendingSaves.add(place.id);
         // Optimistic: add immediately
         set({ saves: [place, ...prev] });
         try {
           await createSave(userId, place.id);
           if (__DEV__) console.log('[CRAVES_STORE] addSave_ok', place.id);
-          _logSaveOutcome('save', place.id, meta);
+          _logSaveOutcome('save', place.id, eventId, meta);
           return null;
         } catch (err: any) {
           // A network-level failure (no server response at all -- the
@@ -403,7 +437,7 @@ export const useCravesStore = create<CravesStore>()(
           // the retry actually succeeds.
           if (!err?.response) {
             if (myGeneration === _accountGeneration) {
-              _enqueueSyncAction(set, get, place.id, 'add', userId, meta);
+              _enqueueSyncAction(set, get, place.id, 'add', userId, eventId, meta);
             }
             if (__DEV__) console.log('[CRAVES_STORE] addSave_queued_offline', place.id);
             return null;
@@ -437,13 +471,15 @@ export const useCravesStore = create<CravesStore>()(
         // has the place in it) after a newer call already succeeded in
         // removing it, silently undoing the newer, correct removal.
         const myMutation = _nextMutationToken(placeId);
+        // See addSave's identical comment on eventId.
+        const eventId = _makeEventId();
         // Optimistic: remove immediately
         const prev = get().saves;
         set({ saves: prev.filter((s) => s.id !== placeId) });
         try {
           await deleteSave(userId, placeId);
           if (__DEV__) console.log('[CRAVES_STORE] removeSave_ok', placeId);
-          _logSaveOutcome('unsave', placeId, meta);
+          _logSaveOutcome('unsave', placeId, eventId, meta);
           return null;
         } catch (err: any) {
           // Same offline-queue treatment as addSave: a network-level
@@ -456,7 +492,7 @@ export const useCravesStore = create<CravesStore>()(
           // addSave's offline branch.
           if (!err?.response) {
             if (myGeneration === _accountGeneration && _isCurrentMutation(placeId, myMutation)) {
-              _enqueueSyncAction(set, get, placeId, 'remove', userId, meta);
+              _enqueueSyncAction(set, get, placeId, 'remove', userId, eventId, meta);
               if (__DEV__) console.log('[CRAVES_STORE] removeSave_queued_offline', placeId);
             }
             return null;
@@ -533,7 +569,10 @@ export const useCravesStore = create<CravesStore>()(
                 }
               }
               if (__DEV__) console.log('[CRAVES_STORE] flush_synced', placeId, action.type);
-              _logSaveOutcome(action.type === 'add' ? 'save' : 'unsave', placeId, action.meta);
+              // action.eventId can be missing only for an entry persisted
+              // before this field existed -- mint one on the spot, since
+              // there's no earlier attempt for it to collide with anyway.
+              _logSaveOutcome(action.type === 'add' ? 'save' : 'unsave', placeId, action.eventId ?? _makeEventId(), action.meta);
               set((state) => {
                 const next = { ...state.pendingSyncActions };
                 delete next[placeId];

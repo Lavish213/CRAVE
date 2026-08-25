@@ -19,6 +19,14 @@ export interface RecommendationEventInput {
   query?: string | null;
   city_id?: string | null;
   session_id?: string | null;
+  // Idempotency key for a confirmed save/unsave outcome -- see
+  // cravesStore.ts's _logSaveOutcome and the backend's
+  // RecommendationEvent.client_event_id docstring. A resubmission (the
+  // offline outbox retrying after a process kill lands between "queue
+  // entry removed in memory" and "removal persisted to disk") reuses the
+  // same id, so the server can no-op the duplicate instead of double-
+  // counting a confirmed outcome.
+  client_event_id?: string | null;
 }
 
 export async function sendRecommendationEvents(
