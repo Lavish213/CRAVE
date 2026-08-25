@@ -3674,3 +3674,22 @@ places (`browser_escalation.py`, `toast.py`, `extraction_controller.py`,
 `toast_browser_scraper.py`'s two functions), all fixed the same way
 (`try`/`finally`), 11 new tests. `browser_menu.py` already had the
 correct pattern, confirmed clean. 789 backend tests passing.
+
+## CI conflict-marker guard + public API rate-limit audit (2026-08-25)
+
+Added a fast, independent CI job that greps the whole repo for
+unresolved `<<<<<<<`/`=======`/`>>>>>>>` markers on every push/PR —
+closes the class of "invalid source reached deploy" incident (compileall/
+tsc already reject a marker sitting in real code, not one in a string,
+comment, or non-code file).
+
+Also did a fresh, from-scratch audit of every GET route's dependencies
+(not assuming an earlier claimed count): every real user-facing endpoint
+already had `rate_limit`. The actual gap was narrower — confined to
+`debug.py`'s ops/diagnostic endpoints, 5 of 6 API-key-gated but
+unrate-limited, `/version` with neither guard. Fixed by adding
+`rate_limit` at the router level; `/health` stays correctly exempt.
+New test asserts every debug route's dependant tree actually contains
+`rate_limit`, not just present in the router's kwargs.
+
+790 backend tests passing.
