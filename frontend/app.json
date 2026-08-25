@@ -15,7 +15,10 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.crave.app"
+      "bundleIdentifier": "com.crave.app",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -56,6 +59,13 @@
           "color": "#38BDF8"
         }
       ]
-    ]
+    ],
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "337fbfd9-8f48-49e8-ac45-0908055f5d35"
+      }
+    },
+    "owner": "lavish213"
   }
 }

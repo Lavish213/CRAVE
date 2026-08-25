@@ -20,8 +20,12 @@
     "expo": "~54.0.33",
     "expo-auth-session": "~7.0.11",
     "expo-blur": "~15.0.8",
+<<<<<<< HEAD
     "expo-camera": "~17.0.10",
     "expo-file-system": "~19.0.23",
+=======
+    "expo-dev-client": "~6.0.21",
+>>>>>>> 5a51eb6 (Add EAS projectId and expo-dev-client)
     "expo-haptics": "~15.0.8",
     "expo-image": "~3.0.11",
     "expo-image-picker": "~17.0.11",
