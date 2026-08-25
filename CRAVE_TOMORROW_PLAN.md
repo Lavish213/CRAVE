@@ -115,6 +115,31 @@ behavioral data — don't start those yet.
 
 ---
 
+## P1.5 — Screen-by-screen polish pass before launch (explicit priority)
+
+Two doctrine docs are now in context: `CRAVE_DECISION_INTELLIGENCE_ARCHITECTURE.md`
+(ranking/recommendation engine spec) and `CRAVE_MASTER_PRODUCT_INTELLIGENCE_BIBLE.md`
+(product/UX doctrine — screen-by-screen purpose, anti-slop banned list,
+100-point audit rubric in its §33). Confirmed priority: screens need to
+be genuinely better before launch, not just functional.
+
+Concrete next step: run each of the five core screens (Feed, Map,
+Search, Craves, You) through the Bible's §33 rubric and §31 anti-slop
+checklist against the actual current implementation — not the doctrine
+in the abstract, the real components as they exist today. That audit
+produces the actual punch list; don't skip straight to redesigning
+without it. The Bible's own §22-26 already name specific live issues to
+verify (Feed's weak recommendation chips, Map's marker-noise problem,
+Search's empty zero-state, Craves as a plain bookmark list, You's vanity
+counters) — check whether those are still true of the real code before
+assuming they are.
+
+Full ranking/taste-graph/event-ledger buildout from both docs is real
+work but should follow the build order both docs already specify (hard
+constraints and catalog truth before personalization, personalization
+before learned ranking) — not be pulled forward ahead of the screen
+polish pass or the P0/P1 items above.
+
 ## Suggested order tomorrow
 
 1. Confirm deploy state, fix search (P0).
