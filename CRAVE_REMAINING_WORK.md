@@ -3808,3 +3808,42 @@ client_event_id, asserted end to end through cravesStore). Full suites
 green: 799 backend (SQLite + fresh-schema Postgres, migration
 round-trip re-verified once more with the new column), 151 frontend,
 clean tsc.
+
+## Deploy/debugging doctrine: main was never updated + stale simulator JS (2026-08-25)
+
+Two separate incidents while trying to production-verify the Ledger
+work above, both worth codifying as standing rules so they don't cost
+debugging time again:
+
+**1. Backend commits pushed to the feature branch never reached
+production**, because `main` itself hadn't moved — Railway's auto-deploy
+and CI's `push` trigger both watch `main` specifically, and three
+commits (`7495363`, `33a429e`, `20fa0b6`) landed only on
+`claude/project-grade-systems-review-4ot7d0`. This wasn't a deploy
+failure or CI lag; there was nothing to catch, because `main` genuinely
+never advanced. Confirmed via `git merge-base --is-ancestor` (a clean
+fast-forward, no divergence) and fixed with
+`git push origin claude/project-grade-systems-review-4ot7d0:main`.
+**Rule:** if a push to this session's working branch doesn't show up as
+a new CI run on `main` within a couple minutes, check whether `main`
+actually moved before assuming a deploy problem — `git log
+origin/main..origin/<branch>` answers this in one command.
+
+**2. `eas build:run` reruns a cached simulator binary, not current
+code.** Confirmed the backend was correctly deployed and migrated
+(`/api/v1/debug/version` + `alembic_version` both matched `20fa0b6`),
+but a save/unsave test against a simulator produced zero
+`recommendation_events` rows of *any* type, including impressions.
+Root cause: `eas build:run` had relaunched a build from 2 hours prior
+— an EAS-built binary bundles its JS at build time, so reusing a cached
+artifact via `build:run` does not pick up anything committed since,
+regardless of how current the backend is. **Rule: never infer frontend
+code freshness from the backend's deployed SHA, and never assume
+`eas build:run` is running current JS.** Before trusting any live
+frontend test result, confirm the running client is actually consuming
+current code — either a visible code-path tell (e.g. this session's
+`SHOW_FEED_DISCOVERY_STRIPS = false` hiding Feed's discovery strips) or
+by confirming the dev client is connected to a live Metro bundler
+serving the current working tree, not a standalone/cached JS bundle.
+A fresh `eas build --profile development-simulator` is the fallback
+when a dev client won't reconnect to Metro.
