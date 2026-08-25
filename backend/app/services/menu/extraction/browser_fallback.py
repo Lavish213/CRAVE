@@ -57,84 +57,102 @@ def extract_with_browser(url: str) -> List[ExtractedMenuItem]:
                 ],
             )
 
-            context = browser.new_context(
-                user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
-                viewport={"width": 1280, "height": 800},
-                locale="en-US",
-            )
-
-            page = context.new_page()
-
-            # ---------------------------------------------------------
-            # Capture API responses
-            # ---------------------------------------------------------
-
-            def handle_response(response):
-
-                if len(captured_payloads) >= MAX_PAYLOADS:
-                    return
-
-                if not _is_json_response(response):
-                    return
-
-                data = _safe_json(response)
-
-                if not isinstance(data, (dict, list)):
-                    return
-
-                captured_payloads.append(data)
-
-            page.on("response", handle_response)
-
-            # ---------------------------------------------------------
-            # Navigate
-            # ---------------------------------------------------------
-
-            page.goto(url, timeout=TIMEOUT, wait_until="domcontentloaded")
-
-            # give JS time to fire API calls
+            # Confirmed live in production: browser.close() previously sat
+            # at the end of the happy path only, so any exception between
+            # launch() and there -- most commonly page.goto() timing out,
+            # which is routine when scraping real restaurant websites --
+            # skipped it entirely and leaked the headless Chromium process
+            # this function had just launched. menu_worker.py runs this
+            # once per place in a batch, so a run touching many places
+            # with even a modest timeout rate accumulated leaked browser
+            # processes until the container OOM-killed mid-run --
+            # orphaning that job_runs row forever (no exception, no
+            # traceback, just finished_at staying null) and taking every
+            # menu extracted since down with it. try/finally guarantees
+            # this runs even when navigation itself is what failed.
             try:
-                page.wait_for_load_state("networkidle", timeout=5000)
-            except Exception:
-                pass
+                context = browser.new_context(
+                    user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
+                    viewport={"width": 1280, "height": 800},
+                    locale="en-US",
+                )
 
-            page.wait_for_timeout(2000)
+                page = context.new_page()
 
-            # ---------------------------------------------------------
-            # Convert payloads → menu items
-            # ---------------------------------------------------------
+                # ---------------------------------------------------------
+                # Capture API responses
+                # ---------------------------------------------------------
 
-            for payload in captured_payloads:
+                def handle_response(response):
 
-                converted = convert_payload_to_menu_items(payload)
+                    if len(captured_payloads) >= MAX_PAYLOADS:
+                        return
 
-                if not converted:
-                    continue
+                    if not _is_json_response(response):
+                        return
 
-                for item in converted:
+                    data = _safe_json(response)
 
-                    key = (
-                        f"{(item.name or '').lower()}|"
-                        f"{item.price_cents or ''}|"
-                        f"{item.section or ''}"
-                    )
+                    if not isinstance(data, (dict, list)):
+                        return
 
-                    if key in seen:
+                    captured_payloads.append(data)
+
+                page.on("response", handle_response)
+
+                # ---------------------------------------------------------
+                # Navigate
+                # ---------------------------------------------------------
+
+                page.goto(url, timeout=TIMEOUT, wait_until="domcontentloaded")
+
+                # give JS time to fire API calls
+                try:
+                    page.wait_for_load_state("networkidle", timeout=5000)
+                except Exception:
+                    pass
+
+                page.wait_for_timeout(2000)
+
+                # ---------------------------------------------------------
+                # Convert payloads → menu items
+                # ---------------------------------------------------------
+
+                for payload in captured_payloads:
+
+                    converted = convert_payload_to_menu_items(payload)
+
+                    if not converted:
                         continue
 
-                    seen.add(key)
-                    items.append(item)
+                    for item in converted:
+
+                        key = (
+                            f"{(item.name or '').lower()}|"
+                            f"{item.price_cents or ''}|"
+                            f"{item.section or ''}"
+                        )
+
+                        if key in seen:
+                            continue
+
+                        seen.add(key)
+                        items.append(item)
+
+                        if len(items) >= MAX_ITEMS:
+                            break
 
                     if len(items) >= MAX_ITEMS:
                         break
-
-                if len(items) >= MAX_ITEMS:
-                    break
-
-            browser.close()
+            finally:
+                browser.close()
 
     except Exception as exc:
-        logger.debug(
+        # Was logger.debug -- invisible at the app's default INFO level.
+        # A url that hangs/times out here repeatedly (the actual cause of
+        # a real multi-hour production stall) produced zero operational
+        # signal beyond menu_enrichment quietly never finishing.
+        logger.warning(
             "browser_fallback_failed url=%s error=%s",
             url,
             exc,
