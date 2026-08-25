@@ -3667,3 +3667,10 @@ Verified: 778 backend tests passing (774 + 4 new).
 Not yet re-verified post-deploy that `menu_enrichment` actually
 completes cleanly now — next scheduled run after this deploys is the
 real test; check `job_runs` again in ~15-20 min after deploy.
+
+**Follow-up audit (same session):** grepped every `p.chromium.launch(`
+call site in the backend — found the identical bug duplicated in 4 more
+places (`browser_escalation.py`, `toast.py`, `extraction_controller.py`,
+`toast_browser_scraper.py`'s two functions), all fixed the same way
+(`try`/`finally`), 11 new tests. `browser_menu.py` already had the
+correct pattern, confirmed clean. 789 backend tests passing.
