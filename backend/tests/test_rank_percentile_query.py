@@ -148,6 +148,30 @@ def test_place_with_no_ranking_snapshot_is_absent_from_result(db):
     assert unranked_place.id not in percentiles
 
 
+def test_stale_rank_position_beyond_the_citys_current_total_is_clamped(db):
+    """
+    The bug confirmed live in production: a place's CityPlaceRanking row
+    can carry a rank_position left over from before other rows for that
+    city were pruned some other way, ending up outside [1, city_total].
+    Uncapped, that produces a wildly out-of-range percentile (seen in
+    production logs: -111.4, -106.9, -74.0, ...) which PlaceCardOut/
+    PlaceOut's ge=0.0/le=1.0 constraint then rejects -- silently dropping
+    the place from every /search and /places response while `total`
+    (computed separately) stays unaffected. This is exactly what made
+    /search return items=[] with a correct total for every query.
+    """
+    session, created = db
+    city = _make_city(session, created)
+    place = _make_place(session, created, city)
+    # Only 1 row for this city, but its rank_position is left over from
+    # when the city had (at least) 150 ranked places.
+    _make_ranking(session, created, city=city, place=place, rank_position=150)
+
+    percentiles = get_rank_percentiles(session, place_ids=[place.id])
+
+    assert 0.0 <= percentiles[place.id] <= 1.0
+
+
 def test_percentiles_are_computed_independently_per_city(db):
     session, created = db
     city_a = _make_city(session, created)
