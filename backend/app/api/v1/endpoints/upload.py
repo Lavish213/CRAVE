@@ -124,4 +124,12 @@ def get_upload_status(
     return {
         "status": image.status,
         "error": image.error_message,
+        # `status` alone reaches "ready" as soon as processing finishes,
+        # regardless of the separate moderation decision (see
+        # app/db/models/place_image.py's moderation_status comment) --
+        # without this, the caller can't tell a photo that's actually
+        # live from one that's silently sitting hidden pending human
+        # review, since both report status="ready".
+        "moderation_status": image.moderation_status,
+        "moderation_reason": image.moderation_reason,
     }

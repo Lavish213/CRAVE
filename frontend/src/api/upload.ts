@@ -17,6 +17,13 @@ export const MAX_UPLOAD_MB = 15;
 
 export type UploadStatus = 'pending' | 'processing' | 'ready' | 'failed';
 
+// Separate from UploadStatus above, which only tracks the processing
+// pipeline (ready/failed) -- a photo can finish processing successfully
+// (status: "ready") and still be invisible, sitting held for a human
+// review. Without checking this too, "ready" alone can't distinguish a
+// genuinely live photo from one silently withheld.
+export type ModerationStatus = 'approved' | 'pending_review' | 'rejected';
+
 // What the photo shows. "menu" triggers OCR extraction on the backend
 // (see backend/app/services/menu/ocr/menu_photo_ocr.py) instead of just
 // adding it to the general gallery.
@@ -37,6 +44,8 @@ export interface UploadRequestResponse {
 export interface UploadStatusResponse {
   status: UploadStatus;
   error: string | null;
+  moderation_status: ModerationStatus;
+  moderation_reason: string | null;
 }
 
 export function validateUploadSize(fileSizeBytes: number): number {

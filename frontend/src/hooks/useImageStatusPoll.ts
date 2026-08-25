@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
-import { fetchUploadStatus, UploadStatus } from '../api/upload';
+import { fetchUploadStatus, ModerationStatus, UploadStatus } from '../api/upload';
 
 export const useImageStatusPoll = (imageId?: string) => {
   const [status, setStatus] = useState<UploadStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [moderationStatus, setModerationStatus] = useState<ModerationStatus | null>(null);
 
   useEffect(() => {
     if (!imageId) return;
@@ -20,6 +21,7 @@ export const useImageStatusPoll = (imageId?: string) => {
         if (!active) return;
 
         setStatus(res.status);
+        setModerationStatus(res.moderation_status);
         if (res.error) setError(res.error);
 
         if (res.status === 'ready' || res.status === 'failed') {
@@ -44,5 +46,5 @@ export const useImageStatusPoll = (imageId?: string) => {
     };
   }, [imageId]);
 
-  return { status, error };
+  return { status, error, moderationStatus };
 };

@@ -107,19 +107,30 @@ export default function PlaceDetailScreen() {
 
   const [isAddingPhoto, setIsAddingPhoto] = useState(false);
   const [pendingImageId, setPendingImageId] = useState<string | undefined>();
-  const { status: uploadStatus, error: uploadError } = useImageStatusPoll(pendingImageId);
+  const { status: uploadStatus, error: uploadError, moderationStatus } = useImageStatusPoll(pendingImageId);
 
   useEffect(() => {
     if (!pendingImageId || !uploadStatus) return;
     if (uploadStatus === 'ready') {
-      toast('Photo added');
+      // `status: "ready"` only means processing finished -- it says
+      // nothing about whether the photo actually went live. A held photo
+      // still fully processes; check moderationStatus separately or this
+      // reads as "Photo added" for a photo the uploader can't actually
+      // see yet, sitting hidden pending review.
+      if (moderationStatus === 'pending_review') {
+        toast("Submitted for review — we'll let you know");
+      } else if (moderationStatus === 'rejected') {
+        toast("Your photo wasn't approved");
+      } else {
+        toast('Photo added');
+      }
       setPendingImageId(undefined);
       refetch();
     } else if (uploadStatus === 'failed') {
       toast(uploadError ?? 'Photo failed to process');
       setPendingImageId(undefined);
     }
-  }, [uploadStatus, uploadError, pendingImageId, toast, refetch]);
+  }, [uploadStatus, uploadError, moderationStatus, pendingImageId, toast, refetch]);
 
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [menuVerifiedAt, setMenuVerifiedAt] = useState<string | null>(null);
@@ -241,7 +252,7 @@ export default function PlaceDetailScreen() {
     return <ErrorState message="Couldn't load this place" onRetry={() => refetch()} />;
   }
 
-  const tier = getTier(place.rank_score);
+  const tier = getTier(place.rank_score, place.rank_percentile);
   const badges = getBadges(place);
   const price = place.price ?? formatPrice(place);
   const saved = isSaved(place.id);

@@ -51,7 +51,7 @@ function buildFeedRows(places: PlaceOut[]): FeedRow[] {
     new: [],
   };
   for (const p of places) {
-    buckets[getTier(p.rank_score).key].push(p);
+    buckets[getTier(p.rank_score, p.rank_percentile).key].push(p);
   }
   const order: TierKey[] = ['crave_pick', 'gem', 'solid', 'new'];
   const rows: FeedRow[] = [];
