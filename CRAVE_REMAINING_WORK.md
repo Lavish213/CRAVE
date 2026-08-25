@@ -3847,3 +3847,42 @@ by confirming the dev client is connected to a live Metro bundler
 serving the current working tree, not a standalone/cached JS bundle.
 A fresh `eas build --profile development-simulator` is the fallback
 when a dev client won't reconnect to Metro.
+
+## Recommendation Ledger production-certified; client-flush gap deferred (2026-08-25)
+
+Added `GET /api/v1/debug/recommendation-events` (require_api_key +
+rate_limit, same as this file's other ops endpoints) so the Ledger can
+be checked over plain HTTPS instead of a Railway console session every
+time.
+
+Live production verification of the save/unsave pipeline, with direct
+evidence rather than inference:
+- Manually POSTing a real event with a fake place_id correctly rejected
+  it (`accepted: 0`) via a foreign-key violation on `places.id` --
+  surfaced a real, minor hardening gap worth fixing later:
+  `record_events`'s IntegrityError fallback (built for a genuine
+  client_event_id dedup race) silently swallows *any* IntegrityError
+  the same way, including a bad foreign key, with no way to tell the
+  two apart from the response. Not urgent -- real app traffic only ever
+  sends real place_ids -- but worth distinguishing if this ever needs
+  real debugging again.
+- The same POST with a real place_id succeeded (`accepted: 1`), and the
+  new debug endpoint immediately showed the persisted row with every
+  field correct (event_type, client_event_id, place_id, surface).
+  Confirms the whole ingestion -> validation -> dedup -> persistence
+  chain is genuinely correct in production, not just in tests.
+
+What's still open, deliberately deferred rather than chased further
+tonight: confirming the *app itself* (not a manual POST) successfully
+flushes `recommendationEventQueue`'s batched events end to end. Several
+live save/unsave attempts through the actual dev-client build produced
+zero rows despite clean client-side `addSave_ok`/`removeSave_ok` logs.
+Given how much Metro reconnect/relaunch churn tonight's dev-client setup
+required (`recommendationEventQueue`'s pending batch lives in a plain
+module-level array with no persistence -- any JS module reload silently
+wipes it before its 4s flush timer fires), this is far more likely a
+dev-client-testing artifact than a real app bug, but it hasn't been
+confirmed clean in a stable session. Re-check next time with a build
+that isn't being actively reloaded (a real EAS build, or a dev-client
+session left untouched for a few minutes after a save) before writing
+this off entirely.
