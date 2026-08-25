@@ -3638,3 +3638,32 @@ untouched and still functional — this is purely a display-layer gate,
 trivially reversible.
 
 Verified: `tsc --noEmit` clean, 143 frontend tests still passing.
+
+## menu_enrichment silently dead since ~11am: Chromium leak in the Playwright fallback (2026-08-25)
+
+Diagnosed live via `/api/v1/debug/scheduler` and a direct `job_runs`
+query: `menu_enrichment` (every 10 min) hadn't completed a single run
+since 11:01am — every subsequent attempt showed `started_at` set,
+`finished_at` null, no error, no success flag (process killed, not a
+caught exception). One earlier run *did* succeed but took 2h04m.
+
+Root cause: `browser_fallback.py`'s `extract_with_browser()` called
+`browser.close()` only at the end of its happy path. A `page.goto()`
+timeout — routine when scraping real restaurant websites — skipped it
+entirely, leaking the headless Chromium process. Runs once per place in
+a batch, so a normal per-site timeout rate accumulates leaked browsers
+until the container OOMs mid-run, orphaning the job_runs row and
+silently killing menu ingestion for good until the next deploy resets
+the container.
+
+Fixed: `browser.close()` now runs in a `finally` around the whole
+navigation body. Also upgraded the failure log from `logger.debug`
+(invisible at INFO level) to `logger.warning`. 4 new tests confirm
+`browser.close()` is always called — success, `page.goto()` timeout,
+mid-page exception, and even a `launch()` failure (nothing to close).
+
+Verified: 778 backend tests passing (774 + 4 new).
+
+Not yet re-verified post-deploy that `menu_enrichment` actually
+completes cleanly now — next scheduled run after this deploys is the
+real test; check `job_runs` again in ~15-20 min after deploy.
