@@ -25,7 +25,7 @@ import { useImagePicker } from '../../src/hooks/useImagePicker';
 import { useUploadImage } from '../../src/hooks/useUploadImage';
 import { useImageStatusPoll } from '../../src/hooks/useImageStatusPoll';
 import { Colors, Spacing, Radius } from '../../src/constants/colors';
-import { getTier, getBadges, formatPrice } from '../../src/utils/scoring';
+import { getTierForPlace, getBadges, formatPrice } from '../../src/utils/scoring';
 import { fetchMyRankings, fetchFriendRankings, FriendRanking } from '../../src/api/social';
 import { formatScore, tierColor, TIER_LABELS } from '../../src/utils/rankScore';
 import { relativeTime } from '../../src/utils/time';
@@ -252,7 +252,7 @@ export default function PlaceDetailScreen() {
     return <ErrorState message="Couldn't load this place" onRetry={() => refetch()} />;
   }
 
-  const tier = getTier(place.rank_score, place.rank_percentile);
+  const tier = getTierForPlace(place);
   const badges = getBadges(place);
   const price = place.price ?? formatPrice(place);
   const saved = isSaved(place.id);

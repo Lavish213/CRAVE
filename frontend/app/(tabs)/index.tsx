@@ -23,7 +23,7 @@ import { useRecommendations } from '../../src/hooks/useRecommendations';
 import { useLocation } from '../../src/hooks/useLocation';
 import { usePrefetchPlace } from '../../src/hooks/usePrefetchPlace';
 import { Colors, Spacing, Radius } from '../../src/constants/colors';
-import { getTier, TIERS, TierKey } from '../../src/utils/scoring';
+import { getTierForPlace, TIERS, TierKey } from '../../src/utils/scoring';
 import { PlaceCard } from '../../src/components/PlaceCard';
 import { SectionHeader } from '../../src/components/SectionHeader';
 import { CitySelectorStrip } from '../../src/components/CitySelectorStrip';
@@ -51,7 +51,7 @@ function buildFeedRows(places: PlaceOut[]): FeedRow[] {
     new: [],
   };
   for (const p of places) {
-    buckets[getTier(p.rank_score, p.rank_percentile).key].push(p);
+    buckets[getTierForPlace(p).key].push(p);
   }
   const order: TierKey[] = ['crave_pick', 'gem', 'solid', 'new'];
   const rows: FeedRow[] = [];

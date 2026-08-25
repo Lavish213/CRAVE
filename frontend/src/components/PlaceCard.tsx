@@ -6,7 +6,7 @@ import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { PlaceOut } from '../api/places';
-import { getTier, formatPrice, getBadges, formatDistance } from '../utils/scoring';
+import { getTierForPlace, formatPrice, getBadges, formatDistance } from '../utils/scoring';
 // formatPrice imported for fallback; normalized places already have place.price
 import { TierBadge } from './TierBadge';
 import { Colors, Spacing, Radius, Shadows } from '../constants/colors';
@@ -25,7 +25,7 @@ interface Props {
 }
 
 function PlaceCardImpl({ place, onPress, onPressIn, onSave, saved, style }: Props) {
-  const tier = getTier(place.rank_score, place.rank_percentile);
+  const tier = getTierForPlace(place);
   const price = place.price ?? formatPrice(place);
   const badges = getBadges(place);
   const saveScale = useRef(new Animated.Value(1)).current;

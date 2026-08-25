@@ -3,7 +3,7 @@ import React from 'react';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { PlaceOut } from '../api/places';
-import { getTier } from '../utils/scoring';
+import { getTierForPlace } from '../utils/scoring';
 import { Colors, Radius, Spacing } from '../constants/colors';
 
 interface Props {
@@ -21,7 +21,7 @@ export function TrendingStrip({ places, onPress, onPressIn, heading = 'TRENDING'
       <Text style={styles.heading}>{heading}</Text>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.scroll}>
         {places.map((p) => {
-          const tier = getTier(p.rank_score, p.rank_percentile);
+          const tier = getTierForPlace(p);
           return (
             <TouchableOpacity
               key={p.id}

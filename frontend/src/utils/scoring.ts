@@ -84,6 +84,21 @@ export function getTier(score: number, rankPercentile?: number | null): Tier {
   return tierFromAbsoluteScore(score);
 }
 
+// Two confirmed call sites (place/[id].tsx, (tabs)/index.tsx) previously
+// called getTier(place.rank_score) without threading rank_percentile
+// through -- the two-argument form makes that mistake easy to make and
+// impossible for the compiler to catch, since both args are individually
+// optional-looking numbers. Anything that already has a full place object
+// (which is every real call site) should use this instead: there is no
+// way to call it and forget the percentile, because there's only one
+// thing to pass in.
+export function getTierForPlace(place: {
+  rank_score: number;
+  rank_percentile?: number | null;
+}): Tier {
+  return getTier(place.rank_score, place.rank_percentile);
+}
+
 // ─── Price inference ──────────────────────────────────────────────────────────
 
 const PRICE_4_KEYWORDS = [
@@ -156,7 +171,7 @@ export interface Badge {
 export function getBadges(place: PlaceOut): Badge[] {
   const badges: Badge[] = [];
 
-  const tier = getTier(place.rank_score, place.rank_percentile);
+  const tier = getTierForPlace(place);
 
   if (tier.key === 'crave_pick') {
     badges.push({ emoji: '⭐', label: 'CRAVE Pick' });
@@ -177,51 +192,3 @@ export function getBadges(place: PlaceOut): Badge[] {
   return badges.slice(0, 3);
 }
 
-// ─── Legacy: kept for backward compat during migration ───────────────────────
-
-export interface TrustBadge {
-  label: string;
-  color: string;
-  bg: string;
-}
-
-/** @deprecated Use getBadges() instead */
-export function getTrustBadges(place: PlaceOut): TrustBadge[] {
-  const result: TrustBadge[] = [];
-  const tier = getTier(place.rank_score);
-  if (tier.key === 'crave_pick')
-    result.push({ label: 'CRAVE Pick', color: Colors.tierCravePick, bg: '#FF4D0022' });
-  if (tier.key === 'gem')
-    result.push({ label: 'Hidden Gem', color: Colors.tierGem, bg: '#FFB80022' });
-  if (place.has_menu)
-    result.push({ label: 'Full menu', color: Colors.tierSolid, bg: '#4CAF5022' });
-  if (place.grubhub_url)
-    result.push({ label: 'Order online', color: Colors.textSecondary, bg: '#88888822' });
-  if (place.website && !place.grubhub_url)
-    result.push({ label: 'Dine in only', color: Colors.textSecondary, bg: '#88888822' });
-  if (!place.has_menu && !place.grubhub_url && !place.website)
-    result.push({ label: 'Off the grid', color: Colors.tierGem, bg: '#FFB80022' });
-  return result;
-}
-
-/** @deprecated Use formatPrice() instead */
-export function getSignalContext(place: PlaceOut): string {
-  const tier = getTier(place.rank_score);
-  switch (tier.key) {
-    case 'crave_pick':
-      if (place.has_menu && place.grubhub_url) return 'Full menu · Online ordering · Top ranked';
-      if (place.has_menu) return 'Full menu · Culturally validated';
-      return 'Locally loved · Off the beaten path';
-    case 'gem':
-      if (!place.has_menu && !place.grubhub_url) return 'Off the grid · Locals know this';
-      if (!place.grubhub_url) return 'Community favorite · No delivery';
-      return 'Local pick · Worth the visit';
-    case 'solid':
-      if (place.has_menu) return 'Menu available · Reliable choice';
-      if (place.website) return 'Established · Worth exploring';
-      return 'Solid choice';
-    case 'new':
-    default:
-      return 'New to CRAVE · Still gaining signal';
-  }
-}

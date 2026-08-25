@@ -1,4 +1,4 @@
-import { getTier, inferPrice, formatPrice, getBadges, formatDistance, TIERS } from './scoring';
+import { getTier, getTierForPlace, inferPrice, formatPrice, getBadges, formatDistance, TIERS } from './scoring';
 import type { PlaceOut } from '../api/places';
 
 function makePlace(overrides: Partial<PlaceOut> = {}): PlaceOut {
@@ -97,6 +97,27 @@ describe('getTier', () => {
     it('falls back to absolute-score tiering when percentile is undefined', () => {
       expect(getTier(0.5, undefined).key).toBe(getTier(0.5).key);
     });
+  });
+});
+
+describe('getTierForPlace', () => {
+  // The whole point of this wrapper: a caller that already has a place
+  // object can't forget to pass rank_percentile, because there's no
+  // second argument to forget. Pinning that contract here so it can't
+  // silently regress back to the two-argument footgun.
+  it('uses rank_percentile when present, matching getTier(score, percentile)', () => {
+    const place = makePlace({ rank_score: 0.05, rank_percentile: 1.0 });
+    expect(getTierForPlace(place).key).toBe(getTier(0.05, 1.0).key);
+    expect(getTierForPlace(place).key).toBe('crave_pick');
+  });
+
+  it('falls back to absolute-score tiering when rank_percentile is null, matching getTier(score)', () => {
+    const place = makePlace({ rank_score: 0.5, rank_percentile: null });
+    expect(getTierForPlace(place).key).toBe(getTier(0.5).key);
+  });
+
+  it('falls back to absolute-score tiering when rank_percentile is absent from the object entirely', () => {
+    expect(getTierForPlace({ rank_score: 0.5 }).key).toBe(getTier(0.5).key);
   });
 });
 
