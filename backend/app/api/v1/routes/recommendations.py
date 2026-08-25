@@ -10,16 +10,25 @@ rendering rather than needing a bespoke response shape.
 from __future__ import annotations
 
 import logging
+from typing import Optional
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.core.auth import require_api_key
 from app.core.rate_limit import rate_limit
-from app.core.user_auth import get_current_user_id
+from app.core.user_auth import get_current_user_id, get_current_user_id_optional
 from app.db.session import get_db
 from app.api.v1.schemas.places import PlaceOut, PlacesResponse
+from app.api.v1.schemas.recommendation_event import (
+    RecommendationEventBatchIn,
+    RecommendationEventBatchOut,
+)
 from app.services.query.place_image_visibility_query import get_primary_image_urls_bulk
+from app.services.recommendations.recommendation_event_service import (
+    MAX_BATCH_SIZE,
+    record_events,
+)
 from app.services.social.recommendation_service import get_recommendations
 
 logger = logging.getLogger(__name__)
@@ -48,7 +57,34 @@ def get_recommendations_route(
         try:
             p.primary_image_url = image_urls.get(p.id)
             items.append(PlaceOut.model_validate(p, from_attributes=True))
-        except Exception as exc:
-            logger.debug("recommendations_serialize_failed place_id=%s error=%s", p.id, exc)
+        except Exception:
+            # Was logger.debug -- invisible at the app's default INFO
+            # level, same silent-drop shape confirmed live in /search and
+            # /places (see rank_percentile_query.py's fix): a place
+            # failing PlaceOut validation vanishes from the response with
+            # zero operational signal. logger.exception logs at ERROR
+            # with the full traceback.
+            logger.exception("recommendations_serialize_failed place_id=%s", p.id)
 
     return PlacesResponse(total=len(items), page=1, page_size=limit, items=items)
+
+
+@router.post(
+    "/events",
+    response_model=RecommendationEventBatchOut,
+    summary="Log a batch of recommendation impression/click/save/rank events",
+    dependencies=[Depends(rate_limit), Depends(require_api_key)],
+)
+def record_recommendation_events(
+    payload: RecommendationEventBatchIn,
+    db: Session = Depends(get_db),
+    user_id: Optional[str] = Depends(get_current_user_id_optional),
+) -> RecommendationEventBatchOut:
+    if len(payload.events) > MAX_BATCH_SIZE:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Too many events in one batch (max {MAX_BATCH_SIZE})",
+        )
+
+    accepted = record_events(db, raw_events=payload.events, user_id=user_id)
+    return RecommendationEventBatchOut(accepted=accepted)

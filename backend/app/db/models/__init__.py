@@ -74,6 +74,9 @@ from .place_video import PlaceVideo
 # ----- Notifications Layer -----
 from .device_push_token import DevicePushToken
 
+# ----- Recommendation Ledger Layer -----
+from .recommendation_event import RecommendationEvent
+
 
 # ---------------------------------------------------------
 # EXPORTS (STRICT + COMPLETE)
@@ -138,4 +141,7 @@ __all__ = [
 
     # Notifications
     "DevicePushToken",
+
+    # Recommendation Ledger
+    "RecommendationEvent",
 ]

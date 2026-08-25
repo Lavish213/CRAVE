@@ -24,6 +24,7 @@ import { useLocation } from '../../src/hooks/useLocation';
 import { usePrefetchPlace } from '../../src/hooks/usePrefetchPlace';
 import { Colors, Spacing, Radius } from '../../src/constants/colors';
 import { getTierForPlace, TIERS, TierKey } from '../../src/utils/scoring';
+import { logRecommendationEvent, logRecommendationEvents } from '../../src/utils/recommendationEventQueue';
 import { PlaceCard } from '../../src/components/PlaceCard';
 import { SectionHeader } from '../../src/components/SectionHeader';
 import { CitySelectorStrip } from '../../src/components/CitySelectorStrip';
@@ -143,6 +144,41 @@ export default function FeedScreen() {
     const lastPage = data.pages[data.pages.length - 1];
     console.log('[FEED] PLACES_LOADED', { page: lastPage?.page, count: places.length, total, sample: places[0] ? { id: places[0].id, category: places[0].category, categories: places[0].categories } : null });
   }
+
+  // Recommendation Ledger: log one impression per place the first time
+  // its page actually arrives. Keyed on page count (not `places.length`
+  // or `data` itself) so a re-render that doesn't add a new page -- e.g.
+  // toggling a filter, which only changes `filteredPlaces`/`rows` below
+  // -- never re-logs impressions for pages already counted. Reset
+  // whenever the underlying query itself changes (new city/location),
+  // since that's a new, unrelated set of impressions.
+  const loggedFeedPageCountRef = useRef(0);
+  useEffect(() => {
+    loggedFeedPageCountRef.current = 0;
+  }, [selectedCity?.id, userLocation?.lat, userLocation?.lng, radiusMiles]);
+  useEffect(() => {
+    const pages = data?.pages ?? [];
+    if (pages.length <= loggedFeedPageCountRef.current) return;
+    let position = pages
+      .slice(0, loggedFeedPageCountRef.current)
+      .reduce((sum, p) => sum + p.items.length, 0);
+    const events: Parameters<typeof logRecommendationEvents>[0] = [];
+    for (const page of pages.slice(loggedFeedPageCountRef.current)) {
+      for (const p of page.items) {
+        events.push({
+          surface: 'feed',
+          event_type: 'impression',
+          place_id: p.id,
+          position,
+          rank_percentile: p.rank_percentile,
+          city_id: selectedCity?.id ?? null,
+        });
+        position += 1;
+      }
+    }
+    loggedFeedPageCountRef.current = pages.length;
+    if (events.length > 0) logRecommendationEvents(events);
+  }, [data?.pages.length, selectedCity?.id]);
 
   useEffect(() => {
     fetchCategories()
@@ -271,7 +307,16 @@ export default function FeedScreen() {
                   <View style={styles.rowSpacer}>
                     <PlaceCard
                       place={row.place}
-                      onPress={() => router.push(`/place/${row.place.id}`)}
+                      onPress={() => {
+                        logRecommendationEvent({
+                          surface: 'feed',
+                          event_type: 'click',
+                          place_id: row.place.id,
+                          rank_percentile: row.place.rank_percentile,
+                          city_id: selectedCity?.id ?? null,
+                        });
+                        router.push(`/place/${row.place.id}`);
+                      }}
                       onPressIn={() => prefetchPlace(row.place.id)}
                       onSave={async () => {
                         if (!user) {

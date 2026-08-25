@@ -53,6 +53,9 @@ from app.db.models.activity_event import ActivityEvent  # noqa: F401
 # Moderation
 from app.db.models.image_report import ImageReport  # noqa: F401
 
+# Recommendation Ledger
+from app.db.models.recommendation_event import RecommendationEvent  # noqa: F401
+
 
 # --------------------------------------------------
 # Alembic Config
