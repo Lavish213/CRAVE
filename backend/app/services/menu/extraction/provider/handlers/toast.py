@@ -123,23 +123,29 @@ def _fetch_with_playwright(url: str) -> Optional[str]:
                 headless=True,
                 args=["--no-sandbox", "--disable-blink-features=AutomationControlled"],
             )
-            context = browser.new_context(
-                user_agent=(
-                    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-                    "AppleWebKit/537.36 (KHTML, like Gecko) "
-                    "Chrome/123.0.0.0 Safari/537.36"
-                ),
-                viewport={"width": 1280, "height": 800},
-            )
-            page = context.new_page()
+            # browser.close() must run even if page.content() (or context/
+            # page creation) raises something other than PWTimeout -- see
+            # browser_fallback.py's identical leak, confirmed live to
+            # eventually OOM-kill the whole menu_enrichment worker.
             try:
-                page.goto(url, timeout=15000)
-                page.wait_for_load_state("domcontentloaded", timeout=8000)
-                page.wait_for_timeout(2000)  # brief wait for Apollo state hydration
-            except PWTimeout:
-                pass
-            html = page.content()
-            browser.close()
+                context = browser.new_context(
+                    user_agent=(
+                        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                        "AppleWebKit/537.36 (KHTML, like Gecko) "
+                        "Chrome/123.0.0.0 Safari/537.36"
+                    ),
+                    viewport={"width": 1280, "height": 800},
+                )
+                page = context.new_page()
+                try:
+                    page.goto(url, timeout=15000)
+                    page.wait_for_load_state("domcontentloaded", timeout=8000)
+                    page.wait_for_timeout(2000)  # brief wait for Apollo state hydration
+                except PWTimeout:
+                    pass
+                html = page.content()
+            finally:
+                browser.close()
 
         if html and len(html) > 1000:
             logger.debug("toast_playwright_ok url=%s len=%s", url, len(html))

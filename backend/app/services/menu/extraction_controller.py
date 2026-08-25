@@ -554,26 +554,33 @@ class ExtractionController:
                         "--disable-dev-shm-usage",
                     ],
                 )
-                context = browser.new_context(
-                    user_agent=(
-                        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-                        "AppleWebKit/537.36 (KHTML, like Gecko) "
-                        "Chrome/123.0.0.0 Safari/537.36"
-                    ),
-                    viewport={"width": 1280, "height": 800},
-                )
-                page = context.new_page()
-
+                # browser.close() must run even if page.content() (or
+                # context/page creation) raises something other than
+                # PWTimeout -- see browser_fallback.py's identical leak,
+                # confirmed live to eventually OOM-kill the whole
+                # menu_enrichment worker.
                 try:
-                    page.goto(url, timeout=20000)
-                    page.wait_for_load_state("domcontentloaded", timeout=10000)
-                    # Small wait for async menu renders
-                    page.wait_for_timeout(2000)
-                except PWTimeout:
-                    pass  # take whatever loaded
+                    context = browser.new_context(
+                        user_agent=(
+                            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                            "AppleWebKit/537.36 (KHTML, like Gecko) "
+                            "Chrome/123.0.0.0 Safari/537.36"
+                        ),
+                        viewport={"width": 1280, "height": 800},
+                    )
+                    page = context.new_page()
 
-                html = page.content()
-                browser.close()
+                    try:
+                        page.goto(url, timeout=20000)
+                        page.wait_for_load_state("domcontentloaded", timeout=10000)
+                        # Small wait for async menu renders
+                        page.wait_for_timeout(2000)
+                    except PWTimeout:
+                        pass  # take whatever loaded
+
+                    html = page.content()
+                finally:
+                    browser.close()
 
             if html and len(html) > 500:
                 logger.debug("playwright_fetch_ok url=%s len=%s", url, len(html))

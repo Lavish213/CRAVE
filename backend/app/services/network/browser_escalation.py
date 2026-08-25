@@ -59,63 +59,71 @@ def fetch_with_browser(
                 ],
             )
 
-            context = browser.new_context(
-                user_agent=(
-                    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-                    "AppleWebKit/537.36 (KHTML, like Gecko) "
-                    "Chrome/123.0.0.0 Safari/537.36"
-                ),
-                locale="en-US",
-                java_script_enabled=True,
-                viewport={"width": 1280, "height": 800},
-                device_scale_factor=1,
-                is_mobile=False,
-            )
-
-            page = context.new_page()
-
-            extra_headers = {
-                "Accept-Language": "en-US,en;q=0.9",
-                "Cache-Control": "no-cache",
-                "Pragma": "no-cache",
-            }
-
-            if referer:
-                extra_headers["Referer"] = referer
-
-            page.set_extra_http_headers(extra_headers)
-
+            # Same leak confirmed live in browser_fallback.py's identical
+            # pattern: context.close()/browser.close() previously sat
+            # only after page.content() succeeded, so any exception in
+            # between (most commonly both goto attempts below timing out)
+            # skipped cleanup and leaked the headless Chromium process.
+            # try/finally guarantees it regardless of what fails.
+            context = None
             try:
-                page.goto(
-                    url,
-                    wait_until="networkidle",
-                    timeout=BROWSER_TIMEOUT_MS,
-                )
-            except TimeoutError:
-                page.goto(
-                    url,
-                    wait_until="domcontentloaded",
-                    timeout=BROWSER_TIMEOUT_MS,
+                context = browser.new_context(
+                    user_agent=(
+                        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                        "AppleWebKit/537.36 (KHTML, like Gecko) "
+                        "Chrome/123.0.0.0 Safari/537.36"
+                    ),
+                    locale="en-US",
+                    java_script_enabled=True,
+                    viewport={"width": 1280, "height": 800},
+                    device_scale_factor=1,
+                    is_mobile=False,
                 )
 
-            try:
-                page.wait_for_selector("body", timeout=5000)
-            except Exception:
-                pass
+                page = context.new_page()
 
-            page.wait_for_timeout(WAIT_AFTER_LOAD_MS)
+                extra_headers = {
+                    "Accept-Language": "en-US,en;q=0.9",
+                    "Cache-Control": "no-cache",
+                    "Pragma": "no-cache",
+                }
 
-            html = page.content()
+                if referer:
+                    extra_headers["Referer"] = referer
 
-            try:
-                context.close()
-            except Exception:
-                pass
+                page.set_extra_http_headers(extra_headers)
 
-            try:
-                browser.close()
-            except Exception:
-                pass
+                try:
+                    page.goto(
+                        url,
+                        wait_until="networkidle",
+                        timeout=BROWSER_TIMEOUT_MS,
+                    )
+                except TimeoutError:
+                    page.goto(
+                        url,
+                        wait_until="domcontentloaded",
+                        timeout=BROWSER_TIMEOUT_MS,
+                    )
+
+                try:
+                    page.wait_for_selector("body", timeout=5000)
+                except Exception:
+                    pass
+
+                page.wait_for_timeout(WAIT_AFTER_LOAD_MS)
+
+                html = page.content()
+            finally:
+                if context is not None:
+                    try:
+                        context.close()
+                    except Exception:
+                        pass
+                try:
+                    browser.close()
+                except Exception:
+                    pass
 
             if not html or not html.strip():
                 return None

@@ -205,21 +205,27 @@ def fetch_toast_page(url: str) -> str:
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
 
-        context = browser.new_context(
-            user_agent=_TOAST_UA,
-            viewport={"width": 1280, "height": 900},
-        )
+        # browser.close() must run even if goto()/content() raises (a
+        # 60s timeout is routine here) -- see browser_fallback.py's
+        # identical leak, confirmed live to eventually OOM-kill the
+        # whole menu_enrichment worker. The exception itself still
+        # propagates unchanged to the caller; this only adds cleanup.
+        try:
+            context = browser.new_context(
+                user_agent=_TOAST_UA,
+                viewport={"width": 1280, "height": 900},
+            )
 
-        page = context.new_page()
+            page = context.new_page()
 
-        logger.info("toast_html_fetch_start url=%s", url)
+            logger.info("toast_html_fetch_start url=%s", url)
 
-        page.goto(url, timeout=60000, wait_until="domcontentloaded")
-        page.wait_for_timeout(5000)
+            page.goto(url, timeout=60000, wait_until="domcontentloaded")
+            page.wait_for_timeout(5000)
 
-        html = page.content()
-
-        browser.close()
+            html = page.content()
+        finally:
+            browser.close()
 
         logger.info("toast_html_fetch_complete url=%s length=%s", url, len(html))
 
@@ -234,17 +240,19 @@ def fetch_toast_data(url: str) -> List[Dict[str, Any]]:
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
 
-        context = browser.new_context(
-            user_agent=_TOAST_UA,
-            viewport={"width": 1280, "height": 900},
-        )
+        # Same leak fix as fetch_toast_page above.
+        try:
+            context = browser.new_context(
+                user_agent=_TOAST_UA,
+                viewport={"width": 1280, "height": 900},
+            )
 
-        page = context.new_page()
+            page = context.new_page()
 
-        network_payloads = _collect_network_payloads(page, url)
-        state_payloads = _extract_window_state_payloads(page)
-
-        browser.close()
+            network_payloads = _collect_network_payloads(page, url)
+            state_payloads = _extract_window_state_payloads(page)
+        finally:
+            browser.close()
 
     merged: List[Dict[str, Any]] = []
     seen: Set[str] = set()
