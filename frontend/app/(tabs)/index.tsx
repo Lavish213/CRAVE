@@ -40,6 +40,22 @@ import { AuthSheet } from '../../src/components/AuthSheet';
 // actually useful to users (was: Walking 0.5mi / Biking 2mi / Close 5mi /
 // Worth It 20mi / Road Trip 50mi presets). Revisit once we have signal.
 
+// Hidden for now (2026-08-25), deliberately: with too little real usage
+// data yet, both strips are misleading rather than useful.
+// "Recommended for You" (useRecommendations -> get_recommendations)
+// falls back to generic catalog-wide top-rated places for any user
+// with no ranked places of their own yet -- indistinguishable from
+// "Trending" in practice, and mislabeled as personalized when it isn't.
+// "Trending" (useTrending) is driven by save/interaction counts that are
+// still thin enough to be closer to noise than signal at this stage.
+// Showing confident-looking suggestions backed by weak data actively
+// hurts trust more than having no suggestion at all. Turn this back on
+// once there's a real per-user ranking history (for "Recommended for
+// You") and enough save volume for "Trending" to reflect actual
+// behavior rather than a handful of test taps -- see
+// CRAVE_REMAINING_WORK.md for the decision record.
+const SHOW_FEED_DISCOVERY_STRIPS = false;
+
 type FeedRow =
   | { kind: 'header'; tierKey: TierKey; count: number }
   | { kind: 'place'; place: PlaceOut };
@@ -259,7 +275,7 @@ export default function FeedScreen() {
       </View>
 
       <CitySelectorStrip />
-      {user ? (
+      {SHOW_FEED_DISCOVERY_STRIPS && user ? (
         <TrendingStrip
           places={recommendations}
           heading="RECOMMENDED FOR YOU"
@@ -267,11 +283,13 @@ export default function FeedScreen() {
           onPressIn={prefetchPlace}
         />
       ) : null}
-      <TrendingStrip
-        places={trending}
-        onPress={(id) => router.push(`/place/${id}`)}
-        onPressIn={prefetchPlace}
-      />
+      {SHOW_FEED_DISCOVERY_STRIPS ? (
+        <TrendingStrip
+          places={trending}
+          onPress={(id) => router.push(`/place/${id}`)}
+          onPressIn={prefetchPlace}
+        />
+      ) : null}
 
       {!initialLoaded ? (
         <View style={styles.skeletonWrap}><SkeletonFeed count={4} /></View>

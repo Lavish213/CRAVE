@@ -3609,6 +3609,32 @@ work" data, not just "was it shown." After that:
 Verified: 774 backend tests passing (760 + 14 new), 143 frontend tests
 passing (139 + 4 new), `tsc --noEmit` clean.
 
-Not yet pushed to `main`/deployed — this adds a new migration, and
-unlike the Search fix this isn't an active outage, so it's queued for
-your go-ahead like the last few `main` pushes.
+Deployed and verified live: migration applied cleanly on Railway,
+`recommendation_events_ingested` log line confirmed, and rows landed in
+`recommendation_events` with correct `event_type`/`place_id`/`position`/
+`rank_percentile`/`city_id`/`user_id`/`session_id` after a real Feed
+scroll session.
+
+## Feed's "Recommended for You" / "Trending" strips hidden for now (2026-08-25)
+
+Live-tested against production data right after the Ledger deploy: both
+chip strips look thin/unconvincing right now, and on inspection the data
+backing them is exactly as weak as it looks — `get_recommendations`
+falls back to generic catalog-wide top-rated places for any user with no
+ranked places of their own yet (indistinguishable from "Trending" in
+practice, despite the "for you" label), and `useTrending`'s save-based
+signal is still thin enough to be closer to noise than real trending
+behavior at this stage. Showing confident-looking suggestions backed by
+weak data actively hurts trust more than showing none.
+
+Decision: hide both strips behind a single `SHOW_FEED_DISCOVERY_STRIPS`
+flag in `app/(tabs)/index.tsx` (currently `false`) rather than invest in
+restyling them cosmetically first — the data problem is the real
+problem, not the pill styling. Re-enable once there's real per-user
+ranking history and enough save volume for these to reflect actual
+behavior, not a handful of test taps. The underlying hooks
+(`useRecommendations`, `useTrending`) and their backend routes are
+untouched and still functional — this is purely a display-layer gate,
+trivially reversible.
+
+Verified: `tsc --noEmit` clean, 143 frontend tests still passing.
