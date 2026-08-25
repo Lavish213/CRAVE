@@ -39,6 +39,24 @@ Then re-verify end to end:
 - Search screen — tier badges should show a real spread (CRAVE Pick /
   Hidden Gem / Worth Knowing / Explore), not just two tiers.
 
+### 2.5 Feed pagination drift (confirmed, not broken, but real waste — worsening over time)
+Traced from live logs showing pages returning 0-1 new items while
+`total` stayed at 13273. Root cause, confirmed by reading
+`app/(tabs)/index.tsx:116-126`: Feed paginates by offset against a query
+ordered by `rank_score`, not a stable cursor. A background discovery
+pipeline inserts new places every 5 minutes, shifting the offset window
+between page fetches, so the same place can land in both an
+already-loaded page and the next one. There's already a client-side
+dedup guard (added after a real duplicate-key crash) that correctly
+filters these out — so this is not silently corrupting data or crashing,
+it's *wasting* round-trips: each subsequent page fetch spends most of
+its `limit` re-fetching stuff already seen. The code comment notes the
+discovery pipeline "now processes a growing OSM/Overture backlog faster
+than before this session" — insert rate is rising, so this gets worse
+over time, not better. Real fix: cursor-based (keyset) pagination
+instead of offset — a genuine backend change, worth scheduling
+deliberately rather than leaving to keep degrading.
+
 ---
 
 ## P1 — Real gaps found via live testing today
@@ -123,22 +141,44 @@ Two doctrine docs now live in `docs/doctrine/`: `CRAVE_DECISION_INTELLIGENCE_ARC
 100-point audit rubric in its §33). Confirmed priority: screens need to
 be genuinely better before launch, not just functional.
 
-Concrete next step: run each of the five core screens (Feed, Map,
-Search, Craves, You) through the Bible's §33 rubric and §31 anti-slop
-checklist against the actual current implementation — not the doctrine
-in the abstract, the real components as they exist today. That audit
-produces the actual punch list; don't skip straight to redesigning
-without it. The Bible's own §22-26 already name specific live issues to
-verify (Feed's weak recommendation chips, Map's marker-noise problem,
-Search's empty zero-state, Craves as a plain bookmark list, You's vanity
-counters) — check whether those are still true of the real code before
-assuming they are.
+Concrete next step: run each of the five core screens through the
+Bible's §33 rubric and §31 anti-slop checklist against the actual
+current implementation — not the doctrine in the abstract, the real
+components as they exist today. That audit produces the actual punch
+list; don't skip straight to redesigning without it. The Bible's own
+§22-26 already name specific live issues to verify (Feed's weak
+recommendation chips, Map's marker-noise problem, Search's empty
+zero-state, Craves as a plain bookmark list, You's vanity counters) —
+check whether those are still true of the real code before assuming
+they are.
+
+**Screen order** (per follow-up strategic review): Search → Feed →
+Place Detail → Filters → Craves → Map → You → onboarding/ranking.
+Place Detail specifically should get more attention than it's had —
+it's the actual conversion point between "interesting" and "I'm eating
+here," and hasn't been audited at all yet this session.
 
 Full ranking/taste-graph/event-ledger buildout from both docs is real
 work but should follow the build order both docs already specify (hard
 constraints and catalog truth before personalization, personalization
 before learned ranking) — not be pulled forward ahead of the screen
 polish pass or the P0/P1 items above.
+
+### Two guardrails to hold onto as this gets built out
+
+- **Percentile tiers ≠ personalization.** City-percentile standing
+  (CRAVE Pick / Hidden Gem / etc.) answers "how good is this place,
+  objectively, relative to its city" — it must never quietly start
+  answering "is this good *for this specific user*." Those are different
+  signals; keep them architecturally separate as personalization gets
+  built, per both doctrine docs.
+- **The 32 flat categories are not a permanent ontology.** Live data
+  already mixes cuisine (Japanese, Mexican), meal period (Breakfast),
+  dietary (Vegan, Gluten Free), experience/format (Fine Dining,
+  Romantic), and ownership (Black Owned, Woman Owned) in one flat list.
+  Fine for now, but Search, filtering, and any real personalization will
+  need these split into separate dimensions eventually — don't build
+  deep dependencies on the flat list assuming it's final.
 
 ## Suggested order tomorrow
 
