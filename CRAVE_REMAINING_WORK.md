@@ -4676,3 +4676,25 @@ the query first, then wrapping only the `fireEvent.press(...)` call in
 outside `act()`, not inside it.
 
 Full suite: 205 passed (was 196), `tsc --noEmit` clean.
+
+## 2026-08-26 — rank/[placeId] screen: first dedicated test coverage
+
+`frontend/__tests__/rank-place.test.tsx` (10 tests): the signed-out
+prompt, the load-error retry, the immediate-ranked shortcut (a tier pick
+that has nothing to compare against yet skips straight to the done
+stage), the comparing stage resolving and displaying the opponent,
+submitting a comparison winner and finishing on the next ranked
+response, skip, inline errors for both `startRanking` and
+`submitComparison` failures (each staying on its own stage rather than
+derailing the flow), done-stage navigation (profile / back), and a
+`placeGenerationRef` stale-response test -- a slow response for the
+previous `placeId` landing after navigating to a new one must not
+clobber the new place's screen.
+
+One test-writing fix: both the visible score and the off-screen
+`ShareRankCard` (kept mounted, not `display:none`, so `captureRef` has a
+real view to snapshot) render the same score text, so `findByText`
+(which throws on multiple matches) had to become `findAllByText` with a
+length assertion for the two score-value checks.
+
+Full suite: 215 passed (was 205), `tsc --noEmit` clean.
