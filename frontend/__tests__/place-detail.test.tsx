@@ -160,4 +160,20 @@ describe('PlaceDetailScreen — visual-pass regression coverage', () => {
 
     expect(await findByLabelText('Remove from Saves')).toBeTruthy();
   });
+
+  it('shows an offline-specific message for a network-level failure, distinct from a real server error', async () => {
+    mockedFetchPlaceDetail.mockRejectedValue(new Error('Network Error'));
+    const { findByText } = renderScreen();
+
+    expect(await findByText("Can't reach CRAVE — check your connection.")).toBeTruthy();
+  });
+
+  it('shows the generic message for a real server error (has a response)', async () => {
+    const err: any = new Error('Server Error');
+    err.response = { status: 500 };
+    mockedFetchPlaceDetail.mockRejectedValue(err);
+    const { findByText } = renderScreen();
+
+    expect(await findByText("Couldn't load this place")).toBeTruthy();
+  });
 });

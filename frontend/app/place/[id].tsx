@@ -99,7 +99,7 @@ export default function PlaceDetailScreen() {
   const userLocation = useLocation();
   const cities = useCityStore((s) => s.cities);
 
-  const { data: place, isLoading, isError, refetch } = useQuery({
+  const { data: place, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['place', id],
     queryFn: () => fetchPlaceDetail(id!),
     staleTime: 5 * 60 * 1000,  // 5 min
@@ -264,7 +264,17 @@ export default function PlaceDetailScreen() {
   if (isLoading) return <DetailSkeleton />;
 
   if (isError || !place) {
-    return <ErrorState message="Couldn't load this place" onRetry={() => refetch()} />;
+    // No response at all (vs. a real 4xx/5xx) means the request never
+    // reached the backend -- same "genuinely offline" signal cravesStore's
+    // _classifyError already uses elsewhere, applied here since this
+    // screen previously showed the identical generic message for both.
+    const isOffline = !(error as any)?.response;
+    return (
+      <ErrorState
+        message={isOffline ? "Can't reach CRAVE — check your connection." : "Couldn't load this place"}
+        onRetry={() => refetch()}
+      />
+    );
   }
 
   const tier = getTierForPlace(place);
