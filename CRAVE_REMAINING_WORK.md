@@ -4726,3 +4726,16 @@ non-navigable, and the label fallback chain (`display_name` ->
 `@username` -> `"Someone"`).
 
 Full suite: 229 passed (was 221), `tsc --noEmit` clean.
+
+## 2026-08-26 — Taste Profile screen: first dedicated test coverage
+
+`frontend/__tests__/taste-profile.test.tsx` (9 tests): the not-found/
+blocked/no-data-yet state machine (with self-specific vs. other-specific
+no-data copy, and confirming a self view never even calls
+`fetchBlockStatus` against yourself), the percentile -> "Top X%" framing
+including its floor-at-1 behavior for a top performer, `match_score`'s
+self-vs-other visibility gating, the tier breakdown, the conditional
+favorite-cuisine/top-city cards, and a `loadGenerationRef` stale-response
+test for a `userId` change mid-flight.
+
+Full suite: 238 passed (was 229), `tsc --noEmit` clean.
