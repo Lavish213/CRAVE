@@ -560,7 +560,14 @@ export default function MapScreen() {
                 key={c.key}
                 testID={`marker-cluster-${c.key}`}
                 coordinate={{ latitude: c.latitude, longitude: c.longitude }}
-                onPress={() => {
+                onPress={(e) => {
+                  // Without this, the same tap also bubbles to MapView's
+                  // own onPress (which nulls selectedFeature) -- a real,
+                  // confirmed bug: a marker tap could reveal (or, for a
+                  // cluster, start zooming into) then immediately undo
+                  // itself in the same gesture, looking like the tap did
+                  // nothing at all.
+                  e.stopPropagation();
                   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                   const zoomed: Region = {
                     latitude: c.latitude,
@@ -586,7 +593,9 @@ export default function MapScreen() {
               key={c.key}
               testID={`marker-${f.id}`}
               coordinate={{ latitude: f.coordinate.lat, longitude: f.coordinate.lng }}
-              onPress={() => {
+              onPress={(e) => {
+                // See the cluster Marker's identical comment above.
+                e.stopPropagation();
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                 setSelectedFeature({
                   id: f.id,
