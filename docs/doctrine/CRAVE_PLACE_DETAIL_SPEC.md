@@ -5,6 +5,12 @@
 (Master Brutal Screen Rubric), governed by §30-32 (visual doctrine /
 anti-slop list / originality test) — no separate constitution needed,
 those sections already function as one.
+**Post-implementation re-score (2026-08-26): 75/100** — "credible
+MVP," up from the 57 baseline, short of this spec's 85+ target. Full
+category breakdown and what's still blocking 85+ logged in
+`CRAVE_REMAINING_WORK.md`'s 2026-08-26 entry. Not yet manually
+verified on a simulator (no automated visual-regression suite exists).
+
 **Baseline audit:** current implementation scores 57/100 against §33
 (see `CRAVE_STATE_OF_THE_APP.md` §3 and the session that produced this
 spec) — sits at the boundary between "functional but weak" and

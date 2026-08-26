@@ -3981,6 +3981,33 @@ correct place (the Primary CTA) rather than being shown twice.
 `tsc --noEmit` clean; full Jest suite (153 tests, 13 suites) passes
 unchanged -- no `place/[id]` test file exists yet, so nothing to update
 and nothing regressed. No manual simulator verification yet (still no
-automated visual-regression suite, per the frontend guide) -- that and
-a re-score against §33's Master Brutal Screen Rubric (target 85+,
-baseline 57) are next.
+automated visual-regression suite, per the frontend guide).
+
+### Honest §33 re-score: 75/100 (was 57), target was 85+
+
+Full category breakdown, against the actual rubric text (bible §33,
+not from memory):
+
+| Cat | Score | Why |
+|---|---|---|
+| A. Product purpose | 8/10 | Decision strip + "why this fits" now answer it directly; goes nearly empty for a cold-start place with no percentile/friends (falls back to a bare tier word) |
+| B. Information hierarchy | 8/10 | Correct front-loading; removing the badge chip trades a fast glance for less clutter -- defensible, not proven |
+| C. Decision usefulness | 11/15 | Real gain from distance+percentile+friends; capped by the still-missing hours data and the same cold-start thinness as A |
+| D. Originality | 7/10 | "Why this fits" is genuinely CRAVE-specific, but this pass was IA-only -- no new visual language, still recognizably the old screen's skin |
+| E. Personalization | 6/10 | Deliberately capped per doctrine, not inflated ahead of Gate 2 |
+| F. Interaction design | 8/10 | Was 7 -- found and fixed a real defect while scoring: the new Directions chip was a bare TouchableOpacity/Text with no explicit touch-target sizing, unlike every other button on this screen |
+| G. Performance | 8/10 | Unchanged, no regression |
+| H. Error/edge states | 7/10 | Unchanged -- the explicit state-design list from the inventory (no-images placeholder, etc.) wasn't actually executed this pass, only the reorg was |
+| I. Accessibility | 4/10 | Marginal gain (one new labeled control), no full pass done |
+| J. Trust/explainability | 4/10 | Most-improved category -- "why this fits" is literally the explanation |
+| K. Retention | 4/10 | Unchanged |
+
+**Total: 75/100** -- "credible MVP" band. What's actually blocking
+85+: D (needs a real visual-language pass, not just IA reorg -- this
+was explicitly out of scope for this pass), C/A's cold-start thinness
+(no fallback content when a place has neither a real percentile nor
+any friend rankings -- "why this fits" currently just says the tier
+word alone), and H (the inventory's full state-by-state design list
+was written but not executed against actual JSX/styles). None of these
+are fabrication risks -- they're real, honestly scoped remaining work,
+not this pass's claim.
