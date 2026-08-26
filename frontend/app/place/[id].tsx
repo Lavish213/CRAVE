@@ -281,6 +281,13 @@ export default function PlaceDetailScreen() {
       ? `${tier.label} — top ${Math.max(1, Math.round((1 - place.rank_percentile) * 100))}%${cityName ? ` in ${cityName}` : ''}`
       : tier.label;
   const topFriendRanking = friendRankings[0] ?? null;
+  // A cold-start place (no percentile snapshot yet, no friend signal)
+  // reduces this section to the bare tier word alone -- "Explore" in a
+  // box, on its own, isn't an explanation of anything and reads as
+  // padding. Suppress the section rather than show near-empty signal;
+  // this matches how friend rankings/craves already go silent instead of
+  // padding with a fake claim when there's genuinely nothing to show.
+  const hasWhyFitsSignal = place.rank_percentile != null || topFriendRanking != null;
 
   // Group menu items by category
   const menuByCategory: Record<string, MenuItem[]> = {};
@@ -412,7 +419,10 @@ export default function PlaceDetailScreen() {
           catalog percentile (never phrased as personalization) and real
           friend rankings. No taste-match %, no "you tend to like X" — no
           user taste graph exists yet (Decision Intelligence doctrine
-          Gate 2). See CRAVE_PLACE_DETAIL_SPEC.md §3.3/§2. */}
+          Gate 2). See CRAVE_PLACE_DETAIL_SPEC.md §3.3/§2. Suppressed
+          entirely (not shown half-empty) when there's no real signal
+          yet — see hasWhyFitsSignal above. */}
+      {hasWhyFitsSignal && (
       <View style={styles.whyFits}>
         <Text style={styles.whyFitsHeadline}>{percentileHeadline}</Text>
         {topFriendRanking ? (
@@ -453,6 +463,7 @@ export default function PlaceDetailScreen() {
           </ScrollView>
         )}
       </View>
+      )}
 
       {/* Primary CTA — deliberately one prominent action, visually distinct
           from the secondary row below it, rather than a fifth equal-weight
