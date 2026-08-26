@@ -3931,3 +3931,56 @@ Deliberately not done yet, per the agreed sequencing: Craves/Map
 instrumentation (queued after the design work), and no consumption of
 these events into personalization -- that's Gate 2+ territory, once
 real behavioral volume exists.
+
+## 2026-08-26 — Place Detail: forensic inventory + first design-driven redesign
+
+First screen rebuilt following the "inventory and grade before touching
+code" process: full read of `place/[id].tsx` -> forensic inventory
+(section -> keep/move/compress/remove -> reason -> backend field,
+appended to `CRAVE_PLACE_DETAIL_SPEC.md` §8) -> implementation. No new
+backend endpoint or schema change; frontend-only, using only fields
+the existing `PlaceOut`/detail contracts already provide.
+
+Changes: identity reordered (name leads, tier badge follows -- was
+backwards); new decision strip (price / distance / directions)
+directly under identity, with distance computed client-side via a new
+`computeDistanceMiles` haversine helper in `scoring.ts` since
+`GET /place/{id}` takes no lat/lng and `distance_miles` was always
+null on this screen -- a real, previously-unnoticed gap, now closed
+without a backend change; new "Why this fits" section synthesizing the
+catalog percentile (labeled as a catalog fact, never "match %") and
+real friend-ranking data, replacing the old standalone friend-rankings
+section (moved, not duplicated); primary rank CTA moved to directly
+follow it; Actions row's Directions button dropped as pure duplication
+of the new strip; the flat emoji badge-chip row removed entirely (tier
+already carried by the identity badge; delivery/menu chip duplicated
+the Actions row's Order/Website buttons); menu section retitled "What
+to get" and visually promoted to card-style rows; "Seen on social"
+(craves) moved to progressive disclosure below the promoted menu
+section, since it's lower-trust public UGC versus the friend-ranking
+signal now surfaced in "Why this fits".
+
+Explicitly NOT done, deferred as real backend gaps rather than faked:
+open/closed status (`Place` has no `hours`/`is_open` field at all).
+
+Preserved exactly, per the explicit constraint: all three
+stale-response generation-ref guards (menu/craves/friend rankings) and
+the upload `moderationStatus`-vs-`status` branching -- none of this
+mechanics was touched, only the surrounding layout/copy.
+
+Two judgment calls made during implementation, not fabrication risks
+but genuine spec gaps worth naming: (1) the spec's example copy implied
+a per-friend city-wide rank position ("Maya ranked it #4 in SF") that
+no backend field actually carries -- written instead using only real
+fields (friend count + top friend's real score/tier); (2) the spec
+listed a "your own score" line inside "Why this fits" *and* kept the
+Primary CTA's existing score display -- that would have been visible
+duplication, so the own-score display stays in its one existing
+correct place (the Primary CTA) rather than being shown twice.
+
+`tsc --noEmit` clean; full Jest suite (153 tests, 13 suites) passes
+unchanged -- no `place/[id]` test file exists yet, so nothing to update
+and nothing regressed. No manual simulator verification yet (still no
+automated visual-regression suite, per the frontend guide) -- that and
+a re-score against §33's Master Brutal Screen Rubric (target 85+,
+baseline 57) are next.
