@@ -14,7 +14,6 @@ import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { fetchPlaces, PlaceOut } from '../../src/api/places';
-import { fetchCategories, CategoryOut } from '../../src/api/categories';
 import { useCityStore } from '../../src/stores/cityStore';
 import { useCravesStore } from '../../src/stores/cravesStore';
 import { useToast } from '../../src/hooks/useToast';
@@ -96,7 +95,6 @@ export default function FeedScreen() {
   const [filterVisible, setFilterVisible] = useState(false);
   const [filters, setFilters] = useState<FilterState>(EMPTY_FILTERS);
   const radiusMiles = 20;
-  const [availableCategories, setAvailableCategories] = useState<string[]>([]);
   const [authVisible, setAuthVisible] = useState(false);
   const user = useAuthStore((s) => s.user);
 
@@ -196,16 +194,19 @@ export default function FeedScreen() {
     if (events.length > 0) logRecommendationEvents(events);
   }, [data?.pages.length, selectedCity?.id]);
 
-  useEffect(() => {
-    fetchCategories()
-      .then((cats) => {
-        if (__DEV__) console.log('[FEED] CATEGORIES_LOADED', { count: cats.length, names: cats.map((c) => c.name) });
-        setAvailableCategories(cats.map((c) => c.name));
-      })
-      // Filter options are non-critical — a failure here shouldn't be an
-      // unhandled rejection, it should just leave the filter list empty.
-      .catch(() => setAvailableCategories([]));
-  }, []);
+  // Derived from what's actually loaded, not a global fetchCategories()
+  // call -- that previously listed every category in the whole catalog
+  // regardless of city, so picking one with zero matches in the current
+  // city silently showed "Nothing here yet" with no explanation why.
+  // Thinner (only categories visible in the currently-loaded pages) but
+  // every chip shown is guaranteed to have a real match right now.
+  const availableCategories = useMemo(() => {
+    const names = new Set<string>();
+    for (const p of places) {
+      for (const c of p.categories ?? []) names.add(c);
+    }
+    return Array.from(names);
+  }, [places]);
 
   // Always populate the city list on mount — it's never persisted (only
   // selectedCity is), and initCities() no longer overrides an existing
