@@ -12,6 +12,38 @@ import { Colors, Radius, Shadows, Spacing } from '../../src/constants/colors';
 import { CitySelectorStrip } from '../../src/components/CitySelectorStrip';
 import { MapMarkerDot, MapClusterDot } from '../../src/components/MapMarker';
 import { MapBottomSheet } from '../../src/components/MapBottomSheet';
+import { logRecommendationEvent, logRecommendationEvents } from '../../src/utils/recommendationEventQueue';
+
+// Recommendation Ledger, surface='map'. Deliberately narrower than the
+// other surfaces' instrumentation: log a bounded impression batch only
+// when a settled/debounced region actually produces a fresh fetch (the
+// coverage-cache/stale-region guards above already skip a fetch for
+// already-seen ground -- no new impression fires for that skip, since
+// nothing new was shown). No raw lat/lng/region ever gets logged, only
+// place_id + tier context -- this is meant to reconstruct "what was
+// shown and picked," not a location trail.
+//
+// Only one click point: the bottom-sheet row tap (which already
+// performs the place-detail navigation in the existing code -- see
+// onOpen below). A bare pin tap that only reveals the preview sheet is
+// NOT separately logged -- in real usage a pin gets tapped, glanced at,
+// and often dismissed without opening; logging every glance as a full
+// 'click' would inflate the signal with "just looking" taps the same
+// way logging every pan would. Cluster taps get no event at all -- a
+// cluster has no single place_id, it's a zoom gesture, not a selection.
+//
+// No new column: reuses the existing `search_session_id` field (see
+// backend's recommendation_event.py) as a generic "stable id for one
+// continuous surface-interaction session," not literally search-only
+// despite the name -- reconstruction genuinely doesn't need a new
+// column, just a broader documented use of this one. Minted fresh
+// whenever the city or view mode changes (a deliberate restart of what's
+// being explored), not on every pan.
+const MAX_LOGGED_MAP_FEATURES = 30;
+
+function _makeMapSessionId(): string {
+  return `map_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+}
 
 // How long to wait after the user stops panning/zooming before refetching —
 // avoids firing a request on every intermediate frame of a gesture.
@@ -219,6 +251,57 @@ export default function MapScreen() {
   // on every debounced region change regardless of coverage.
   const lastFetchCoverageRef = useRef<FetchCoverage | null>(null);
 
+  // Recommendation Ledger bookkeeping. lastImpressionIdsRef holds the
+  // ordered place_ids from the most recently *logged* impression batch,
+  // so a bottom-sheet click can report its real position within what was
+  // actually shown (and logged) rather than an arbitrary array index --
+  // same pattern as Craves' matched-only position lookup.
+  const mapSessionIdRef = useRef(_makeMapSessionId());
+  const lastImpressionIdsRef = useRef<string[]>([]);
+
+  // Re-mints on a deliberate restart of what's being explored (a new
+  // city picked, or switching city<->saved), not on every incidental
+  // mapLat/mapLng change (e.g. GPS resolving shortly after mount would
+  // otherwise also re-fire this if it depended on those instead).
+  // Skips the very first run -- mapSessionIdRef already has its initial
+  // value from useRef() above, minting again here would just discard it
+  // for no reason on mount.
+  const isFirstSessionMintRef = useRef(true);
+  useEffect(() => {
+    if (isFirstSessionMintRef.current) {
+      isFirstSessionMintRef.current = false;
+      return;
+    }
+    mapSessionIdRef.current = _makeMapSessionId();
+  }, [selectedCity?.id, viewMode]);
+
+  // Shared by loadFeatures and loadSavedPlaces below -- both are real
+  // "here's what's now shown on the map" moments. No rank_percentile:
+  // NormalizedMapFeature only carries an absolute rank_score, not a
+  // catalog percentile the way Feed/Search places do -- left null rather
+  // than fabricated from a conversion that doesn't exist server-side.
+  const logMapImpression = useCallback(
+    (normalized: NormalizedMapFeature[]) => {
+      if (normalized.length === 0) {
+        lastImpressionIdsRef.current = [];
+        return;
+      }
+      const bounded = normalized.slice(0, MAX_LOGGED_MAP_FEATURES);
+      lastImpressionIdsRef.current = bounded.map((f) => f.id);
+      logRecommendationEvents(
+        bounded.map((f, i) => ({
+          surface: 'map',
+          event_type: 'impression',
+          place_id: f.id,
+          position: i,
+          city_id: selectedCity?.id ?? null,
+          search_session_id: mapSessionIdRef.current,
+        })),
+      );
+    },
+    [selectedCity?.id],
+  );
+
   // Effective center: city > user location > default
   const mapLat = selectedCity?.lat ?? userLocation?.lat ?? DEFAULT_REGION.latitude;
   const mapLng = selectedCity?.lng ?? userLocation?.lng ?? DEFAULT_REGION.longitude;
@@ -249,6 +332,7 @@ export default function MapScreen() {
           setFeatures(normalized);
           setMapLoaded(true);
           lastFetchCoverageRef.current = { lat, lng, radiusKm };
+          logMapImpression(normalized);
         })
         .catch((err) => {
           if (myRequestId !== requestIdRef.current) return;
@@ -262,7 +346,7 @@ export default function MapScreen() {
           setMapLoading(false);
         });
     },
-    [selectedCity?.id]
+    [selectedCity?.id, logMapImpression]
   );
 
   // Initial load + reload on city change (or GPS location resolving).
@@ -334,6 +418,7 @@ export default function MapScreen() {
             animated: true,
           });
         }
+        logMapImpression(normalized);
       })
       .catch((err) => {
         if (myRequestId !== requestIdRef.current) return;
@@ -344,7 +429,7 @@ export default function MapScreen() {
         if (myRequestId !== requestIdRef.current) return;
         setMapLoading(false);
       });
-  }, []);
+  }, [logMapImpression]);
 
   useEffect(() => {
     if (viewMode !== 'saved') return;
@@ -473,6 +558,7 @@ export default function MapScreen() {
             return (
               <Marker
                 key={c.key}
+                testID={`marker-cluster-${c.key}`}
                 coordinate={{ latitude: c.latitude, longitude: c.longitude }}
                 onPress={() => {
                   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -498,6 +584,7 @@ export default function MapScreen() {
           return (
             <Marker
               key={c.key}
+              testID={`marker-${f.id}`}
               coordinate={{ latitude: f.coordinate.lat, longitude: f.coordinate.lng }}
               onPress={() => {
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -577,7 +664,23 @@ export default function MapScreen() {
 
       <MapBottomSheet
         feature={selectedFeature}
-        onOpen={(id) => router.push(`/place/${id}`)}
+        onOpen={(id) => {
+          // The one real selection+navigation event for this surface --
+          // see the module-level comment on why a bare pin tap alone
+          // isn't separately logged. Position comes from the last
+          // *logged* impression batch, not an arbitrary lookup, so a
+          // click always ties back to a real "this was shown" event.
+          const position = lastImpressionIdsRef.current.indexOf(id);
+          logRecommendationEvent({
+            surface: 'map',
+            event_type: 'click',
+            place_id: id,
+            position: position >= 0 ? position : null,
+            city_id: selectedCity?.id ?? null,
+            search_session_id: mapSessionIdRef.current,
+          });
+          router.push(`/place/${id}`);
+        }}
         onClose={() => setSelectedFeature(null)}
       />
     </View>

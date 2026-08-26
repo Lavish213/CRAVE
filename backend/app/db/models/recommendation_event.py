@@ -153,8 +153,17 @@ class RecommendationEvent(Base, TimestampMixin):
     # reformulation (a new query replacing the previous one, sharing
     # this id, before any click) without a separate logged "reformulated"
     # event: it's fully derivable from consecutive impression batches
-    # sharing this id with different `query` values. Only meaningful for
-    # surface=search; every other surface leaves this null.
+    # sharing this id with different `query` values.
+    #
+    # Despite the name, not search-only: Map's instrumentation (2026-08-26)
+    # reuses this same column as a generic "one continuous surface-
+    # interaction session" id -- there was a real, deliberate choice not
+    # to add a second column just for Map's session id, since this field's
+    # actual contract (nullable, opaque client-generated string, only
+    # meaningful within its own surface) was already exactly what Map
+    # needed. A given row's value is only ever meaningful for its own
+    # `surface`; every surface that hasn't been wired up yet leaves it
+    # null.
     search_session_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
     # City the surface was scoped to at event time (nullable -- a

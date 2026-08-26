@@ -45,6 +45,17 @@ jest.mock('../src/stores/authStore', () => ({
 jest.mock('../src/api/cities', () => ({
   fetchCities: jest.fn().mockResolvedValue([]),
 }));
+// map.tsx now logs Recommendation Ledger events (2026-08-26) -- real
+// recommendationEventQueue.ts -> recommendationEvents.ts -> client.ts ->
+// lib/supabase.ts, which throws at import time outside a real app process
+// (no EXPO_PUBLIC_SUPABASE_URL env var here). This test file predates
+// that instrumentation and isn't about it -- mock it out rather than pull
+// in the real chain. See map-instrumentation.test.tsx for the dedicated
+// coverage on what actually gets logged.
+jest.mock('../src/utils/recommendationEventQueue', () => ({
+  logRecommendationEvent: jest.fn(),
+  logRecommendationEvents: jest.fn(),
+}));
 jest.mock('../src/hooks/useLocation', () => ({
   useLocation: () => null, // no GPS — matches the repro (default/city fallback)
 }));

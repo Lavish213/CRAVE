@@ -29,9 +29,10 @@ class RecommendationEventIn(BaseModel):
     # RecommendationEvent.client_event_id's own docstring. Absent from
     # every impression/click (those have no retry path to dedupe).
     client_event_id: Optional[str] = None
-    # One search interaction session -- see RecommendationEvent
-    # .search_session_id's own docstring. Only meaningful for
-    # surface=search.
+    # A stable interaction-session id, scoped to whatever `surface` this
+    # event belongs to -- see RecommendationEvent.search_session_id's own
+    # docstring for why this one column now serves both Search and Map
+    # despite the name.
     search_session_id: Optional[str] = None
 
 

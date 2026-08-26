@@ -4152,3 +4152,100 @@ selection; matched-only filtering for the Craves section (the
 unmatched-item-position bug this design was written specifically to
 avoid). No backend changes, so no backend/migration gates run. Full
 suite: 159 passed (was 156), `tsc --noEmit` clean.
+
+## 2026-08-26 — Map: Recommendation Ledger instrumentation, surface='map'
+
+Second half of the two-part instrumentation pass, deliberately separate
+from Craves (own commit, own inventory). **Behavioral-measurement
+readiness, not a product/visual change -- does not move Map's rubric
+score.**
+
+Inventoried the existing mechanics in `app/(tabs)/map.tsx` before
+touching anything, since the instruction was explicit about not adding
+events until this was understood: the region-fetch debounce
+(`REGION_FETCH_DEBOUNCE_MS`), the coverage cache
+(`lastFetchCoverageRef`/`isCoveredByPriorFetch` -- skips a fetch
+entirely when a pan lands on already-covered ground), the stale-request
+guard (`requestIdRef`), the spurious-first-region guard
+(`hasHandledFirstRegionRef`, a documented iOS MapKit quirk), grid-based
+clustering (`buildClusters`), and the bottom sheet's drag-to-dismiss
+(`MapBottomSheet`). All of this was left completely untouched --
+instrumentation only reads already-computed results, never changes
+when a fetch fires.
+
+- **Map-results impression**: one bounded (`MAX_LOGGED_MAP_FEATURES =
+  30`), positioned batch logged only when a fetch actually *resolves*
+  (inside `loadFeatures`'s and `loadSavedPlaces`'s existing success
+  handlers) -- never on the debounce timer firing, and never on a pan
+  that the coverage cache decides needs no new fetch at all. This is
+  what makes it "after a settled/debounced region," not "on every pan":
+  the existing guards already do that filtering; instrumentation just
+  rides on their result.
+- **No `rank_percentile`**: `NormalizedMapFeature` only carries an
+  absolute `rank_score`, not the catalog percentile Feed/Search compute
+  server-side. Left null rather than fabricated from some invented
+  score->percentile conversion that doesn't exist server-side -- a real,
+  minor gap, consistent with this session's rule against inventing
+  signal.
+- **No raw coordinate trail**: verified directly in the dedicated
+  test -- a logged event never carries `lat`/`lng`/region data, only
+  `place_id`, `position`, `city_id`, and the session id. What's shown is
+  reconstructed from place_ids, not from where the map was pointed.
+- **Pin/cluster selection vs. bottom-sheet selection vs. place-detail
+  navigation** -- collapsed to **one** real Ledger click, deliberately:
+  logged on the bottom-sheet's "open" tap (which already performs the
+  navigation in the existing code), not on the bare pin tap that only
+  reveals the preview sheet. In real usage a pin gets tapped, glanced
+  at, and often dismissed without opening -- logging every glance as a
+  full click would inflate the signal with "just looking" taps the same
+  way logging every pan would have. This is a judgment call, documented
+  directly in map.tsx's own comments, not a silent decision. Cluster
+  taps get no event at all -- a cluster has no single place_id, it's a
+  zoom gesture.
+- **A stable map-session ID, with no new column**: reuses the existing
+  `search_session_id` field rather than adding a second one -- its
+  actual contract (nullable, opaque, client-generated, only meaningful
+  within its own surface) was already exactly what Map needed; adding a
+  new column would have been a schema change the instruction explicitly
+  said to avoid unless reconstruction genuinely required it, and it
+  didn't. Broadened the doctrine comment on both the backend model
+  (`recommendation_event.py`) and the Pydantic schema to say so
+  explicitly, since a column named `search_session_id` silently also
+  meaning "map session id" would otherwise mislead the next person who
+  reads it. Minted fresh on a deliberate restart of what's being
+  explored (city change, or switching city<->saved mode) -- not on
+  every incidental region change (GPS resolving shortly after mount
+  doesn't count as a new session).
+- **Position**: read from the last *logged* impression batch
+  (`lastImpressionIdsRef`), not a fresh array lookup -- same pattern as
+  Craves' matched-only position fix, so a click's position always ties
+  back to a real, already-logged "this was shown" event.
+
+**Reconstruction verified**: settled region/mode change -> fetch
+resolves -> one bounded/positioned impression batch (place_ids + tier
+context, no coordinates) -> bottom-sheet "open" tap logs one click with
+the real position from that batch and the same session id -> detail
+navigation is the same handler call, needs no separate event -> any
+save/unsave/rank that follows from place/[id].tsx is already covered by
+its own existing certified path.
+
+Two test-infra changes, both backward-compatible: the shared
+`__mocks__/react-native-maps.tsx` `Marker` mock now renders a real
+pressable (was a no-op returning `null`) so a marker tap can actually be
+simulated -- the pre-existing `map.test.tsx` never queried for these
+elements and is unaffected (still 8/8 passing); and that same
+pre-existing test file needed a new mock for
+`recommendationEventQueue` since map.tsx now imports it (same poisonous
+supabase-import-chain reason every other screen test already mocks this
+one level down).
+
+New dedicated test: `__tests__/map-instrumentation.test.tsx` (4 tests)
+-- bounded/positioned impression batch with a stable session id and no
+raw coordinates; click position matches the logged impression and
+shares its session id, with a bare pin tap logging nothing; a cluster
+tap logs nothing at all; a city change mints a fresh session id and
+still logs saved-mode impressions. Full suite: 163 passed (was 159),
+`tsc --noEmit` clean. Backend touched only two docstrings/comments (no
+schema or logic change) -- ran the full backend suite anyway as a
+sanity check: 803 passed, 2 skipped, unchanged from baseline. No
+migration needed.
