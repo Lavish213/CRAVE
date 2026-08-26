@@ -4411,3 +4411,48 @@ legacy UI" into "a distinct CRAVE decision screen" is a screenshot
 review against real content (a `crave_pick` place, a cold-start place,
 a no-photos place) once the user is back on a simulator -- not
 something further code-reading can settle.
+
+## 2026-08-26 — Four quick wins: FK-error logging, Feed category scoping, Place Detail offline message, Search/Map filter bars
+
+Ranked list of easy-for-me, code-only items; user picked 1-4.
+
+1. **Backend**: `record_events()`'s per-event IntegrityError fallback
+   now logs a distinct warning for a genuinely bad `place_id`, separate
+   from a legitimate `client_event_id` dedup race -- both previously
+   raised the identical exception and looked indistinguishable from the
+   caller's side (`{"accepted": 0}` either way), confirmed live during
+   the Craves/Map production verification pass. Doesn't change what
+   gets accepted, only what's visible in logs. New test; 804 backend
+   tests passing (was 803).
+2. **Feed**: category filter chips now derived from the currently-
+   loaded `places`, not a global `fetchCategories()` call across the
+   whole catalog -- picking a category with zero matches in the current
+   city previously showed "Nothing here yet" with no explanation why.
+3. **Place Detail**: distinguishes a network-level failure (no response
+   at all) from a real server error, same signal cravesStore's
+   `_classifyError` already uses -- both previously showed the
+   identical "Couldn't load this place" message. 2 new tests.
+4. **Search and Map**: both had zero filter UI at all (confirmed by
+   direct audit). Both now reuse the existing `FilterSheet` component
+   (price + category chips) rather than inventing a second filter
+   paradigm:
+   - Search: categories derived from current results (same fix as
+     Feed's #2 above). Filtering narrows only what renders --
+     impressions still log against the full, unfiltered results
+     (matches Feed's existing precedent). A filtered-in result's click
+     position is looked up in the original results array, not the
+     filtered list's index, so a click always ties back to the
+     position actually logged in its impression batch. New "no matches
+     for these filters" empty state with a one-tap clear.
+   - Map: filtering applied *before* clustering, so a filtered-out
+     place never contributes to a cluster's count/center either.
+     `NormalizedMapFeature` carries a single `category` string, not an
+     array, so the match predicate differs slightly from Feed/Search's
+     `.some(...)` -- a direct equality check instead. Filter button
+     added inline with the city-selector strip (Map had no header row
+     to reuse the way Feed/Search do). Same position-preservation fix
+     for a filtered-in marker's click.
+
+New tests for both filter additions, including the trickiest part
+(click position surviving a filter) in each. Full suite: 172 passed
+(was 168), `tsc --noEmit` clean.

@@ -133,4 +133,29 @@ describe('MapScreen — Recommendation Ledger instrumentation', () => {
 
     expect(secondSessionId).not.toBe(firstSessionId);
   });
+
+  it('filters out a marker by category, keeps a matching one, and a filtered-in click still uses its real impression position', async () => {
+    const OTHER = {
+      id: 'place-other', name: 'Cafe Bistro', coordinate: { lat: 37.9, lng: -122.1 },
+      tier: 'solid' as const, rank_score: 0.3, price_tier: null, image: null, category: 'Lunch', has_menu: false,
+    };
+    mockedFetch.mockResolvedValue([SOLO_FEATURE, OTHER]);
+    const { getByTestId, getByLabelText, queryByTestId } = render(<MapScreen />);
+    await waitFor(() => expect(mockedLogMany).toHaveBeenCalledTimes(1));
+
+    fireEvent.press(getByLabelText('Filter places'));
+    fireEvent.press(getByLabelText('Lunch'));
+
+    expect(queryByTestId('marker-place-solo')).toBeNull();
+    expect(getByTestId('marker-place-other')).toBeTruthy();
+
+    fireEvent.press(getByTestId('marker-place-other'));
+    fireEvent.press(getByLabelText('Open Cafe Bistro'));
+    // place-other was logged at position 1 in the original (unfiltered)
+    // impression batch -- the filter narrows what's rendered, not the
+    // position a click reports.
+    expect(mockedLogOne).toHaveBeenCalledWith(
+      expect.objectContaining({ place_id: 'place-other', position: 1 }),
+    );
+  });
 });

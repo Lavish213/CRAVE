@@ -13,6 +13,7 @@ import { CitySelectorStrip } from '../../src/components/CitySelectorStrip';
 import { MapMarkerDot, MapClusterDot } from '../../src/components/MapMarker';
 import { MapBottomSheet } from '../../src/components/MapBottomSheet';
 import { logRecommendationEvent, logRecommendationEvents } from '../../src/utils/recommendationEventQueue';
+import { FilterSheet, FilterState, EMPTY_FILTERS, hasActiveFilters } from '../../src/components/FilterSheet';
 
 // Recommendation Ledger, surface='map'. Deliberately narrower than the
 // other surfaces' instrumentation: log a bounded impression batch only
@@ -207,6 +208,8 @@ export default function MapScreen() {
   // Biter advertise as a core feature, which this screen never had before
   // (it only ever showed the global catalog).
   const [viewMode, setViewMode] = useState<'city' | 'saved'>('city');
+  const [filterVisible, setFilterVisible] = useState(false);
+  const [filters, setFilters] = useState<FilterState>(EMPTY_FILTERS);
 
   // True for the one onRegionChangeComplete event caused by our own
   // animateToRegion call (city change / cluster tap) — lets us skip firing a
@@ -512,7 +515,32 @@ export default function MapScreen() {
     [loadFeatures, viewMode]
   );
 
-  const clusters = useMemo(() => buildClusters(features, mapRegion), [features, mapRegion]);
+  // Derived from what's actually loaded (this region's fetch, or the
+  // saved-places layer), not a global catalog-wide list -- same fix as
+  // Feed/Search's filter chips.
+  const availableCategories = useMemo(() => {
+    const names = new Set<string>();
+    for (const f of features) {
+      if (f.category) names.add(f.category);
+    }
+    return Array.from(names);
+  }, [features]);
+
+  // A view-level narrowing of what's already fetched, applied before
+  // clustering so a filtered-out place never contributes to a cluster's
+  // count/center either. NormalizedMapFeature carries a single `category`
+  // string, not the categories[] array Feed/Search's places have, so the
+  // match here is `===` against any selected category, not `.some(...)`.
+  const filteredFeatures = useMemo(() => {
+    if (!hasActiveFilters(filters)) return features;
+    return features.filter((f) => {
+      if (filters.priceTiers.length > 0 && (f.price_tier == null || !filters.priceTiers.includes(f.price_tier))) return false;
+      if (filters.categories.length > 0 && (!f.category || !filters.categories.includes(f.category))) return false;
+      return true;
+    });
+  }, [features, filters]);
+
+  const clusters = useMemo(() => buildClusters(filteredFeatures, mapRegion), [filteredFeatures, mapRegion]);
 
   // Snap back to GPS regardless of how far the user has panned — the map
   // otherwise has no way back to "where I actually am" once you've explored
@@ -614,7 +642,19 @@ export default function MapScreen() {
       </MapView>
 
       <View style={styles.cityStrip}>
-        <CitySelectorStrip />
+        <View style={styles.cityStripScroll}>
+          <CitySelectorStrip />
+        </View>
+        {features.length > 0 && (
+          <TouchableOpacity
+            style={styles.filterBtn}
+            onPress={() => setFilterVisible(true)}
+            accessibilityLabel="Filter places"
+            accessibilityRole="button"
+          >
+            <Ionicons name="options-outline" size={20} color={hasActiveFilters(filters) ? Colors.primary : Colors.text} />
+          </TouchableOpacity>
+        )}
       </View>
 
       {mapLoading && (
@@ -640,6 +680,17 @@ export default function MapScreen() {
             {viewMode === 'saved' ? "You haven't saved any places yet" : 'No places in this city yet'}
           </Text>
         </View>
+      )}
+
+      {mapLoaded && !mapLoading && features.length > 0 && filteredFeatures.length === 0 && (
+        <TouchableOpacity
+          style={styles.mapBanner}
+          onPress={() => setFilters(EMPTY_FILTERS)}
+          accessibilityRole="button"
+          accessibilityLabel="Clear filters"
+        >
+          <Text style={styles.mapBannerText}>No matches for these filters — tap to clear</Text>
+        </TouchableOpacity>
       )}
 
       {user && (
@@ -692,6 +743,14 @@ export default function MapScreen() {
         }}
         onClose={() => setSelectedFeature(null)}
       />
+
+      <FilterSheet
+        visible={filterVisible}
+        onClose={() => setFilterVisible(false)}
+        filters={filters}
+        onChange={setFilters}
+        availableCategories={availableCategories}
+      />
     </View>
   );
 }
@@ -704,8 +763,12 @@ const styles = StyleSheet.create({
     top: 0,
     left: 0,
     right: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
     backgroundColor: Colors.background + 'EE',
   },
+  cityStripScroll: { flex: 1 },
+  filterBtn: { padding: Spacing.sm, minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
   mapBanner: {
     position: 'absolute',
     top: 60,
