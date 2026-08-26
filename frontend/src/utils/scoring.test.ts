@@ -1,4 +1,4 @@
-import { getTier, getTierForPlace, inferPrice, formatPrice, getBadges, formatDistance, TIERS } from './scoring';
+import { getTier, getTierForPlace, inferPrice, formatPrice, getBadges, percentileCaption, formatDistance, TIERS } from './scoring';
 import type { PlaceOut } from '../api/places';
 
 function makePlace(overrides: Partial<PlaceOut> = {}): PlaceOut {
@@ -160,14 +160,9 @@ describe('formatPrice', () => {
 });
 
 describe('getBadges', () => {
-  it('badges a crave_pick tier place', () => {
+  it('does not badge tier -- TierBadge already renders it on every real call site', () => {
     const badges = getBadges(makePlace({ rank_score: 0.5 }));
-    expect(badges.some((b) => b.label === 'CRAVE Pick')).toBe(true);
-  });
-
-  it('badges a gem tier place', () => {
-    const badges = getBadges(makePlace({ rank_score: 0.35 }));
-    expect(badges.some((b) => b.label === 'Hidden Gem')).toBe(true);
+    expect(badges.some((b) => b.label === 'CRAVE Pick' || b.label === 'Hidden Gem')).toBe(false);
   });
 
   it('shows Delivery when the place has a menu and a grubhub url', () => {
@@ -186,11 +181,30 @@ describe('getBadges', () => {
     expect(badges.some((b) => b.label === 'Off the grid')).toBe(true);
   });
 
-  it('never returns more than 3 badges', () => {
+  it('never returns more than one badge -- the three cases are mutually exclusive', () => {
     const badges = getBadges(
       makePlace({ rank_score: 0.5, has_menu: true, grubhub_url: 'https://grubhub.com/x' }),
     );
-    expect(badges.length).toBeLessThanOrEqual(3);
+    expect(badges.length).toBeLessThanOrEqual(1);
+  });
+});
+
+describe('percentileCaption', () => {
+  it('captions a crave_pick tier with its real percentile', () => {
+    expect(percentileCaption(TIERS.crave_pick, 0.97)).toBe('Top 3%');
+  });
+
+  it('captions a gem tier with its real percentile', () => {
+    expect(percentileCaption(TIERS.gem, 0.85)).toBe('Top 15%');
+  });
+
+  it('stays silent for solid/new tiers -- "Top 55%" reads as an anti-signal, not a reason to care', () => {
+    expect(percentileCaption(TIERS.solid, 0.55)).toBeNull();
+    expect(percentileCaption(TIERS.new, 0.1)).toBeNull();
+  });
+
+  it('stays silent when no percentile snapshot exists yet, even for a top tier', () => {
+    expect(percentileCaption(TIERS.crave_pick, null)).toBeNull();
   });
 });
 

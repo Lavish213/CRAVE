@@ -4027,3 +4027,54 @@ visual-language pass, not just IA reorg; H: execute the full
 state-by-state design list from the inventory -- no-images hero
 placeholder polish, explicit partial-data confirmation, etc.) is
 tracked here as a follow-up, not abandoned.
+
+## 2026-08-26 — Feed: two real defects fixed, honestly scored (59 -> 65/100)
+
+Read `app/(tabs)/index.tsx`, `PlaceCard.tsx`, `PlaceCardCompact.tsx` in
+full and checked them against doctrine §22.1's own "Feed current
+problems observed" list (already an inventory of sorts) before
+touching anything. Unlike Place Detail, this was **not** a full
+spec-driven IA rebuild -- the doctrine explicitly warns against two
+things a full rebuild would tempt: reviving the hidden "Recommended for
+You"/"Trending" strips (still correctly off, no real signal backs
+them) and inventing the dynamic sections it lists as examples ("Best
+for tonight," "Worth the drive," etc.) without real backend curation
+logic behind them -- doing either would be exactly the fabrication
+anti-pattern this whole design push exists to prevent. So this pass was
+scoped to real, cheap, honest fixes only:
+
+1. **Found a genuine duplication bug**: `getBadges()` re-emitted the
+   tier as its own chip ("⭐ CRAVE Pick" / "💎 Hidden Gem") on top of
+   the `<TierBadge>` already rendered elsewhere on the same card, on
+   *both* `PlaceCard` and `PlaceCardCompact` -- confirmed by reading
+   both, not assumed. Removed the tier branch from `getBadges()`
+   entirely rather than patch each call site; the function's contract
+   is now honestly "0-1 badge" (menu/delivery/off-grid are mutually
+   exclusive), not "0-3."
+2. **Added a real "why this matters" signal**: new `percentileCaption()`
+   in `scoring.ts` -- "Top N%" shown as its own accented line on the
+   card, but *only* for `crave_pick`/`gem` tiers with a real
+   `rank_percentile`. Deliberately silent for `solid`/`new` tiers even
+   though a percentile might exist -- "Top 55%" reads as an anti-signal,
+   not a reason to care, so showing it would be technically true but
+   actively counterproductive. This directly answers doctrine's
+   "cards do not yet communicate why each place matters" finding,
+   using a field the cards already had (`rank_percentile`) -- no new
+   endpoint.
+
+New/updated tests: `scoring.test.ts` -- badge tests updated for the
+0-1 contract, 4 new tests for `percentileCaption` (both real tiers,
+silent for solid/new even with a real percentile, silent with no
+percentile even for a top tier). Full suite: 156 passed (was 153),
+`tsc --noEmit` clean.
+
+**Honest §33 re-score: 59 -> 65/100** ("functional but weak" both
+before and after -- this pass did not clear a grade band). What's
+actually blocking further movement, and why it's correctly out of
+scope for a frontend-only pass: **A/C** need Feed restructured into
+"small, high-confidence candidate sets" per doctrine's stated purpose,
+which needs real backend curation logic, not a frontend reshuffle of
+the same offset-paginated full catalog; **D** needs the same real
+visual-language pass Place Detail is also waiting on. Both are real,
+sized correctly as backend/design-system work, not something to fake
+around in `index.tsx`.

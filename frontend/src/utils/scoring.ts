@@ -185,30 +185,39 @@ export interface Badge {
 }
 
 /**
- * Returns 0–3 contextual emoji chips for a place card.
- * Order: quality signal → menu/order → access indicator.
+ * Returns 0-1 contextual emoji chips for a place card -- menu/order
+ * access, or its absence. Used to badge a quality tier here too, via
+ * getTierForPlace() -- but every real call site (PlaceCard,
+ * PlaceCardCompact) already renders <TierBadge> for that, so a second
+ * "⭐ CRAVE Pick" chip in the body was pure duplication of the badge
+ * already sitting on the same card's image. Removed rather than kept
+ * "for safety" -- found during the Feed forensic inventory, same
+ * duplication class as Place Detail's badge-chip row.
  */
 export function getBadges(place: PlaceOut): Badge[] {
   const badges: Badge[] = [];
-
-  const tier = getTierForPlace(place);
-
-  if (tier.key === 'crave_pick') {
-    badges.push({ emoji: '⭐', label: 'CRAVE Pick' });
-  } else if (tier.key === 'gem') {
-    badges.push({ emoji: '💎', label: 'Hidden Gem' });
-  }
 
   if (place.has_menu && place.grubhub_url) {
     badges.push({ emoji: '🛵', label: 'Delivery' });
   } else if (place.has_menu) {
     badges.push({ emoji: '📋', label: 'Menu' });
-  }
-
-  if (!place.has_menu && !place.grubhub_url && !place.website) {
+  } else if (!place.grubhub_url && !place.website) {
     badges.push({ emoji: '🗺️', label: 'Off the grid' });
   }
 
-  return badges.slice(0, 3);
+  return badges;
+}
+
+/**
+ * Card-level "why it matters" caption -- only for the two tiers where a
+ * percentile claim actually reads as a reason to care (top 20%
+ * catalog-wide). "Top 55%" would read as an anti-signal, not a
+ * recommendation, so tiers below crave_pick/gem stay silent rather than
+ * show a technically-true but discouraging number.
+ */
+export function percentileCaption(tier: Tier, rankPercentile: number | null | undefined): string | null {
+  if (tier.key !== 'crave_pick' && tier.key !== 'gem') return null;
+  if (rankPercentile == null) return null;
+  return `Top ${Math.max(1, Math.round((1 - rankPercentile) * 100))}%`;
 }
 

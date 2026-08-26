@@ -3,7 +3,7 @@ import { StyleSheet, Text, TouchableOpacity, View, ViewStyle } from 'react-nativ
 import { Image } from 'expo-image';
 import * as Haptics from 'expo-haptics';
 import { PlaceOut } from '../api/places';
-import { getTierForPlace, formatPrice, getBadges, formatDistance } from '../utils/scoring';
+import { getTierForPlace, formatPrice, getBadges, percentileCaption, formatDistance } from '../utils/scoring';
 // formatPrice imported for fallback; normalized places already have place.price
 import { TierBadge } from './TierBadge';
 import { Colors, Radius, Shadows } from '../constants/colors';
@@ -23,6 +23,7 @@ function PlaceCardCompactImpl({ place, onPress, onPressIn, rightAction, style }:
   const badges = getBadges(place);
   const categoryLabel = place.category ?? null;
   const distanceLabel = formatDistance(place.distance_miles);
+  const percentileLabel = percentileCaption(tier, place.rank_percentile);
   const metaParts = [categoryLabel, price, distanceLabel].filter(Boolean);
 
   return (
@@ -53,6 +54,9 @@ function PlaceCardCompactImpl({ place, onPress, onPressIn, rightAction, style }:
       <View style={styles.info}>
         <TierBadge tier={tier} style={styles.badgeTier} />
         <Text style={styles.name} numberOfLines={1}>{place.name}</Text>
+        {percentileLabel ? (
+          <Text style={[styles.percentile, { color: tier.color }]}>{percentileLabel}</Text>
+        ) : null}
         {metaParts.length > 0 && (
           <Text style={styles.sub} numberOfLines={1}>
             {metaParts.join('  ·  ')}
@@ -111,6 +115,7 @@ const styles = StyleSheet.create({
   },
   info: { flex: 1, gap: 3 },
   name: { color: Colors.text, fontSize: 15, fontWeight: '600' },
+  percentile: { fontSize: 11, fontWeight: '700' },
   sub: { color: Colors.textSecondary, fontSize: 13 },
   badgeTier: { marginBottom: 2 },
   badgeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginTop: 2 },

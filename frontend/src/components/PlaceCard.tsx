@@ -6,7 +6,7 @@ import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { PlaceOut } from '../api/places';
-import { getTierForPlace, formatPrice, getBadges, formatDistance } from '../utils/scoring';
+import { getTierForPlace, formatPrice, getBadges, percentileCaption, formatDistance } from '../utils/scoring';
 // formatPrice imported for fallback; normalized places already have place.price
 import { TierBadge } from './TierBadge';
 import { Colors, Spacing, Radius, Shadows } from '../constants/colors';
@@ -40,6 +40,11 @@ function PlaceCardImpl({ place, onPress, onPressIn, onSave, saved, style }: Prop
 
   const categoryLabel = place.category ?? null;
   const distanceLabel = formatDistance(place.distance_miles);
+  // Real "why this matters" signal -- rendered as its own accented line,
+  // not buried in the meta row, so it actually reads as a reason to care
+  // rather than one more fact in a list. Only present for the two tiers
+  // where it means something (see percentileCaption).
+  const percentileLabel = percentileCaption(tier, place.rank_percentile);
   const metaParts = [categoryLabel, price, distanceLabel].filter(Boolean);
 
   return (
@@ -100,6 +105,9 @@ function PlaceCardImpl({ place, onPress, onPressIn, onSave, saved, style }: Prop
 
       <View style={styles.body}>
         <Text style={styles.name} numberOfLines={1}>{place.name}</Text>
+        {percentileLabel ? (
+          <Text style={[styles.percentile, { color: tier.color }]}>{percentileLabel}</Text>
+        ) : null}
         {metaParts.length > 0 && (
           <Text style={styles.meta} numberOfLines={1}>
             {metaParts.join('  ·  ')}
@@ -163,6 +171,7 @@ const styles = StyleSheet.create({
   },
   body: { padding: Spacing.lg, paddingTop: Spacing.md, gap: Spacing.xs },
   name: { fontSize: 18, fontWeight: '800', color: Colors.text },
+  percentile: { fontSize: 12, fontWeight: '700' },
   meta: { fontSize: 13, color: Colors.textSecondary },
   badgeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 2 },
   chip: {
