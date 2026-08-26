@@ -149,6 +149,26 @@ export function formatPrice(place: PlaceOut): string | null {
 
 // ─── Distance ────────────────────────────────────────────────────────────────
 
+/**
+ * Great-circle distance in miles between two lat/lng points. Feed/Search
+ * get `distance_miles` pre-computed server-side (lat/lng sent as query
+ * params); Place Detail's GET /place/{id} takes no location params, so
+ * distance there has to be computed client-side from useLocation() +
+ * place.lat/lng instead of silently omitted.
+ */
+export function computeDistanceMiles(
+  lat1: number, lng1: number, lat2: number, lng2: number,
+): number {
+  const R_MILES = 3958.8;
+  const toRad = (deg: number) => (deg * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+  return R_MILES * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
 /** Was duplicated identically in PlaceCard.tsx and PlaceCardCompact.tsx. */
 export function formatDistance(distanceMiles: number | null | undefined): string | null {
   if (distanceMiles == null) return null;

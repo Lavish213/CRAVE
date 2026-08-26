@@ -25,10 +25,12 @@ import { useImagePicker } from '../../src/hooks/useImagePicker';
 import { useUploadImage } from '../../src/hooks/useUploadImage';
 import { useImageStatusPoll } from '../../src/hooks/useImageStatusPoll';
 import { Colors, Spacing, Radius } from '../../src/constants/colors';
-import { getTierForPlace, getBadges, formatPrice } from '../../src/utils/scoring';
+import { getTierForPlace, formatPrice, formatDistance, computeDistanceMiles } from '../../src/utils/scoring';
 import { fetchMyRankings, fetchFriendRankings, FriendRanking } from '../../src/api/social';
 import { formatScore, tierColor, TIER_LABELS } from '../../src/utils/rankScore';
 import { relativeTime } from '../../src/utils/time';
+import { useLocation } from '../../src/hooks/useLocation';
+import { useCityStore } from '../../src/stores/cityStore';
 import { withImageWidth, AVATAR_IMAGE_WIDTH } from '../../src/utils/imageUrl';
 import { ImageGallery } from '../../src/components/ImageGallery';
 import { PlaceVideoGallery } from '../../src/components/PlaceVideoGallery';
@@ -83,6 +85,8 @@ export default function PlaceDetailScreen() {
   const toast = useToast((s) => s.show);
   const { pick } = useImagePicker();
   const { upload } = useUploadImage();
+  const userLocation = useLocation();
+  const cities = useCityStore((s) => s.cities);
 
   const { data: place, isLoading, isError, refetch } = useQuery({
     queryKey: ['place', id],
@@ -253,11 +257,30 @@ export default function PlaceDetailScreen() {
   }
 
   const tier = getTierForPlace(place);
-  const badges = getBadges(place);
   const price = place.price ?? formatPrice(place);
   const saved = isSaved(place.id);
   const allImages: string[] = place.images?.length ? place.images : (place.image ? [place.image] : []);
   const previewMenu = menuExpanded ? menuItems : menuItems.slice(0, 5);
+
+  // Place Detail's GET /place/{id} takes no lat/lng, so place.distance_miles
+  // (populated server-side on Feed/Search, which do send them) is always
+  // null here -- compute it client-side instead of just omitting distance.
+  const distanceMiles =
+    userLocation && place.lat != null && place.lng != null
+      ? computeDistanceMiles(userLocation.lat, userLocation.lng, place.lat, place.lng)
+      : place.distance_miles;
+  const distanceLabel = formatDistance(distanceMiles);
+  const cityName = cities.find((c) => c.id === place.city_id)?.name ?? null;
+
+  // "Why this fits" -- the one section whose whole job is to answer "why
+  // THIS place," using only signals that are actually real today (no
+  // fabricated match %, see CRAVE_PLACE_DETAIL_SPEC.md §2). The catalog
+  // standing line only claims a percentile when one actually exists.
+  const percentileHeadline =
+    place.rank_percentile != null
+      ? `${tier.label} — top ${Math.max(1, Math.round((1 - place.rank_percentile) * 100))}%${cityName ? ` in ${cityName}` : ''}`
+      : tier.label;
+  const topFriendRanking = friendRankings[0] ?? null;
 
   // Group menu items by category
   const menuByCategory: Record<string, MenuItem[]> = {};
@@ -346,30 +369,88 @@ export default function PlaceDetailScreen() {
       {/* Food videos */}
       <PlaceVideoGallery placeId={place.id} />
 
-      {/* Identity */}
+      {/* Identity — name leads, tier judgment follows (was reversed before:
+          badge/price came first, name second). */}
       <View style={styles.identity}>
+        <Text style={styles.name}>{place.name}</Text>
         <View style={styles.identityTop}>
           <TierBadge tier={tier} />
-          {price ? (
-            <Text style={styles.price}>{price}</Text>
-          ) : null}
         </View>
-        <Text style={styles.name}>{place.name}</Text>
         <Text style={styles.meta}>
           {[place.category, place.address].filter(Boolean).join('  ·  ')}
         </Text>
       </View>
 
-      {/* Emoji badge chips */}
-      {badges.length > 0 && (
-        <View style={styles.badgeChips}>
-          {badges.map((b) => (
-            <View key={b.label} style={styles.chip}>
-              <Text style={styles.chipText}>{b.emoji} {b.label}</Text>
-            </View>
-          ))}
+      {/* Decision strip — the facts that gate whether this is even viable
+          right now. Deliberately no open/closed indicator: Place has no
+          hours/is_open field at all today, and a guessed or stale "open
+          now" is worse than none (see CRAVE_PLACE_DETAIL_SPEC.md §3.2 —
+          logged as a real backend gap, not faked here). */}
+      {(price || distanceLabel || (place.lat && place.lng)) ? (
+        <View style={styles.decisionStrip}>
+          {price ? <Text style={styles.decisionChip}>💰 {price}</Text> : null}
+          {distanceLabel ? <Text style={styles.decisionChip}>📍 {distanceLabel}</Text> : null}
+          {place.lat && place.lng ? (
+            <TouchableOpacity
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                handleDirections();
+              }}
+              accessibilityRole="button"
+              accessibilityLabel="Get directions"
+            >
+              <Text style={[styles.decisionChip, styles.decisionChipLink]}>🔗 Directions</Text>
+            </TouchableOpacity>
+          ) : null}
         </View>
-      )}
+      ) : null}
+
+      {/* "Why this fits" — the section that actually answers "why THIS
+          place," synthesized from signals CRAVE genuinely has today: the
+          catalog percentile (never phrased as personalization) and real
+          friend rankings. No taste-match %, no "you tend to like X" — no
+          user taste graph exists yet (Decision Intelligence doctrine
+          Gate 2). See CRAVE_PLACE_DETAIL_SPEC.md §3.3/§2. */}
+      <View style={styles.whyFits}>
+        <Text style={styles.whyFitsHeadline}>{percentileHeadline}</Text>
+        {topFriendRanking ? (
+          <Text style={styles.whyFitsFriends}>
+            {friendRankings.length === 1
+              ? `${topFriendRanking.username} ranked this ${formatScore(topFriendRanking.rank_score)}/10`
+              : `${friendRankings.length} friends ranked this — ${topFriendRanking.username} gave it ${formatScore(topFriendRanking.rank_score)}/10`}
+          </Text>
+        ) : null}
+        {friendRankings.length > 1 && (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.socialRow}>
+            {friendRankings.map((r) => (
+              <TouchableOpacity
+                key={r.user_id}
+                style={styles.friendRankCard}
+                onPress={() => router.push(`/user/${r.user_id}`)}
+                accessibilityRole="link"
+                accessibilityLabel={`View ${r.username}'s profile — ranked ${TIER_LABELS[r.tier]}`}
+              >
+                {r.avatar_url ? (
+                  <Image
+                    source={withImageWidth(r.avatar_url, AVATAR_IMAGE_WIDTH)}
+                    style={styles.friendRankAvatar}
+                    contentFit="cover"
+                    cachePolicy="memory-disk"
+                  />
+                ) : (
+                  <View style={[styles.friendRankAvatar, styles.friendRankAvatarFallback]}>
+                    <Ionicons name="person" size={18} color={Colors.textMuted} />
+                  </View>
+                )}
+                <Text style={styles.friendRankUsername} numberOfLines={1}>@{r.username}</Text>
+                <Text style={[styles.friendRankTier, { color: tierColor(r.tier) }]}>
+                  {TIER_LABELS[r.tier]}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        )}
+      </View>
 
       {/* Primary CTA — deliberately one prominent action, visually distinct
           from the secondary row below it, rather than a fifth equal-weight
@@ -458,21 +539,6 @@ export default function PlaceDetailScreen() {
           </TouchableOpacity>
         ) : null}
 
-        {place.lat && place.lng ? (
-          <TouchableOpacity
-            style={styles.actionBtn}
-            onPress={() => {
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              handleDirections();
-            }}
-            accessibilityLabel="Get directions"
-            accessibilityRole="button"
-          >
-            <Ionicons name="navigate-outline" size={18} color={Colors.text} />
-            <Text style={styles.actionLabel}>Directions</Text>
-          </TouchableOpacity>
-        ) : null}
-
         <TouchableOpacity
           style={styles.actionBtn}
           onPress={() => handleAddPhoto('food')}
@@ -525,10 +591,13 @@ export default function PlaceDetailScreen() {
         ) : null}
       </View>
 
-      {/* Menu */}
+      {/* What to get — promoted from a collapsible list near the bottom to
+          a visually prominent section (CRAVE_PLACE_DETAIL_SPEC.md §3.5).
+          Same data/logic as before; no dish-level "recommended for you"
+          claim added — no dish-affinity model exists. */}
       <View style={styles.menuSection}>
         <View style={styles.menuTitleRow}>
-          <Text style={styles.sectionTitle}>Menu</Text>
+          <Text style={styles.sectionTitle}>What to get</Text>
           {/* Previously computed and stored (Place.last_menu_updated_at)
               but never shown — a menu verified yesterday and one untouched
               for eight months rendered identically. */}
@@ -600,47 +669,13 @@ export default function PlaceDetailScreen() {
         )}
       </View>
 
-      {/* Friend rankings — "X of your friends ranked this," the direct
-          equivalent of Beli's friend-rating feature. */}
-      {friendRankings.length > 0 && (
-        <View style={styles.socialSection}>
-          <Text style={styles.sectionTitle}>
-            Ranked by {friendRankings.length} {friendRankings.length === 1 ? 'friend' : 'friends'}
-          </Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.socialRow}>
-            {friendRankings.map((r) => (
-              <TouchableOpacity
-                key={r.user_id}
-                style={styles.friendRankCard}
-                onPress={() => router.push(`/user/${r.user_id}`)}
-                accessibilityRole="link"
-                accessibilityLabel={`View ${r.username}'s profile — ranked ${TIER_LABELS[r.tier]}`}
-              >
-                {r.avatar_url ? (
-                  <Image
-                    source={withImageWidth(r.avatar_url, AVATAR_IMAGE_WIDTH)}
-                    style={styles.friendRankAvatar}
-                    contentFit="cover"
-                    cachePolicy="memory-disk"
-                  />
-                ) : (
-                  <View style={[styles.friendRankAvatar, styles.friendRankAvatarFallback]}>
-                    <Ionicons name="person" size={18} color={Colors.textMuted} />
-                  </View>
-                )}
-                <Text style={styles.friendRankUsername} numberOfLines={1}>@{r.username}</Text>
-                <Text style={[styles.friendRankTier, { color: tierColor(r.tier) }]}>
-                  {TIER_LABELS[r.tier]}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-        </View>
-      )}
-
-      {/* Seen on social — matched TikTok/YouTube/IG shares. Tapping opens
-          the original post; true inline playback would need react-native-webview,
-          not currently a dependency, so this links out instead. */}
+      {/* Seen on social — matched TikTok/YouTube/IG shares. Lower-trust
+          public UGC (no curation, unlike the friend-ranking signal folded
+          into "Why this fits" above), so it lives here in progressive
+          disclosure rather than as competing above-the-fold social proof.
+          Tapping opens the original post; true inline playback would need
+          react-native-webview, not currently a dependency, so this links
+          out instead. */}
       {craves.length > 0 && (
         <View style={styles.socialSection}>
           <Text style={styles.sectionTitle}>Seen on social</Text>
@@ -702,14 +737,33 @@ export default function PlaceDetailScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
   content: { paddingBottom: 40 },
-  identity: { padding: 16, gap: 5 },
-  identityTop: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 },
+  identity: { padding: 16, paddingBottom: 8, gap: 5 },
+  identityTop: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 2 },
   price: { color: Colors.textSecondary, fontSize: 13, fontWeight: '600' },
   name: { fontSize: 24, fontWeight: '800', color: Colors.text, letterSpacing: 0.2 },
   meta: { fontSize: 14, color: Colors.textSecondary },
-  badgeChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, paddingHorizontal: Spacing.lg, paddingBottom: Spacing.md },
-  chip: { paddingHorizontal: 10, paddingVertical: 4, backgroundColor: Colors.border, borderRadius: Radius.pill },
-  chipText: { fontSize: 13, color: Colors.textSecondary },
+  decisionStrip: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 14,
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingBottom: 12,
+  },
+  decisionChip: { fontSize: 14, color: Colors.textSecondary, fontWeight: '600' },
+  decisionChipLink: { color: Colors.primary },
+  whyFits: {
+    marginHorizontal: 16,
+    marginBottom: 4,
+    padding: 14,
+    borderRadius: Radius.md,
+    backgroundColor: Colors.surface,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    gap: 6,
+  },
+  whyFitsHeadline: { fontSize: 15, fontWeight: '800', color: Colors.text },
+  whyFitsFriends: { fontSize: 13, color: Colors.textSecondary },
   rankCta: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -792,17 +846,20 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     gap: 12,
-    paddingVertical: 8,
-    borderBottomWidth: 1,
+    padding: 12,
+    marginBottom: 8,
+    borderRadius: Radius.md,
+    backgroundColor: Colors.surface,
+    borderWidth: 1,
     borderColor: Colors.border,
   },
   menuItemMeta: { flex: 1 },
-  menuItemName: { color: Colors.text, fontSize: 14, fontWeight: '600' },
-  menuItemDesc: { color: Colors.textSecondary, fontSize: 12, marginTop: 2 },
+  menuItemName: { color: Colors.text, fontSize: 15, fontWeight: '700' },
+  menuItemDesc: { color: Colors.textSecondary, fontSize: 13, marginTop: 3 },
   menuItemPrice: {
-    color: Colors.textSecondary,
-    fontSize: 14,
-    fontWeight: '600',
+    color: Colors.text,
+    fontSize: 15,
+    fontWeight: '700',
     minWidth: 50,
     textAlign: 'right',
   },
