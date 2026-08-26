@@ -4274,3 +4274,61 @@ functional purpose today and this session's own standing rule is "don't
 migrate for naming alone." Tracked here so it doesn't get forgotten,
 not swept under the "it's just a comment" framing used when the reuse
 was first made.
+
+## 2026-08-26 — Place Detail: edge-state + accessibility pass (item 1 of the product-quality sequence)
+
+Live verification of Craves/Map is paused on the user's side (simulator
+friction) -- rather than block on that, moved to the next agreed item:
+Place Detail's explicit edge-state/accessibility work, code-only, no
+device needed for the work itself (screenshots for the eventual §33
+re-score still will be).
+
+- **No-photos state, honestly redesigned**: `ImageGallery` previously
+  stretched the app's own icon full-bleed as a stand-in photo when a
+  place had none -- reads as a broken/wrong image, not a designed empty
+  state. Replaced with the same fallback language `PlaceCard` already
+  uses elsewhere (muted panel + icon + text), so "no photo yet" finally
+  looks like an intentional state instead of a rendering bug.
+- **Real accessibility labels added to the photo gallery**: previously
+  zero -- a screen reader had no way to know it was even looking at a
+  photo carousel, let alone which photo or whether it was GPS-verified.
+  Added `placeName`-aware labels ("Photo 2 of 4 for Nari, verified
+  visit"), hid the raw verified-badge/dot-indicator text from the
+  accessibility tree (`importantForAccessibility="no"`) since the photo
+  label already covers it.
+- **Decision-strip chips no longer read their raw emoji glyphs**: a
+  screen reader previously read "💰 $$$" and "📍 1.8 mi" literally
+  (VoiceOver reads emoji by name). Wrapped each in an accessible group
+  with a clean label ("Price: $$$", "Distance: 1.8 mi"), hiding the
+  visual text from the accessibility tree.
+- **Section headings marked as headings**: name, "Why this fits"
+  headline, "What to get", "Seen on social" now carry
+  `accessibilityRole="header"` so VoiceOver/TalkBack's heading
+  navigation (rotor) can jump between sections -- previously all
+  identical plain text to a screen reader, no way to skim the page's
+  structure non-visually.
+- **Menu item rows grouped into one accessible element** each (name +
+  description + price read as one coherent unit: "Margherita, wood-fired
+  with basil, $16.00") instead of three separately-announced fragments.
+- **Partial-data polish**: the identity meta line (category · address)
+  now hides entirely when both are null, instead of rendering an empty
+  string that still consumed a line of vertical space.
+- **Real, confirmed, app-wide contrast gap found, not fixed here**:
+  `Colors.textMuted` (`#555555`) on `Colors.background`/`Colors.surface`
+  (`#0A0A0A`/`#1A1A1A`) computes to roughly 2:1 contrast -- well under
+  WCAG AA's 4.5:1 for normal text. Used in many files across the app
+  (menu category labels, avatar-fallback icons, etc.), so a real fix is
+  a design-token change with app-wide blast radius, correctly out of
+  scope for a single-screen pass. Did not introduce a new instance of it
+  in today's own new code (`ImageGallery`'s no-photos label uses
+  `textSecondary`, ~5.6:1, instead).
+
+Not yet done from the full edge-state list: explicit designs for
+partial API responses beyond the one case above, and the still-generic
+`ErrorState`/offline distinction. tsc clean, 163 tests passing
+(unchanged -- no test file exists yet for `place/[id].tsx` or
+`ImageGallery` to update).
+
+Next: the real visual-language pass (item 2), then re-score against
+§33 with actual screenshots once the user is back on a simulator (item
+3).

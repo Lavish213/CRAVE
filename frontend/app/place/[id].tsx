@@ -371,6 +371,7 @@ export default function PlaceDetailScreen() {
       <ImageGallery
         images={allImages}
         gpsVerified={place.images?.length ? place.image_gps_verified : undefined}
+        placeName={place.name}
       />
 
       {/* Food videos */}
@@ -379,13 +380,15 @@ export default function PlaceDetailScreen() {
       {/* Identity — name leads, tier judgment follows (was reversed before:
           badge/price came first, name second). */}
       <View style={styles.identity}>
-        <Text style={styles.name}>{place.name}</Text>
+        <Text style={styles.name} accessibilityRole="header">{place.name}</Text>
         <View style={styles.identityTop}>
           <TierBadge tier={tier} />
         </View>
-        <Text style={styles.meta}>
-          {[place.category, place.address].filter(Boolean).join('  ·  ')}
-        </Text>
+        {(place.category || place.address) ? (
+          <Text style={styles.meta}>
+            {[place.category, place.address].filter(Boolean).join('  ·  ')}
+          </Text>
+        ) : null}
       </View>
 
       {/* Decision strip — the facts that gate whether this is even viable
@@ -395,8 +398,16 @@ export default function PlaceDetailScreen() {
           logged as a real backend gap, not faked here). */}
       {(price || distanceLabel || (place.lat && place.lng)) ? (
         <View style={styles.decisionStrip}>
-          {price ? <Text style={styles.decisionChip}>💰 {price}</Text> : null}
-          {distanceLabel ? <Text style={styles.decisionChip}>📍 {distanceLabel}</Text> : null}
+          {price ? (
+            <View accessible accessibilityLabel={`Price: ${price}`}>
+              <Text style={styles.decisionChip} importantForAccessibility="no">💰 {price}</Text>
+            </View>
+          ) : null}
+          {distanceLabel ? (
+            <View accessible accessibilityLabel={`Distance: ${distanceLabel}`}>
+              <Text style={styles.decisionChip} importantForAccessibility="no">📍 {distanceLabel}</Text>
+            </View>
+          ) : null}
           {place.lat && place.lng ? (
             <TouchableOpacity
               style={styles.decisionChipTouchable}
@@ -424,7 +435,7 @@ export default function PlaceDetailScreen() {
           yet — see hasWhyFitsSignal above. */}
       {hasWhyFitsSignal && (
       <View style={styles.whyFits}>
-        <Text style={styles.whyFitsHeadline}>{percentileHeadline}</Text>
+        <Text style={styles.whyFitsHeadline} accessibilityRole="header">{percentileHeadline}</Text>
         {topFriendRanking ? (
           <Text style={styles.whyFitsFriends}>
             {friendRankings.length === 1
@@ -610,7 +621,7 @@ export default function PlaceDetailScreen() {
           claim added — no dish-affinity model exists. */}
       <View style={styles.menuSection}>
         <View style={styles.menuTitleRow}>
-          <Text style={styles.sectionTitle}>What to get</Text>
+          <Text style={styles.sectionTitle} accessibilityRole="header">What to get</Text>
           {/* Previously computed and stored (Place.last_menu_updated_at)
               but never shown — a menu verified yesterday and one untouched
               for eight months rendered identically. */}
@@ -636,7 +647,16 @@ export default function PlaceDetailScreen() {
               <View key={cat} style={styles.menuCat}>
                 <Text style={styles.menuCatLabel}>{cat}</Text>
                 {items.map((item) => (
-                  <View key={item.id} style={styles.menuItem}>
+                  <View
+                    key={item.id}
+                    style={styles.menuItem}
+                    accessible
+                    accessibilityLabel={
+                      `${item.name}` +
+                      (item.description ? `, ${item.description}` : '') +
+                      (item.price != null ? `, $${item.price.toFixed(2)}` : '')
+                    }
+                  >
                     <View style={styles.menuItemMeta}>
                       <Text style={styles.menuItemName}>{item.name}</Text>
                       {item.description ? (
@@ -691,7 +711,7 @@ export default function PlaceDetailScreen() {
           out instead. */}
       {craves.length > 0 && (
         <View style={styles.socialSection}>
-          <Text style={styles.sectionTitle}>Seen on social</Text>
+          <Text style={styles.sectionTitle} accessibilityRole="header">Seen on social</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.socialRow}>
             {craves.map((item) => (
               <TouchableOpacity
