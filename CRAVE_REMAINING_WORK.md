@@ -4633,3 +4633,23 @@ collided with row 4's own "4". Changed the streak fixture to 99 to make
 the query unambiguous.
 
 Full suite: 187 passed (was 180), `tsc --noEmit` clean.
+
+## 2026-08-26 — Settings screen: first dedicated test coverage
+
+`frontend/__tests__/settings.test.tsx` (9 tests): city display + its
+"None selected" fallback, navigation rows (add-spot/privacy/terms), the
+hardcoded version string, the "How CRAVE Works" info alert, the
+Send-Feedback mailto link and its failure-toast path, the account
+section's signed-in-only visibility, and -- the most valuable set here --
+both destructive-action confirm flows: sign-out only fires after
+confirming (not on the initial tap, not on cancel), and account deletion
+requires *both* confirmation steps before calling `deleteMyAccount()`,
+with a failure path that toasts an error and leaves the user signed in
+rather than silently signing them out anyway.
+
+Same test-writing gotcha as Profile's `StatTile`, found again here:
+`Row`'s account-email row has no `onPress`, so it never gets an
+`accessibilityLabel` (per `Row`'s own implementation) -- asserted on its
+rendered text instead of `findByLabelText`.
+
+Full suite: 196 passed (was 187), `tsc --noEmit` clean.
