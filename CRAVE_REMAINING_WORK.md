@@ -4456,3 +4456,44 @@ Ranked list of easy-for-me, code-only items; user picked 1-4.
 New tests for both filter additions, including the trickiest part
 (click position surviving a filter) in each. Full suite: 172 passed
 (was 168), `tsc --noEmit` clean.
+
+## 2026-08-26 — Debug router: separate server-only DEBUG_API_KEY, closing the audit's #1 finding
+
+An external forensic audit (run against `70ac944`, independently
+reproducing the same lockfile/dependency-tree state and test counts as
+this repo) flagged the same gap already noted in this session's own
+rate-limit-hardening pass on `debug.py`: `API_KEY`/`x-api-key` is the
+app-wide key the frontend sends on every request via
+`EXPO_PUBLIC_API_KEY`, which Expo compiles into the shipped JS bundle --
+not a real secret, only a "some copy of the app" signal. Gating
+`recommendation-events` (raw per-user event rows), `scheduler` (job-run
+internals), and the three `EXPLAIN ANALYZE` endpoints behind that same
+key meant anyone who extracted it from the bundle had operator-equivalent
+read access.
+
+Fix: `app/core/auth.py` gained a second dependency, `require_debug_api_key`
+(header `x-debug-api-key`, env var `DEBUG_API_KEY`) -- a server-only
+secret set only in Railway, never referenced by any `EXPO_PUBLIC_*` var.
+Unlike `require_api_key`'s dev-friendly bypass-when-unset, this fails
+closed: an unset `DEBUG_API_KEY` rejects every gated route outright
+(503), by design -- there's no open mode for raw production data dumps
+and query-plan execution. All six non-`/version` routes in `debug.py` now
+use it instead of `require_api_key`; `/version` remains intentionally
+public (no sensitive data, just a commit/environment lookup).
+
+Rewrote `tests/test_debug_routes.py` accordingly (the old tests unset
+`API_KEY` to exercise the bypass path -- that path no longer exists for
+this router, so every test that previously relied on it now sets
+`DEBUG_API_KEY` and sends `x-debug-api-key` instead), plus new tests:
+fails-closed-when-unset, and an explicit check that the old public
+`x-api-key` no longer authenticates these routes at all. Documented the
+two-key model in new `backend/docs/DEBUG_ENDPOINTS.md`.
+
+Full backend suite: 806 passed (was 804), 2 skipped -- confirms nothing
+else in the app depended on the old debug-route auth behavior.
+
+**Still open, not done by this fix:** rotating the existing (already
+chat-exposed) `API_KEY`/`EXPO_PUBLIC_API_KEY` value itself. That's
+independent hygiene -- rotating it does not close this gap (a rotated
+public key is still a public key), and this fix does not require it to
+be effective. Flagged again because it still hasn't been done.

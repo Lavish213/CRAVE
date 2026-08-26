@@ -2,7 +2,14 @@
 Coverage for app/api/v1/routes/debug.py — a manual, one-shot way to confirm
 SENTRY_DSN is actually wired end-to-end (not just present as an env var) by
 deliberately raising and letting app/main.py's global_exception_handler run
-for real.
+for real, plus the rest of the debug router's diagnostic endpoints.
+
+Auth model: every route except /version requires require_debug_api_key
+(header x-debug-api-key, env var DEBUG_API_KEY) — a server-only secret,
+deliberately distinct from the app-wide API_KEY/x-api-key that ships inside
+the public Expo bundle as EXPO_PUBLIC_API_KEY. Unlike require_api_key,
+require_debug_api_key fails closed: with DEBUG_API_KEY unset, every
+gated route is rejected outright rather than falling open for local dev.
 """
 from __future__ import annotations
 
@@ -19,6 +26,8 @@ from app.core.rate_limit import rate_limit
 # deployment). Disabling that here is what actually exercises the handler
 # and gets back the real 500 JSON response instead of the raw exception.
 client = TestClient(app, raise_server_exceptions=False)
+
+FIXTURE_DEBUG_KEY = "fixture-debug-key"
 
 
 @pytest.fixture(autouse=True)
@@ -46,23 +55,37 @@ def _running_on_postgres() -> bool:
     return str(engine.url).startswith("postgresql")
 
 
-def test_sentry_test_endpoint_bypasses_auth_when_api_key_unset(monkeypatch):
-    monkeypatch.delenv("API_KEY", raising=False)
+def test_sentry_test_endpoint_fails_closed_when_debug_api_key_unset(monkeypatch):
+    # No dev-friendly bypass for debug routes: unlike require_api_key, an
+    # unset DEBUG_API_KEY must reject, not open the endpoint.
+    monkeypatch.delenv("DEBUG_API_KEY", raising=False)
     response = client.get("/api/v1/debug/sentry-test")
-    assert response.status_code == 500
+    assert response.status_code == 503
 
 
-def test_sentry_test_endpoint_requires_api_key_when_configured(monkeypatch):
-    monkeypatch.setenv("API_KEY", "fixture-debug-key")
+def test_sentry_test_endpoint_rejects_the_public_api_key(monkeypatch):
+    # The whole point of this fix: the app-wide key (the one that ships in
+    # the public bundle as EXPO_PUBLIC_API_KEY) must not work here anymore.
+    monkeypatch.setenv("DEBUG_API_KEY", FIXTURE_DEBUG_KEY)
+    monkeypatch.setenv("API_KEY", "some-public-app-key")
+    response = client.get(
+        "/api/v1/debug/sentry-test",
+        headers={"x-api-key": "some-public-app-key"},
+    )
+    assert response.status_code == 401
+
+
+def test_sentry_test_endpoint_requires_debug_api_key_when_configured(monkeypatch):
+    monkeypatch.setenv("DEBUG_API_KEY", FIXTURE_DEBUG_KEY)
     response = client.get("/api/v1/debug/sentry-test")
     assert response.status_code == 401
 
 
-def test_sentry_test_endpoint_raises_with_correct_api_key(monkeypatch):
-    monkeypatch.setenv("API_KEY", "fixture-debug-key")
+def test_sentry_test_endpoint_raises_with_correct_debug_api_key(monkeypatch):
+    monkeypatch.setenv("DEBUG_API_KEY", FIXTURE_DEBUG_KEY)
     response = client.get(
         "/api/v1/debug/sentry-test",
-        headers={"x-api-key": "fixture-debug-key"},
+        headers={"x-debug-api-key": FIXTURE_DEBUG_KEY},
     )
     # The deliberate RuntimeError is caught by the global exception handler
     # (app/main.py) and turned into a generic 500 — same as any other
@@ -105,8 +128,12 @@ def test_version_falls_back_to_railways_env_var_when_no_commit_file_exists(monke
     assert body["railway_environment"] == "production"
 
 
-def test_version_never_requires_an_api_key(monkeypatch):
+def test_version_never_requires_any_api_key(monkeypatch):
+    # Neither the app-wide key nor the debug key gates /version, and an
+    # unset DEBUG_API_KEY (which fails every other debug route closed)
+    # must not affect it either.
     monkeypatch.setenv("API_KEY", "fixture-debug-key")
+    monkeypatch.delenv("DEBUG_API_KEY", raising=False)
     response = client.get("/api/v1/debug/version")
     assert response.status_code == 200
 
@@ -136,14 +163,20 @@ def test_every_debug_route_enforces_rate_limit():
         real_app.dependency_overrides[rate_limit] = lambda: None
 
 
-def test_scheduler_diagnostics_requires_api_key_when_configured(monkeypatch):
-    monkeypatch.setenv("API_KEY", "fixture-debug-key")
+def test_scheduler_diagnostics_requires_debug_api_key_when_configured(monkeypatch):
+    monkeypatch.setenv("DEBUG_API_KEY", FIXTURE_DEBUG_KEY)
     response = client.get("/api/v1/debug/scheduler")
     assert response.status_code == 401
 
 
+def test_scheduler_diagnostics_fails_closed_when_debug_api_key_unset(monkeypatch):
+    monkeypatch.delenv("DEBUG_API_KEY", raising=False)
+    response = client.get("/api/v1/debug/scheduler")
+    assert response.status_code == 503
+
+
 def test_scheduler_diagnostics_reports_flag_and_recent_job_runs(monkeypatch):
-    monkeypatch.delenv("API_KEY", raising=False)
+    monkeypatch.setenv("DEBUG_API_KEY", FIXTURE_DEBUG_KEY)
 
     from datetime import datetime, timedelta, timezone
     from app.db.session import SessionLocal
@@ -166,7 +199,10 @@ def test_scheduler_diagnostics_reports_flag_and_recent_job_runs(monkeypatch):
     finally:
         db.close()
 
-    response = client.get("/api/v1/debug/scheduler")
+    response = client.get(
+        "/api/v1/debug/scheduler",
+        headers={"x-debug-api-key": FIXTURE_DEBUG_KEY},
+    )
 
     assert response.status_code == 200
     body = response.json()
@@ -180,7 +216,7 @@ def test_scheduler_diagnostics_reports_flag_and_recent_job_runs(monkeypatch):
 
 
 def test_scheduler_diagnostics_flags_still_running_job(monkeypatch):
-    monkeypatch.delenv("API_KEY", raising=False)
+    monkeypatch.setenv("DEBUG_API_KEY", FIXTURE_DEBUG_KEY)
 
     from datetime import datetime, timezone
     from app.db.session import SessionLocal
@@ -201,7 +237,10 @@ def test_scheduler_diagnostics_flags_still_running_job(monkeypatch):
     finally:
         db.close()
 
-    response = client.get("/api/v1/debug/scheduler")
+    response = client.get(
+        "/api/v1/debug/scheduler",
+        headers={"x-debug-api-key": FIXTURE_DEBUG_KEY},
+    )
 
     assert response.status_code == 200
     body = response.json()
@@ -210,14 +249,14 @@ def test_scheduler_diagnostics_flags_still_running_job(monkeypatch):
     assert match["finished_at"] is None
 
 
-def test_recommendation_events_debug_requires_api_key_when_configured(monkeypatch):
-    monkeypatch.setenv("API_KEY", "fixture-debug-key")
+def test_recommendation_events_debug_requires_debug_api_key_when_configured(monkeypatch):
+    monkeypatch.setenv("DEBUG_API_KEY", FIXTURE_DEBUG_KEY)
     response = client.get("/api/v1/debug/recommendation-events")
     assert response.status_code == 401
 
 
 def test_recommendation_events_debug_returns_recent_rows(monkeypatch):
-    monkeypatch.delenv("API_KEY", raising=False)
+    monkeypatch.setenv("DEBUG_API_KEY", FIXTURE_DEBUG_KEY)
 
     from app.db.session import SessionLocal
     from app.db.models.recommendation_event import RecommendationEvent
@@ -238,7 +277,10 @@ def test_recommendation_events_debug_returns_recent_rows(monkeypatch):
         db.close()
 
     try:
-        response = client.get("/api/v1/debug/recommendation-events?event_type=save&limit=5")
+        response = client.get(
+            "/api/v1/debug/recommendation-events?event_type=save&limit=5",
+            headers={"x-debug-api-key": FIXTURE_DEBUG_KEY},
+        )
         assert response.status_code == 200
         body = response.json()
         ids = [e["id"] for e in body["events"]]
@@ -257,14 +299,17 @@ def test_recommendation_events_debug_returns_recent_rows(monkeypatch):
 
 
 def test_recommendation_events_debug_limit_is_capped(monkeypatch):
-    monkeypatch.delenv("API_KEY", raising=False)
-    response = client.get("/api/v1/debug/recommendation-events?limit=999")
+    monkeypatch.setenv("DEBUG_API_KEY", FIXTURE_DEBUG_KEY)
+    response = client.get(
+        "/api/v1/debug/recommendation-events?limit=999",
+        headers={"x-debug-api-key": FIXTURE_DEBUG_KEY},
+    )
     assert response.status_code == 200
     assert len(response.json()["events"]) <= 100
 
 
-def test_map_query_plan_requires_api_key_when_configured(monkeypatch):
-    monkeypatch.setenv("API_KEY", "fixture-debug-key")
+def test_map_query_plan_requires_debug_api_key_when_configured(monkeypatch):
+    monkeypatch.setenv("DEBUG_API_KEY", FIXTURE_DEBUG_KEY)
     response = client.get("/api/v1/debug/map-query-plan?lat=37.7749&lng=-122.4194")
     assert response.status_code == 401
 
@@ -273,8 +318,11 @@ def test_map_query_plan_requires_api_key_when_configured(monkeypatch):
 def test_map_query_plan_no_ops_safely_on_non_postgres_db(monkeypatch):
     # EXPLAIN (FORMAT JSON) is Postgres-only syntax, so on SQLite this must
     # degrade to a clean error response, never a 500.
-    monkeypatch.delenv("API_KEY", raising=False)
-    response = client.get("/api/v1/debug/map-query-plan?lat=37.7749&lng=-122.4194")
+    monkeypatch.setenv("DEBUG_API_KEY", FIXTURE_DEBUG_KEY)
+    response = client.get(
+        "/api/v1/debug/map-query-plan?lat=37.7749&lng=-122.4194",
+        headers={"x-debug-api-key": FIXTURE_DEBUG_KEY},
+    )
     assert response.status_code == 200
     body = response.json()
     assert "error" in body
@@ -283,8 +331,11 @@ def test_map_query_plan_no_ops_safely_on_non_postgres_db(monkeypatch):
 
 @pytest.mark.skipif(not _running_on_postgres(), reason="this checks the real Postgres path")
 def test_map_query_plan_returns_a_real_explain_plan_on_postgres(monkeypatch):
-    monkeypatch.delenv("API_KEY", raising=False)
-    response = client.get("/api/v1/debug/map-query-plan?lat=37.7749&lng=-122.4194")
+    monkeypatch.setenv("DEBUG_API_KEY", FIXTURE_DEBUG_KEY)
+    response = client.get(
+        "/api/v1/debug/map-query-plan?lat=37.7749&lng=-122.4194",
+        headers={"x-debug-api-key": FIXTURE_DEBUG_KEY},
+    )
     assert response.status_code == 200
     body = response.json()
     assert "error" not in body
@@ -292,16 +343,19 @@ def test_map_query_plan_returns_a_real_explain_plan_on_postgres(monkeypatch):
     assert body["explain_plan"] is not None
 
 
-def test_categories_query_plan_requires_api_key_when_configured(monkeypatch):
-    monkeypatch.setenv("API_KEY", "fixture-debug-key")
+def test_categories_query_plan_requires_debug_api_key_when_configured(monkeypatch):
+    monkeypatch.setenv("DEBUG_API_KEY", FIXTURE_DEBUG_KEY)
     response = client.get("/api/v1/debug/categories-query-plan?lat=37.7749&lng=-122.4194")
     assert response.status_code == 401
 
 
 @pytest.mark.skipif(_running_on_postgres(), reason="this checks the non-Postgres no-op path")
 def test_categories_query_plan_no_ops_safely_on_non_postgres_db(monkeypatch):
-    monkeypatch.delenv("API_KEY", raising=False)
-    response = client.get("/api/v1/debug/categories-query-plan?lat=37.7749&lng=-122.4194")
+    monkeypatch.setenv("DEBUG_API_KEY", FIXTURE_DEBUG_KEY)
+    response = client.get(
+        "/api/v1/debug/categories-query-plan?lat=37.7749&lng=-122.4194",
+        headers={"x-debug-api-key": FIXTURE_DEBUG_KEY},
+    )
     assert response.status_code == 200
     body = response.json()
     assert "error" in body
@@ -313,9 +367,10 @@ def test_categories_query_plan_finds_place_ids_on_postgres(monkeypatch):
     # conftest.py seeds a place at exactly this lat/lng -- a generous
     # radius guarantees a non-empty bbox so this actually exercises the
     # EXPLAIN query rather than short-circuiting on "no place_ids in bbox".
-    monkeypatch.delenv("API_KEY", raising=False)
+    monkeypatch.setenv("DEBUG_API_KEY", FIXTURE_DEBUG_KEY)
     response = client.get(
-        "/api/v1/debug/categories-query-plan?lat=37.8044&lng=-122.2712&radius_km=5"
+        "/api/v1/debug/categories-query-plan?lat=37.8044&lng=-122.2712&radius_km=5",
+        headers={"x-debug-api-key": FIXTURE_DEBUG_KEY},
     )
     assert response.status_code == 200
     body = response.json()
@@ -324,8 +379,8 @@ def test_categories_query_plan_finds_place_ids_on_postgres(monkeypatch):
     assert body["explain_plan_error"] is None
 
 
-def test_map_query_timing_requires_api_key_when_configured(monkeypatch):
-    monkeypatch.setenv("API_KEY", "fixture-debug-key")
+def test_map_query_timing_requires_debug_api_key_when_configured(monkeypatch):
+    monkeypatch.setenv("DEBUG_API_KEY", FIXTURE_DEBUG_KEY)
     response = client.get("/api/v1/debug/map-query-timing?lat=37.8044&lng=-122.2712")
     assert response.status_code == 401
 
@@ -334,9 +389,10 @@ def test_map_query_timing_reports_per_phase_breakdown(monkeypatch):
     # Uses conftest.py's seeded place (lat=37.8044, lng=-122.2712) -- unlike
     # map-query-plan, this hits real ORM code paths that work on SQLite too,
     # so it's a genuine (not no-op) exercise of the production functions.
-    monkeypatch.delenv("API_KEY", raising=False)
+    monkeypatch.setenv("DEBUG_API_KEY", FIXTURE_DEBUG_KEY)
     response = client.get(
-        "/api/v1/debug/map-query-timing?lat=37.8044&lng=-122.2712&radius_km=5"
+        "/api/v1/debug/map-query-timing?lat=37.8044&lng=-122.2712&radius_km=5",
+        headers={"x-debug-api-key": FIXTURE_DEBUG_KEY},
     )
     assert response.status_code == 200
     body = response.json()

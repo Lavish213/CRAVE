@@ -40,3 +40,34 @@ def require_api_key(x_api_key: Optional[str] = Header(default=None)) -> None:
 
     if not hmac.compare_digest(x_api_key or "", expected):
         raise HTTPException(status_code=401, detail="Invalid API key")
+
+
+def require_debug_api_key(x_debug_api_key: Optional[str] = Header(default=None)) -> None:
+    """
+    FastAPI dependency for the /debug router's sensitive introspection
+    routes (raw recommendation-event row dumps, scheduler internals,
+    EXPLAIN ANALYZE query plans against production data).
+
+    Deliberately separate from require_api_key: API_KEY is sent as
+    x-api-key on every request the mobile app makes, via
+    EXPO_PUBLIC_API_KEY, which Expo compiles directly into the shipped
+    JS bundle. Anyone with the app binary can extract it, so it proves a
+    request came from *some* copy of the app, not that the caller is an
+    operator. Gating admin-ish read access behind it was never a real
+    authorization boundary.
+
+    Unlike require_api_key, this fails closed: if DEBUG_API_KEY is not
+    configured, every request is rejected — there is no dev-friendly
+    open-mode bypass for raw data dumps and query-plan execution.
+    DEBUG_API_KEY must be set only as a server-side env var (Railway),
+    and must never be referenced by any EXPO_PUBLIC_* var, so it never
+    ships to a client.
+    """
+    expected = os.environ.get("DEBUG_API_KEY", "").strip()
+
+    if not expected:
+        logger.warning("debug_api_key_not_configured — rejecting debug request")
+        raise HTTPException(status_code=503, detail="Debug endpoints are not configured")
+
+    if not hmac.compare_digest(x_debug_api_key or "", expected):
+        raise HTTPException(status_code=401, detail="Invalid debug API key")

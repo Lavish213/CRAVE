@@ -6,9 +6,10 @@ endpoint deliberately raises so app/main.py's global_exception_handler runs
 for real and calls sentry_sdk.capture_exception, then you check the Sentry
 project dashboard for the event.
 
-Gated behind require_api_key (same mechanism every other write/admin-ish
-endpoint uses) since it's a deliberate 500 — not something that should be
-free for anyone to hit repeatedly.
+Gated behind require_debug_api_key (a server-only secret, separate from
+the app-wide API_KEY -- see that dependency's docstring) since it's a
+deliberate 500, not something that should be free for anyone to hit
+repeatedly.
 """
 from __future__ import annotations
 
@@ -21,23 +22,30 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.core.auth import require_api_key
+from app.core.auth import require_debug_api_key
 from app.core.rate_limit import rate_limit
 from app.db.session import get_db
 
-# rate_limit at the router level (not per-route like require_api_key,
-# since /version deliberately carries no auth at all -- see its own
-# docstring) closes a real gap: 5 of these 6 endpoints were gated by
-# require_api_key but had no rate limit at all, and that key ships
-# inside the public app bundle (EXPO_PUBLIC_API_KEY) -- not a real
-# secret. Several run genuine DB work (EXPLAIN ANALYZE queries in
-# map-query-plan/categories-query-plan/map-query-timing), so an
-# unbounded caller with the key could hammer them freely. /version
-# itself had neither guard at all before this.
+# rate_limit at the router level (not per-route, since /version
+# deliberately carries no auth at all -- see its own docstring) closes a
+# real gap: 5 of these 6 endpoints had no rate limit at all, and
+# /version had neither guard.
+#
+# The 6 non-version endpoints require require_debug_api_key (header
+# x-debug-api-key, env var DEBUG_API_KEY) rather than the app-wide
+# require_api_key. That distinction matters: API_KEY ships inside the
+# public app bundle as EXPO_PUBLIC_API_KEY (not a real secret -- anyone
+# who extracts it from the client has it), while several of these routes
+# run genuine DB work (EXPLAIN ANALYZE in map-query-plan/
+# categories-query-plan/map-query-timing) or return raw per-user event
+# rows (recommendation-events, scheduler). DEBUG_API_KEY is a
+# server-only value set in Railway and never referenced by any
+# EXPO_PUBLIC_* var, so it never leaves the server -- see
+# require_debug_api_key's docstring in app/core/auth.py.
 router = APIRouter(prefix="/debug", tags=["debug"], dependencies=[Depends(rate_limit)])
 
 
-@router.get("/sentry-test", dependencies=[Depends(require_api_key)])
+@router.get("/sentry-test", dependencies=[Depends(require_debug_api_key)])
 def sentry_test() -> None:
     raise RuntimeError(
         "CRAVE debug/sentry-test: deliberate test error, safe to ignore — "
@@ -108,7 +116,7 @@ def version() -> dict:
     }
 
 
-@router.get("/scheduler", dependencies=[Depends(require_api_key)])
+@router.get("/scheduler", dependencies=[Depends(require_debug_api_key)])
 def scheduler_diagnostics(db: Session = Depends(get_db)) -> dict:
     """
     Answers "is a background job the reason requests are slow right now?"
@@ -174,7 +182,7 @@ def scheduler_diagnostics(db: Session = Depends(get_db)) -> dict:
     }
 
 
-@router.get("/recommendation-events", dependencies=[Depends(require_api_key)])
+@router.get("/recommendation-events", dependencies=[Depends(require_debug_api_key)])
 def recommendation_events_debug(
     event_type: Optional[str] = None,
     limit: int = 20,
@@ -229,7 +237,7 @@ def recommendation_events_debug(
     }
 
 
-@router.get("/map-query-plan", dependencies=[Depends(require_api_key)])
+@router.get("/map-query-plan", dependencies=[Depends(require_debug_api_key)])
 def map_query_plan(
     lat: float,
     lng: float,
@@ -325,7 +333,7 @@ def map_query_plan(
     }
 
 
-@router.get("/categories-query-plan", dependencies=[Depends(require_api_key)])
+@router.get("/categories-query-plan", dependencies=[Depends(require_debug_api_key)])
 def categories_query_plan(
     lat: float,
     lng: float,
@@ -412,7 +420,7 @@ def categories_query_plan(
     }
 
 
-@router.get("/map-query-timing", dependencies=[Depends(require_api_key)])
+@router.get("/map-query-timing", dependencies=[Depends(require_debug_api_key)])
 def map_query_timing(
     lat: float,
     lng: float,
