@@ -152,7 +152,13 @@ export default function FeedScreen() {
     return result;
   }, [data]);
   const total = data?.pages[0]?.total ?? 0;
-  const initialLoaded = data !== undefined;
+  // Also true on a definitive failure of the *first* fetch -- without
+  // `|| isError`, a cold start where the very first request fails (no
+  // page has ever succeeded, so `data` stays undefined forever) got stuck
+  // showing the loading skeleton permanently instead of ErrorState's
+  // retry button. Confirmed by writing this screen's first dedicated
+  // test: a rejected initial fetch never surfaced any error UI at all.
+  const initialLoaded = data !== undefined || isError;
 
   if (__DEV__ && data) {
     const lastPage = data.pages[data.pages.length - 1];

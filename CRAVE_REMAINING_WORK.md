@@ -4535,3 +4535,78 @@ Full backend suite: 806 passed, 2 skipped (unchanged pass count --
 starlette bump is dependency-only, no code change needed). Frontend:
 no code change, `frontend/docs/DEPENDENCY_AUDIT.md` added for the
 triage record.
+
+## 2026-08-26 — `Colors.textMuted` contrast audit (audit only, no code changed)
+
+Full consumer audit before touching the global token, per standing
+instruction. Confirmed the measured problem precisely: `textMuted` (#555)
+is 2.06-2.66:1 against every one of the app's three dark surfaces --
+fails even the 3:1 large-text floor, let alone 4.5:1 normal-text AA. The
+obvious swap target, `textSecondary` (#888), is *not* an unconditional
+fix: it passes on `background` (5.58:1) and `surface` (4.91:1) but falls
+to 4.32:1 on `surfaceElevated` -- just under the 4.5:1 AA-normal
+threshold. Any real fix has to be surface-aware, not a blind
+find-and-replace.
+
+34 files reference the token (confirmed zero hardcoded `#555`-style
+bypasses). Categorized by which WCAG criterion actually applies: real
+text content (~30 style keys with `fontSize` set, across leaderboard,
+profile, legal, settings, search, craves, rank, add-spot, the global
+error boundary, and notably the auth screen's own terms/privacy
+disclosure text), decorative/informational icons (separate 1.4.11
+criterion, lower priority), and `TextInput` placeholders (lowest formal
+priority).
+
+**Most important single finding:** `src/utils/rankScore.ts::tierColor()`
+returns `Colors.textMuted` directly for the `'disliked'` tier, and that
+return value is rendered as real text color at 6 call sites across 5
+files -- including **`app/place/[id].tsx`**, which already got a local
+`QUIET_TEXT` fix earlier this session. That fix only touched the 4 static
+`Colors.textMuted` usages in that file's own stylesheet; it does not
+cover `tierColor()`'s return value, so a disliked-tier friend ranking or
+your own disliked-tier score on that same "already fixed" screen still
+renders unfixed. Also reaches `ShareRankCard.tsx`, the exported/shared
+rank-card image users post externally -- a disliked-tier share currently
+renders its tier label at ~2:1 contrast in content that leaves the app.
+
+Full findings, every file/line, and what a real fix would need:
+`frontend/docs/ACCESSIBILITY_CONTRAST_AUDIT.md`. No code changed by this
+pass, per instruction -- audit and log only.
+
+## 2026-08-26 — Feed screen: first dedicated test coverage, one real bug found and fixed
+
+Feed (`app/(tabs)/index.tsx`) had zero direct tests despite being the
+primary landing screen. New `frontend/__tests__/feed.test.tsx` (8 tests):
+tier-section bucketing (`buildFeedRows`), the impression-batch logging
+(bounded/positioned, keyed on page count -- confirmed it does *not*
+re-log when an unrelated re-render happens, e.g. opening the filter
+sheet), a click event with real rank percentile, the sign-out ->
+AuthSheet gate on save (no `addSave` call), addSave/removeSave with the
+right metadata once signed in, category-filter narrowing, the error
+state + retry, and the page-overlap de-dup guard (regression coverage
+for the documented "duplicate key" production crash from the discovery
+pipeline shifting pagination offsets mid-session).
+
+**Found and fixed a real bug while writing the error-state test:**
+`initialLoaded` was `data !== undefined` only. `useInfiniteQuery`'s `data`
+stays `undefined` until the *first* page ever succeeds -- so if the very
+first fetch fails outright (cold start, backend down, no network), the
+screen showed the loading skeleton **forever**, never reaching
+`ErrorState`'s retry button. Fixed to `data !== undefined || isError`.
+The "fade in on data arrival" effect already separately checks `!isError`
+in its own condition, so this didn't change fade-in behavior, only
+unblocked the error path.
+
+Also fixed a real test-isolation bug of my own while writing this file:
+`mockedFetchPlaces.mockResolvedValueOnce()`/`mockRejectedValueOnce()`
+queues survive `jest.clearAllMocks()` (which only clears call history,
+not queued implementations) -- a prior test's undrained queue was
+leaking into the next test, causing flakes that only reproduced when the
+full file ran together, not in isolation. Fixed with a targeted
+`mockedFetchPlaces.mockReset()` in `beforeEach` (not a blanket
+`jest.resetAllMocks()` -- tried that first, it also wipes jest-expo's own
+internal native-module mocks and breaks RTL's host-component detection
+entirely). Ran the file 3x standalone plus the full suite to confirm the
+flake is gone, not just hidden.
+
+Full suite: 180 passed (was 172), `tsc --noEmit` clean.
