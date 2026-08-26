@@ -4756,3 +4756,18 @@ empty-ranked-list text with the Taste Profile link correctly hidden, and
 a `loadGenerationRef` stale-response test for an `id` change mid-flight.
 
 Full suite: 249 passed (was 238), `tsc --noEmit` clean.
+
+## 2026-08-26 — profile-setup screen: first dedicated test coverage
+
+`frontend/__tests__/profile-setup.test.tsx` (8 tests): the idle/invalid/
+checking/available/taken availability state machine against the screen's
+real 400ms debounce (not mocked away, same convention as search.test.tsx's
+own debounced-query test), an out-of-order-response guard test (a slower
+earlier check landing after a faster later one must not overwrite the
+correct state), submit gating on availability, both submit outcomes
+(success with the normalized username + trimmed display name, navigating
+to `/profile`; failure showing the server's own error detail without
+navigating), and confirming an empty display name is sent as `undefined`
+rather than an empty string.
+
+Full suite: 257 passed (was 249), `tsc --noEmit` clean.
