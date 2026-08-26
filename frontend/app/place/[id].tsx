@@ -392,6 +392,8 @@ export default function PlaceDetailScreen() {
           {distanceLabel ? <Text style={styles.decisionChip}>📍 {distanceLabel}</Text> : null}
           {place.lat && place.lng ? (
             <TouchableOpacity
+              style={styles.decisionChipTouchable}
+              hitSlop={{ top: 10, bottom: 10, left: 8, right: 8 }}
               onPress={() => {
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                 handleDirections();
@@ -752,6 +754,10 @@ const styles = StyleSheet.create({
   },
   decisionChip: { fontSize: 14, color: Colors.textSecondary, fontWeight: '600' },
   decisionChipLink: { color: Colors.primary },
+  // Explicit min touch target -- unlike Text's own bounds, which shrink to
+  // the glyphs and would otherwise fall well under the 44pt minimum every
+  // other button on this screen already meets.
+  decisionChipTouchable: { minHeight: 44, minWidth: 44, justifyContent: 'center' },
   whyFits: {
     marginHorizontal: 16,
     marginBottom: 4,
