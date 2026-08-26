@@ -4771,3 +4771,16 @@ navigating), and confirming an empty display name is sent as `undefined`
 rather than an empty string.
 
 Full suite: 257 passed (was 249), `tsc --noEmit` clean.
+
+## 2026-08-26 — Legal pages + Map web fallback: lightweight smoke coverage
+
+`frontend/__tests__/legal-and-map-web.test.tsx` (3 tests). These three
+are the simplest untested screens left: the two legal pages are static
+content with no props, store, or navigation, and the web map-fallback
+stub exists purely to keep expo-router's route table buildable on web
+without importing `react-native-maps` (see the file's own header
+comment). A render-without-crashing plus a title/content spot-check is
+proportionate to what these screens actually do -- no state machine, no
+API calls, nothing else to lock in.
+
+Full suite: 260 passed (was 257), `tsc --noEmit` clean.
