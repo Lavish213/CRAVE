@@ -4610,3 +4610,26 @@ entirely). Ran the file 3x standalone plus the full suite to confirm the
 flake is gone, not just hidden.
 
 Full suite: 180 passed (was 172), `tsc --noEmit` clean.
+
+## 2026-08-26 — Profile screen: first dedicated test coverage (continuing the untested-screen sweep)
+
+`frontend/__tests__/profile.test.tsx` (7 tests): signed-out sign-in
+prompt, no-username "choose username" prompt, header/stats rendering,
+the below-threshold "unlock" nudge vs. its absence once at
+`RECOMMENDATION_THRESHOLD`, the streak tile's conditional visibility
+(only when `current_streak > 0`), the Taste Profile link's conditional
+visibility (only once something's ranked), row-tap navigation, the
+empty-list CTA, and an account-switch stale-response race test mirroring
+the `loadGenerationRef` guard already in this screen's own `load()`.
+
+Two real test-writing mistakes caught before they became false
+confidence, not product bugs: (1) `StatTile` only gets an
+`accessibilityLabel` when it's given an `onPress` -- the streak tile has
+none, so `findByLabelText` can never find it; fixed to assert on its
+plain rendered text instead. (2) With 15 seeded rankings (needed to
+clear the threshold), `RankedPlaceRow` renders each row's own position
+number (1-15) as plain visible text -- a `current_streak: 4` test value
+collided with row 4's own "4". Changed the streak fixture to 99 to make
+the query unambiguous.
+
+Full suite: 187 passed (was 180), `tsc --noEmit` clean.
