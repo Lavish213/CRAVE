@@ -2,13 +2,20 @@
 # Generated 2026-04-13
 
 # Web framework
-# NOTE: starlette has never released a 1.0 (latest as of writing is the
-# 0.5x series — see https://pypi.org/project/starlette/#history). The
-# previous "starlette>=1.0.0" here is an impossible constraint: no version
-# satisfies it, so `pip install -r requirements.txt` would fail to resolve
-# outright. Pinned to the actual current release line instead.
+# NOTE (2026-08-26): the previous "<1.0.0" ceiling here was accurate when
+# written (2026-04-13, starlette hadn't released a 1.0 yet) but had gone
+# stale -- starlette is now at 1.6.x, and the old ceiling was silently
+# blocking five real CVE fixes on a package that sits directly in every
+# request's path (host-header/path validation used to reconstruct
+# request.url, and unbounded request.form() field/part counts -- a
+# resource-exhaustion vector directly relevant to this app's own upload
+# endpoints). >=1.3.1 is the actual floor that carries every fix
+# (pip-audit: PYSEC-2026-161/248/249/2280/2281, fixed across
+# 1.0.1/1.1.0/1.3.0/1.3.1); no upper bound because fastapi itself declares
+# none (>=0.46.0, verified against the installed 0.141.1). Full backend
+# suite passes unchanged against 1.6.0.
 fastapi>=0.135.0
-starlette>=0.40.0,<1.0.0
+starlette>=1.3.1
 uvicorn[standard]>=0.30.0
 
 # HTTP

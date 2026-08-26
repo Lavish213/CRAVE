@@ -4497,3 +4497,41 @@ chat-exposed) `API_KEY`/`EXPO_PUBLIC_API_KEY` value itself. That's
 independent hygiene -- rotating it does not close this gap (a rotated
 public key is still a public key), and this fix does not require it to
 be effective. Flagged again because it still hasn't been done.
+
+## 2026-08-26 — Dependency reachability triage (frontend + backend)
+
+Ran the audit tools directly rather than trusting either the external
+dossier's raw count (92) or this repo's own raw count (26) as-is --
+`npm audit`'s numbers are a live registry snapshot, not a lockfile
+property, so neither is stable across runs. Full reasoning and the
+per-package table: `frontend/docs/DEPENDENCY_AUDIT.md`.
+
+**Frontend: all 26 findings are build-tooling-only, zero runtime-reachable.**
+Traced every finding to six root packages (postcss, image-size, js-yaml,
+nanoid, brace-expansion, uuid@7.0.3) -- all six only execute during
+`expo prebuild`/Metro bundling/CI builds, processing the repo's own
+config/glob/asset files, never inside the shipped app binary and never
+touching attacker-controlled network input. Confirmed `uuid@7.0.3`
+specifically resolves through `expo -> @expo/config-plugins -> xcode`
+(iOS project-file generation), not through `expo-modules-core`'s
+unrelated internal uuid helper. `npm audit fix --dry-run` fixes nothing:
+every available fix requires an Expo SDK 54->57 major upgrade, a real
+migration, not a bump to do incidentally here.
+
+**Backend: one real, runtime-reachable finding, now fixed.** `pip-audit`
+found `starlette==0.52.1` (installed via `requirements.txt`'s
+`starlette>=0.40.0,<1.0.0`) carrying 5 real CVEs
+(PYSEC-2026-161/248/249/2280/2281) -- unlike the frontend findings,
+Starlette sits directly in every request FastAPI handles. The `<1.0.0`
+ceiling was accurate when the comment above it was written (starlette
+hadn't released a 1.0 yet) but had gone stale -- starlette is now at
+1.6.x. Verified fastapi itself declares no upper bound on starlette
+(`>=0.46.0` in the installed 0.141.1's own metadata), bumped the floor to
+`starlette>=1.3.1` (the actual minimum carrying every fix), and confirmed
+the full backend suite still passes at the installed 1.6.0. `pip-audit`
+now reports zero vulnerable packages.
+
+Full backend suite: 806 passed, 2 skipped (unchanged pass count --
+starlette bump is dependency-only, no code change needed). Frontend:
+no code change, `frontend/docs/DEPENDENCY_AUDIT.md` added for the
+triage record.
