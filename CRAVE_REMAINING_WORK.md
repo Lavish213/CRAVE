@@ -4653,3 +4653,26 @@ Same test-writing gotcha as Profile's `StatTile`, found again here:
 rendered text instead of `findByLabelText`.
 
 Full suite: 196 passed (was 187), `tsc --noEmit` clean.
+
+## 2026-08-26 — add-spot screen: first dedicated test coverage
+
+`frontend/__tests__/add-spot.test.tsx` (9 tests): the
+unauthenticated/auth-hydrating/locating/searching/denied/error/ready
+state machine, the empty-range message, already-in-CRAVE vs. new-spot
+card actions (Open vs. confirm), a successful confirm turning into a
+disabled "Submitted" state that can't be re-tapped, a failed confirm
+toasting the server's own error message without marking it submitted,
+and an account-switch test confirming `accountGenerationRef`'s reset
+actually works -- a second account never sees a candidate as "Submitted"
+just because a previous account confirmed it.
+
+Caught a real test-authoring bug of my own, not a product bug: nesting
+an async `findByLabelText(...)` query *inside* an `act(async () => {...})`
+block starves the effects that same query is waiting on from ever
+flushing -- the screen got stuck showing "Finding your location…"
+forever in exactly the two tests written that way. Fixed by resolving
+the query first, then wrapping only the `fireEvent.press(...)` call in
+`act`. Worth remembering for future tests: `await findBy...(...)` belongs
+outside `act()`, not inside it.
+
+Full suite: 205 passed (was 196), `tsc --noEmit` clean.
