@@ -4711,3 +4711,18 @@ disabled followed-user row with no score), and navigation gating on a
 real `place_id` being present.
 
 Full suite: 221 passed (was 215), `tsc --noEmit` clean.
+
+## 2026-08-26 — Leaderboard screen: first dedicated test coverage
+
+`frontend/__tests__/leaderboard.test.tsx` (8 tests): the global/friends
+scope toggle (including the no-op guard on re-pressing the already-
+active scope), scope-specific empty-state copy, the fetch-failure ->
+same-empty-state path, medal-vs-plain-rank display for ranks 1-3 vs.
+everything else, the conditional handle line (only renders when both
+`username` and `display_name` exist -- otherwise the label itself
+already fell back to `@username`, so the separate line would be a
+redundant duplicate), the signed-in user's own row being disabled/
+non-navigable, and the label fallback chain (`display_name` ->
+`@username` -> `"Someone"`).
+
+Full suite: 229 passed (was 221), `tsc --noEmit` clean.
