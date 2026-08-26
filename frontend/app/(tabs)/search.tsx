@@ -1,5 +1,5 @@
 // app/(tabs)/search.tsx
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   RefreshControl,
   StyleSheet,
@@ -24,6 +24,7 @@ import { PlaceCardCompact } from '../../src/components/PlaceCardCompact';
 import { SkeletonRowList } from '../../src/components/SkeletonCard';
 import { ErrorState } from '../../src/components/ErrorState';
 import { EmptyState } from '../../src/components/EmptyState';
+import { FilterSheet, FilterState, EMPTY_FILTERS, hasActiveFilters } from '../../src/components/FilterSheet';
 
 // Same pattern as client.ts's requestId / recommendationEventQueue's
 // module-level sessionId -- no external uuid dependency needed.
@@ -47,6 +48,8 @@ export default function SearchScreen() {
 
   const [query, setQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
+  const [filterVisible, setFilterVisible] = useState(false);
+  const [filters, setFilters] = useState<FilterState>(EMPTY_FILTERS);
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -117,6 +120,29 @@ export default function SearchScreen() {
     console.log('[SEARCH] RENDER_INPUT', { query: debouncedQuery, count: results.length, sample: results[0] ? { id: results[0].id, category: results[0].category } : null });
   }
 
+  // Derived from the current results, not a global catalog-wide fetch --
+  // same fix as Feed's filter chips (see index.tsx): every chip shown is
+  // guaranteed to have a real match in what's already on screen.
+  const availableCategories = useMemo(() => {
+    const names = new Set<string>();
+    for (const p of results) {
+      for (const c of p.categories ?? []) names.add(c);
+    }
+    return Array.from(names);
+  }, [results]);
+
+  // A view-level narrowing of what's already fetched, not a new query --
+  // impressions above are still logged against the full `results` (what
+  // the search actually returned), matching Feed's identical precedent.
+  const filteredResults = useMemo(() => {
+    if (!hasActiveFilters(filters)) return results;
+    return results.filter((p) => {
+      if (filters.priceTiers.length > 0 && (p.price_tier == null || !filters.priceTiers.includes(p.price_tier))) return false;
+      if (filters.categories.length > 0 && !p.categories.some((c) => filters.categories.includes(c))) return false;
+      return true;
+    });
+  }, [results, filters]);
+
   const handleChange = (text: string) => {
     // A fresh query starting from an empty box begins a new search
     // interaction session -- see searchSessionIdRef's own comment.
@@ -139,6 +165,12 @@ export default function SearchScreen() {
 
   const showTrending = !searched && !searchLoading && query.length === 0;
   const showNoResults = searched && results.length === 0 && !searchError;
+  // Distinct from showNoResults -- the search itself found real matches,
+  // the active filters just narrowed them to zero. Same failure mode
+  // Feed's filter chips could hit before being scoped to loaded data;
+  // here it's still possible since a filter picked from an earlier,
+  // larger result set can outlive a narrower new query's results.
+  const showNoFilterMatches = searched && results.length > 0 && filteredResults.length === 0;
   // Below the 2-char query threshold, nothing else here renders anything —
   // no trending (query isn't empty), no results/no-results state (search
   // never actually fires). Without this, that gap between "empty" and
@@ -149,27 +181,39 @@ export default function SearchScreen() {
     <View style={styles.container}>
       {/* Search bar */}
       <View style={styles.bar}>
-        <View style={styles.inputRow}>
-          <Ionicons name="search" size={16} color={Colors.textMuted} style={styles.searchIcon} />
-          <TextInput
-            style={styles.input}
-            placeholder="Search places, cuisines…"
-            placeholderTextColor={Colors.textMuted}
-            value={query}
-            onChangeText={handleChange}
-            returnKeyType="search"
-            onSubmitEditing={() => setDebouncedQuery(query)}
-            autoCorrect={false}
-            accessibilityLabel="Search input"
-          />
-          {query.length > 0 && (
+        <View style={styles.barRow}>
+          <View style={[styles.inputRow, styles.inputRowFlex]}>
+            <Ionicons name="search" size={16} color={Colors.textMuted} style={styles.searchIcon} />
+            <TextInput
+              style={styles.input}
+              placeholder="Search places, cuisines…"
+              placeholderTextColor={Colors.textMuted}
+              value={query}
+              onChangeText={handleChange}
+              returnKeyType="search"
+              onSubmitEditing={() => setDebouncedQuery(query)}
+              autoCorrect={false}
+              accessibilityLabel="Search input"
+            />
+            {query.length > 0 && (
+              <TouchableOpacity
+                onPress={handleClear}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                accessibilityLabel="Clear search"
+                accessibilityRole="button"
+              >
+                <Ionicons name="close-circle" size={18} color={Colors.textMuted} />
+              </TouchableOpacity>
+            )}
+          </View>
+          {searched && results.length > 0 && (
             <TouchableOpacity
-              onPress={handleClear}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              accessibilityLabel="Clear search"
+              style={styles.filterBtn}
+              onPress={() => setFilterVisible(true)}
+              accessibilityLabel="Filter results"
               accessibilityRole="button"
             >
-              <Ionicons name="close-circle" size={18} color={Colors.textMuted} />
+              <Ionicons name="options-outline" size={20} color={hasActiveFilters(filters) ? Colors.primary : Colors.textSecondary} />
             </TouchableOpacity>
           )}
         </View>
@@ -256,12 +300,26 @@ export default function SearchScreen() {
         />
       )}
 
+      {/* Real matches exist, the active filters just narrowed them out --
+          distinct from showNoResults above (nothing matched the query at
+          all). "Clear filters" is faster than backtracking into the
+          sheet to find what's active. */}
+      {showNoFilterMatches && (
+        <EmptyState
+          icon="options-outline"
+          title="No matches for these filters"
+          body="Try clearing a filter to see more results."
+          ctaLabel="Clear filters"
+          onCta={() => setFilters(EMPTY_FILTERS)}
+        />
+      )}
+
       {/* Results */}
-      {!showTrending && !showNoResults && !searchError && results.length > 0 && (
+      {!showTrending && !showNoResults && !showNoFilterMatches && !searchError && filteredResults.length > 0 && (
         <FlashList
-          data={results}
+          data={filteredResults}
           keyExtractor={(p) => p.id}
-          renderItem={({ item, index }) => (
+          renderItem={({ item }) => (
             <View style={styles.rowSpacer}>
               <PlaceCardCompact
                 place={item}
@@ -270,7 +328,12 @@ export default function SearchScreen() {
                     surface: 'search',
                     event_type: 'click',
                     place_id: item.id,
-                    position: index,
+                    // Position within the originally logged impression
+                    // batch (the full, unfiltered `results`), not this
+                    // filtered view's local index -- a click must tie
+                    // back to the "this was shown" event it corresponds
+                    // to, same principle as Craves/Map's position fix.
+                    position: results.findIndex((r) => r.id === item.id),
                     rank_percentile: item.rank_percentile,
                     query: debouncedQuery,
                     city_id: selectedCity?.id ?? null,
@@ -291,10 +354,21 @@ export default function SearchScreen() {
             />
           }
           ListHeaderComponent={
-            <Text style={styles.resultCount}>{results.length} result{results.length !== 1 ? 's' : ''}</Text>
+            <Text style={styles.resultCount}>
+              {filteredResults.length} result{filteredResults.length !== 1 ? 's' : ''}
+              {filteredResults.length !== results.length ? ` of ${results.length}` : ''}
+            </Text>
           }
         />
       )}
+
+      <FilterSheet
+        visible={filterVisible}
+        onClose={() => setFilterVisible(false)}
+        filters={filters}
+        onChange={setFilters}
+        availableCategories={availableCategories}
+      />
     </View>
   );
 }
@@ -302,6 +376,9 @@ export default function SearchScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
   bar: { padding: Spacing.md, paddingBottom: Spacing.xs, gap: Spacing.xs },
+  barRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
+  inputRowFlex: { flex: 1 },
+  filterBtn: { padding: Spacing.sm, minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
   inputRow: {
     flexDirection: 'row',
     alignItems: 'center',

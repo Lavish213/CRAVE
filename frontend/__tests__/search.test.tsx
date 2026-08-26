@@ -47,8 +47,8 @@ const mockedLogMany = logRecommendationEvents as jest.Mock;
 
 const SF_CITY = { id: 'city-sf', name: 'San Francisco', slug: 'san-francisco', lat: 37.7749, lng: -122.4194 };
 
-function makePlace(id: string, rank_percentile: number | null = 0.8) {
-  return { id, name: id, category: 'Italian', rank_percentile } as any;
+function makePlace(id: string, rank_percentile: number | null = 0.8, overrides: any = {}) {
+  return { id, name: id, category: 'Italian', categories: ['Italian'], price_tier: 2, rank_percentile, ...overrides } as any;
 }
 
 function renderScreen() {
@@ -111,5 +111,44 @@ describe('SearchScreen — Recommendation Ledger instrumentation', () => {
       }),
     );
     expect(mockPush).toHaveBeenCalledWith('/place/p1');
+  });
+
+  it('narrows results by an active filter, keeps a filtered-in item\'s click position tied to its real position in the full results, and clears from the zero-match empty state', async () => {
+    const results = [
+      makePlace('p0', 0.9, { categories: ['Italian'], price_tier: 2 }),
+      makePlace('p1', 0.7, { categories: ['Thai'], price_tier: 1 }),
+      makePlace('p2', 0.5, { categories: ['Thai'], price_tier: 3 }),
+    ];
+    mockedSearchPlaces.mockResolvedValue(results);
+
+    const { getByLabelText, getByText, queryByText } = renderScreen();
+    act(() => {
+      getByLabelText('Search input').props.onChangeText('food');
+    });
+    await waitFor(() => expect(mockedLogMany).toHaveBeenCalledTimes(1));
+
+    fireEvent.press(getByLabelText('Filter results'));
+    fireEvent.press(getByLabelText('Thai'));
+    // Modal is real (not mocked) -- both matching rows render, p0 (Italian) doesn't.
+    expect(getByLabelText(/^p1,/)).toBeTruthy();
+    expect(getByLabelText(/^p2,/)).toBeTruthy();
+    expect(() => getByLabelText(/^p0,/)).toThrow();
+
+    fireEvent.press(getByLabelText(/^p1,/));
+    expect(mockedLogOne).toHaveBeenCalledWith(
+      // p1 is index 1 in the real `results`, even though it's the first
+      // row in the filtered (Thai-only) view -- a click must tie back to
+      // the position actually logged in the impression batch above.
+      expect.objectContaining({ place_id: 'p1', position: 1 }),
+    );
+
+    // Narrow further to something with zero matches -- neither Thai place
+    // (p1=$, p2=$$$) has price_tier 2.
+    fireEvent.press(getByLabelText('Price tier $$'));
+    await waitFor(() => expect(getByText('No matches for these filters')).toBeTruthy());
+
+    fireEvent.press(getByText('Clear filters'));
+    await waitFor(() => expect(queryByText('No matches for these filters')).toBeNull());
+    expect(getByLabelText(/^p0,/)).toBeTruthy();
   });
 });
