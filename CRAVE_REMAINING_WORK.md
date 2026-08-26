@@ -4249,3 +4249,28 @@ still logs saved-mode impressions. Full suite: 163 passed (was 159),
 schema or logic change) -- ran the full backend suite anyway as a
 sanity check: 803 passed, 2 skipped, unchanged from baseline. No
 migration needed.
+
+## 2026-08-26 — Debug endpoint gap found + fixed while preparing production verification
+
+While preparing to verify actual deployed Craves/Map rows (surface
+values, stable session id across impression -> selection, bounded/
+positioned ids, no coordinates, no duplicate impressions, save/unsave
+client_event_id preserved), found that `/api/v1/debug/recommendation-
+events` didn't return `search_session_id` in its response at all --
+the one field the "stable session id" check actually needs. The
+verification would have been impossible to perform with the tool that
+exists for exactly this purpose. Added it to the response. Full
+backend suite re-run: 803 passed, 2 skipped, unchanged.
+
+**Known technical debt, explicitly not fixed today**: reusing
+`search_session_id` for Map (see the 2026-08-26 Map entry above) avoided
+a real schema change, but the column's name is now actively misleading
+-- it holds a Craves-adjacent... no, a Search- *and* Map-session id,
+despite its name still saying only "search." The honest fix is a future
+rename to a neutral `interaction_session_id` (a real migration: add
+column, backfill/dual-write, drop the old one, update every read/write
+site). Not doing that now -- a rename-only migration serves no
+functional purpose today and this session's own standing rule is "don't
+migrate for naming alone." Tracked here so it doesn't get forgotten,
+not swept under the "it's just a comment" framing used when the reuse
+was first made.

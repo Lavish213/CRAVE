@@ -216,6 +216,12 @@ def recommendation_events_debug(
                 "query": r.query,
                 "user_id": r.user_id,
                 "session_id": r.session_id,
+                # Added for the Craves/Map instrumentation verification pass
+                # (2026-08-26) -- without this the debug endpoint couldn't
+                # show the one field needed to verify a stable session id
+                # across an impression -> selection pair, making that check
+                # impossible to actually perform.
+                "search_session_id": r.search_session_id,
                 "created_at": r.created_at.isoformat() if r.created_at else None,
             }
             for r in rows
