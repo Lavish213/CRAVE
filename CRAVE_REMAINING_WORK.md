@@ -4698,3 +4698,16 @@ real view to snapshot) render the same score text, so `findByText`
 length assertion for the two score-value checks.
 
 Full suite: 215 passed (was 205), `tsc --noEmit` clean.
+
+## 2026-08-26 — friends-feed screen: first dedicated test coverage
+
+`frontend/__tests__/friends-feed.test.tsx` (6 tests): the empty state
+(covers both a genuinely empty feed and a fetch failure -- the
+screen's own `queryFn` swallows errors into `[]`, so there's no
+distinct error copy to separately test), the actor-name fallback chain
+(`display_name` -> `@username` -> `"Someone"`), both event-type
+renderings (a tappable ranked-place row with its score pill vs. a
+disabled followed-user row with no score), and navigation gating on a
+real `place_id` being present.
+
+Full suite: 221 passed (was 215), `tsc --noEmit` clean.
