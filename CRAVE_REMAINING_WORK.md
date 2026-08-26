@@ -4019,3 +4019,11 @@ showing a bare tier word in a box. Small honest bump to A/C (roughly
 76-77/100 now); does not change the two harder blockers (D's need for
 an actual visual-language pass, H's unexecuted state-by-state design
 list) -- still short of 85+.
+
+**Decision:** rather than keep polishing this one screen against a
+bigger scope than this round intended, move on to Feed per the
+original sequence. Place Detail's remaining gap to 85+ (D: a real
+visual-language pass, not just IA reorg; H: execute the full
+state-by-state design list from the inventory -- no-images hero
+placeholder polish, explicit partial-data confirmation, etc.) is
+tracked here as a follow-up, not abandoned.
