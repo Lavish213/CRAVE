@@ -145,6 +145,8 @@ export default function RecordVideoScreen() {
       <TouchableOpacity
         style={[styles.closeButton, { top: insets.top + Spacing.md }]}
         onPress={() => router.back()}
+        accessibilityRole="button"
+        accessibilityLabel="Close"
       >
         <Ionicons name="close" size={28} color={Colors.text} />
       </TouchableOpacity>
@@ -171,6 +173,8 @@ export default function RecordVideoScreen() {
           style={[styles.recordButton, isRecording && styles.recordButtonActive]}
           onPress={isRecording ? stopRecording : startRecording}
           disabled={saving}
+          accessibilityRole="button"
+          accessibilityLabel={isRecording ? 'Stop recording' : 'Start recording'}
         >
           {saving ? (
             <ActivityIndicator color={Colors.text} />

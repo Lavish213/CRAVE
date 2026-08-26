@@ -4784,3 +4784,33 @@ proportionate to what these screens actually do -- no state machine, no
 API calls, nothing else to lock in.
 
 Full suite: 260 passed (was 257), `tsc --noEmit` clean.
+
+## 2026-08-26 — record-video screen: first dedicated test coverage (closes out the untested-screen sweep)
+
+`frontend/__tests__/record-video.test.tsx` (9 tests) -- the last of the
+13 untested screens identified this session. Covers: the permission-
+unknown/denied/granted gating, the record button wiring to the camera
+ref's imperative `recordAsync`/`stopRecording` (mocked via a
+`forwardRef` + `useImperativeHandle` stub, since a real native camera
+view can't render under RTL/jsdom), the cancelled-recording no-op (no
+`uri` returned), the successful save-and-navigate-back path with the
+right `contentType` inferred from the recorded file's extension
+(including the mp4 default for an unrecognized/missing one), a failed
+save's toast without navigating away, and the close button.
+
+**Found and fixed a real accessibility gap while writing this test:**
+neither the record button nor the close button had any
+`accessibilityLabel` at all -- two of the most important controls on
+the entire recording flow were unreachable by name for a screen reader.
+Added `accessibilityRole="button"` + a label (`"Start recording"` /
+`"Stop recording"` / `"Close"`) to both, which also let the tests select
+them properly instead of relying on fragile prop-matching.
+
+This closes the untested-screen sweep from earlier in this session's
+ranked list: all 13 originally-identified screens (Feed, Profile,
+Settings, add-spot, rank/[placeId], friends-feed, leaderboard,
+taste-profile, user/[id], profile-setup, record-video, both legal pages,
+and the map web fallback) now have dedicated tests.
+
+Full suite: 269 passed (was 260, and 172 at the start of this sweep),
+`tsc --noEmit` clean.
