@@ -39,6 +39,17 @@ import { MenuSubmissionSheet } from '../../src/components/MenuSubmissionSheet';
 import { TierBadge } from '../../src/components/TierBadge';
 import { ErrorState } from '../../src/components/ErrorState';
 
+// Local accessible substitute for Colors.textMuted, this screen only.
+// textMuted (#555) on this screen's dark backgrounds computes to ~2:1
+// contrast -- well under WCAG AA's 4.5:1 for normal text (a real,
+// confirmed, app-wide gap, logged separately in
+// CRAVE_REMAINING_WORK.md rather than fixed by editing the shared
+// token, which would need auditing every other consumer first).
+// textSecondary (#888) computes to ~5.6:1 and is already this screen's
+// existing "secondary" tone, so "quiet" here comes from size/weight,
+// not from an illegible color.
+const QUIET_TEXT = Colors.textSecondary;
+
 const HEADER_RIGHT_BTN = {
   marginRight: 4,
   padding: 8,
@@ -435,7 +446,12 @@ export default function PlaceDetailScreen() {
           yet — see hasWhyFitsSignal above. */}
       {hasWhyFitsSignal && (
       <View style={styles.whyFits}>
-        <Text style={styles.whyFitsHeadline} accessibilityRole="header">{percentileHeadline}</Text>
+        <Text
+          style={[styles.whyFitsHeadline, { color: tier.color }]}
+          accessibilityRole="header"
+        >
+          {percentileHeadline}
+        </Text>
         {topFriendRanking ? (
           <Text style={styles.whyFitsFriends}>
             {friendRankings.length === 1
@@ -462,7 +478,7 @@ export default function PlaceDetailScreen() {
                   />
                 ) : (
                   <View style={[styles.friendRankAvatar, styles.friendRankAvatarFallback]}>
-                    <Ionicons name="person" size={18} color={Colors.textMuted} />
+                    <Ionicons name="person" size={18} color={QUIET_TEXT} />
                   </View>
                 )}
                 <Text style={styles.friendRankUsername} numberOfLines={1}>@{r.username}</Text>
@@ -518,7 +534,7 @@ export default function PlaceDetailScreen() {
       {/* Action row */}
       <View style={styles.actions}>
         <TouchableOpacity
-          style={[styles.actionBtn, saved && styles.actionBtnSaved]}
+          style={[styles.actionBtn, styles.actionBtnSave, saved && styles.actionBtnSaved]}
           onPress={handleSave}
           accessibilityLabel={saved ? 'Remove from Saves' : 'Save to Saves'}
           accessibilityRole="button"
@@ -733,7 +749,7 @@ export default function PlaceDetailScreen() {
                   />
                 ) : (
                   <View style={[styles.socialThumb, styles.socialThumbFallback]}>
-                    <Ionicons name="play-circle-outline" size={28} color={Colors.textMuted} />
+                    <Ionicons name="play-circle-outline" size={28} color={QUIET_TEXT} />
                   </View>
                 )}
                 <View style={styles.socialPlatformChip}>
@@ -770,10 +786,15 @@ export default function PlaceDetailScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
   content: { paddingBottom: 40 },
-  identity: { padding: 16, paddingBottom: 8, gap: 5 },
-  identityTop: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 2 },
+  // More top padding than the old 16px -- the hero photo/video should
+  // read as the anchor, with a real beat of whitespace before identity
+  // starts, not identity crowding directly against the last frame.
+  identity: { paddingHorizontal: 16, paddingTop: Spacing.xl, paddingBottom: 8, gap: 6 },
+  identityTop: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 },
   price: { color: Colors.textSecondary, fontSize: 13, fontWeight: '600' },
-  name: { fontSize: 24, fontWeight: '800', color: Colors.text, letterSpacing: 0.2 },
+  // 26/900, up from 24/800 -- the one piece of text on this screen that
+  // should out-weigh everything below it typographically.
+  name: { fontSize: 26, fontWeight: '900', color: Colors.text, letterSpacing: 0.1 },
   meta: { fontSize: 14, color: Colors.textSecondary },
   decisionStrip: {
     flexDirection: 'row',
@@ -789,17 +810,17 @@ const styles = StyleSheet.create({
   // the glyphs and would otherwise fall well under the 44pt minimum every
   // other button on this screen already meets.
   decisionChipTouchable: { minHeight: 44, minWidth: 44, justifyContent: 'center' },
+  // No border/background -- this was one of several near-identical
+  // bordered boxes stacked down the screen (this, every menu item, every
+  // action button), each competing for the same visual weight instead of
+  // one of them actually reading as more important. Typography (a larger,
+  // tier-colored headline) carries the signal instead of a card.
   whyFits: {
     marginHorizontal: 16,
-    marginBottom: 4,
-    padding: 14,
-    borderRadius: Radius.md,
-    backgroundColor: Colors.surface,
-    borderWidth: 1,
-    borderColor: Colors.border,
+    marginBottom: 8,
     gap: 6,
   },
-  whyFitsHeadline: { fontSize: 15, fontWeight: '800', color: Colors.text },
+  whyFitsHeadline: { fontSize: 18, fontWeight: '800' },
   whyFitsFriends: { fontSize: 13, color: Colors.textSecondary },
   rankCta: {
     flexDirection: 'row',
@@ -840,20 +861,29 @@ const styles = StyleSheet.create({
     borderColor: Colors.border,
     marginVertical: 8,
   },
+  // Plain icon+label, no border/background -- Website/Order/Add photo/
+  // Add menu photo/Report were all individually boxed pills, identical
+  // in weight to Save, competing with it and with every menu item box
+  // below. Only Save (below) keeps a bordered pill now, because its
+  // saved/unsaved state is a real selection signal worth the visual
+  // weight -- everything else here is a plain secondary action.
   actionBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    paddingHorizontal: 14,
+    paddingHorizontal: 10,
     paddingVertical: 10,
+    minHeight: 44,
+  },
+  actionBtnSave: {
     borderRadius: 20,
     borderWidth: 1,
     borderColor: Colors.border,
     backgroundColor: Colors.surface,
-    minHeight: 44,
+    paddingHorizontal: 14,
   },
   actionBtnSaved: { borderColor: Colors.primary, backgroundColor: Colors.primary + '22' },
-  actionLabel: { color: Colors.text, fontSize: 13, fontWeight: '600' },
+  actionLabel: { color: Colors.textSecondary, fontSize: 13, fontWeight: '600' },
   actionLabelSaved: { color: Colors.primary },
   menuSection: { paddingHorizontal: 16, paddingTop: 8 },
   menuTitleRow: {
@@ -868,26 +898,29 @@ const styles = StyleSheet.create({
     color: Colors.text,
     letterSpacing: 0.3,
   },
-  menuVerified: { color: Colors.textMuted, fontSize: 12 },
+  menuVerified: { color: QUIET_TEXT, fontSize: 12 },
   noMenu: { color: Colors.textSecondary, fontSize: 14, paddingVertical: 8 },
   menuCat: { marginBottom: 16 },
   menuCatLabel: {
     fontSize: 11,
     fontWeight: '800',
-    color: Colors.textMuted,
+    color: QUIET_TEXT,
     letterSpacing: 1.2,
     textTransform: 'uppercase',
     marginBottom: 8,
   },
+  // A hairline divider, not an individually boxed card -- every item
+  // previously got its own bordered/filled rounded rectangle, which
+  // reads as 5-20 near-identical cards stacked in a row rather than one
+  // coherent list. The name/price sizing already carries "this is a
+  // promoted section" (see CRAVE_PLACE_DETAIL_SPEC.md §3.5); it doesn't
+  // also need a box around every line to read that way.
   menuItem: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     gap: 12,
-    padding: 12,
-    marginBottom: 8,
-    borderRadius: Radius.md,
-    backgroundColor: Colors.surface,
-    borderWidth: 1,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
     borderColor: Colors.border,
   },
   menuItemMeta: { flex: 1 },

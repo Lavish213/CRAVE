@@ -4332,3 +4332,82 @@ partial API responses beyond the one case above, and the still-generic
 Next: the real visual-language pass (item 2), then re-score against
 §33 with actual screenshots once the user is back on a simulator (item
 3).
+
+## 2026-08-26 — Place Detail: controlled visual-language pass (item 2)
+
+Scoped explicitly as a Place Detail pass, not an app-wide design-system
+rewrite. Design map (element -> problem -> treatment -> token/field)
+was written and reviewed before any code changed; see the session
+transcript for the full table. Summary of what actually shipped:
+
+- **Identity**: name grows 24/800 -> 26/900, more top padding after the
+  hero so the photo/video reads as the anchor with real whitespace
+  before identity starts, not crowding directly against the last frame.
+- **"Why this fits"**: the bordered/filled box is gone entirely --
+  headline now carries the signal through typography alone (18px/800,
+  colored with the place's own `tier.color`, already computed, no new
+  field). This was one of several near-identical boxes stacked down the
+  screen; removing it was the single highest-leverage de-chipping move.
+- **Action row**: only **Save** keeps a bordered pill now (its saved/
+  unsaved state is a real selection signal -- reserve blue for it, per
+  direction). Website/Order/Add photo/Add menu photo/Report all became
+  plain icon+label pairs, no border/background. Same handlers, same
+  conditions, same accessibility labels -- pure visual de-emphasis.
+- **Menu ("What to get")**: per-item bordered/filled boxes replaced with
+  a hairline `borderBottomWidth` divider -- was the clearest instance of
+  card-in-a-card repetition (up to 20 near-identical boxes in a row).
+- **Local accessible secondary-text treatment**: new `QUIET_TEXT`
+  constant in this file only (`= Colors.textSecondary`), replacing
+  every `Colors.textMuted` use on this screen (menu category labels,
+  two icon colors). Per instruction, did **not** touch the global
+  `Colors.textMuted` token -- that needs an audit of every consumer
+  first, logged separately (see the prior entry) as app-wide debt.
+- **Decision strip, primary CTA**: left as-is -- already correctly
+  minimal / already correctly the one prominent action.
+
+New dedicated test file `__tests__/place-detail.test.tsx` (5 tests) --
+none existed before. Covers: name renders with `accessibilityRole=
+"header"`; "why this fits" suppressed with no percentile/friend signal;
+the no-photos empty state's accessible label; a menu item's grouped
+accessibility label; Save button reflects saved/unsaved state. Caught
+and fixed one real bug in the test itself while writing it (not in
+product code): a fresh `{user: {...}}` object literal returned from a
+mocked `useAuthStore` on every render retriggered the friend-rankings
+effect (keyed on `[id, user]`) infinitely -- fixed by giving the mock a
+stable `user` reference, the same category of bug this session found
+in real code before (unstable references defeating effect dependency
+checks), just this time in test infrastructure instead of product code.
+
+Full suite: 168 passed (was 163), `tsc --noEmit` clean. No backend
+changes.
+
+### Honest §33 re-score -- confirmed vs. provisional
+
+Per instruction: visually-dependent categories are capped as
+provisional until reviewed against actual simulator screenshots, not
+counted as landed just because the code changed.
+
+| Cat | Confirmed (code/test-verifiable) | Provisional (pending screenshots) | Why |
+|---|---|---|---|
+| A. Product purpose | 8/10 | -- | Unchanged, no functional change |
+| B. Information hierarchy | 8/10 | 9/10 | Real change (bigger name, more whitespace, de-boxed why-fits) but hierarchy is fundamentally a *visual* claim -- not confirming the bump until it's actually seen |
+| C. Decision usefulness | 11/15 | -- | Unchanged, no data change |
+| D. Originality | 7/10 | 8/10 | The de-chipping is the most direct answer to "reorganized legacy UI vs. distinct CRAVE screen" -- but that's exactly the claim this pass must not grade itself on without a screenshot |
+| E. Personalization | 6/10 | -- | Deliberately capped per doctrine, unchanged |
+| F. Interaction design | 8/10 | -- | Real tradeoff, not a clear win: removing borders from 5 action buttons could reduce their tap-discoverability as much as it reduces clutter -- not claiming a win either direction without live confirmation |
+| G. Performance | 8/10 | -- | Unchanged |
+| H. Error/edge states | 7/10 | -- | Unchanged this pass (covered last pass) |
+| I. Accessibility | 6/10 | -- | Up from 4 -- **not capped provisional**, because the mechanism (accessibilityRole/Label presence, contrast math) is objectively verifiable from code and tests, not a subjective visual read. Still not a full screen-reader pass on a real device. |
+| J. Trust/explainability | 4/5 | -- | Same content, only presentation changed |
+| K. Retention | 4/5 | -- | Unchanged |
+
+**Confirmed-only total: 77/100.** **Provisional total if the visual
+changes land as intended: 79/100.** Both still "credible MVP" band
+(70-79) -- this pass moved the screen further in the right direction,
+it did not cross into "competitive" (80+), and it certainly didn't
+reach 85+. That's the honest number, not "85 because more code
+changed." The actual test of whether this crossed from "reorganized
+legacy UI" into "a distinct CRAVE decision screen" is a screenshot
+review against real content (a `crave_pick` place, a cold-start place,
+a no-photos place) once the user is back on a simulator -- not
+something further code-reading can settle.
