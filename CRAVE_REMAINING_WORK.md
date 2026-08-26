@@ -4011,3 +4011,11 @@ word alone), and H (the inventory's full state-by-state design list
 was written but not executed against actual JSX/styles). None of these
 are fabrication risks -- they're real, honestly scoped remaining work,
 not this pass's claim.
+
+**Follow-up same day:** fixed the cold-start finding directly rather
+than just logging it -- "Why this fits" now suppresses itself entirely
+when there's no real percentile and no friend ranking, instead of
+showing a bare tier word in a box. Small honest bump to A/C (roughly
+76-77/100 now); does not change the two harder blockers (D's need for
+an actual visual-language pass, H's unexecuted state-by-state design
+list) -- still short of 85+.
