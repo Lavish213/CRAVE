@@ -4739,3 +4739,20 @@ favorite-cuisine/top-city cards, and a `loadGenerationRef` stale-response
 test for a `userId` change mid-flight.
 
 Full suite: 238 passed (was 229), `tsc --noEmit` clean.
+
+## 2026-08-26 — user/[id] screen: first dedicated test coverage
+
+`frontend/__tests__/user-profile.test.tsx` (11 tests) -- the richest
+screen tested so far in this sweep. Covers: not-found, self-vs-other
+view differences (no follow button or options menu on your own profile,
+and confirming a self view skips `fetchFollowStatus`/`fetchBlockStatus`
+entirely), the "Follows you" badge, optimistic follow with revert-on-
+failure, unfollow, the two-step block confirm flow through the options
+menu (asserting it immediately clears both `following` and `followsMe`
+client-side, matching the server's own follow-severing behavior rather
+than waiting on a reload), the inline unblock link on the blocked
+notice, a failed-block alert that leaves the block state untouched, the
+empty-ranked-list text with the Taste Profile link correctly hidden, and
+a `loadGenerationRef` stale-response test for an `id` change mid-flight.
+
+Full suite: 249 passed (was 238), `tsc --noEmit` clean.
