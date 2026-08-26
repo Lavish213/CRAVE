@@ -300,6 +300,54 @@ def test_record_events_with_no_client_event_id_never_dedupes_against_each_other(
     created["event_ids"].extend([r.id for r in rows])
 
 
+def test_record_events_logs_a_bad_place_id_distinctly_from_a_dedup_race(db, caplog):
+    """
+    Both a bad place_id (a real client bug / garbage input) and a
+    genuine client_event_id dedup race raise the identical IntegrityError
+    from the per-event fallback loop -- previously indistinguishable from
+    the caller's side (both just {"accepted": 0}), confirmed live during
+    the Craves/Map production verification pass. The fix doesn't change
+    what gets accepted (a bad place_id is correctly still rejected) --
+    it makes the two cases distinguishable via logs.
+    """
+    session, created = db
+    import logging
+
+    with caplog.at_level(logging.WARNING):
+        accepted = record_events(
+            session,
+            raw_events=[
+                # No matching Place row -- a real FK violation.
+                _RawEvent(surface="feed", event_type="save", place_id=str(uuid.uuid4()), client_event_id=f"bad-place-{uuid.uuid4().hex}"),
+            ],
+            user_id="user-a",
+        )
+    assert accepted == 0
+    assert any("recommendation_event_rejected_bad_place_id" in r.message for r in caplog.records)
+
+    caplog.clear()
+    client_event_id = f"dedup-{uuid.uuid4().hex}"
+    first = record_events(
+        session,
+        raw_events=[_RawEvent(surface="feed", event_type="save", client_event_id=client_event_id)],
+        user_id="user-a",
+    )
+    assert first == 1
+    rows = session.query(RecommendationEvent).filter(RecommendationEvent.client_event_id == client_event_id).all()
+    created["event_ids"].extend([r.id for r in rows])
+
+    with caplog.at_level(logging.WARNING):
+        second = record_events(
+            session,
+            raw_events=[_RawEvent(surface="feed", event_type="save", client_event_id=client_event_id)],
+            user_id="user-a",
+        )
+    assert second == 0
+    # A genuine dedup race never reaches the per-event fallback loop at
+    # all (see _drop_already_recorded) -- no bad-place_id warning fires.
+    assert not any("recommendation_event_rejected_bad_place_id" in r.message for r in caplog.records)
+
+
 def test_record_rank_outcome_persists_a_rank_event_with_no_percentile(db):
     """
     record_rank_outcome deliberately never sets rank_percentile -- a

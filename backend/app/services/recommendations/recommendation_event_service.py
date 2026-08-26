@@ -10,11 +10,13 @@ losing the one bad row, never by losing everything alongside it.
 """
 from __future__ import annotations
 
+import logging
 from typing import Iterable, List, Optional
 
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.db.models.place import Place
 from app.db.models.recommendation_event import (
     EVENT_RANK,
     SURFACE_PLACE_DETAIL,
@@ -22,6 +24,8 @@ from app.db.models.recommendation_event import (
     VALID_SURFACES,
     RecommendationEvent,
 )
+
+logger = logging.getLogger(__name__)
 
 # Hard ceiling on a single batch -- generous enough for a full screen's
 # worth of impressions (a Feed page is page_size=40) plus a few
@@ -124,6 +128,10 @@ def _drop_already_recorded(db: Session, events: List[RecommendationEvent]) -> Li
     return kept
 
 
+def _place_exists(db: Session, place_id: str) -> bool:
+    return db.query(Place.id).filter(Place.id == place_id).first() is not None
+
+
 def record_events(
     db: Session,
     *,
@@ -166,6 +174,20 @@ def record_events(
                 accepted += 1
             except IntegrityError:
                 db.rollback()
+                # A rejected client_event_id race (expected, harmless --
+                # the whole point of this fallback) and a genuinely bad
+                # place_id (a real client bug, or garbage input) both
+                # raise the exact same IntegrityError and previously
+                # looked identical from the caller's side -- confirmed
+                # live during the Craves/Map production verification
+                # pass, where a manual bad-place_id test and a real
+                # dedup both just returned {"accepted": 0}. Only checked
+                # in this already-rare fallback path, not the hot path.
+                if event.place_id is not None and not _place_exists(db, event.place_id):
+                    logger.warning(
+                        "recommendation_event_rejected_bad_place_id place_id=%s surface=%s event_type=%s",
+                        event.place_id, event.surface, event.event_type,
+                    )
         return accepted
 
     return len(events)
