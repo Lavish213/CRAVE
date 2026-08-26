@@ -4078,3 +4078,77 @@ the same offset-paginated full catalog; **D** needs the same real
 visual-language pass Place Detail is also waiting on. Both are real,
 sized correctly as backend/design-system work, not something to fake
 around in `index.tsx`.
+
+## 2026-08-26 — Craves: Recommendation Ledger instrumentation, surface='craves'
+
+Per explicit instruction: Craves and Map instrumentation done as two
+separate passes, not one broad telemetry sweep -- this entry is Craves
+only. **This is behavioral-measurement readiness, not a product/visual
+change -- it does not move Craves' §33 score (still the 6/10 informal
+rating in `CRAVE_STATE_OF_THE_APP.md`, unchanged).**
+
+Instrumented the existing journey in `app/(tabs)/craves.tsx`, reusing
+the existing Ledger path exactly (`surface='craves'`, same
+`logRecommendationEvent(s)` utility every other surface uses):
+
+- **Collection/list impression**: one bounded (`MAX_LOGGED_CRAVES_ITEMS
+  = 20`), positioned batch logged for the primary Saves list every time
+  `loadSaves()` resolves (initial load and pull-to-refresh) -- read
+  straight from `useCravesStore.getState().saves` right after, since
+  `loadSaves()` mutates the store rather than returning the fetched
+  list.
+- The "Craves" (matched social shares) and "Added" (manual place-name
+  saves) sections get their own impression batches too, logged inside
+  `loadCraves()`/`loadPlaceSaves()`'s own `.then()` handlers -- but
+  **only for items with a real, resolved `place_id`**. An unmatched
+  share/add has no place_id at all, isn't in the catalog yet, so it's
+  excluded from the batch entirely rather than logged with a null id;
+  its position in the batch is local to that filtered matched-only
+  list, not its index in the raw (unfiltered, unmatched-items-included)
+  array.
+- **Selection**: a click event on any of the three sections' "open
+  place" taps, with the real position matching its section's own
+  impression batch (verified: the matched-only position, not the raw
+  array index -- this was the one subtle bug risk worth a dedicated
+  test for).
+- **Save/unsave**: no new code -- `removeSave(placeId, userId, {surface:
+  'craves', ...})` on this screen already went through cravesStore's
+  certified idempotent path (client_event_id, partial unique index,
+  same as every other surface) before this pass even started. Per
+  instruction, did not add a second event system on top of it.
+- **Filter/sort/section context**: Craves has no filter or sort
+  controls at all (confirmed by reading the full screen -- no such UI
+  exists), so none were instrumented; that would have been fabricated
+  telemetry for controls that don't exist. The three sections
+  (Saves/Craves/Added) *do* genuinely exist as distinct UI, so each
+  gets its own impression batch -- section identity is reconstructed by
+  which batch a place_id appeared in, not a new schema field, since the
+  existing contract can already answer that question.
+- **Retention framing, not new taste evidence**: this whole screen is a
+  return to a place the user already chose once -- an impression/click
+  here is re-engagement with existing memory, not fresh discovery
+  signal the way a Feed/Search impression is. No new field encodes
+  this; the `surface='craves'` tag itself is what lets any future
+  consumption logic treat it differently from `surface='feed'` --
+  documented explicitly in a code comment at the top of the
+  instrumented section so this doesn't get silently reinterpreted
+  later.
+
+**Reconstruction verified**: Craves opened -> `loadSaves`/`loadCraves`/
+`loadPlaceSaves` resolve -> one impression batch per non-empty section
+(bounded, positioned, real place_ids only) -> a click event on any
+section's open-place tap carries the same place_id/position as its
+section's impression batch, so a click can always be matched back to
+the specific impression it came from -> place/[id].tsx's arrival needs
+no separate event (implied by the click) -> any save/unsave/rank
+outcome that follows is already covered by the existing certified
+paths (cravesStore's addSave/removeSave with `surface='craves'` set
+here, and rankings.py's `record_rank_outcome`, un-surfaced but
+user/place-keyed) -- no gap in the chain.
+
+New dedicated test: `__tests__/craves.test.tsx` (3 tests) -- bounded/
+positioned impression batch for the Saves list; click position matches
+selection; matched-only filtering for the Craves section (the
+unmatched-item-position bug this design was written specifically to
+avoid). No backend changes, so no backend/migration gates run. Full
+suite: 159 passed (was 156), `tsc --noEmit` clean.

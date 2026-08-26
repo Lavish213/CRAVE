@@ -31,6 +31,17 @@ import { getCraveItems, CraveItem, getMyPlaceSaves, PlaceSaveItem } from '../../
 import { useAuthStore } from '../../src/stores/authStore';
 import { AuthSheet } from '../../src/components/AuthSheet';
 import { ShareLinkSheet } from '../../src/components/ShareLinkSheet';
+import { logRecommendationEvent, logRecommendationEvents } from '../../src/utils/recommendationEventQueue';
+
+// Recommendation Ledger, surface='craves'. This screen is a *return to
+// already-saved places*, not a discovery surface -- an impression/click
+// here is re-engagement with existing memory, not fresh taste evidence
+// the way a Feed/Search impression is. The surface tag itself carries
+// that distinction for any future consumption logic; save/unsave/rank
+// outcomes reuse the same certified idempotent path as every other
+// screen (cravesStore's addSave/removeSave, rankings.py's
+// record_rank_outcome) -- nothing new is added for those.
+const MAX_LOGGED_CRAVES_ITEMS = 20;
 
 export default function CravesScreen() {
   const router = useRouter();
@@ -76,6 +87,21 @@ export default function CravesScreen() {
         if (myGeneration !== accountGenerationRef.current) return;
         if (__DEV__) console.log('[CRAVES] CRAVES_LOADED', { count: items.length });
         setCraves(items);
+        // Only matched shares are real place impressions -- an unmatched
+        // one has no place_id at all, isn't in the catalog to reason
+        // about yet. Position is local to this filtered list, matching
+        // the click event's position below.
+        const matched = items.filter((c) => c.matched_place_id);
+        if (matched.length > 0) {
+          logRecommendationEvents(
+            matched.slice(0, MAX_LOGGED_CRAVES_ITEMS).map((c, i) => ({
+              surface: 'craves',
+              event_type: 'impression',
+              place_id: c.matched_place_id!,
+              position: i,
+            })),
+          );
+        }
       })
       .catch((err) => {
         if (myGeneration !== accountGenerationRef.current) return;
@@ -97,6 +123,19 @@ export default function CravesScreen() {
       .then((items) => {
         if (myGeneration !== accountGenerationRef.current) return;
         setPlaceSaves(items);
+        // Same "only resolved place_ids are real impressions" treatment
+        // as loadCraves above.
+        const matched = items.filter((p) => p.place_id);
+        if (matched.length > 0) {
+          logRecommendationEvents(
+            matched.slice(0, MAX_LOGGED_CRAVES_ITEMS).map((p, i) => ({
+              surface: 'craves',
+              event_type: 'impression',
+              place_id: p.place_id!,
+              position: i,
+            })),
+          );
+        }
       })
       .catch(() => {
         if (myGeneration !== accountGenerationRef.current) return;
@@ -104,10 +143,29 @@ export default function CravesScreen() {
       });
   }, []);
 
+  // loadSaves() lives in cravesStore and doesn't return the fetched list
+  // (it mutates the store directly) -- read the fresh snapshot straight
+  // from the store right after it resolves rather than plumbing a new
+  // return value through just for this.
+  const logSavesImpression = React.useCallback(() => {
+    const current = useCravesStore.getState().saves;
+    if (current.length === 0) return;
+    logRecommendationEvents(
+      current.slice(0, MAX_LOGGED_CRAVES_ITEMS).map((p, i) => ({
+        surface: 'craves',
+        event_type: 'impression',
+        place_id: p.id,
+        position: i,
+        rank_percentile: p.rank_percentile,
+        city_id: p.city_id ?? null,
+      })),
+    );
+  }, []);
+
   // Load backend saves whenever user changes
   useEffect(() => {
     if (!user) return;
-    loadSaves(user.id);
+    loadSaves(user.id).then(logSavesImpression);
   }, [user?.id]);
 
   // Load craves + manual place-saves whenever user changes
@@ -122,11 +180,11 @@ export default function CravesScreen() {
     if (!user) return;
     setPullRefreshing(true);
     try {
-      await Promise.all([loadSaves(user.id), loadCraves(), loadPlaceSaves()]);
+      await Promise.all([loadSaves(user.id).then(logSavesImpression), loadCraves(), loadPlaceSaves()]);
     } finally {
       setPullRefreshing(false);
     }
-  }, [user, loadSaves, loadCraves, loadPlaceSaves]);
+  }, [user, loadSaves, loadCraves, loadPlaceSaves, logSavesImpression]);
 
   if (__DEV__) console.log('[CRAVES] RENDER', { user: !!user, saves: saves.length, savesLoading, savesError, craves: craves.length });
 
@@ -224,6 +282,13 @@ export default function CravesScreen() {
     );
   }
 
+  // Position within each section's own impression batch above -- an
+  // unmatched item was never in that batch (no place_id to log), so it's
+  // excluded here too rather than given a position that would misalign
+  // with what was actually logged as "shown."
+  const matchedCraveIds = craves.filter((c) => c.matched_place_id).map((c) => c.id);
+  const matchedPlaceSaveIds = placeSaves.filter((p) => p.place_id).map((p) => p.id);
+
   return (
     <View style={styles.container}>
       <FlashList
@@ -236,11 +301,21 @@ export default function CravesScreen() {
             tintColor={Colors.primary}
           />
         }
-        renderItem={({ item }) => (
+        renderItem={({ item, index }) => (
           <View style={styles.rowSpacer}>
             <PlaceCardCompact
               place={item}
-              onPress={() => router.push(`/place/${item.id}`)}
+              onPress={() => {
+                logRecommendationEvent({
+                  surface: 'craves',
+                  event_type: 'click',
+                  place_id: item.id,
+                  position: index,
+                  rank_percentile: item.rank_percentile,
+                  city_id: item.city_id ?? null,
+                });
+                router.push(`/place/${item.id}`);
+              }}
               onPressIn={() => prefetchPlace(item.id)}
               rightAction={
                 <TouchableOpacity
@@ -320,7 +395,15 @@ export default function CravesScreen() {
                     {item.matched_place_id && (
                       <TouchableOpacity
                         style={styles.craveOpenBtn}
-                        onPress={() => router.push(`/place/${item.matched_place_id!}`)}
+                        onPress={() => {
+                          logRecommendationEvent({
+                            surface: 'craves',
+                            event_type: 'click',
+                            place_id: item.matched_place_id!,
+                            position: matchedCraveIds.indexOf(item.id),
+                          });
+                          router.push(`/place/${item.matched_place_id!}`);
+                        }}
                         accessibilityRole="button"
                         accessibilityLabel={`Open matched place for ${item.parsed_place_name ?? 'this place'}`}
                       >
@@ -351,7 +434,15 @@ export default function CravesScreen() {
                     {item.place_id && (
                       <TouchableOpacity
                         style={styles.craveOpenBtn}
-                        onPress={() => router.push(`/place/${item.place_id!}`)}
+                        onPress={() => {
+                          logRecommendationEvent({
+                            surface: 'craves',
+                            event_type: 'click',
+                            place_id: item.place_id!,
+                            position: matchedPlaceSaveIds.indexOf(item.id),
+                          });
+                          router.push(`/place/${item.place_id!}`);
+                        }}
                         accessibilityRole="button"
                         accessibilityLabel={`Open matched place for ${item.place_name}`}
                       >
