@@ -1,0 +1,36 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+language: en-US
+tone_instructions: >-
+  Be concise, evidence-based, and high-signal. Prioritize correctness,
+  security, regressions, tests, accessibility, and API-contract drift. Do not
+  request style-only churn or restate CI output.
+
+reviews:
+  profile: assertive
+  auto_review:
+    enabled: true
+    auto_incremental_review: true
+    drafts: false
+    base_branches:
+      - main
+  path_instructions:
+    - path: "backend/**"
+      instructions: >-
+        Check FastAPI auth boundaries, authorization, migrations, Postgres and
+        SQLite compatibility, explicit error states, and tests. Treat client
+        supplied IDs and API keys as untrusted.
+    - path: "frontend/**"
+      instructions: >-
+        Check React Native accessibility labels and touch targets, loading and
+        offline/error states, stale-response guards, telemetry semantics, and
+        preservation of backend contracts. Require evidence for visual or
+        device-only claims.
+    - path: ".github/**"
+      instructions: >-
+        Check GitHub Actions permissions, event trust boundaries, secret use,
+        and whether PR-controlled code is checked out or executed. Prefer
+        least privilege and fail-closed behavior.
+    - path: ".agent-bridge/**"
+      instructions: >-
+        Check that handoffs include SHA and verification evidence, no secrets,
+        no conflicting owners, and a bounded next action.
