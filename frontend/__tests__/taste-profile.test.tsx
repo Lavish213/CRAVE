@@ -74,6 +74,16 @@ describe('TasteProfileScreen', () => {
     expect(mockedFetchTasteProfile).not.toHaveBeenCalled();
   });
 
+  it('does not assume access when the block-status check fails', async () => {
+    mockedFetchProfile.mockResolvedValue(makeProfile());
+    mockedFetchBlockStatus.mockRejectedValue(new Error('network'));
+
+    const { findByText } = render(<TasteProfileScreen />);
+
+    expect(await findByText("Couldn't verify profile access")).toBeTruthy();
+    expect(mockedFetchTasteProfile).not.toHaveBeenCalled();
+  });
+
   it('shows a self-specific no-data message when viewing your own empty taste profile', async () => {
     mockUserId = 'me';
     setMe('me');

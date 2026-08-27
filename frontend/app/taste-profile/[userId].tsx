@@ -21,6 +21,7 @@ import { useFocusEffect, useLocalSearchParams } from 'expo-router';
 
 import { Colors, Radius, Spacing } from '../../src/constants/colors';
 import { EmptyState } from '../../src/components/EmptyState';
+import { ErrorState } from '../../src/components/ErrorState';
 import { SkeletonRowList } from '../../src/components/SkeletonCard';
 import {
   Profile,
@@ -42,6 +43,7 @@ export default function TasteProfileScreen() {
   const [blocked, setBlocked] = useState(false);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
+  const [accessError, setAccessError] = useState(false);
 
   // expo-router can reuse this screen instance across a param change (e.g.
   // tapping from one person's taste profile into another's) -- without a
@@ -55,13 +57,18 @@ export default function TasteProfileScreen() {
     const myGeneration = ++loadGenerationRef.current;
     setLoading(true);
     setNotFound(false);
+    setAccessError(false);
     try {
       const [p, blockStatus] = await Promise.all([
         fetchProfile(userId),
-        isSelf ? Promise.resolve({ blocked: false }) : fetchBlockStatus(userId).catch(() => ({ blocked: false })),
+        isSelf ? Promise.resolve({ blocked: false }) : fetchBlockStatus(userId).catch(() => null),
       ]);
       if (myGeneration !== loadGenerationRef.current) return;
       setProfile(p);
+      if (blockStatus === null) {
+        setAccessError(true);
+        return;
+      }
       setBlocked(blockStatus.blocked);
       if (!blockStatus.blocked) {
         const taste = await fetchTasteProfile(userId);
@@ -101,6 +108,10 @@ export default function TasteProfileScreen() {
         body="This account doesn't exist, or its list is private."
       />
     );
+  }
+
+  if (accessError) {
+    return <ErrorState message="Couldn't verify profile access" onRetry={load} />;
   }
 
   if (blocked) {

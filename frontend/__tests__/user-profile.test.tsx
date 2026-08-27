@@ -200,6 +200,27 @@ describe('UserProfileScreen', () => {
     expect(queryByLabelText("View alice's Taste Profile")).toBeNull();
   });
 
+  it('does not describe a failed rankings request as an empty ranked list', async () => {
+    mockedFetchProfile.mockResolvedValue(makeProfile());
+    mockedFetchUserRankings.mockRejectedValue(new Error('network'));
+
+    const { findByText, queryByText } = render(<UserProfileScreen />);
+
+    expect(await findByText("Couldn't load ranked places")).toBeTruthy();
+    expect(queryByText("@alice hasn't ranked anything yet.")).toBeNull();
+  });
+
+  it('hides relationship actions when their status cannot be verified', async () => {
+    mockedFetchProfile.mockResolvedValue(makeProfile());
+    mockedFetchFollowStatus.mockRejectedValue(new Error('network'));
+
+    const { findByText, queryByLabelText } = render(<UserProfileScreen />);
+
+    expect(await findByText("Couldn't load relationship controls")).toBeTruthy();
+    expect(queryByLabelText('Follow alice')).toBeNull();
+    expect(queryByLabelText('More options')).toBeNull();
+  });
+
   it('renders ranked rows, shows the Taste Profile link, and navigates on tap', async () => {
     mockedFetchProfile.mockResolvedValue(makeProfile());
     mockedFetchUserRankings.mockResolvedValue([makeRanking('p0', { name: 'Great Place', rank_score: 9.0 })]);

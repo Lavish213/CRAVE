@@ -20,6 +20,7 @@ import * as Haptics from 'expo-haptics';
 
 import { Colors, Radius, Spacing } from '../../src/constants/colors';
 import { EmptyState } from '../../src/components/EmptyState';
+import { ErrorState } from '../../src/components/ErrorState';
 import { SkeletonRowList } from '../../src/components/SkeletonCard';
 import { RankedPlaceRow } from '../../src/components/RankedPlaceRow';
 import { useAuthStore } from '../../src/stores/authStore';
@@ -52,6 +53,8 @@ export default function UserProfileScreen() {
   const [notFound, setNotFound] = useState(false);
   const [busy, setBusy] = useState(false);
   const [blockBusy, setBlockBusy] = useState(false);
+  const [rankingsError, setRankingsError] = useState(false);
+  const [relationshipError, setRelationshipError] = useState(false);
 
   const isSelf = !!me && me.id === id;
 
@@ -65,25 +68,35 @@ export default function UserProfileScreen() {
   const load = useCallback(async () => {
     if (!id) return;
     const myGeneration = ++loadGenerationRef.current;
+    setRankingsError(false);
+    setRelationshipError(false);
     try {
       const p = await fetchProfile(id);
       if (myGeneration !== loadGenerationRef.current) return;
       setProfile(p);
 
       const [r, status, blockStatus] = await Promise.all([
-        fetchUserRankings(id).catch(() => [] as RankedPlace[]),
+        fetchUserRankings(id).catch(() => null),
         isSelf
           ? Promise.resolve({ following: false, followed_by: false })
-          : fetchFollowStatus(id).catch(() => ({ following: false, followed_by: false })),
+          : fetchFollowStatus(id).catch(() => null),
         isSelf
           ? Promise.resolve({ blocked: false })
-          : fetchBlockStatus(id).catch(() => ({ blocked: false })),
+          : fetchBlockStatus(id).catch(() => null),
       ]);
       if (myGeneration !== loadGenerationRef.current) return;
-      setRankings(r);
-      setFollowing(status.following);
-      setFollowsMe(status.followed_by);
-      setBlocked(blockStatus.blocked);
+      if (r === null) {
+        setRankingsError(true);
+      } else {
+        setRankings(r);
+      }
+      if (status === null || blockStatus === null) {
+        setRelationshipError(true);
+      } else {
+        setFollowing(status.following);
+        setFollowsMe(status.followed_by);
+        setBlocked(blockStatus.blocked);
+      }
     } catch (err: any) {
       if (myGeneration !== loadGenerationRef.current) return;
       if (err?.response?.status === 404) setNotFound(true);
@@ -202,7 +215,7 @@ export default function UserProfileScreen() {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      {!isSelf ? (
+      {!isSelf && !relationshipError ? (
         <TouchableOpacity
           style={styles.optionsBtn}
           onPress={showOptions}
@@ -252,7 +265,12 @@ export default function UserProfileScreen() {
         </View>
       ) : (
         <>
-          {!isSelf ? (
+          {relationshipError ? (
+            <ErrorState
+              message="Couldn't load relationship controls"
+              onRetry={load}
+            />
+          ) : !isSelf ? (
             <TouchableOpacity
               style={[styles.followBtn, following ? styles.followingBtn : null]}
               onPress={toggleFollow}
@@ -272,42 +290,48 @@ export default function UserProfileScreen() {
             </TouchableOpacity>
           ) : null}
 
-          <Text style={styles.headline}>{rankedListHeadline(rankings.length)}</Text>
-
-          {rankings.length > 0 && (
-            <TouchableOpacity
-              style={styles.tasteProfileLink}
-              onPress={() => router.push(`/taste-profile/${id}`)}
-              accessibilityRole="button"
-              accessibilityLabel={isSelf ? 'View your Taste Profile' : `View ${profile.username}'s Taste Profile`}
-            >
-              <Ionicons name="restaurant-outline" size={16} color={Colors.primary} />
-              <Text style={styles.tasteProfileLinkText}>
-                {isSelf ? 'Your Taste Profile' : 'Taste Profile'}
-              </Text>
-              <Ionicons name="chevron-forward" size={16} color={Colors.textSecondary} />
-            </TouchableOpacity>
-          )}
-
-          {rankings.length === 0 ? (
-            <Text style={styles.emptyText}>
-              {isSelf ? "You haven't" : `@${profile.username} hasn't`} ranked anything yet.
-            </Text>
+          {rankingsError ? (
+            <ErrorState message="Couldn't load ranked places" onRetry={load} />
           ) : (
-            <View style={styles.list}>
-              {rankings.map((r, i) => (
-                <RankedPlaceRow
-                  key={r.place_id}
-                  position={i + 1}
-                  name={r.name ?? 'Unknown place'}
-                  imageUrl={r.primary_image_url}
-                  score={r.rank_score}
-                  tier={r.tier}
-                  note={r.note}
-                  onPress={() => router.push(`/place/${r.place_id}`)}
-                />
-              ))}
-            </View>
+            <>
+              <Text style={styles.headline}>{rankedListHeadline(rankings.length)}</Text>
+
+              {rankings.length > 0 && (
+                <TouchableOpacity
+                  style={styles.tasteProfileLink}
+                  onPress={() => router.push(`/taste-profile/${id}`)}
+                  accessibilityRole="button"
+                  accessibilityLabel={isSelf ? 'View your Taste Profile' : `View ${profile.username}'s Taste Profile`}
+                >
+                  <Ionicons name="restaurant-outline" size={16} color={Colors.primary} />
+                  <Text style={styles.tasteProfileLinkText}>
+                    {isSelf ? 'Your Taste Profile' : 'Taste Profile'}
+                  </Text>
+                  <Ionicons name="chevron-forward" size={16} color={Colors.textSecondary} />
+                </TouchableOpacity>
+              )}
+
+              {rankings.length === 0 ? (
+                <Text style={styles.emptyText}>
+                  {isSelf ? "You haven't" : `@${profile.username} hasn't`} ranked anything yet.
+                </Text>
+              ) : (
+                <View style={styles.list}>
+                  {rankings.map((r, i) => (
+                    <RankedPlaceRow
+                      key={r.place_id}
+                      position={i + 1}
+                      name={r.name ?? 'Unknown place'}
+                      imageUrl={r.primary_image_url}
+                      score={r.rank_score}
+                      tier={r.tier}
+                      note={r.note}
+                      onPress={() => router.push(`/place/${r.place_id}`)}
+                    />
+                  ))}
+                </View>
+              )}
+            </>
           )}
         </>
       )}

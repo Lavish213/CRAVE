@@ -102,7 +102,10 @@ def list_places(
 
     except Exception as exc:
         logger.exception("list_places_failed error=%s", exc)
-        return [], 0
+        # Let the user-facing route return its explicit 503. Returning an
+        # empty result here makes a database outage indistinguishable from a
+        # healthy catalog with no places and bypasses that route-level guard.
+        raise
 
 
 def get_place(
