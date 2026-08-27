@@ -125,13 +125,18 @@ is actually installed in prod vs. degrading to its fallback path.
 Physical-device smoke pass (Auth/Feed/Search/Place Detail/Save/Map/
 Upload/Offline/Push/**Decision Session**).
 
-**P2** — Recommendation Ledger fast-follows in order: Search-session
-instrumentation, Craves instrumentation, Map instrumentation (impressions
-+ saves + rankings are already logged). Feed keyset pagination (instrument
-first, confirm it's worth the retrieval-layer change before building).
-App Store prep (hosted Privacy Policy URL, Apple Developer membership,
-screenshots). Visual regression / E2E coverage (currently zero — start
-with 3 journeys: Feed→Detail, Search→Detail, Save→Craves→Detail).
+**P2** — ~~Recommendation Ledger fast-follows~~ — done: Search, Craves,
+and Map all already have `surface`-tagged Ledger instrumentation
+(confirmed by re-checking the actual files, not just this doc — it was
+stale here, already landed in an earlier session per
+`CRAVE_REMAINING_WORK.md`'s 2026-08-26 entries). Feed keyset pagination
+(now that impression/position data exists across every surface, worth
+actually instrument-checking whether it's needed before building — still
+a real decision, not yet made). App Store prep (hosted Privacy Policy
+URL, Apple Developer membership, screenshots — needs the user, not
+buildable by an agent). Visual regression / E2E coverage (currently
+zero — start with 3 journeys: Feed→Detail, Search→Detail,
+Save→Craves→Detail).
 
 **P3** — Taste modeling / learned ranking (after real usage data exists,
 not before). Splitting the flat category taxonomy into real dimensions.
