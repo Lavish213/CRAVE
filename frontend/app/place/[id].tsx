@@ -378,11 +378,13 @@ export default function PlaceDetailScreen() {
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       {/* Hero gallery */}
-      <ImageGallery
-        images={allImages}
-        gpsVerified={place.images?.length ? place.image_gps_verified : undefined}
-        placeName={place.name}
-      />
+      <View testID="place-detail-hero">
+        <ImageGallery
+          images={allImages}
+          gpsVerified={place.images?.length ? place.image_gps_verified : undefined}
+          placeName={place.name}
+        />
+      </View>
 
       {/* Food videos */}
       <PlaceVideoGallery placeId={place.id} />
