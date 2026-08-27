@@ -53,6 +53,20 @@ export default function SearchScreen() {
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // handleChange below clears the *previous* timer before setting a new
+  // one, but nothing previously cleared the pending timer on unmount --
+  // navigating away within the 350ms debounce window (a real, plausible
+  // user action, not just a test artifact) left a timer alive that would
+  // fire setDebouncedQuery on an already-unmounted screen. Confirmed via
+  // Jest's --detectOpenHandles: three leaked Timeout handles, all from
+  // this exact setTimeout, were why the frontend test process needed
+  // --forceExit to ever exit cleanly.
+  useEffect(() => {
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, []);
+
   // One search interaction session -- narrower than the app-launch
   // session recommendationEventQueue already tracks. Reminted whenever
   // a fresh query starts from an empty box (see handleChange below),

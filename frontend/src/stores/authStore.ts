@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { User } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
+import { useCravesStore } from './cravesStore';
 
 interface AuthStore {
   user: User | null;
@@ -38,9 +39,13 @@ export const useAuthStore = create<AuthStore>((set) => ({
       console.warn('[signOut] Remote sign-out failed, clearing local session anyway:', err);
     }
     set({ user: null });
-    // Clear persisted saves so the next user doesn't see them
+    // Clear persisted saves so the next user doesn't see them. Static
+    // import (was a dynamic `await import(...)`) -- there's no circular
+    // dependency between authStore and cravesStore to work around, and the
+    // dynamic form silently threw under Jest's CJS transform
+    // (ERR_VM_DYNAMIC_IMPORT_CALLBACK_MISSING_FLAG), meaning the
+    // clear-saves-on-signout behavior was never actually exercised by tests.
     try {
-      const { useCravesStore } = await import('./cravesStore');
       useCravesStore.getState().clearSaves();
     } catch (err) {
       console.warn('[signOut] Failed to clear saves:', err);

@@ -4883,3 +4883,52 @@ app.
 Full suite: 270 passed (unchanged count -- a color-value change, not new
 behavior), `tsc --noEmit` clean. No test asserted an exact hex value for
 any of this, so nothing needed updating on the test side.
+
+## 2026-08-27 — Test-hygiene cleanup: `search.tsx` debounce leak + `authStore.ts` dynamic import
+
+Follow-up on the re-pasted forensic audit's "test hygiene hides
+lifecycle problems" finding (`--forceExit`, FlashList `act()` warnings,
+dynamic-import warnings under Jest).
+
+**`search.tsx` debounce timer.** `npx jest --detectOpenHandles` reported
+3 leaked `Timeout` handles, all from the search-query debounce
+`setTimeout` (350ms). Investigated with temporary debug logging:
+`debounceRef.current?._destroyed` was already `true` before
+`clearTimeout` ran, meaning these specific timers had already fired
+naturally during the tests' own real-time waits -- not actual leaks,
+just Jest's `--detectOpenHandles` misreporting already-completed timers
+as open (confirmed this isn't a blanket jest-expo/RN teardown artifact
+by running a purely static, timer-free test file alone, which exited
+with zero warnings). Added a `useEffect` unmount-cleanup for
+`debounceRef` anyway -- independently correct (a screen unmounted mid-
+debounce previously left a live timer that would call `setState` on an
+already-unmounted component), even though it doesn't silence these
+specific reports (the search tests that trigger them never unmount).
+Re-ran after the fix: the same 3 warnings still print (expected, given
+the above), but the process still exits cleanly with code 0 -- `package.json`'s
+`"test": "jest"` script has never used `--forceExit`, so this was never
+actually blocking anything, just noisy under `--detectOpenHandles`.
+
+**`authStore.ts` dynamic import.** `signOut()`'s cleanup step did
+`const { useCravesStore } = await import('./cravesStore')`, which throws
+`ERR_VM_DYNAMIC_IMPORT_CALLBACK_MISSING_FLAG` under Jest's CJS
+transform -- silently swallowed by the surrounding try/catch, meaning
+the "clear saves on sign-out" behavior was never actually exercised by
+tests, just its failure path. Confirmed via grep that `cravesStore.ts`
+has no import of `authStore.ts` -- no circular dependency justifies the
+dynamic form. Converted to a static top-level
+`import { useCravesStore } from './cravesStore'`. Updated
+`authStore.test.ts`: the cravesStore mock now exposes a shared
+`mockClearSaves` jest.fn so tests can assert on it directly; added a new
+test asserting `clearSaves()` is actually called on sign-out (previously
+untested), and rewrote the "does not throw if cleanup fails" test to
+force `clearSaves` to throw directly instead of relying on the dynamic
+import's incidental Jest failure.
+
+Full suite: 271 passed (was 270 -- the new `clearSaves`-is-called
+assertion), `tsc --noEmit` clean.
+
+Not done in this pass (lower priority, no reported problem): the
+FlashList `act()` warning named in the same audit finding wasn't
+separately reproduced or investigated -- nothing in this test run
+surfaced it.

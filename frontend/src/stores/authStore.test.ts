@@ -11,8 +11,9 @@ jest.mock('../lib/supabase', () => ({
   },
 }));
 
+const mockClearSaves = jest.fn();
 jest.mock('./cravesStore', () => ({
-  useCravesStore: { getState: jest.fn(() => ({ clearSaves: jest.fn() })) },
+  useCravesStore: { getState: jest.fn(() => ({ clearSaves: mockClearSaves })) },
 }));
 
 const mockedSupabase = supabase as unknown as {
@@ -31,6 +32,7 @@ beforeEach(() => {
   mockedSupabase.auth.onAuthStateChange.mockReturnValue({
     data: { subscription: { unsubscribe: jest.fn() } },
   });
+  mockClearSaves.mockReset();
 });
 
 describe('useAuthStore.init', () => {
@@ -97,15 +99,24 @@ describe('useAuthStore.signOut', () => {
     expect(useAuthStore.getState().user).toBeNull();
   });
 
-  it('does not throw even if the post-signout cleanup step fails', async () => {
-    // signOut() dynamically imports cravesStore to clear saves, wrapped in
-    // its own try/catch (see authStore.ts) specifically so a cleanup
-    // failure there can never surface as an unhandled rejection to the
-    // caller. Under Jest's CJS transform, that dynamic import() itself
-    // throws (no native ESM loader here), which exercises the same catch
-    // block a real clearSaves() failure would — confirming the guarantee
-    // that matters: signOut() always resolves.
+  it('clears persisted saves via cravesStore on sign-out', async () => {
     mockedSupabase.auth.signOut.mockResolvedValue(undefined);
+    useAuthStore.setState({ user: { id: 'u1' } as any, loading: false });
+
+    await useAuthStore.getState().signOut();
+
+    expect(mockClearSaves).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not throw even if the post-signout cleanup step fails', async () => {
+    // clearSaves() is wrapped in its own try/catch (see authStore.ts)
+    // specifically so a cleanup failure there can never surface as an
+    // unhandled rejection to the caller — confirming the guarantee that
+    // matters: signOut() always resolves, even if clearing saves throws.
+    mockedSupabase.auth.signOut.mockResolvedValue(undefined);
+    mockClearSaves.mockImplementation(() => {
+      throw new Error('storage unavailable');
+    });
 
     await expect(useAuthStore.getState().signOut()).resolves.toBeUndefined();
   });
