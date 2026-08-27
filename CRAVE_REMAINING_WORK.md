@@ -5077,3 +5077,36 @@ Merged via `git merge --no-ff` into `claude/project-grade-systems-review-4ot7d0`
 
 Not yet done: device verification of the new Feed section (see
 CRAVE_STATUS.md's "needs your action").
+
+## 2026-08-27 — Fixed the 3 confirmed-real findings from an external "Master Execution Roadmap" review
+
+A second AI-authored roadmap flagged 8 "confirmed release blockers." Before
+touching anything, verified each against current `main` (`ac99e83`) --
+matches this session's recurring rule about not trusting external audits
+blind. Result: 3 of 8 were already fixed or flat wrong (signed-out
+contrast, map over-clustering -- both fixed earlier this session; bundle
+ID -- `app.json` already has `com.crave.app`, not `com.anonymous.crave`).
+The other 3 held up as real:
+
+- **`leaderboard.tsx` and `friends-feed.tsx`** both had
+  `queryFn: () => fetch...().catch(() => [])` -- any error (401, 500,
+  network failure) rendered identically to a genuinely empty
+  board/feed. Fixed both: removed the `.catch`, destructured `isError`
+  from `useQuery`, added an `ErrorState`-with-retry branch before the
+  empty-state check. Updated the two tests that had explicitly encoded
+  the old behavior (their own names said "queryFn swallows the error")
+  to assert the error state renders instead, then that retrying after a
+  successful refetch shows the real empty state.
+- **`add-spot.tsx`** had no title override anywhere (`_layout.tsx` nor
+  the screen itself) -- header showed the raw route name "add-spot".
+  Added `<Stack.Screen name="add-spot" options={{ title: 'Add a Spot' }} />`.
+- **Bonus find while checking sibling routes for the same class of
+  bug**: `record-video/[placeId].tsx` had the identical gap (no title
+  override), but it's a full-screen camera UI with its own working
+  close button (`router.back()`) -- a native header here would show a
+  raw route name *stacked above* a screen that already has its own
+  close affordance. Fixed with `headerShown: false` instead of a title,
+  since a title wasn't the actual problem for this one.
+
+Full suite: 279 passed (unchanged count -- these were behavior/test
+fixes, not new tests), `tsc --noEmit` clean. No backend changes.

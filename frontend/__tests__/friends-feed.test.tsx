@@ -68,9 +68,14 @@ describe('FriendsFeedScreen', () => {
     expect(mockPush).toHaveBeenCalledWith('/leaderboard');
   });
 
-  it('shows the same empty state when the feed fetch fails (queryFn swallows the error)', async () => {
+  it('shows an error state with retry when the feed fetch fails, not the empty state', async () => {
     mockedFetchFriendsFeed.mockRejectedValue(new Error('network'));
-    const { findByText } = renderScreen();
+    const { findByText, queryByText } = renderScreen();
+    expect(await findByText("Couldn't load your friends feed")).toBeTruthy();
+    expect(queryByText('Nothing here yet')).toBeNull();
+
+    mockedFetchFriendsFeed.mockResolvedValue([]);
+    fireEvent.press(await findByText('Try again'));
     expect(await findByText('Nothing here yet')).toBeTruthy();
   });
 

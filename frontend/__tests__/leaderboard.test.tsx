@@ -76,9 +76,14 @@ describe('LeaderboardScreen', () => {
     expect(await findByText('No friends ranked yet')).toBeTruthy();
   });
 
-  it('shows the same empty state when the fetch fails (queryFn swallows the error)', async () => {
+  it('shows an error state with retry when the fetch fails, not the empty state', async () => {
     mockedFetchLeaderboard.mockRejectedValue(new Error('network'));
-    const { findByText } = renderScreen();
+    const { findByText, queryByText } = renderScreen();
+    expect(await findByText("Couldn't load the leaderboard")).toBeTruthy();
+    expect(queryByText('Nobody on the board yet')).toBeNull();
+
+    mockedFetchLeaderboard.mockResolvedValue([]);
+    fireEvent.press(await findByText('Try again'));
     expect(await findByText('Nobody on the board yet')).toBeTruthy();
   });
 

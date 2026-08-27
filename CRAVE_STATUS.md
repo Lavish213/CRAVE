@@ -50,9 +50,10 @@ gate.
   on an actual rebuilt device/simulator: map over-clustering fix,
   global text-contrast fix, signed-out white-on-white fix, the
   missing-config error screen, the new "DECIDE NOW" Decision Session
-  section on Feed, the rank/comparison flow end-to-end,
-  video record→upload→moderation→push pipeline, push notification
-  delivery.
+  section on Feed, Leaderboard/Friends' new error-vs-empty distinction,
+  `add-spot`'s real header title, record-video's now-hidden native
+  header, the rank/comparison flow end-to-end, video
+  record→upload→moderation→push pipeline, push notification delivery.
 
 ## What's solid right now
 

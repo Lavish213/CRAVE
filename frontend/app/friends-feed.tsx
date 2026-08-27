@@ -21,6 +21,7 @@ import { useQuery } from '@tanstack/react-query';
 
 import { Colors, Radius, Spacing } from '../src/constants/colors';
 import { EmptyState } from '../src/components/EmptyState';
+import { ErrorState } from '../src/components/ErrorState';
 import { SkeletonRowList } from '../src/components/SkeletonCard';
 import { ActivityEvent, fetchFriendsFeed } from '../src/api/social';
 import { formatScore, tierColor } from '../src/utils/rankScore';
@@ -36,18 +37,22 @@ export default function FriendsFeedScreen() {
   const router = useRouter();
   // Previously raw useState + useFocusEffect with no caching at all -- every
   // tab focus re-fetched from scratch, unlike every other list screen in the
-  // app. The queryFn swallows errors into an empty array, matching this
-  // screen's original behavior exactly (no distinct error copy existed here
-  // — a failed fetch and a genuinely empty feed both just showed the "follow
-  // people" EmptyState).
+  // app.
+  //
+  // The queryFn used to swallow every error into an empty array
+  // (`.catch(() => [])`), so a signed-out 401 or a real server failure
+  // rendered identically to a genuinely empty feed -- fixed to let
+  // react-query's isError surface instead, same fix as leaderboard.tsx's
+  // identical pattern.
   const {
     data: events = [],
     isLoading: loading,
+    isError,
     isRefetching: refreshing,
     refetch,
   } = useQuery({
     queryKey: ['friends-feed'],
-    queryFn: () => fetchFriendsFeed().catch(() => []),
+    queryFn: () => fetchFriendsFeed(),
     staleTime: 2 * 60 * 1000,
   });
 
@@ -65,6 +70,10 @@ export default function FriendsFeedScreen() {
         <SkeletonRowList count={5} avatar />
       </View>
     );
+  }
+
+  if (isError) {
+    return <ErrorState message="Couldn't load your friends feed" onRetry={() => refetch()} />;
   }
 
   if (events.length === 0) {

@@ -23,6 +23,7 @@ import * as Haptics from 'expo-haptics';
 
 import { Colors, Radius, Spacing } from '../src/constants/colors';
 import { EmptyState } from '../src/components/EmptyState';
+import { ErrorState } from '../src/components/ErrorState';
 import { SkeletonRowList } from '../src/components/SkeletonCard';
 import { LeaderboardRow, fetchLeaderboard } from '../src/api/social';
 import { withImageWidth, AVATAR_IMAGE_WIDTH } from '../src/utils/imageUrl';
@@ -47,18 +48,23 @@ export default function LeaderboardScreen() {
   // tab focus (including just switching Global/Friends and back) re-fetched
   // from scratch, unlike every other list screen in the app. staleTime
   // matches the home feed's -- the leaderboard doesn't need to be fresher
-  // than that. The queryFn swallows errors into an empty array rather than
-  // surfacing isError, matching this screen's original behavior exactly (no
-  // distinct error copy existed here — a failed fetch and a genuinely empty
-  // board both just showed the "nobody yet" EmptyState).
+  // than that.
+  //
+  // The queryFn used to swallow every error into an empty array
+  // (`.catch(() => [])`), so a signed-out 401 or a real server failure
+  // rendered identically to a genuinely empty board -- "Nobody on the
+  // board yet" is a lie when the request never actually succeeded. Now
+  // lets react-query's isError surface instead, so the render below can
+  // tell the two apart.
   const {
     data: rows = [],
     isLoading: loading,
+    isError,
     isRefetching: refreshing,
     refetch,
   } = useQuery({
     queryKey: ['leaderboard', scope],
-    queryFn: () => fetchLeaderboard({ among: scope }).catch(() => []),
+    queryFn: () => fetchLeaderboard({ among: scope }),
     staleTime: 2 * 60 * 1000,
   });
 
@@ -99,6 +105,8 @@ export default function LeaderboardScreen() {
         <View style={styles.skeletonWrap}>
           <SkeletonRowList count={7} avatar />
         </View>
+      ) : isError ? (
+        <ErrorState message="Couldn't load the leaderboard" onRetry={() => refetch()} />
       ) : rows.length === 0 ? (
         <EmptyState
           icon="trophy-outline"

@@ -168,10 +168,19 @@ export default function RootLayout() {
               screens that are the actual product moments (opening a place,
               starting to rank it) rather than the default slide-from-right
               every push gets. */}
+          {/* Full-screen camera UI with its own close button -- a native
+              header here would show the raw "record-video" route name
+              stacked above a screen that already has its own close
+              affordance, not just a bad title. */}
+          <Stack.Screen name="record-video/[placeId]" options={{ headerShown: false }} />
           <Stack.Screen name="place/[id]" options={{ title: '', animation: 'fade_from_bottom' }} />
           <Stack.Screen name="rank/[placeId]" options={{ title: 'Rank this place', animation: 'fade_from_bottom' }} />
           <Stack.Screen name="user/[id]" options={{ title: '' }} />
           <Stack.Screen name="profile-setup" options={{ title: 'Set up profile' }} />
+          {/* No title override previously -- expo-router falls back to the
+              raw route name, so this screen's header literally read
+              "add-spot" instead of a real title. */}
+          <Stack.Screen name="add-spot" options={{ title: 'Add a Spot' }} />
           <Stack.Screen name="friends-feed" options={{ title: 'Friends' }} />
           <Stack.Screen name="leaderboard" options={{ title: 'Leaderboard' }} />
           <Stack.Screen name="taste-profile/[userId]" options={{ title: 'Taste Profile' }} />
