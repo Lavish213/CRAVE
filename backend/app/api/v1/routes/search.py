@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from typing import Optional, List
 
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
@@ -138,12 +138,7 @@ def search(
             city_id,
             exc,
         )
-        return SearchResponse(
-            total=0,
-            page=page,
-            page_size=page_size,
-            items=[],
-        )
+        raise HTTPException(status_code=503, detail="Search temporarily unavailable") from exc
 
     # -----------------------------
     # Serialize (safe)
