@@ -38,10 +38,25 @@ SURFACE_CRAVES = "craves"
 # outcome actually happens -- distinct from the surfaces above, which are
 # all "where the place was discovered/displayed".
 SURFACE_PLACE_DETAIL = "place_detail"
+# The Decision Session's 3-card (best_fit/safe_bet/wildcard) home-screen
+# slice -- see docs/decision_session_spec.md. A distinct surface from
+# SURFACE_FEED because a card shown here carries a `decision_role` Feed
+# cards never have, and conflating the two would make it impossible to
+# tell "shown as a Feed row" from "shown as one of the 3 decision cards"
+# in later analysis.
+SURFACE_DECISION_SESSION = "decision_session"
 VALID_SURFACES = {
     SURFACE_FEED, SURFACE_SEARCH, SURFACE_MAP, SURFACE_TRENDING, SURFACE_CRAVES,
-    SURFACE_PLACE_DETAIL,
+    SURFACE_PLACE_DETAIL, SURFACE_DECISION_SESSION,
 }
+
+# Decision Session role values -- see decision_session_builder.py for
+# the selection logic. Kept as a flat string set, same precedent as
+# `surface`/`event_type` above, not an enum column.
+DECISION_ROLE_BEST_FIT = "best_fit"
+DECISION_ROLE_SAFE_BET = "safe_bet"
+DECISION_ROLE_WILDCARD = "wildcard"
+VALID_DECISION_ROLES = {DECISION_ROLE_BEST_FIT, DECISION_ROLE_SAFE_BET, DECISION_ROLE_WILDCARD}
 
 # What happened. click = navigated to place detail. save = added to
 # Craves. rank = completed an "I ate here" comparison. Deliberately not
@@ -185,3 +200,9 @@ class RecommendationEvent(Base, TimestampMixin):
     # this at all. Mirrors PlaceVideo.client_id's exact same pattern for
     # the identical class of problem -- see that model's own comment.
     client_event_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
+    # Which of the 3 Decision Session roles this card was shown/acted on
+    # as -- best_fit/safe_bet/wildcard. Only ever set when
+    # surface=decision_session; every other surface leaves this null.
+    # See docs/decision_session_spec.md.
+    decision_role: Mapped[str | None] = mapped_column(String(16), nullable=True)

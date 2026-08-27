@@ -4986,3 +4986,58 @@ app tree when false -- a normal React render, not a boundary catching a
 crash, since nothing throws anymore.
 
 Full suite: 271 passed, `tsc --noEmit` clean.
+
+## 2026-08-27 — Decision Session backend: best_fit / safe_bet / wildcard 3-card slice
+
+Two independent product passes this session (this repo's own
+`docs/doctrine/`, plus a second AI's audit the user cross-checked
+against it) converged on the same idea: CRAVE's home experience should
+resolve a craving into 3 meaningfully different options with reasons,
+instead of a long list. Scoped the smallest testable slice of that --
+full spec at `docs/decision_session_spec.md` -- and implemented the
+backend half so frontend work (handed off separately) has a frozen
+contract to build against.
+
+New `GET /api/v1/decision-session` endpoint. Reuses, rather than
+reinvents: the exact same candidate-retrieval Layer 1 `/places` uses
+(`list_places_near`/`get_feed_places`/`query_list_places`), and
+`feed_ranker.rank_feed()`'s existing scoring/diversity pass -- a
+Decision Session pick is never contradicted by what Feed itself would
+show for the same location. `feed_ranker.py`'s `_primary_cat`/
+`_explore_boost` made public (`primary_category`/`explore_boost`,
+aliased for internal call sites) so the new builder can reuse the exact
+same category and explore-boost-pool definitions instead of a second,
+possibly-divergent implementation.
+
+New `app/services/decision_session/decision_session_builder.py`:
+best_fit = rank #1 post-diversity; safe_bet = highest-ranked remaining
+candidate with `rank_percentile >= 0.80` (same bar as the "gem" tier)
+from a different category than best_fit; wildcard = highest-ranked
+remaining candidate that already got Feed's own deterministic
+explore-boost, from a still-unused category. Deliberately never pads to
+3 -- a role is only assigned when a real candidate qualifies; an honest
+1-2 card response is correct for a thin catalog area, not an error
+(`degraded: true` flags it).
+
+Ledger: new surface `decision_session` (one-line addition, matches the
+model's own stated extension precedent) and a new nullable
+`decision_role` column on `recommendation_events` (migration
+`b2c3d4e5f6a7`), set only on this surface. No new event_type needed --
+impression/click reused as-is.
+
+Tests: `test_decision_session_builder.py` (9 tests, pure-function, no
+DB -- plain fake Place objects, same precedent as `test_feed_mixer.py`'s
+FakePlace) covers best_fit/safe_bet/wildcard selection, the
+never-reuse-a-place guarantee, and the no-padding degrade path
+independently. `test_decision_session_route.py` (2 tests) confirms the
+route is wired up and serializes through the real `PlaceOut` schema
+without crashing, including the zero-candidate case.
+
+Full suite: 815 passed (was 806), 2 skipped. Migration up/down
+round-trip verified clean on a fresh SQLite built purely via
+`alembic upgrade head`/`downgrade -1` (not conftest's metadata-based
+test DB, which isn't real incremental-migration state).
+
+Frontend not started -- handed off per `docs/decision_session_spec.md`'s
+frozen contract (hook, Feed-screen section, PlaceCard `role` prop,
+Ledger logging, tests).

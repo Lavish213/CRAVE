@@ -20,6 +20,7 @@ from app.db.models.place import Place
 from app.db.models.recommendation_event import (
     EVENT_RANK,
     SURFACE_PLACE_DETAIL,
+    VALID_DECISION_ROLES,
     VALID_EVENT_TYPES,
     VALID_SURFACES,
     RecommendationEvent,
@@ -77,6 +78,9 @@ def build_valid_events(
         session_id = getattr(e, "session_id", None)
         client_event_id = getattr(e, "client_event_id", None)
         search_session_id = getattr(e, "search_session_id", None)
+        decision_role = getattr(e, "decision_role", None)
+        if decision_role not in VALID_DECISION_ROLES:
+            decision_role = None
 
         valid.append(
             RecommendationEvent(
@@ -91,6 +95,7 @@ def build_valid_events(
                 city_id=getattr(e, "city_id", None) or None,
                 client_event_id=(client_event_id or None)[:_MAX_CLIENT_EVENT_ID_LEN] if client_event_id else None,
                 search_session_id=(search_session_id or None)[:_MAX_SEARCH_SESSION_ID_LEN] if search_session_id else None,
+                decision_role=decision_role,
             )
         )
 

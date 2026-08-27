@@ -34,6 +34,11 @@ class RecommendationEventIn(BaseModel):
     # docstring for why this one column now serves both Search and Map
     # despite the name.
     search_session_id: Optional[str] = None
+    # Decision Session role this card was shown/acted on as
+    # (best_fit/safe_bet/wildcard) -- see
+    # app/db/models/recommendation_event.py's VALID_DECISION_ROLES.
+    # Only meaningful when surface="decision_session".
+    decision_role: Optional[str] = None
 
 
 class RecommendationEventBatchIn(BaseModel):

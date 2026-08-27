@@ -140,13 +140,20 @@ def compute_distance_miles(lat1: float, lng1: float, lat2: float, lng2: float) -
 
 # ─── Internal helpers ─────────────────────────────────────────────────────────
 
-def _primary_cat(p: Place) -> str:
+def primary_category(p: Place) -> str:
     """First non-generic category name from place, lowercased. Falls back to '_other'."""
     for c in (p.categories or []):
         name = getattr(c, "name", str(c) or "").lower()
         if name and name not in _GENERIC_CATS:
             return name
     return "_other"
+
+
+# Alias kept for internal call sites in this module -- public name is
+# `primary_category` (used by decision_session_builder.py, which needs
+# the exact same "what category is this place" definition Feed itself
+# uses, not a second, possibly-divergent implementation).
+_primary_cat = primary_category
 
 
 def _prox_score(distance_miles: float) -> float:
@@ -189,7 +196,7 @@ def _quality_bonus(p: Place) -> float:
     return bonus
 
 
-def _explore_boost(p: Place) -> float:
+def explore_boost(p: Place) -> float:
     """
     Deterministic pseudo-random exploration boost.
 
@@ -201,6 +208,11 @@ def _explore_boost(p: Place) -> float:
     - But the distribution feels un-algorithmic
     - Different users see same order (consistent discovery)
     - Near-ties resolve differently than pure id-sort
+
+    Public (not `_`-prefixed): decision_session_builder.py reuses this
+    exact same deterministic pool as its "wildcard" candidate source, so
+    a wildcard pick is never contradicted by what Feed's own explore
+    boost would have surfaced for the same place.
     """
     try:
         crc = zlib.crc32(p.id.encode()) & 0xFFFFFFFF
@@ -212,6 +224,9 @@ def _explore_boost(p: Place) -> float:
     # pct ∈ [0, 14] → map to [EXPLORE_MIN, EXPLORE_MAX]
     t = pct / _EXPLORE_PCT
     return _EXPLORE_MIN + t * (_EXPLORE_MAX - _EXPLORE_MIN)
+
+
+_explore_boost = explore_boost
 
 
 def _chain_penalty(p: Place) -> float:

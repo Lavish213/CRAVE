@@ -15,6 +15,7 @@ from app.api.v1.routes.hitlist import router as hitlist_router
 from app.api.v1.routes.trending import router as trending_router
 from app.api.v1.routes.signals import router as signals_router
 from app.api.v1.routes.recommendations import router as recommendations_router
+from app.api.v1.routes.decision_session import router as decision_session_router
 from app.api.v1.routes.streak import router as streak_router
 
 # -------------------------
@@ -78,6 +79,7 @@ router.include_router(hitlist_router)
 router.include_router(trending_router)
 router.include_router(signals_router)
 router.include_router(recommendations_router)
+router.include_router(decision_session_router)
 router.include_router(streak_router)
 
 router.include_router(saves_router)
