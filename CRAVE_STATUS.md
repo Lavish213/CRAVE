@@ -48,8 +48,10 @@ gate.
   closed (503) until this is set; see `backend/docs/DEBUG_ENDPOINTS.md`.
 - [ ] **Device verification** — these are fixed in code but unconfirmed
   on an actual rebuilt device/simulator: map over-clustering fix,
-  global text-contrast fix, the rank/comparison flow end-to-end, video
-  record→upload→moderation→push pipeline, push notification delivery.
+  global text-contrast fix, signed-out white-on-white fix, the
+  missing-config error screen, the rank/comparison flow end-to-end,
+  video record→upload→moderation→push pipeline, push notification
+  delivery.
 
 ## What's solid right now
 

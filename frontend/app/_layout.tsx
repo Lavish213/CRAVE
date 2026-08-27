@@ -10,6 +10,7 @@ import { useCravesStore } from '../src/stores/cravesStore';
 import { useVideoQueueStore, setActiveUserForVideoSync } from '../src/stores/videoQueueStore';
 import { usePushNotifications } from '../src/hooks/usePushNotifications';
 import { pingStreak } from '../src/api/streak';
+import { isSupabaseConfigured } from '../src/lib/supabase';
 import { Colors, Spacing } from '../src/constants/colors';
 import { ToastContainer } from '../src/components/Toast';
 
@@ -55,6 +56,25 @@ const eb = StyleSheet.create({
   btn: { backgroundColor: Colors.primary, paddingHorizontal: Spacing.lg, paddingVertical: Spacing.sm, borderRadius: 8 },
   btnText: { color: Colors.text, fontWeight: '700', fontSize: 14 },
 });
+
+// Shown instead of the app when EXPO_PUBLIC_SUPABASE_URL/ANON_KEY are
+// missing -- a developer/build-config problem, not something a real user
+// can hit in a correctly configured build. Deliberately plain-language and
+// specific (names the exact env vars and where to set them) since this
+// replaces what used to be an opaque module-load-time crash.
+function ConfigErrorScreen() {
+  return (
+    <View style={eb.container}>
+      <Text style={eb.title}>Configuration error</Text>
+      <Text style={eb.body}>
+        CRAVE can't start: EXPO_PUBLIC_SUPABASE_URL and/or
+        EXPO_PUBLIC_SUPABASE_ANON_KEY are missing. Copy frontend/.env.example
+        to frontend/.env, fill in real values from the Supabase project
+        dashboard, and restart the dev server (or rebuild).
+      </Text>
+    </View>
+  );
+}
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -117,6 +137,10 @@ export default function RootLayout() {
     });
     return () => subscription.remove();
   }, [user?.id]);
+
+  if (!isSupabaseConfigured) {
+    return <ConfigErrorScreen />;
+  }
 
   return (
     <ErrorBoundary>

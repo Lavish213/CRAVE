@@ -4932,3 +4932,57 @@ Not done in this pass (lower priority, no reported problem): the
 FlashList `act()` warning named in the same audit finding wasn't
 separately reproduced or investigated -- nothing in this test run
 surfaced it.
+
+## 2026-08-27 — Fixed signed-out white-on-white screens + the missing-Supabase-config crash
+
+Follow-up on the user's own plan (items #1 and #2): "make every
+signed-out screen usable" and "make startup failures understandable."
+Dispatched a read-only research agent first to confirm both were real,
+reproducible bugs rather than stale audit claims.
+
+**Signed-out white-on-white.** Confirmed real:
+`app/(tabs)/craves.tsx:192-205` and `app/(tabs)/profile.tsx:138-151`'s
+`!user` branches return a bare `<>...</>` Fragment containing only
+`<EmptyState>` -- every other branch in those same files wraps content in
+`<View style={styles.container}>` (`backgroundColor: Colors.background`).
+`EmptyState` itself painted no background, so with no `ThemeProvider` set
+anywhere in the app, React Navigation's bottom-tabs fell back to its own
+`DefaultTheme.colors.background` (`rgb(242,242,242)`, near-white) showing
+through -- `EmptyState`'s title text (`Colors.text` = `#FFFFFF`) rendered
+white-on-near-white, illegible, specifically on this one code path.
+
+Fixed at the component, not the two call sites: added
+`backgroundColor: Colors.background` to `EmptyState`'s own container
+style (`src/components/EmptyState.tsx`). Covers all 10 `EmptyState`
+call sites at once, including two other unwrapped usages the research
+agent flagged in passing (`craves.tsx`'s "true empty" state,
+`friends-feed.tsx`) -- same root cause, same fix, no per-call-site
+wrapping needed going forward.
+
+**Missing-Supabase-config crash.** Confirmed real and worse than it
+sounded: `src/lib/supabase.ts` called `createClient(supabaseUrl ?? '',
+...)` as a top-level module statement. With either
+`EXPO_PUBLIC_SUPABASE_URL` or `EXPO_PUBLIC_SUPABASE_ANON_KEY` unset,
+`createClient`'s constructor throws synchronously
+(`"supabaseUrl is required."` / `"supabaseKey is required."`) --
+*during module evaluation*, before `app/_layout.tsx`'s own function body,
+including its `ErrorBoundary`, ever finishes loading. A React error
+boundary cannot catch an error thrown while a statically-imported module
+is still being evaluated, so the existing `ErrorBoundary` gave zero
+protection against this specific failure -- the app just failed to boot
+with a raw, developer-only error message. (Confirmed pre-existing tests
+already had to work around this exact mechanism by mocking `authStore`'s
+import chain rather than fixing the source -- comments in
+`__tests__/map.test.tsx` and `cravesStore.test.ts` say as much.)
+
+Fixed by removing the throw entirely rather than making the message
+nicer (a nicer message would still crash pre-render): `supabase.ts` now
+falls back to a syntactically-valid placeholder URL/key so
+`createClient()` never throws, and exports `isSupabaseConfigured =
+Boolean(supabaseUrl && supabaseAnonKey)`. `app/_layout.tsx` checks this
+after its hooks and renders a plain-language `ConfigErrorScreen` (names
+the exact two env vars and points at `.env.example`) instead of the real
+app tree when false -- a normal React render, not a boundary catching a
+crash, since nothing throws anymore.
+
+Full suite: 271 passed, `tsc --noEmit` clean.

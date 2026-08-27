@@ -35,6 +35,16 @@ const styles = StyleSheet.create({
     gap: 10,
     paddingHorizontal: 32,
     paddingTop: 60,
+    // Explicit background, not left to whatever wraps this component:
+    // React Navigation's bottom-tabs paint an opaque near-white default
+    // (colors.background from its own DefaultTheme) behind every screen
+    // unless something paints over it first. Callers that return
+    // <EmptyState /> as their entire screen content (e.g. a signed-out
+    // gate) previously had no other element to do that painting, so
+    // this white-text-on-title (Colors.text, #FFFFFF) rendered directly
+    // over that near-white default -- illegible. Painting it here makes
+    // every EmptyState usage safe regardless of what wraps it.
+    backgroundColor: Colors.background,
   },
   title: { color: Colors.text, fontSize: 18, fontWeight: '700', textAlign: 'center' },
   body: { color: Colors.textSecondary, fontSize: 14, textAlign: 'center', lineHeight: 20 },
