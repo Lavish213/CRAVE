@@ -1,5 +1,5 @@
 import { useEffect, Component, ReactNode } from 'react';
-import { AppState, View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { AppState, Platform, View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import * as Notifications from 'expo-notifications';
@@ -103,6 +103,13 @@ export default function RootLayout() {
   // Previously nothing handled a tap at all -- it just opened the app to
   // wherever it already was.
   useEffect(() => {
+    // expo-notifications doesn't implement getLastNotificationResponseAsync()
+    // on web (push notifications aren't a concept there at all -- see
+    // usePushNotifications.ts's own currentPlatform() gate) -- calling it
+    // threw and broke the entire web build, found by the Playwright E2E
+    // smoke suite.
+    if (Platform.OS === 'web') return;
+
     function routeFromNotificationData(data: Record<string, unknown> | undefined) {
       const placeId = data?.placeId;
       if (typeof placeId === 'string' && placeId) {
