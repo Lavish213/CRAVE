@@ -33,7 +33,7 @@ Auth: Supabase (JWKS, ES256).
 ## Test status
 
 Backend: **815 passed, 2 skipped** (`cd backend && python -m pytest -q`).
-Frontend: **279 passed**, `tsc --noEmit` clean (`cd frontend && npx jest`).
+Frontend: **293 passed**, `tsc --noEmit` clean (`cd frontend && npx jest`).
 Both clean as of this commit. CI runs both + a Postgres migration
 round-trip on every push to `main`, not yet a required branch-protection
 gate.
