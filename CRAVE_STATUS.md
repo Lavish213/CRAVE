@@ -83,11 +83,17 @@ gate.
   is this place" — never "is this good for *you*." No taste model, no
   learned ranking exists yet, deliberately — waiting on real usage data
   before building it (see `docs/doctrine/`).
-- **Place Detail reads like a generic listings page** (Yelp-shaped: hero
-  → gallery → menu → everything, in build order) rather than the
-  identity → why-this-fits-you → practical info → menu order the product
-  doctrine calls for. Highest-priority screen with the least design
-  attention — no spec written yet.
+- **Place Detail already went through its redesign** (a real spec exists:
+  `docs/doctrine/CRAVE_PLACE_DETAIL_SPEC.md`; implemented in
+  `app/place/[id].tsx` — hero → identity → decision strip → "why this
+  fits" → primary CTA → actions → menu → social, matching the spec's
+  §3 order). Scored 77/100 confirmed, 79/100 provisional against the
+  doctrine's §33 rubric (was 57 baseline) — short of the spec's 85+
+  target, and every point still open needs an actual screenshot/device
+  look (button-border tap-discoverability, whether the de-boxed "why
+  fits" headline reads right), not more code. See
+  `CRAVE_REMAINING_WORK.md`'s 2026-08-26 "controlled visual-language
+  pass" entry for the full category breakdown.
 - **Craves is a bookmark list**, not yet "resurface saved spots at the
   right time." Video record has no discoverable entry point beyond a
   small chip on Place Detail.
@@ -105,10 +111,9 @@ gate.
 **P0** — Require the 5 CI checks as branch-protection gates on `main`
 (GitHub dashboard setting, not code).
 
-**P1** — Place Detail redesign spec (no code yet, needs the info-order
-decision above). Record-video discoverability (product decision: Feed
-action vs. Place Detail affordance vs. tab). Confirm the food-classifier
-model is actually installed in prod vs. degrading to its fallback path.
+**P1** — Record-video discoverability (product decision: Feed action
+vs. Place Detail affordance vs. tab). Confirm the food-classifier model
+is actually installed in prod vs. degrading to its fallback path.
 Physical-device smoke pass (Auth/Feed/Search/Place Detail/Save/Map/
 Upload/Offline/Push/**Decision Session**).
 
