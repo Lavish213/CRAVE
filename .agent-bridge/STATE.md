@@ -3,7 +3,7 @@
 Status: idle
 Owner: human
 Branch: claude/project-grade-systems-review-4ot7d0
-Base SHA: b97e2831e3ae7bff008df394117cdf9c65c6b4e8
+Base SHA: 13a65416a00f5d120aa86119282f5ea6c7803a2e
 Scope: No active shared task.
 Locked files: none
 Verification plan: Set when a task is claimed.
