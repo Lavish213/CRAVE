@@ -224,6 +224,76 @@ describe('MapScreen — onMapReady / spurious first-region fix', () => {
   });
 });
 
+describe('MapScreen — clustering resolves as you zoom in', () => {
+  // Real bug, confirmed live: MIN_CELL_SIZE_DEG previously floored at
+  // 0.0008 (~70-90m), so 3+ places within that distance of each other
+  // could never be split into individual pins no matter how far a user
+  // zoomed -- pinch or repeated cluster-tap alike, since the cluster-tap
+  // zoom step had its own floor that was hit first. These three points
+  // are ~13-26m apart: close enough to cluster at a city-wide zoom
+  // (longitudeDelta 0.08, cellSize 0.002) but, after the fix, far enough
+  // apart to separate into individual pins once truly zoomed in
+  // (longitudeDelta 0.001, cellSize now 0.00005 -- previously it would
+  // have stayed floored at 0.0008 and kept clustering these three).
+  const NEARBY_A = { ...REAL_FEATURE, id: 'nearby-a', coordinate: { lat: 37.0, lng: -122.0 } };
+  const NEARBY_B = { ...REAL_FEATURE, id: 'nearby-b', coordinate: { lat: 37.0, lng: -121.99985 } };
+  const NEARBY_C = { ...REAL_FEATURE, id: 'nearby-c', coordinate: { lat: 37.0, lng: -121.9997 } };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    animateToRegionMock.mockClear();
+    mapViewProps.current = null;
+    useCityStore.setState({ selectedCity: SF_CITY, cities: [SF_CITY] });
+    mockedFetch.mockResolvedValue([NEARBY_A, NEARBY_B, NEARBY_C]);
+    mockedSavedFetch.mockResolvedValue([]);
+    mockedUseAuthStore.mockImplementation((selector: (s: { user: unknown }) => unknown) =>
+      selector({ user: null }),
+    );
+  });
+
+  it('clusters three nearby places at a city-wide zoom, then splits them into individual pins once zoomed in', async () => {
+    const { getByTestId, queryByTestId } = render(<MapScreen />);
+    await waitFor(() => expect(mockedFetch).toHaveBeenCalledTimes(1));
+
+    // At the default city-wide region, all three fall in one grid cell.
+    expect(getByTestId(/^marker-cluster-/)).toBeTruthy();
+    expect(queryByTestId('marker-nearby-a')).toBeNull();
+    expect(queryByTestId('marker-nearby-b')).toBeNull();
+    expect(queryByTestId('marker-nearby-c')).toBeNull();
+
+    // The very first onRegionChangeComplete after mount is always ignored
+    // (iOS MapKit's own spurious-first-settle quirk -- see the describe
+    // block above) -- consume it with a throwaway value before the real
+    // zoom, matching every other test in this file that simulates a pan.
+    await act(async () => {
+      mapViewProps.current.onRegionChangeComplete({
+        latitude: 37.6, longitude: -122.6, latitudeDelta: 0.018, longitudeDelta: 0.018,
+      });
+      await new Promise((r) => setTimeout(r, 600));
+    });
+
+    // Zoom in to street level.
+    act(() => {
+      mapViewProps.current.onMapReady();
+    });
+    await act(async () => {
+      mapViewProps.current.onRegionChangeComplete({
+        latitude: 37.0,
+        longitude: -122.0,
+        latitudeDelta: 0.001,
+        longitudeDelta: 0.001,
+      });
+      await new Promise((r) => setTimeout(r, 600));
+    });
+
+    // Now separated into three individually tappable pins, not one cluster.
+    expect(queryByTestId(/^marker-cluster-/)).toBeNull();
+    expect(getByTestId('marker-nearby-a')).toBeTruthy();
+    expect(getByTestId('marker-nearby-b')).toBeTruthy();
+    expect(getByTestId('marker-nearby-c')).toBeTruthy();
+  });
+});
+
 describe('MapScreen — "my saved places" toggle', () => {
   const SAVED_FEATURE_A = { ...REAL_FEATURE, id: 'saved-a', coordinate: { lat: 37.79, lng: -122.40 } };
   const SAVED_FEATURE_B = { ...REAL_FEATURE, id: 'saved-b', coordinate: { lat: 37.76, lng: -122.43 } };

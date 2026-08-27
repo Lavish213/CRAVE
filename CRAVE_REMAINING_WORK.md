@@ -4814,3 +4814,39 @@ and the map web fallback) now have dedicated tests.
 
 Full suite: 269 passed (was 260, and 172 at the start of this sweep),
 `tsc --noEmit` clean.
+
+## 2026-08-26 — Map: fixed a real over-clustering bug (places could never be split apart no matter how far you zoomed)
+
+User-reported: "map is over-clustered, can't tap pins." Root-caused, not
+guessed at: `buildClusters`'s grid cell size
+(`Math.max(region.longitudeDelta / 40, MIN_CELL_SIZE_DEG)`) was floored
+at `MIN_CELL_SIZE_DEG = 0.0008` (~70-90m on the ground). That floor
+meant cell size stopped shrinking well before a user finished zooming
+in -- any 3+ places within ~80m of each other (a food hall, a plaza, a
+busy block) could never be split into individual pins, by pinch-zoom or
+repeated cluster-tap alike. The cluster-tap zoom step made it worse: its
+own floor (`0.003`, ~4x bigger than the cell floor) meant tapping a
+cluster hit its own ceiling before ever zooming in far enough for the
+cell floor to matter. Net effect: dense areas of the map permanently
+show generic number-blobs instead of the actual tier-colored place pins,
+with no way to ever resolve them -- what read as "ugly and messy" and
+"can't tap pins" wasn't a tap-registration bug (that one was already
+fixed earlier this session -- `stopPropagation` on the Marker `onPress`
+handlers) but places genuinely having no individual pin to tap.
+
+Fixed: `MIN_CELL_SIZE_DEG` dropped to `0.00005` (~5m -- small enough to
+let cell size keep shrinking to near-nothing at street-level zoom, the
+correct behavior; kept nonzero only to guard a literal zero/near-zero
+`region.longitudeDelta`). Cluster-tap's zoom-step floor extracted to its
+own named constant (`CLUSTER_TAP_MIN_DELTA`) and dropped from `0.003` to
+`0.0004`, so tapping a cluster can actually reach the zoom level where
+de-clustering kicks in instead of stalling first.
+
+New regression test in `map.test.tsx`: three places ~13-26m apart,
+confirmed to render as one cluster at city-wide zoom (`longitudeDelta`
+0.08) and as three separate, individually-tappable markers once zoomed
+to street level (`longitudeDelta` 0.001). Verified the test is real, not
+decorative, by temporarily reverting both constants to their old values
+and confirming it then correctly fails.
+
+Full suite: 270 passed (was 269), `tsc --noEmit` clean.

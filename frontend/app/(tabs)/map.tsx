@@ -59,8 +59,30 @@ const PREFETCH_RADIUS_MULTIPLIER = 1.6;
 
 // Grid cell size clustering constants — cell size scales with the visible
 // longitude span so clustering density adapts to zoom level.
+//
+// MIN_CELL_SIZE_DEG was previously 0.0008 (~70-90m on the ground) as a
+// hard floor -- meant to guard against a pathological near-zero cell
+// size, but in practice it meant cellSize stopped shrinking well before
+// a user finished zooming in, so any 3+ places within ~80m of each other
+// (a food hall, a plaza, a busy block) could never be split into
+// individual pins no matter how far you zoomed, pinch or cluster-tap
+// alike. Confirmed live: this is what read as "over-clustered" and
+// "can't tap pins" -- not a tap-registration bug (see the Marker
+// onPress stopPropagation fix elsewhere in this file), but places
+// genuinely having no individual pin to tap. Dropped to 0.00005
+// (~5m) -- small enough to let cellSize keep shrinking all the way to
+// "basically never clusters at street-level zoom" (the actually correct
+// behavior), while still guarding against a literal zero/near-zero
+// region.longitudeDelta producing a degenerate cell size.
 const MIN_CLUSTER_SIZE = 3;
-const MIN_CELL_SIZE_DEG = 0.0008;
+const MIN_CELL_SIZE_DEG = 0.00005;
+
+// Floor for the region a cluster tap zooms into. Previously 0.003 -- itself
+// ~4x bigger than the old cell-size floor above, so tapping a cluster hit
+// its own ceiling before zooming in far enough for the (now-fixed) cell
+// size to ever matter. Lowered so repeated cluster taps can actually reach
+// street-level separation instead of visibly stalling.
+const CLUSTER_TAP_MIN_DELTA = 0.0004;
 
 const TIER_COLORS: Record<string, string> = {
   elite:   Colors.tierCravePick,
@@ -600,8 +622,8 @@ export default function MapScreen() {
                   const zoomed: Region = {
                     latitude: c.latitude,
                     longitude: c.longitude,
-                    latitudeDelta: Math.max(mapRegion.latitudeDelta / 2.5, 0.003),
-                    longitudeDelta: Math.max(mapRegion.longitudeDelta / 2.5, 0.003),
+                    latitudeDelta: Math.max(mapRegion.latitudeDelta / 2.5, CLUSTER_TAP_MIN_DELTA),
+                    longitudeDelta: Math.max(mapRegion.longitudeDelta / 2.5, CLUSTER_TAP_MIN_DELTA),
                   };
                   programmaticMoveRef.current = true;
                   setMapRegion(zoomed);
