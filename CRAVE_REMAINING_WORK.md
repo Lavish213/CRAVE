@@ -5167,3 +5167,54 @@ Fixed the actual gap (the control layer, not the plumbing):
 Full suite: 293 passed (was 279), `tsc --noEmit` clean. No backend
 changes -- the register/unregister routes already existed; this was
 entirely wiring the frontend to use what was already there correctly.
+
+## 2026-08-27 — Merged PR #50: the actual 5-task implementation, plus a follow-up fix it surfaced
+
+After two rounds of Chat building unrequested agent-collaboration
+infrastructure instead of the assigned CHAT_TASK_BRIEF.md work, PR #50
+(`chat/autonomous-pass-1`) finally delivered it. Reviewed the real diff
+before merging (not just the report) and independently re-ran both
+suites afterward rather than trusting the PR's own numbers:
+
+- **Backend**: `test_push_token_lifecycle.py` (new) verifies the full
+  account-isolation scenario end to end -- register a token for user A,
+  unregister it, register the same token for user B, confirm the row
+  belongs only to B and a push to A afterward reaches zero devices.
+  `places_query.py::list_places` and `search.py`'s search route now
+  re-raise/return 503 on a real query failure instead of silently
+  returning an empty result -- a genuine root-cause fix (the file's own
+  new comment: "returning an empty result here makes a database outage
+  indistinguishable from a healthy catalog with no places").
+- **Frontend**: `profile.tsx`, `taste-profile/[userId].tsx`, and
+  `user/[id].tsx` now distinguish a failed fetch from genuinely-empty
+  data, with real per-section judgment -- stat tiles (follower/
+  following/streak counts) degrade to "—" rather than a full-page
+  error, while rankings and relationship controls get a real
+  `ErrorState` + retry. Exactly the "don't blanket-refactor" judgment
+  the brief asked for.
+- **New Playwright E2E harness** (`frontend/e2e/`) -- 3 smoke journeys
+  (Feed→Detail, Search→Detail, Save→Craves→Detail, the last skipped
+  without seeded test credentials via `CRAVE_E2E_EMAIL`/
+  `CRAVE_E2E_PASSWORD`). Honestly documented real live-run blockers
+  instead of claiming a pass it couldn't back up.
+- Root `requirements.txt` (a separate mirror of `backend/requirements.txt`)
+  still had the stale `<1.0.0` Starlette ceiling this session already
+  fixed in the backend copy -- found while running the full suite,
+  fixed to match.
+
+Independently re-verified after merging: backend 818/818, frontend
+299/299, `tsc --noEmit` clean, Playwright discovers all 3 tests.
+
+**Real bug surfaced as a byproduct, fixed separately**: the E2E harness
+found that `_layout.tsx`'s notification-tap-routing effect (added
+earlier this session) called `Notifications.getLastNotificationResponseAsync()`
+unconditionally, which isn't implemented on Expo web -- breaking the
+entire web build. Chat correctly left `_layout.tsx` untouched (it was
+off-limits per the task brief) and reported the blocker instead of
+working around it. Fixed with a `Platform.OS === 'web'` early return,
+matching `usePushNotifications.ts`'s own existing platform gate.
+
+Also closed out: PR #49 (`chat/github-ai-comments`, a second, heavier
+comment-bot implementation) was left unmerged in favor of the simpler
+`ask-crave.yml` already on `main` from the agent-bridge work -- avoids
+running two competing bot implementations.

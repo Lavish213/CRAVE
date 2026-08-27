@@ -32,8 +32,11 @@ Auth: Supabase (JWKS, ES256).
 
 ## Test status
 
-Backend: **815 passed, 2 skipped** (`cd backend && python -m pytest -q`).
-Frontend: **279 passed**, `tsc --noEmit` clean (`cd frontend && npx jest`).
+Backend: **818 passed, 2 skipped** (`cd backend && python -m pytest -q`).
+Frontend: **299 passed**, `tsc --noEmit` clean (`cd frontend && npx jest`).
+An E2E Playwright smoke suite also exists now (`frontend/e2e/`, 3
+journeys) — not part of the Jest count above, run separately via
+`npx playwright test`; see `frontend/e2e/README.md` for required env vars.
 Both clean as of this commit. CI runs both + a Postgres migration
 round-trip on every push to `main`, not yet a required branch-protection
 gate.
@@ -72,8 +75,13 @@ gate.
   Map, add-spot, place detail, craves, rank flow, useTrending all
   confirmed guarded.
 - Test coverage: every screen has a dedicated test file (grew from 172
-  to 293 tests this pass); dependency audit confirms all 26 current npm
-  audit findings are build-tooling-only, zero runtime-reachable.
+  to 299 tests this pass), plus a Playwright E2E smoke suite (3
+  journeys); dependency audit confirms all 26 current npm audit
+  findings are build-tooling-only, zero runtime-reachable.
+- Profile, Taste Profile, and public-profile screens (and Leaderboard/
+  Friends Feed before them) all distinguish a failed fetch from
+  genuinely-empty data now — no screen in the app silently shows "no
+  data" when the real cause was a request failure.
 - Decision Session shipped end-to-end: `GET /api/v1/decision-session`
   (best_fit/safe_bet/wildcard) plus a Feed "DECIDE NOW" section, built
   jointly (backend by Claude, frontend by Codex against a frozen
@@ -134,9 +142,10 @@ stale here, already landed in an earlier session per
 actually instrument-checking whether it's needed before building — still
 a real decision, not yet made). App Store prep (hosted Privacy Policy
 URL, Apple Developer membership, screenshots — needs the user, not
-buildable by an agent). Visual regression / E2E coverage (currently
-zero — start with 3 journeys: Feed→Detail, Search→Detail,
-Save→Craves→Detail).
+buildable by an agent). ~~Visual regression / E2E coverage~~ — started:
+`frontend/e2e/` has the 3 planned journeys (Feed→Detail, Search→Detail,
+Save→Craves→Detail), not yet run live end-to-end (needs a real API/
+Supabase config and a seeded test account — see `frontend/e2e/README.md`).
 
 **P3** — Taste modeling / learned ranking (after real usage data exists,
 not before). Splitting the flat category taxonomy into real dimensions.
