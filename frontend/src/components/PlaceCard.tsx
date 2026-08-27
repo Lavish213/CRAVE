@@ -10,6 +10,7 @@ import { getTierForPlace, formatPrice, getBadges, percentileCaption, formatDista
 // formatPrice imported for fallback; normalized places already have place.price
 import { TierBadge } from './TierBadge';
 import { Colors, Spacing, Radius, Shadows } from '../constants/colors';
+import { DecisionRole } from '../api/decisionSession';
 
 const SAVE_HIT_SLOP = { top: 8, bottom: 8, left: 8, right: 8 } as const;
 const IMAGE_HEIGHT = 220;
@@ -22,9 +23,17 @@ interface Props {
   onSave: () => void;
   saved: boolean;
   style?: ViewStyle;
+  role?: DecisionRole;
+  reasonCaption?: string;
 }
 
-function PlaceCardImpl({ place, onPress, onPressIn, onSave, saved, style }: Props) {
+const ROLE_LABELS: Record<DecisionRole, string> = {
+  best_fit: 'Best fit',
+  safe_bet: 'Safe bet',
+  wildcard: 'Wildcard',
+};
+
+function PlaceCardImpl({ place, onPress, onPressIn, onSave, saved, style, role, reasonCaption }: Props) {
   const tier = getTierForPlace(place);
   const price = place.price ?? formatPrice(place);
   const badges = getBadges(place);
@@ -88,7 +97,13 @@ function PlaceCardImpl({ place, onPress, onPressIn, onSave, saved, style }: Prop
           </View>
         )}
         <View style={styles.scrimBottom} />
-        <TierBadge tier={tier} style={styles.tierBadge} />
+        {role ? (
+          <View style={styles.roleBadge}>
+            <Text style={styles.roleBadgeText}>{ROLE_LABELS[role]}</Text>
+          </View>
+        ) : (
+          <TierBadge tier={tier} style={styles.tierBadge} />
+        )}
         <TouchableOpacity
           style={styles.saveBtn}
           onPress={handleSave}
@@ -105,6 +120,7 @@ function PlaceCardImpl({ place, onPress, onPressIn, onSave, saved, style }: Prop
 
       <View style={styles.body}>
         <Text style={styles.name} numberOfLines={1}>{place.name}</Text>
+        {reasonCaption ? <Text style={styles.reasonCaption}>{reasonCaption}</Text> : null}
         {percentileLabel ? (
           <Text style={[styles.percentile, { color: tier.color }]}>{percentileLabel}</Text>
         ) : null}
@@ -161,6 +177,16 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.75)',
   },
   tierBadge: { position: 'absolute', top: Spacing.sm, left: Spacing.sm },
+  roleBadge: {
+    position: 'absolute',
+    top: Spacing.sm,
+    left: Spacing.sm,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 5,
+    borderRadius: Radius.pill,
+    backgroundColor: Colors.primary,
+  },
+  roleBadgeText: { color: Colors.background, fontSize: 12, fontWeight: '800' },
   saveBtn: {
     position: 'absolute',
     top: 6,
@@ -172,6 +198,7 @@ const styles = StyleSheet.create({
   body: { padding: Spacing.lg, paddingTop: Spacing.md, gap: Spacing.xs },
   name: { fontSize: 18, fontWeight: '800', color: Colors.text },
   percentile: { fontSize: 12, fontWeight: '700' },
+  reasonCaption: { color: Colors.primary, fontSize: 13, fontWeight: '700' },
   meta: { fontSize: 13, color: Colors.textSecondary },
   badgeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 2 },
   chip: {

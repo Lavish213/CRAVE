@@ -7,7 +7,7 @@
 // against instead of starting blind.
 import { client } from './client';
 
-export type RecommendationSurface = 'feed' | 'search' | 'map' | 'trending' | 'craves' | 'place_detail';
+export type RecommendationSurface = 'feed' | 'search' | 'map' | 'trending' | 'craves' | 'place_detail' | 'decision_session';
 export type RecommendationEventType = 'impression' | 'click' | 'save' | 'unsave' | 'rank';
 
 export interface RecommendationEventInput {
@@ -32,6 +32,8 @@ export interface RecommendationEventInput {
   // searchSessionIdRef for how it's minted; only meaningful when
   // surface='search'.
   search_session_id?: string | null;
+  /** Present only for events emitted by the three-card Decision Session. */
+  decision_role?: 'best_fit' | 'safe_bet' | 'wildcard' | null;
 }
 
 export async function sendRecommendationEvents(

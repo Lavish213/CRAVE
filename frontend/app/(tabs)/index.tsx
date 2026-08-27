@@ -34,6 +34,8 @@ import { SkeletonFeed } from '../../src/components/SkeletonCard';
 import { FilterSheet, FilterState, EMPTY_FILTERS, hasActiveFilters } from '../../src/components/FilterSheet';
 import { useAuthStore } from '../../src/stores/authStore';
 import { AuthSheet } from '../../src/components/AuthSheet';
+import { useDecisionSession } from '../../src/hooks/useDecisionSession';
+import { DecisionReasonCode, DecisionSessionCard } from '../../src/api/decisionSession';
 
 // Radius is fixed for now — UI controls removed until we know what's
 // actually useful to users (was: Walking 0.5mi / Biking 2mi / Close 5mi /
@@ -54,6 +56,19 @@ import { AuthSheet } from '../../src/components/AuthSheet';
 // behavior rather than a handful of test taps -- see
 // CRAVE_REMAINING_WORK.md for the decision record.
 const SHOW_FEED_DISCOVERY_STRIPS = false;
+
+const DECISION_REASON_COPY: Record<DecisionReasonCode, string> = {
+  top_ranked_in_area: 'Top pick near you',
+  high_percentile: 'One of the area’s strongest picks',
+  close_by: 'Close by',
+  underrated_pick: 'An underrated option worth considering',
+  different_cuisine: 'Something different from your other picks',
+};
+
+function decisionReason(card: DecisionSessionCard): string | undefined {
+  const reason = card.reason_codes[0];
+  return reason ? DECISION_REASON_COPY[reason] : undefined;
+}
 
 type FeedRow =
   | { kind: 'header'; tierKey: TierKey; count: number }
@@ -91,6 +106,8 @@ export default function FeedScreen() {
   const userLocation = useLocation();
   const trending = useTrending();
   const recommendations = useRecommendations();
+  const decisionSession = useDecisionSession();
+  const decisionCards = decisionSession.data?.cards ?? [];
 
   const [filterVisible, setFilterVisible] = useState(false);
   const [filters, setFilters] = useState<FilterState>(EMPTY_FILTERS);
@@ -200,6 +217,26 @@ export default function FeedScreen() {
     if (events.length > 0) logRecommendationEvents(events);
   }, [data?.pages.length, selectedCity?.id]);
 
+  const loggedDecisionSetRef = useRef<string | null>(null);
+  useEffect(() => {
+    loggedDecisionSetRef.current = null;
+  }, [selectedCity?.id, userLocation?.lat, userLocation?.lng]);
+  useEffect(() => {
+    if (decisionCards.length === 0) return;
+    const signature = decisionCards.map((card) => `${card.role}:${card.place.id}`).join('|');
+    if (signature === loggedDecisionSetRef.current) return;
+    loggedDecisionSetRef.current = signature;
+    logRecommendationEvents(decisionCards.map((card, position) => ({
+      surface: 'decision_session',
+      event_type: 'impression',
+      place_id: card.place.id,
+      position,
+      rank_percentile: card.place.rank_percentile,
+      city_id: selectedCity?.id ?? null,
+      decision_role: card.role,
+    })));
+  }, [decisionCards, selectedCity?.id]);
+
   // Derived from what's actually loaded, not a global fetchCategories()
   // call -- that previously listed every category in the whole catalog
   // regardless of city, so picking one with zero matches in the current
@@ -263,6 +300,56 @@ export default function FeedScreen() {
   // memoization, buildFeedRows didn't.
   const rows = useMemo(() => buildFeedRows(filteredPlaces), [filteredPlaces]);
 
+  const decisionSection = decisionCards.length > 0 ? (
+    <View style={styles.decisionSection}>
+      <Text style={styles.decisionHeading}>DECIDE NOW</Text>
+      <Text style={styles.decisionSubheading}>Three different ways to answer what should I eat?</Text>
+      {decisionCards.map((card, position) => (
+        <PlaceCard
+          key={`${card.role}-${card.place.id}`}
+          place={card.place}
+          role={card.role}
+          reasonCaption={decisionReason(card)}
+          onPress={() => {
+            logRecommendationEvent({
+              surface: 'decision_session',
+              event_type: 'click',
+              place_id: card.place.id,
+              position,
+              rank_percentile: card.place.rank_percentile,
+              city_id: selectedCity?.id ?? null,
+              decision_role: card.role,
+            });
+            router.push(`/place/${card.place.id}`);
+          }}
+          onPressIn={() => prefetchPlace(card.place.id)}
+          onSave={async () => {
+            if (!user) {
+              setAuthVisible(true);
+              return;
+            }
+            const saveMeta = {
+              surface: 'decision_session' as const,
+              rank_percentile: card.place.rank_percentile,
+              city_id: selectedCity?.id ?? null,
+            };
+            if (isSaved(card.place.id)) {
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+              const err = await removeSave(card.place.id, user.id, saveMeta);
+              toast(err ?? 'Removed from Saves');
+            } else {
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+              const err = await addSave(card.place, user.id, saveMeta);
+              toast(err ?? 'Saved');
+            }
+          }}
+          saved={isSaved(card.place.id)}
+          style={styles.decisionCard}
+        />
+      ))}
+    </View>
+  ) : null;
+
   return (
     <View style={styles.container}>
       <View style={styles.header}>
@@ -304,7 +391,7 @@ export default function FeedScreen() {
         <Animated.View style={[{ flex: 1 }, { opacity: feedOpacity }]}>
           {isError ? (
             <ErrorState message="Couldn't load places" onRetry={() => refetch()} />
-          ) : rows.length === 0 ? (
+          ) : rows.length === 0 && decisionCards.length === 0 ? (
             <EmptyState
               icon="search-outline"
               title="Nothing here yet"
@@ -378,6 +465,7 @@ export default function FeedScreen() {
                   tintColor={Colors.primary}
                 />
               }
+              ListHeaderComponent={decisionSection}
               ListFooterComponent={
                 isFetchingNextPage ? <ActivityIndicator color={Colors.primary} style={styles.listFooter} /> : null
               }
@@ -409,6 +497,20 @@ const styles = StyleSheet.create({
   // so inter-row spacing is applied per-row via rowSpacer below instead.
   list: { paddingHorizontal: Spacing.md, paddingBottom: Spacing.xxl },
   rowSpacer: { marginBottom: Spacing.md },
+  decisionSection: { paddingTop: Spacing.sm, paddingBottom: Spacing.md },
+  decisionHeading: {
+    color: Colors.text,
+    fontSize: 16,
+    fontWeight: '900',
+    letterSpacing: 1.5,
+    marginBottom: Spacing.xs,
+  },
+  decisionSubheading: {
+    color: Colors.textSecondary,
+    fontSize: 13,
+    marginBottom: Spacing.md,
+  },
+  decisionCard: { marginBottom: Spacing.md },
   listFooter: { margin: Spacing.lg },
   skeletonWrap: { flex: 1, paddingHorizontal: 12, paddingTop: 10 },
   header: {
