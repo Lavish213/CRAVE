@@ -35,6 +35,6 @@ const styles = StyleSheet.create({
   },
   top: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, flex: 1 },
   label: { fontSize: 22, fontWeight: '800', color: Colors.text, letterSpacing: 0.3, flex: 1 },
-  count: { fontSize: 13, color: Colors.textMuted, fontWeight: '500' },
-  subtext: { fontSize: 12, color: Colors.textMuted, fontWeight: '400', paddingLeft: Spacing.sm },
+  count: { fontSize: 13, color: Colors.textSecondary, fontWeight: '500' },
+  subtext: { fontSize: 12, color: Colors.textSecondary, fontWeight: '400', paddingLeft: Spacing.sm },
 });

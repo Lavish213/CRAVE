@@ -47,7 +47,7 @@ const styles = StyleSheet.create({
   heading: {
     fontSize: 10,
     fontWeight: '800',
-    color: Colors.textMuted,
+    color: Colors.textSecondary,
     letterSpacing: 1.5,
     paddingHorizontal: Spacing.lg,
     paddingTop: Spacing.sm,

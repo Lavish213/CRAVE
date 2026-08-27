@@ -192,12 +192,12 @@ const styles = StyleSheet.create({
   imageFallbackInitial: {
     fontSize: 64,
     fontWeight: '800',
-    color: Colors.textMuted,
+    color: Colors.textSecondary,
     lineHeight: 72,
   },
   imageFallbackCategory: {
     fontSize: 13,
-    color: Colors.textMuted,
+    color: Colors.textSecondary,
     fontWeight: '500',
     textTransform: 'uppercase',
     letterSpacing: 1,

@@ -337,7 +337,7 @@ export default function CravesScreen() {
                   accessibilityLabel={`Remove ${item.name} from saves`}
                   accessibilityRole="button"
                 >
-                  <Ionicons name="close" size={18} color={Colors.textMuted} />
+                  <Ionicons name="close" size={18} color={Colors.textSecondary} />
                 </TouchableOpacity>
               }
             />
@@ -533,7 +533,7 @@ const styles = StyleSheet.create({
   },
   cravesSub: {
     fontSize: 12,
-    color: Colors.textMuted,
+    color: Colors.textSecondary,
     marginTop: Spacing.xs,
   },
   craveRow: {
@@ -556,7 +556,7 @@ const styles = StyleSheet.create({
   craveMeta: { flex: 1 },
   craveName: { color: Colors.text, fontSize: 14, fontWeight: '600' },
   craveStatusMatched: { fontSize: 12, marginTop: 2, color: Colors.success },
-  craveStatusPending: { fontSize: 12, marginTop: 2, color: Colors.textMuted },
+  craveStatusPending: { fontSize: 12, marginTop: 2, color: Colors.textSecondary },
   craveOpenBtn: {
     padding: 8,
     minWidth: 44,

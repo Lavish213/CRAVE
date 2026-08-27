@@ -7,7 +7,21 @@ export const Colors = {
   surfaceElevated: '#252525',
   border:          '#2A2A2A',
   text:            '#FFFFFF',
-  textSecondary:   '#888888',
+  // Bumped from #888888 (2026-08-26) -- the old value cleared AA-normal
+  // (4.5:1) on `background`/`surface` but fell to 4.32:1 on
+  // `surfaceElevated`, the one surface where it actually mattered most
+  // (see ACCESSIBILITY_CONTRAST_AUDIT.md). #8c8c8c clears 4.5:1 against
+  // all three surfaces (4.56:1 on the tightest, surfaceElevated) with a
+  // 4-unit change invisible as a design shift.
+  textSecondary:   '#8C8C8C',
+  // textMuted (#555555, ~2-2.7:1 against every surface) fails WCAG AA
+  // outright -- never use it for text or informational icons. The one
+  // legitimate remaining use is settings.tsx's two intentionally
+  // *disabled* "Coming soon" rows: WCAG 1.4.3 explicitly exempts inactive
+  // UI components from the contrast minimum, and those rows are paired
+  // with accessibilityState={{disabled:true}}, not relying on color
+  // alone. See ACCESSIBILITY_CONTRAST_AUDIT.md for the full audit this
+  // fix closes out.
   textMuted:       '#555555',
   // Semantic
   success:         '#30D158',

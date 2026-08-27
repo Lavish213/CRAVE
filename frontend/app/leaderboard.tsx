@@ -219,7 +219,7 @@ const styles = StyleSheet.create({
   },
   rowMe: { borderColor: Colors.primary },
   rank: {
-    color: Colors.textMuted,
+    color: Colors.textSecondary,
     fontSize: 16,
     fontWeight: '800',
     minWidth: 28,
@@ -231,8 +231,8 @@ const styles = StyleSheet.create({
   meta: { flex: 1 },
   name: { color: Colors.text, fontSize: 15, fontWeight: '700' },
   you: { color: Colors.primary, fontSize: 12, fontWeight: '800' },
-  handle: { color: Colors.textMuted, fontSize: 12, marginTop: 1 },
+  handle: { color: Colors.textSecondary, fontSize: 12, marginTop: 1 },
   countWrap: { alignItems: 'flex-end' },
   count: { color: Colors.text, fontSize: 17, fontWeight: '800' },
-  countLabel: { color: Colors.textMuted, fontSize: 11 },
+  countLabel: { color: Colors.textSecondary, fontSize: 11 },
 });

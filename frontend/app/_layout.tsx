@@ -51,7 +51,7 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boole
 const eb = StyleSheet.create({
   container: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: Colors.background, padding: Spacing.xl },
   title: { fontSize: 20, fontWeight: '800', color: Colors.text, marginBottom: Spacing.sm },
-  body: { fontSize: 14, color: Colors.textMuted, textAlign: 'center', marginBottom: Spacing.lg },
+  body: { fontSize: 14, color: Colors.textSecondary, textAlign: 'center', marginBottom: Spacing.lg },
   btn: { backgroundColor: Colors.primary, paddingHorizontal: Spacing.lg, paddingVertical: Spacing.sm, borderRadius: 8 },
   btnText: { color: Colors.text, fontWeight: '700', fontSize: 14 },
 });

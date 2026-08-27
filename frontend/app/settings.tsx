@@ -34,7 +34,7 @@ function Row({ icon, label, sublabel, onPress, rightEl, tint }: RowProps) {
         {sublabel ? <Text style={styles.rowSub}>{sublabel}</Text> : null}
       </View>
       {rightEl ?? (
-        onPress ? <Ionicons name="chevron-forward" size={16} color={Colors.textMuted} /> : null
+        onPress ? <Ionicons name="chevron-forward" size={16} color={Colors.textSecondary} /> : null
       )}
     </View>
   );
@@ -269,14 +269,14 @@ const styles = StyleSheet.create({
   },
   tagline: {
     fontSize: 13,
-    color: Colors.textMuted,
+    color: Colors.textSecondary,
     fontWeight: '500',
     marginTop: Spacing.xs,
   },
   sectionTitle: {
     fontSize: 10,
     fontWeight: '800',
-    color: Colors.textMuted,
+    color: Colors.textSecondary,
     letterSpacing: 1.5,
     textTransform: 'uppercase',
     paddingHorizontal: Spacing.lg,
@@ -308,12 +308,12 @@ const styles = StyleSheet.create({
   },
   rowBody: { flex: 1, gap: Spacing.xs },
   rowLabel: { fontSize: 15, fontWeight: '600', color: Colors.text },
-  rowSub: { fontSize: 12, color: Colors.textMuted },
+  rowSub: { fontSize: 12, color: Colors.textSecondary },
   divider: { height: 1, backgroundColor: Colors.border, marginLeft: 56 },
-  version: { fontSize: 13, color: Colors.textMuted, fontWeight: '500' },
+  version: { fontSize: 13, color: Colors.textSecondary, fontWeight: '500' },
   footer: {
     textAlign: 'center',
-    color: Colors.textMuted,
+    color: Colors.textSecondary,
     fontSize: 12,
     fontWeight: '500',
     paddingTop: Spacing.xl,

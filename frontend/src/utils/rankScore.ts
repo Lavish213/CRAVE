@@ -24,7 +24,14 @@ export const TIER_CHOICES: { tier: RankTier; label: string; icon: string }[] = [
 export function tierColor(tier: RankTier): string {
   if (tier === 'liked') return Colors.success;
   if (tier === 'fine') return Colors.warning;
-  return Colors.textMuted;
+  // Was Colors.textMuted (~2-2.7:1 against every surface, fails WCAG AA
+  // outright) -- this return value is rendered as real text color at
+  // every call site (friends-feed/RankedPlaceRow's score text,
+  // rank/[placeId]'s done-tier label, place/[id]'s friend-rank tier and
+  // score dot, taste-profile's disliked-tier count, and the exported
+  // ShareRankCard image's tier badge) -- see
+  // ACCESSIBILITY_CONTRAST_AUDIT.md for the full trace.
+  return Colors.textSecondary;
 }
 
 /** One decimal is the resolution people expect from a 0-10 score. */

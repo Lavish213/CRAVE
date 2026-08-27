@@ -98,7 +98,7 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
   content: { padding: Spacing.xl, paddingBottom: Spacing.xxl * 2 },
   title: { color: Colors.text, fontSize: 26, fontWeight: '800', marginBottom: Spacing.xs },
-  updated: { color: Colors.textMuted, fontSize: 13, marginBottom: Spacing.xl },
+  updated: { color: Colors.textSecondary, fontSize: 13, marginBottom: Spacing.xl },
   h2: { color: Colors.text, fontSize: 17, fontWeight: '700', marginTop: Spacing.xl, marginBottom: Spacing.sm },
   p: { color: Colors.textSecondary, fontSize: 14.5, lineHeight: 21, marginBottom: Spacing.sm },
   li: { flexDirection: 'row', marginBottom: Spacing.sm, paddingRight: Spacing.xs },

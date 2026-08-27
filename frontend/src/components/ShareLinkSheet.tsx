@@ -196,7 +196,7 @@ export function ShareLinkSheet({ visible, onClose, onSubmitted }: Props) {
             <TextInput
               style={styles.input}
               placeholder="https://..."
-              placeholderTextColor={Colors.textMuted}
+              placeholderTextColor={Colors.textSecondary}
               value={url}
               onChangeText={(v) => {
                 setUrl(v);
@@ -219,7 +219,7 @@ export function ShareLinkSheet({ visible, onClose, onSubmitted }: Props) {
             <TextInput
               style={styles.input}
               placeholder="Restaurant name"
-              placeholderTextColor={Colors.textMuted}
+              placeholderTextColor={Colors.textSecondary}
               value={name}
               onChangeText={(v) => {
                 setName(v);

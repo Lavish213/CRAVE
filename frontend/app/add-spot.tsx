@@ -160,7 +160,7 @@ export default function AddSpotScreen() {
   if (state === 'denied') {
     return (
       <View style={styles.centered}>
-        <Ionicons name="location-outline" size={32} color={Colors.textMuted} />
+        <Ionicons name="location-outline" size={32} color={Colors.textSecondary} />
         <Text style={styles.statusText}>
           Location access is needed to find spots near you.
         </Text>
@@ -174,7 +174,7 @@ export default function AddSpotScreen() {
   if (state === 'unauthenticated') {
     return (
       <View style={styles.centered}>
-        <Ionicons name="person-circle-outline" size={32} color={Colors.textMuted} />
+        <Ionicons name="person-circle-outline" size={32} color={Colors.textSecondary} />
         <Text style={styles.statusText}>Sign in to add a new spot.</Text>
         <TouchableOpacity style={styles.retryBtn} onPress={() => setAuthVisible(true)}>
           <Text style={styles.retryLabel}>Sign in</Text>
@@ -187,7 +187,7 @@ export default function AddSpotScreen() {
   if (state === 'error') {
     return (
       <View style={styles.centered}>
-        <Ionicons name="alert-circle-outline" size={32} color={Colors.textMuted} />
+        <Ionicons name="alert-circle-outline" size={32} color={Colors.textSecondary} />
         <Text style={styles.statusText}>Couldn't search nearby spots.</Text>
         <TouchableOpacity style={styles.retryBtn} onPress={run}>
           <Text style={styles.retryLabel}>Try again</Text>
@@ -295,7 +295,7 @@ const styles = StyleSheet.create({
   cardBody: { flex: 1, gap: 2 },
   cardName: { fontSize: 15, fontWeight: '700', color: Colors.text },
   cardAddress: { fontSize: 12, color: Colors.textSecondary },
-  cardDistance: { fontSize: 11, color: Colors.textMuted, marginTop: 2 },
+  cardDistance: { fontSize: 11, color: Colors.textSecondary, marginTop: 2 },
   actionBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -309,5 +309,5 @@ const styles = StyleSheet.create({
   },
   actionBtnDone: { borderColor: Colors.border, opacity: 0.6 },
   actionLabel: { fontSize: 13, fontWeight: '700', color: Colors.text },
-  actionLabelDone: { color: Colors.textMuted },
+  actionLabelDone: { color: Colors.textSecondary },
 });

@@ -59,7 +59,7 @@ export function ImageGallery({ images, gpsVerified, placeName }: Props) {
         accessible
         accessibilityLabel={placeName ? `No photos yet for ${placeName}` : 'No photos yet'}
       >
-        <Ionicons name="camera-outline" size={40} color={Colors.textMuted} />
+        <Ionicons name="camera-outline" size={40} color={Colors.textSecondary} />
         <Text style={styles.noPhotosText}>No photos yet</Text>
       </View>
     );

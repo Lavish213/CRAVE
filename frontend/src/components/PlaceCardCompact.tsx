@@ -111,7 +111,7 @@ const styles = StyleSheet.create({
   thumbFallbackInitial: {
     fontSize: 24,
     fontWeight: '800',
-    color: Colors.textMuted,
+    color: Colors.textSecondary,
   },
   info: { flex: 1, gap: 3 },
   name: { color: Colors.text, fontSize: 15, fontWeight: '600' },

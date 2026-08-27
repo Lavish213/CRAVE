@@ -15,7 +15,7 @@ export default function NotFoundScreen() {
     <>
       <Stack.Screen options={{ title: 'Not Found' }} />
       <View style={styles.container}>
-        <Ionicons name="compass-outline" size={44} color={Colors.textMuted} />
+        <Ionicons name="compass-outline" size={44} color={Colors.textSecondary} />
         <Text style={styles.title}>This page doesn't exist</Text>
         <Text style={styles.body}>
           The link you followed may be broken, or the page may have moved.

@@ -185,7 +185,7 @@ export default function RankPlaceScreen() {
   if (!user) {
     return (
       <View style={styles.centered}>
-        <Ionicons name="person-circle-outline" size={44} color={Colors.textMuted} />
+        <Ionicons name="person-circle-outline" size={44} color={Colors.textSecondary} />
         <Text style={styles.emptyTitle}>Sign in to rank places</Text>
         <Text style={styles.emptyBody}>
           Your rankings are personal — they build your own ordered list.
@@ -386,7 +386,7 @@ export default function RankPlaceScreen() {
               />
             </View>
             <Text style={styles.tierBtnText}>{choice.label}</Text>
-            <Ionicons name="chevron-forward" size={18} color={Colors.textMuted} />
+            <Ionicons name="chevron-forward" size={18} color={Colors.textSecondary} />
           </TouchableOpacity>
         ))}
       </View>
@@ -425,7 +425,7 @@ const styles = StyleSheet.create({
   // Stage 1
   tierScroll: { padding: Spacing.lg, paddingBottom: Spacing.xxl },
   tierEyebrow: {
-    color: Colors.textMuted,
+    color: Colors.textSecondary,
     fontSize: 13,
     fontWeight: '600',
     textTransform: 'uppercase',
@@ -464,7 +464,7 @@ const styles = StyleSheet.create({
   },
   tierBtnText: { flex: 1, color: Colors.text, fontSize: 16, fontWeight: '700' },
   tierFootnote: {
-    color: Colors.textMuted,
+    color: Colors.textSecondary,
     fontSize: 13,
     lineHeight: 19,
     marginTop: Spacing.xl,
@@ -473,12 +473,12 @@ const styles = StyleSheet.create({
   // Stage 2
   compareHeader: { paddingHorizontal: Spacing.lg, paddingTop: Spacing.lg },
   compareTitle: { color: Colors.text, fontSize: 24, fontWeight: '800' },
-  compareSub: { color: Colors.textMuted, fontSize: 13, marginTop: Spacing.xs },
+  compareSub: { color: Colors.textSecondary, fontSize: 13, marginTop: Spacing.xs },
   compareBody: { flex: 1, padding: Spacing.lg, gap: Spacing.sm },
   vsRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md },
   vsLine: { flex: 1, height: 1, backgroundColor: Colors.border },
   vsText: {
-    color: Colors.textMuted,
+    color: Colors.textSecondary,
     fontSize: 12,
     fontWeight: '800',
     letterSpacing: 1,
@@ -489,7 +489,7 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.sm,
     minHeight: 40,
   },
-  skipBtnText: { color: Colors.textMuted, fontSize: 13, fontWeight: '600' },
+  skipBtnText: { color: Colors.textSecondary, fontSize: 13, fontWeight: '600' },
   busyOverlay: {
     ...StyleSheet.absoluteFillObject,
     alignItems: 'center',
@@ -511,7 +511,7 @@ const styles = StyleSheet.create({
   },
   scoreValue: { color: Colors.text, fontSize: 56, fontWeight: '800', lineHeight: 60 },
   scoreOutOf: {
-    color: Colors.textMuted,
+    color: Colors.textSecondary,
     fontSize: 11,
     fontWeight: '600',
     letterSpacing: 0.8,

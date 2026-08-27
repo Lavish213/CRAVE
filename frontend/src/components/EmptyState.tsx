@@ -15,7 +15,7 @@ interface Props {
 export function EmptyState({ icon = 'search-outline', title, body, ctaLabel, onCta }: Props) {
   return (
     <View style={styles.container}>
-      <Ionicons name={icon} size={44} color={Colors.textMuted} />
+      <Ionicons name={icon} size={44} color={Colors.textSecondary} />
       <Text style={styles.title}>{title}</Text>
       {body ? <Text style={styles.body}>{body}</Text> : null}
       {ctaLabel && onCta ? (

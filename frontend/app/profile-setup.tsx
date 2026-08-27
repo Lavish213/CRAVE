@@ -107,7 +107,7 @@ export default function ProfileSetupScreen() {
       ? Colors.success
       : availability === 'taken' || availability === 'invalid'
         ? Colors.error
-        : Colors.textMuted;
+        : Colors.textSecondary;
 
   return (
     <KeyboardAvoidingView
@@ -133,11 +133,11 @@ export default function ProfileSetupScreen() {
               autoFocus
               maxLength={20}
               placeholder="yourname"
-              placeholderTextColor={Colors.textMuted}
+              placeholderTextColor={Colors.textSecondary}
               accessibilityLabel="Username"
             />
             {availability === 'checking' ? (
-              <ActivityIndicator size="small" color={Colors.textMuted} />
+              <ActivityIndicator size="small" color={Colors.textSecondary} />
             ) : availability === 'available' ? (
               <Ionicons name="checkmark-circle" size={20} color={Colors.success} />
             ) : availability === 'taken' || availability === 'invalid' ? (
@@ -156,7 +156,7 @@ export default function ProfileSetupScreen() {
               onChangeText={setDisplayName}
               maxLength={60}
               placeholder="How your name shows up"
-              placeholderTextColor={Colors.textMuted}
+              placeholderTextColor={Colors.textSecondary}
               accessibilityLabel="Display name"
             />
           </View>
@@ -200,7 +200,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.md,
     minHeight: 50,
   },
-  at: { color: Colors.textMuted, fontSize: 16, fontWeight: '700' },
+  at: { color: Colors.textSecondary, fontSize: 16, fontWeight: '700' },
   input: { flex: 1, color: Colors.text, fontSize: 16, paddingVertical: 12 },
   hint: { fontSize: 12, marginTop: 2 },
   error: { color: Colors.error, fontSize: 13 },

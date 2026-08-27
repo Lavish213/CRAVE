@@ -187,7 +187,7 @@ const styles = StyleSheet.create({
   scroll: { flexGrow: 0 },
   scrollContent: { padding: Spacing.lg },
   sectionLabel: {
-    color: Colors.textMuted,
+    color: Colors.textSecondary,
     fontSize: 10,
     fontWeight: '800',
     letterSpacing: 1.5,

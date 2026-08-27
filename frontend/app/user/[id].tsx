@@ -242,7 +242,7 @@ export default function UserProfileScreen() {
 
       {blocked ? (
         <View style={styles.blockedNotice}>
-          <Ionicons name="ban-outline" size={20} color={Colors.textMuted} />
+          <Ionicons name="ban-outline" size={20} color={Colors.textSecondary} />
           <Text style={styles.blockedNoticeText}>
             You've blocked @{profile.username}. Their activity is hidden from you.
           </Text>
@@ -285,7 +285,7 @@ export default function UserProfileScreen() {
               <Text style={styles.tasteProfileLinkText}>
                 {isSelf ? 'Your Taste Profile' : 'Taste Profile'}
               </Text>
-              <Ionicons name="chevron-forward" size={16} color={Colors.textMuted} />
+              <Ionicons name="chevron-forward" size={16} color={Colors.textSecondary} />
             </TouchableOpacity>
           )}
 
@@ -333,7 +333,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.surfaceElevated,
   },
   blockedNoticeText: {
-    color: Colors.textMuted,
+    color: Colors.textSecondary,
     fontSize: 13,
     textAlign: 'center',
     paddingHorizontal: Spacing.lg,
@@ -345,7 +345,7 @@ const styles = StyleSheet.create({
   avatarInitial: { color: Colors.text, fontSize: 26, fontWeight: '800' },
   headerMeta: { flex: 1 },
   displayName: { color: Colors.text, fontSize: 20, fontWeight: '800' },
-  username: { color: Colors.textMuted, fontSize: 14, marginTop: 1 },
+  username: { color: Colors.textSecondary, fontSize: 14, marginTop: 1 },
   followsYou: { color: Colors.textSecondary, fontSize: 12, marginTop: Spacing.xs, fontWeight: '600' },
   bio: { color: Colors.textSecondary, fontSize: 14, lineHeight: 20 },
   followBtn: {
@@ -371,6 +371,6 @@ const styles = StyleSheet.create({
     marginTop: Spacing.sm,
   },
   tasteProfileLinkText: { flex: 1, color: Colors.primary, fontSize: 14, fontWeight: '700' },
-  emptyText: { color: Colors.textMuted, fontSize: 14 },
+  emptyText: { color: Colors.textSecondary, fontSize: 14 },
   list: { gap: Spacing.sm },
 });

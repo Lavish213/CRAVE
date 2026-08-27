@@ -4850,3 +4850,36 @@ decorative, by temporarily reverting both constants to their old values
 and confirming it then correctly fails.
 
 Full suite: 270 passed (was 269), `tsc --noEmit` clean.
+
+## 2026-08-26 — Fixed the global `Colors.textMuted` contrast gap audited earlier this session
+
+While waiting on a device rebuild to verify the map fix, picked up the
+already-scoped `textMuted` contrast fix (full audit:
+`frontend/docs/ACCESSIBILITY_CONTRAST_AUDIT.md`) since it needed no
+device/simulator to verify -- pure color math plus the existing test
+suite.
+
+Turned out simpler than the audit's own four-item list: one token
+change, not two. Bumped `Colors.textSecondary` from `#888888` to
+`#8C8C8C` -- clears AA-normal (4.5:1) against all three surfaces now,
+including `surfaceElevated` (4.56:1, was 4.32:1), the one that
+previously fell short. No surface-aware second token needed.
+
+Then: replaced every real-text/icon `Colors.textMuted` usage (~30 files)
+with `Colors.textSecondary` via a scripted sweep; fixed `rankScore.ts`'s
+`tierColor()` (`'disliked'` branch returned `Colors.textMuted` directly,
+feeding real text at 6 call sites across 5 files -- the audit's single
+highest-value finding, since it closed the `place/[id].tsx` gap the
+earlier local fix didn't cover, plus the exported `ShareRankCard`
+image); removed `place/[id].tsx`'s now-redundant local `QUIET_TEXT`
+workaround entirely (it was already `= Colors.textSecondary`). Left
+`settings.tsx`'s two `Colors.textMuted` usages untouched on purpose --
+both are non-interactive "Coming soon" rows (no `onPress`, nothing to
+attach `accessibilityState` to), and WCAG 1.4.3 explicitly exempts
+inactive UI components from the contrast minimum. Confirmed via grep
+these are the only `Colors.textMuted` references left anywhere in the
+app.
+
+Full suite: 270 passed (unchanged count -- a color-value change, not new
+behavior), `tsc --noEmit` clean. No test asserted an exact hex value for
+any of this, so nothing needed updating on the test side.

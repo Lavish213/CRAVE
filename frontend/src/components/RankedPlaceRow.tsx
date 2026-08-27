@@ -47,7 +47,7 @@ function RankedPlaceRowImpl({
         />
       ) : (
         <View style={[styles.thumb, styles.thumbFallback]}>
-          <Ionicons name="restaurant" size={18} color={Colors.textMuted} />
+          <Ionicons name="restaurant" size={18} color={Colors.textSecondary} />
         </View>
       )}
 
@@ -103,7 +103,7 @@ const styles = StyleSheet.create({
     borderColor: Colors.border,
   },
   position: {
-    color: Colors.textMuted,
+    color: Colors.textSecondary,
     fontSize: 15,
     fontWeight: '800',
     minWidth: 24,
@@ -117,7 +117,7 @@ const styles = StyleSheet.create({
   },
   meta: { flex: 1 },
   name: { color: Colors.text, fontSize: 15, fontWeight: '700' },
-  note: { color: Colors.textMuted, fontSize: 12, marginTop: 2 },
+  note: { color: Colors.textSecondary, fontSize: 12, marginTop: 2 },
   scorePill: {
     paddingHorizontal: Spacing.sm,
     paddingVertical: 4,

@@ -183,11 +183,11 @@ export default function SearchScreen() {
       <View style={styles.bar}>
         <View style={styles.barRow}>
           <View style={[styles.inputRow, styles.inputRowFlex]}>
-            <Ionicons name="search" size={16} color={Colors.textMuted} style={styles.searchIcon} />
+            <Ionicons name="search" size={16} color={Colors.textSecondary} style={styles.searchIcon} />
             <TextInput
               style={styles.input}
               placeholder="Search places, cuisines…"
-              placeholderTextColor={Colors.textMuted}
+              placeholderTextColor={Colors.textSecondary}
               value={query}
               onChangeText={handleChange}
               returnKeyType="search"
@@ -202,7 +202,7 @@ export default function SearchScreen() {
                 accessibilityLabel="Clear search"
                 accessibilityRole="button"
               >
-                <Ionicons name="close-circle" size={18} color={Colors.textMuted} />
+                <Ionicons name="close-circle" size={18} color={Colors.textSecondary} />
               </TouchableOpacity>
             )}
           </View>
@@ -275,7 +275,7 @@ export default function SearchScreen() {
             // useTrending.ts) rendered a totally blank area here,
             // indistinguishable from a stuck load.
             <View style={styles.loadingRow}>
-              <Ionicons name="flame-outline" size={22} color={Colors.textMuted} />
+              <Ionicons name="flame-outline" size={22} color={Colors.textSecondary} />
               <Text style={[styles.hintText, styles.emptyTrendingText]}>
                 Pick a city to see what's trending, or start typing to search everywhere.
               </Text>
@@ -393,9 +393,9 @@ const styles = StyleSheet.create({
   },
   searchIcon: { marginRight: 2 },
   input: { flex: 1, color: Colors.text, fontSize: 15 },
-  cityContext: { color: Colors.textMuted, fontSize: 12, fontWeight: '500', paddingLeft: Spacing.xs },
+  cityContext: { color: Colors.textSecondary, fontSize: 12, fontWeight: '500', paddingLeft: Spacing.xs },
   loadingRow: { paddingVertical: 20, alignItems: 'center', gap: Spacing.sm },
-  hintText: { color: Colors.textMuted, fontSize: 13 },
+  hintText: { color: Colors.textSecondary, fontSize: 13 },
   emptyTrendingText: { textAlign: 'center', paddingHorizontal: Spacing.xl },
   // FlashList's contentContainerStyle doesn't reliably support `gap`
   // (unlike FlatList) -- https://github.com/Shopify/flash-list/issues/2097 --
@@ -415,5 +415,5 @@ const styles = StyleSheet.create({
     letterSpacing: 1.5,
     paddingBottom: Spacing.sm,
   },
-  resultCount: { color: Colors.textMuted, fontSize: 11, fontWeight: '700', textTransform: 'uppercase', paddingBottom: Spacing.sm },
+  resultCount: { color: Colors.textSecondary, fontSize: 11, fontWeight: '700', textTransform: 'uppercase', paddingBottom: Spacing.sm },
 });

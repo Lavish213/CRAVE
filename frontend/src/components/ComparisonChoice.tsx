@@ -64,7 +64,7 @@ export function ComparisonChoice({
         />
       ) : (
         <View style={[StyleSheet.absoluteFill, styles.fallback]}>
-          <Ionicons name="restaurant" size={36} color={Colors.textMuted} />
+          <Ionicons name="restaurant" size={36} color={Colors.textSecondary} />
         </View>
       )}
 

@@ -17,7 +17,7 @@ import { Colors, Spacing } from '../../src/constants/colors';
 export default function MapScreenWebFallback() {
   return (
     <View style={styles.container}>
-      <Ionicons name="map-outline" size={40} color={Colors.textMuted} />
+      <Ionicons name="map-outline" size={40} color={Colors.textSecondary} />
       <Text style={styles.title}>Map isn't available in the browser preview</Text>
       <Text style={styles.body}>
         Open CRAVE on iOS or Android to see the map — this tab needs native
@@ -37,5 +37,5 @@ const styles = StyleSheet.create({
     gap: Spacing.sm,
   },
   title: { fontSize: 16, fontWeight: '700', color: Colors.text, textAlign: 'center' },
-  body: { fontSize: 14, color: Colors.textMuted, textAlign: 'center', lineHeight: 20 },
+  body: { fontSize: 14, color: Colors.textSecondary, textAlign: 'center', lineHeight: 20 },
 });

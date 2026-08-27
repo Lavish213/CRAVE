@@ -1,10 +1,14 @@
 # `Colors.textMuted` contrast audit
 
-Audit only — no code changed by this pass. Logged per the standing
-instruction to fix this via a full consumer audit before touching the
-global token (Place Detail's visual pass already worked around it locally
-with a screen-scoped `QUIET_TEXT` constant; that fix is *not* touched or
-undone here).
+**Status: fixed (2026-08-26), after this audit.** Everything below this
+line is the original audit (kept for the record of what was found and
+why); see the bottom of this file for what the actual fix did.
+
+Audit only at the time this was written — no code changed by this pass.
+Logged per the standing instruction to fix this via a full consumer audit
+before touching the global token (Place Detail's visual pass already
+worked around it locally with a screen-scoped `QUIET_TEXT` constant; that
+fix was not touched or undone by the audit itself).
 
 ## Measured contrast (WCAG 2.1 relative-luminance formula)
 
@@ -160,3 +164,47 @@ user their own or a friend's rank outcome — not decorative chrome.
 Nothing above requires a design decision beyond "which token wins on
 which surface" — this is scoped enough to implement directly once you
 want it done, not something that needs product judgment calls first.
+
+## The actual fix (2026-08-26)
+
+Simpler than the four-item list above turned out to require, once it
+came time to implement:
+
+1. **One token change, not two.** Bumped `Colors.textSecondary` from
+   `#888888` to `#8C8C8C` — a 4-unit change, invisible as a design shift.
+   Recomputed contrast: 5.89:1 on `background`, 5.18:1 on `surface`,
+   **4.56:1 on `surfaceElevated`** (was 4.32:1, the one surface that
+   previously fell short of AA-normal's 4.5:1). No second/surface-aware
+   token needed — one value now clears AA everywhere.
+2. Replaced every real-text and icon `Colors.textMuted` usage (buckets
+   A/B/C from the audit above) with `Colors.textSecondary` across all ~30
+   consumer files, via a scripted sweep (not by hand file-by-file) —
+   verified via `grep` that nothing was missed and via the full test
+   suite that nothing broke.
+3. **Fixed `tierColor()` in `rankScore.ts`** — the audit's single
+   highest-value finding. Its `'disliked'` branch returned
+   `Colors.textMuted` directly, feeding real rendered text at 6 call
+   sites across 5 files. Changed to `Colors.textSecondary`, closing all 6
+   at once — including the `place/[id].tsx` gap the earlier local
+   `QUIET_TEXT` fix didn't cover, and the exported `ShareRankCard` image.
+4. **Removed `place/[id].tsx`'s local `QUIET_TEXT` workaround entirely**
+   (it was already `= Colors.textSecondary`) now that the global token is
+   safe — no reason to keep a screen-local alias around once the thing it
+   was working around is fixed.
+5. **Left `settings.tsx`'s two `Colors.textMuted` usages untouched, on
+   purpose.** Both are the "Notifications"/"Rate CRAVE" **non-interactive**
+   "Coming soon" rows (no `onPress` at all — not just visually disabled,
+   there's no button here to attach `accessibilityState` to). WCAG 1.4.3
+   explicitly exempts inactive UI components from the contrast minimum;
+   inventing a `textDisabled` token for two rows that already read as
+   "not a real control" wasn't worth it. Genuinely re-checked this wasn't
+   just an excuse to skip work — these two are the only remaining
+   `Colors.textMuted` references anywhere in the app (confirmed by grep).
+6. Icons and placeholders (buckets B/C) took the same replacement as
+   surrounding text — no separate treatment needed once the token itself
+   was fixed.
+
+Verified: full suite 270/270 passing (unchanged count — this was a
+color-value change, not new behavior), `tsc --noEmit` clean. No test
+asserted an exact hex value for any of these, so nothing needed updating
+on the test side.

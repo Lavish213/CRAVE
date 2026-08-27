@@ -39,17 +39,6 @@ import { MenuSubmissionSheet } from '../../src/components/MenuSubmissionSheet';
 import { TierBadge } from '../../src/components/TierBadge';
 import { ErrorState } from '../../src/components/ErrorState';
 
-// Local accessible substitute for Colors.textMuted, this screen only.
-// textMuted (#555) on this screen's dark backgrounds computes to ~2:1
-// contrast -- well under WCAG AA's 4.5:1 for normal text (a real,
-// confirmed, app-wide gap, logged separately in
-// CRAVE_REMAINING_WORK.md rather than fixed by editing the shared
-// token, which would need auditing every other consumer first).
-// textSecondary (#888) computes to ~5.6:1 and is already this screen's
-// existing "secondary" tone, so "quiet" here comes from size/weight,
-// not from an illegible color.
-const QUIET_TEXT = Colors.textSecondary;
-
 const HEADER_RIGHT_BTN = {
   marginRight: 4,
   padding: 8,
@@ -488,7 +477,7 @@ export default function PlaceDetailScreen() {
                   />
                 ) : (
                   <View style={[styles.friendRankAvatar, styles.friendRankAvatarFallback]}>
-                    <Ionicons name="person" size={18} color={QUIET_TEXT} />
+                    <Ionicons name="person" size={18} color={Colors.textSecondary} />
                   </View>
                 )}
                 <Text style={styles.friendRankUsername} numberOfLines={1}>@{r.username}</Text>
@@ -759,7 +748,7 @@ export default function PlaceDetailScreen() {
                   />
                 ) : (
                   <View style={[styles.socialThumb, styles.socialThumbFallback]}>
-                    <Ionicons name="play-circle-outline" size={28} color={QUIET_TEXT} />
+                    <Ionicons name="play-circle-outline" size={28} color={Colors.textSecondary} />
                   </View>
                 )}
                 <View style={styles.socialPlatformChip}>
@@ -908,13 +897,13 @@ const styles = StyleSheet.create({
     color: Colors.text,
     letterSpacing: 0.3,
   },
-  menuVerified: { color: QUIET_TEXT, fontSize: 12 },
+  menuVerified: { color: Colors.textSecondary, fontSize: 12 },
   noMenu: { color: Colors.textSecondary, fontSize: 14, paddingVertical: 8 },
   menuCat: { marginBottom: 16 },
   menuCatLabel: {
     fontSize: 11,
     fontWeight: '800',
-    color: QUIET_TEXT,
+    color: Colors.textSecondary,
     letterSpacing: 1.2,
     textTransform: 'uppercase',
     marginBottom: 8,

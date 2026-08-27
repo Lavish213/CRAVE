@@ -124,7 +124,7 @@ export function MapBottomSheet({ feature, onOpen, onClose }: Props) {
         accessibilityLabel="Close"
         accessibilityRole="button"
       >
-        <Ionicons name="close" size={18} color={Colors.textMuted} />
+        <Ionicons name="close" size={18} color={Colors.textSecondary} />
       </TouchableOpacity>
 
       <TouchableOpacity
@@ -144,7 +144,7 @@ export function MapBottomSheet({ feature, onOpen, onClose }: Props) {
           />
         ) : (
           <View style={[styles.thumb, styles.thumbFallback]}>
-            <Ionicons name="restaurant" size={24} color={Colors.textMuted} />
+            <Ionicons name="restaurant" size={24} color={Colors.textSecondary} />
           </View>
         )}
         <View style={styles.meta}>
@@ -154,7 +154,7 @@ export function MapBottomSheet({ feature, onOpen, onClose }: Props) {
             <Text style={styles.category}>{feature.category}</Text>
           ) : null}
         </View>
-        <Ionicons name="chevron-forward" size={18} color={Colors.textMuted} />
+        <Ionicons name="chevron-forward" size={18} color={Colors.textSecondary} />
       </TouchableOpacity>
     </Animated.View>
   );

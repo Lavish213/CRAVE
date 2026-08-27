@@ -342,7 +342,7 @@ export function AuthSheet({ visible, onClose, reason = 'default' }: Props) {
                   value={email}
                   onChangeText={setEmail}
                   placeholder="Email"
-                  placeholderTextColor={Colors.textMuted}
+                  placeholderTextColor={Colors.textSecondary}
                   autoCapitalize="none"
                   autoCorrect={false}
                   keyboardType="email-address"
@@ -357,7 +357,7 @@ export function AuthSheet({ visible, onClose, reason = 'default' }: Props) {
                   value={password}
                   onChangeText={setPassword}
                   placeholder="Password"
-                  placeholderTextColor={Colors.textMuted}
+                  placeholderTextColor={Colors.textSecondary}
                   secureTextEntry
                   autoCapitalize="none"
                   autoCorrect={false}
@@ -512,7 +512,7 @@ const styles = StyleSheet.create({
   dividerText: {
     fontSize: 12,
     fontWeight: '600',
-    color: Colors.textMuted,
+    color: Colors.textSecondary,
   },
   field: {
     backgroundColor: Colors.background,
@@ -538,7 +538,7 @@ const styles = StyleSheet.create({
   },
   legal: {
     textAlign: 'center',
-    color: Colors.textMuted,
+    color: Colors.textSecondary,
     fontSize: 12,
     marginTop: Spacing.lg,
     paddingHorizontal: Spacing.xl,

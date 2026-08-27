@@ -222,7 +222,7 @@ const styles = StyleSheet.create({
     borderColor: Colors.border,
   },
   heroValue: { color: Colors.text, fontSize: 24, fontWeight: '800' },
-  heroLabel: { color: Colors.textMuted, fontSize: 12, marginTop: 2, fontWeight: '600' },
+  heroLabel: { color: Colors.textSecondary, fontSize: 12, marginTop: 2, fontWeight: '600' },
   section: { gap: Spacing.sm },
   sectionLabel: {
     color: Colors.primary,
@@ -241,7 +241,7 @@ const styles = StyleSheet.create({
     borderColor: Colors.border,
   },
   tierCount: { fontSize: 20, fontWeight: '800' },
-  tierLabel: { color: Colors.textMuted, fontSize: 11, marginTop: 2, fontWeight: '600' },
+  tierLabel: { color: Colors.textSecondary, fontSize: 11, marginTop: 2, fontWeight: '600' },
   card: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -253,6 +253,6 @@ const styles = StyleSheet.create({
     borderColor: Colors.border,
   },
   cardMeta: { flex: 1 },
-  cardLabel: { color: Colors.textMuted, fontSize: 12, fontWeight: '600' },
+  cardLabel: { color: Colors.textSecondary, fontSize: 12, fontWeight: '600' },
   cardValue: { color: Colors.text, fontSize: 16, fontWeight: '700', marginTop: 2 },
 });

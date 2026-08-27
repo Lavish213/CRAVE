@@ -320,7 +320,7 @@ const styles = StyleSheet.create({
   avatarInitial: { color: Colors.text, fontSize: 26, fontWeight: '800' },
   headerMeta: { flex: 1 },
   displayName: { color: Colors.text, fontSize: 20, fontWeight: '800' },
-  username: { color: Colors.textMuted, fontSize: 14, marginTop: 1 },
+  username: { color: Colors.textSecondary, fontSize: 14, marginTop: 1 },
   bio: { color: Colors.textSecondary, fontSize: 13, marginTop: Spacing.xs, lineHeight: 18 },
   gearBtn: { padding: Spacing.sm, minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
 
@@ -336,7 +336,7 @@ const styles = StyleSheet.create({
   },
   statValueRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   statValue: { color: Colors.text, fontSize: 22, fontWeight: '800' },
-  statLabel: { color: Colors.textMuted, fontSize: 12, marginTop: 2 },
+  statLabel: { color: Colors.textSecondary, fontSize: 12, marginTop: 2 },
 
   headline: { color: Colors.text, fontSize: 17, fontWeight: '700', lineHeight: 23 },
 

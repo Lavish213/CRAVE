@@ -153,7 +153,7 @@ export default function FriendsFeedScreen() {
                 </Text>
               </View>
             ) : (
-              <Ionicons name="person-add-outline" size={16} color={Colors.textMuted} />
+              <Ionicons name="person-add-outline" size={16} color={Colors.textSecondary} />
             )}
           </TouchableOpacity>
         );
@@ -186,7 +186,7 @@ const styles = StyleSheet.create({
   text: { color: Colors.textSecondary, fontSize: 14, lineHeight: 19 },
   actor: { color: Colors.text, fontWeight: '700' },
   subject: { color: Colors.text, fontWeight: '700' },
-  time: { color: Colors.textMuted, fontSize: 12, marginTop: 2 },
+  time: { color: Colors.textSecondary, fontSize: 12, marginTop: 2 },
   scorePill: {
     paddingHorizontal: Spacing.sm,
     paddingVertical: 4,

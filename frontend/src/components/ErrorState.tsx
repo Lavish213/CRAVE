@@ -12,7 +12,7 @@ interface Props {
 export function ErrorState({ message = "Couldn't load that.", onRetry }: Props) {
   return (
     <View style={styles.container}>
-      <Ionicons name="cloud-offline-outline" size={40} color={Colors.textMuted} />
+      <Ionicons name="cloud-offline-outline" size={40} color={Colors.textSecondary} />
       <Text style={styles.message}>{message}</Text>
       {onRetry && (
         <TouchableOpacity style={styles.retryBtn} onPress={onRetry} activeOpacity={0.75} accessibilityRole="button" accessibilityLabel="Try again">

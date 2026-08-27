@@ -84,7 +84,7 @@ export function ReportPhotoSheet({ visible, imageId, onClose, onReported }: Prop
               {submitting === option.value ? (
                 <ActivityIndicator size="small" color={Colors.primary} />
               ) : (
-                <Ionicons name="chevron-forward" size={16} color={Colors.textMuted} />
+                <Ionicons name="chevron-forward" size={16} color={Colors.textSecondary} />
               )}
             </TouchableOpacity>
           ))}

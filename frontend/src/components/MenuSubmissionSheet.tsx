@@ -180,7 +180,7 @@ export function MenuSubmissionSheet({ visible, placeId, onClose, onSubmitted }: 
                     accessibilityLabel={`Remove item ${idx + 1}`}
                     style={styles.removeBtn}
                   >
-                    <Ionicons name="trash-outline" size={16} color={Colors.textMuted} />
+                    <Ionicons name="trash-outline" size={16} color={Colors.textSecondary} />
                   </TouchableOpacity>
                 ) : null}
               </View>
@@ -188,7 +188,7 @@ export function MenuSubmissionSheet({ visible, placeId, onClose, onSubmitted }: 
               <TextInput
                 style={styles.input}
                 placeholder="Item name (e.g. Cheeseburger)"
-                placeholderTextColor={Colors.textMuted}
+                placeholderTextColor={Colors.textSecondary}
                 value={item.name}
                 onChangeText={(v) => updateItem(item.key, { name: v })}
                 editable={!submitting}
@@ -199,7 +199,7 @@ export function MenuSubmissionSheet({ visible, placeId, onClose, onSubmitted }: 
                 <TextInput
                   style={[styles.input, styles.inputHalf]}
                   placeholder="Category (optional)"
-                  placeholderTextColor={Colors.textMuted}
+                  placeholderTextColor={Colors.textSecondary}
                   value={item.category}
                   onChangeText={(v) => updateItem(item.key, { category: v })}
                   editable={!submitting}
@@ -208,7 +208,7 @@ export function MenuSubmissionSheet({ visible, placeId, onClose, onSubmitted }: 
                 <TextInput
                   style={[styles.input, styles.inputHalf]}
                   placeholder="Price (optional)"
-                  placeholderTextColor={Colors.textMuted}
+                  placeholderTextColor={Colors.textSecondary}
                   value={item.price}
                   onChangeText={(v) => updateItem(item.key, { price: v })}
                   keyboardType="decimal-pad"
@@ -224,7 +224,7 @@ export function MenuSubmissionSheet({ visible, placeId, onClose, onSubmitted }: 
               <TextInput
                 style={styles.input}
                 placeholder="Description (optional)"
-                placeholderTextColor={Colors.textMuted}
+                placeholderTextColor={Colors.textSecondary}
                 value={item.description}
                 onChangeText={(v) => updateItem(item.key, { description: v })}
                 editable={!submitting}
@@ -320,7 +320,7 @@ const styles = StyleSheet.create({
   itemIndex: {
     fontSize: 11,
     fontWeight: '800',
-    color: Colors.textMuted,
+    color: Colors.textSecondary,
     letterSpacing: 1,
     textTransform: 'uppercase',
   },
