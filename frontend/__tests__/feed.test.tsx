@@ -16,6 +16,8 @@ import { fetchCities } from '../src/api/cities';
 import { useCityStore } from '../src/stores/cityStore';
 import { useAuthStore } from '../src/stores/authStore';
 import { logRecommendationEvent, logRecommendationEvents } from '../src/utils/recommendationEventQueue';
+import { DecisionSessionCard } from '../src/api/decisionSession';
+import { useDecisionSession } from '../src/hooks/useDecisionSession';
 
 const mockPush = jest.fn();
 jest.mock('expo-router', () => ({
@@ -35,6 +37,9 @@ jest.mock('../src/hooks/useTrending', () => ({
 }));
 jest.mock('../src/hooks/useRecommendations', () => ({
   useRecommendations: () => [],
+}));
+jest.mock('../src/hooks/useDecisionSession', () => ({
+  useDecisionSession: jest.fn(),
 }));
 jest.mock('../src/hooks/usePrefetchPlace', () => ({
   usePrefetchPlace: () => jest.fn(),
@@ -78,6 +83,7 @@ const mockedFetchPlaces = fetchPlaces as jest.MockedFunction<typeof fetchPlaces>
 const mockedUseAuthStore = useAuthStore as unknown as jest.Mock;
 const mockedLogOne = logRecommendationEvent as jest.Mock;
 const mockedLogMany = logRecommendationEvents as jest.Mock;
+const mockedUseDecisionSession = useDecisionSession as jest.Mock;
 
 const SF_CITY = { id: 'city-sf', name: 'San Francisco', slug: 'san-francisco', lat: 37.7749, lng: -122.4194 };
 
@@ -93,6 +99,14 @@ function makePlace(id: string, rank_percentile: number, overrides: Partial<Place
 
 function page(items: PlaceOut[], total?: number, pageNum = 1): PlacesResponse {
   return { total: total ?? items.length, page: pageNum, page_size: 40, items };
+}
+
+function decisionCard(
+  role: DecisionSessionCard['role'],
+  id: string,
+  reason_codes: DecisionSessionCard['reason_codes'],
+): DecisionSessionCard {
+  return { role, place: makePlace(id, 0.9), reason_codes };
 }
 
 function renderScreen() {
@@ -124,6 +138,73 @@ describe('FeedScreen', () => {
     mockedUseAuthStore.mockImplementation((selector: (s: { user: unknown }) => unknown) =>
       selector({ user: null }),
     );
+    mockedUseDecisionSession.mockReturnValue({
+      data: { cards: [], degraded: false },
+      isLoading: false,
+      isError: false,
+    });
+  });
+
+  it.each([0, 1, 2, 3])('renders exactly %i decision cards without padding thin sessions', async (count) => {
+    const cards = [
+      decisionCard('best_fit', 'decision-best', ['top_ranked_in_area']),
+      decisionCard('safe_bet', 'decision-safe', ['high_percentile']),
+      decisionCard('wildcard', 'decision-wild', ['different_cuisine']),
+    ].slice(0, count);
+    mockedUseDecisionSession.mockReturnValue({
+      data: { cards, degraded: count < 3 },
+      isLoading: false,
+      isError: false,
+    });
+    mockedFetchPlaces.mockResolvedValue(page([makePlace('feed-place', 0.5)]));
+
+    const { findByLabelText, queryByText, queryAllByText } = renderScreen();
+    await findByLabelText(/^feed-place,/);
+
+    if (count === 0) {
+      expect(queryByText('DECIDE NOW')).toBeNull();
+    } else {
+      expect(queryByText('DECIDE NOW')).toBeTruthy();
+    }
+    expect(queryAllByText(/^(Best fit|Safe bet|Wildcard)$/)).toHaveLength(count);
+  });
+
+  it('logs decision impressions with role and position, then logs click before navigating', async () => {
+    mockedUseDecisionSession.mockReturnValue({
+      data: {
+        cards: [
+          decisionCard('best_fit', 'decision-best', ['top_ranked_in_area']),
+          decisionCard('wildcard', 'decision-wild', ['different_cuisine']),
+        ],
+        degraded: true,
+      },
+      isLoading: false,
+      isError: false,
+    });
+    mockedFetchPlaces.mockResolvedValue(page([makePlace('feed-place', 0.5)]));
+
+    const { findByLabelText } = renderScreen();
+    const wildcard = await findByLabelText(/^decision-wild,/);
+    await waitFor(() => {
+      expect(mockedLogMany).toHaveBeenCalledWith([
+        expect.objectContaining({
+          surface: 'decision_session', event_type: 'impression', place_id: 'decision-best',
+          decision_role: 'best_fit', position: 0, rank_percentile: 0.9,
+        }),
+        expect.objectContaining({
+          surface: 'decision_session', event_type: 'impression', place_id: 'decision-wild',
+          decision_role: 'wildcard', position: 1, rank_percentile: 0.9,
+        }),
+      ]);
+    });
+
+    fireEvent.press(wildcard);
+
+    expect(mockedLogOne).toHaveBeenCalledWith(expect.objectContaining({
+      surface: 'decision_session', event_type: 'click', place_id: 'decision-wild',
+      decision_role: 'wildcard', position: 1, rank_percentile: 0.9,
+    }));
+    expect(mockPush).toHaveBeenCalledWith('/place/decision-wild');
   });
 
   it('buckets places into their tier sections and only renders sections that have places', async () => {
