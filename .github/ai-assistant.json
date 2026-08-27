@@ -1,0 +1,20 @@
+{
+  "authorization": {
+    "collaborators_only": true,
+    "allowlist": []
+  },
+  "context": {
+    "max_comments": 20,
+    "max_diff_characters": 120000,
+    "excluded_paths": [
+      "package-lock.json",
+      "dist/**",
+      "vendor/**"
+    ]
+  },
+  "response": {
+    "max_output_tokens": 2000,
+    "include_ai_disclaimer": true
+  },
+  "model": "gpt-5-mini"
+}
