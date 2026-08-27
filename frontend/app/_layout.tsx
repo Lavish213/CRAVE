@@ -1,6 +1,6 @@
 import { useEffect, Component, ReactNode } from 'react';
 import { AppState, View, Text, TouchableOpacity, StyleSheet } from 'react-native';
-import { Stack } from 'expo-router';
+import { Stack, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import * as Notifications from 'expo-notifications';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -87,6 +87,7 @@ const queryClient = new QueryClient({
 });
 
 export default function RootLayout() {
+  const router = useRouter();
   const initCities = useCityStore((s) => s.initCities);
   const initAuth = useAuthStore((s) => s.init);
   const user = useAuthStore((s) => s.user);
@@ -94,6 +95,35 @@ export default function RootLayout() {
   const runVideoSyncPass = useVideoQueueStore((s) => s.runSyncPass);
 
   usePushNotifications(user?.id);
+
+  // Routes a tapped moderation-outcome notification to the relevant
+  // place, when one is known -- "video_approved"/"photo_approved" carry
+  // a placeId (see video_processing_worker.py / moderation.py), rejection
+  // notifications don't (nowhere specific to route a rejection to).
+  // Previously nothing handled a tap at all -- it just opened the app to
+  // wherever it already was.
+  useEffect(() => {
+    function routeFromNotificationData(data: Record<string, unknown> | undefined) {
+      const placeId = data?.placeId;
+      if (typeof placeId === 'string' && placeId) {
+        router.push(`/place/${placeId}`);
+      }
+    }
+
+    // Cold-start case: the app was launched *by* tapping a notification --
+    // addNotificationResponseReceivedListener below only fires for a tap
+    // that happens while already running.
+    Notifications.getLastNotificationResponseAsync().then((response) => {
+      if (response) {
+        routeFromNotificationData(response.notification.request.content.data as Record<string, unknown>);
+      }
+    });
+
+    const subscription = Notifications.addNotificationResponseReceivedListener((response) => {
+      routeFromNotificationData(response.notification.request.content.data as Record<string, unknown>);
+    });
+    return () => subscription.remove();
+  }, [router]);
 
   useEffect(() => {
     initAuth();

@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { User } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import { useCravesStore } from './cravesStore';
+import { unregisterCurrentDevice } from '../services/pushNotifications';
 
 interface AuthStore {
   user: User | null;
@@ -50,5 +51,12 @@ export const useAuthStore = create<AuthStore>((set) => ({
     } catch (err) {
       console.warn('[signOut] Failed to clear saves:', err);
     }
+    // Removes this device's push-token registration so a different
+    // account signing into the same device afterward can't have a
+    // moderation-outcome notification from *this* account's content
+    // still land on it in the window before the next sign-in
+    // re-registers. Already fully self-contained/non-throwing (see its
+    // own docstring) -- no try/catch needed here.
+    await unregisterCurrentDevice();
   },
 }));

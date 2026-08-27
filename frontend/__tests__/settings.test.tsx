@@ -14,6 +14,7 @@ import { deleteMyAccount } from '../src/api/social';
 const mockPush = jest.fn();
 jest.mock('expo-router', () => ({
   useRouter: () => ({ push: mockPush }),
+  useFocusEffect: (cb: () => void) => require('react').useEffect(cb, [cb]),
 }));
 jest.mock('../src/stores/authStore', () => ({
   useAuthStore: jest.fn(),
@@ -32,6 +33,13 @@ jest.mock('../src/api/social', () => ({
 jest.mock('expo-haptics', () => ({
   impactAsync: jest.fn(),
   ImpactFeedbackStyle: { Light: 'light' },
+}));
+
+const mockGetPushPermissionStatus = jest.fn();
+const mockRequestAndRegisterPush = jest.fn();
+jest.mock('../src/services/pushNotifications', () => ({
+  getPushPermissionStatus: (...args: unknown[]) => mockGetPushPermissionStatus(...args),
+  requestAndRegisterPush: (...args: unknown[]) => mockRequestAndRegisterPush(...args),
 }));
 
 const mockedUseAuthStore = useAuthStore as unknown as jest.Mock;
@@ -60,10 +68,12 @@ describe('SettingsScreen', () => {
     jest.clearAllMocks();
     jest.spyOn(Alert, 'alert').mockImplementation(() => {});
     jest.spyOn(Linking, 'openURL').mockResolvedValue(true);
+    jest.spyOn(Linking, 'openSettings').mockResolvedValue(undefined);
     useCityStore.setState({ selectedCity: SF_CITY, cities: [SF_CITY] });
     mockedUseAuthStore.mockImplementation((selector: (s: unknown) => unknown) =>
       selector({ user: { id: 'user-1', email: 'a@b.com' }, signOut: mockSignOut }),
     );
+    mockGetPushPermissionStatus.mockResolvedValue('undetermined');
   });
 
   it('shows the current city, and falls back to "None selected" when there is none', () => {
@@ -73,6 +83,51 @@ describe('SettingsScreen', () => {
     useCityStore.setState({ selectedCity: null, cities: [] });
     rerender(<SettingsScreen />);
     expect(getByText('None selected')).toBeTruthy();
+  });
+
+  it('shows the current notification permission status, re-checked on every focus', async () => {
+    mockGetPushPermissionStatus.mockResolvedValue('granted');
+    const { findByText } = render(<SettingsScreen />);
+    expect(await findByText('Enabled — tap to manage in Settings')).toBeTruthy();
+    expect(mockGetPushPermissionStatus).toHaveBeenCalled();
+  });
+
+  it('explains the benefit before requesting permission when not yet determined', async () => {
+    mockGetPushPermissionStatus.mockResolvedValue('undetermined');
+    mockRequestAndRegisterPush.mockResolvedValue('granted');
+    const { findByLabelText, findByText } = render(<SettingsScreen />);
+    expect(await findByText('Off — tap to turn on')).toBeTruthy();
+
+    fireEvent.press(await findByLabelText('Notifications'));
+    expect(Alert.alert).toHaveBeenCalledWith(
+      'Enable notifications',
+      expect.stringContaining('approved or rejected'),
+      expect.any(Array),
+    );
+    expect(mockRequestAndRegisterPush).not.toHaveBeenCalled();
+
+    pressAlertButton('Enable');
+    await new Promise((r) => setTimeout(r, 0));
+    expect(mockRequestAndRegisterPush).toHaveBeenCalledTimes(1);
+    expect(await findByText('Enabled — tap to manage in Settings')).toBeTruthy();
+  });
+
+  it('opens OS Settings directly when already granted or denied, without re-prompting', async () => {
+    mockGetPushPermissionStatus.mockResolvedValue('denied');
+    const { findByLabelText } = render(<SettingsScreen />);
+
+    fireEvent.press(await findByLabelText('Notifications'));
+
+    expect(Alert.alert).not.toHaveBeenCalled();
+    expect(mockRequestAndRegisterPush).not.toHaveBeenCalled();
+    expect(Linking.openSettings).toHaveBeenCalledTimes(1);
+  });
+
+  it('is non-interactive when push is unavailable on this build', async () => {
+    mockGetPushPermissionStatus.mockResolvedValue('unavailable');
+    const { findByText, queryByLabelText } = render(<SettingsScreen />);
+    expect(await findByText('Not available on this build')).toBeTruthy();
+    expect(queryByLabelText('Notifications')).toBeNull();
   });
 
   it('navigates to add-spot, privacy, and terms', () => {

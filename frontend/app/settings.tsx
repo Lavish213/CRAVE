@@ -1,15 +1,20 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Alert, Linking, ScrollView, StyleSheet, Text, TouchableOpacity, View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { Colors, Spacing, Radius } from '../src/constants/colors';
 import { useCityStore } from '../src/stores/cityStore';
 import { useAuthStore } from '../src/stores/authStore';
 import { useToast } from '../src/hooks/useToast';
 import { deleteMyAccount } from '../src/api/social';
+import {
+  getPushPermissionStatus,
+  requestAndRegisterPush,
+  PushPermissionStatus,
+} from '../src/services/pushNotifications';
 
 // App version — hardcoded, update for each release
 const APP_VERSION = '1.0.0';
@@ -63,12 +68,63 @@ function Divider() {
   return <View style={styles.divider} />;
 }
 
+const NOTIFICATION_STATUS_COPY: Record<PushPermissionStatus, string> = {
+  granted: 'Enabled — tap to manage in Settings',
+  denied: 'Off — tap to open Settings',
+  undetermined: 'Off — tap to turn on',
+  unavailable: 'Not available on this build',
+};
+
 export default function MoreScreen() {
   const router = useRouter();
   const selectedCity = useCityStore((s) => s.selectedCity);
   const user = useAuthStore((s) => s.user);
   const signOut = useAuthStore((s) => s.signOut);
   const toast = useToast((s) => s.show);
+
+  // Re-checked on every focus (not just mount) so returning from the OS
+  // Settings app after granting/denying reflects the real current state,
+  // not whatever it was when this screen first mounted.
+  const [notificationStatus, setNotificationStatus] = useState<PushPermissionStatus>('undetermined');
+  useFocusEffect(
+    React.useCallback(() => {
+      let cancelled = false;
+      getPushPermissionStatus().then((status) => {
+        if (!cancelled) setNotificationStatus(status);
+      });
+      return () => {
+        cancelled = true;
+      };
+    }, []),
+  );
+
+  const handleNotificationsPress = () => {
+    if (notificationStatus === 'unavailable') return;
+    if (notificationStatus === 'granted' || notificationStatus === 'denied') {
+      // Already decided one way or the other -- there's no in-app toggle
+      // yet (a single always-on notification category doesn't warrant
+      // one), so the only meaningful action is the OS's own settings.
+      Linking.openSettings().catch(() => toast("Couldn't open Settings."));
+      return;
+    }
+    // Contextual: explain the benefit before the OS permission prompt,
+    // rather than requesting it automatically and unexplained the moment
+    // someone signs in.
+    Alert.alert(
+      'Enable notifications',
+      "Get notified when your photo or video submission is approved or rejected.",
+      [
+        { text: 'Not now', style: 'cancel' },
+        {
+          text: 'Enable',
+          onPress: async () => {
+            const result = await requestAndRegisterPush();
+            setNotificationStatus(result);
+          },
+        },
+      ],
+    );
+  };
 
   const handleSignOut = () => {
     Alert.alert('Sign out?', "You'll need to sign back in to rank places or see your Craves.", [
@@ -152,8 +208,9 @@ export default function MoreScreen() {
         <Row
           icon="notifications-outline"
           label="Notifications"
-          sublabel="Coming soon"
-          tint={Colors.textMuted}
+          sublabel={NOTIFICATION_STATUS_COPY[notificationStatus]}
+          tint={notificationStatus === 'unavailable' ? Colors.textMuted : undefined}
+          onPress={notificationStatus === 'unavailable' ? undefined : handleNotificationsPress}
         />
         <Divider />
         <Row

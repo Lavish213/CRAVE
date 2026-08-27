@@ -52,8 +52,10 @@ gate.
   missing-config error screen, the new "DECIDE NOW" Decision Session
   section on Feed, Leaderboard/Friends' new error-vs-empty distinction,
   `add-spot`'s real header title, record-video's now-hidden native
-  header, the rank/comparison flow end-to-end, video
-  record→upload→moderation→push pipeline, push notification delivery.
+  header, the new Notifications settings row (status display, contextual
+  request, OS Settings link) and notification-tap routing, the
+  rank/comparison flow end-to-end, video record→upload→moderation→push
+  pipeline, push notification delivery.
 
 ## What's solid right now
 
@@ -70,12 +72,17 @@ gate.
   Map, add-spot, place detail, craves, rank flow, useTrending all
   confirmed guarded.
 - Test coverage: every screen has a dedicated test file (grew from 172
-  to 279 tests this pass); dependency audit confirms all 26 current npm
+  to 293 tests this pass); dependency audit confirms all 26 current npm
   audit findings are build-tooling-only, zero runtime-reachable.
 - Decision Session shipped end-to-end: `GET /api/v1/decision-session`
   (best_fit/safe_bet/wildcard) plus a Feed "DECIDE NOW" section, built
   jointly (backend by Claude, frontend by Codex against a frozen
   contract) — see `docs/decision_session_spec.md`.
+- Push notifications: registration, backend delivery (photo/video
+  moderation outcomes), Settings status display + contextual opt-in,
+  notification-tap routing, and sign-out unregistration all wired
+  end-to-end (the register/unregister routes existed already; this pass
+  was the missing control layer — see `src/services/pushNotifications.ts`).
 
 ## Known gaps — product, not bugs
 

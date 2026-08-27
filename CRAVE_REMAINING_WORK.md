@@ -5110,3 +5110,60 @@ The other 3 held up as real:
 
 Full suite: 279 passed (unchanged count -- these were behavior/test
 fixes, not new tests), `tsc --noEmit` clean. No backend changes.
+
+## 2026-08-27 — Notifications settings + lifecycle: contextual permission, status display, tap routing, sign-out unregister
+
+Traced the full push chain (per the roadmap's request) before touching
+anything: `usePushNotifications.ts` was real and actually wired into
+`_layout.tsx`, backend registration (`POST /account/push-token`) and
+sends (`expo_push.py`, called from `video_processing_worker.py`/
+`moderation.py` on photo/video approve-reject) all genuinely work
+today. Settings' "Notifications: Coming soon" was therefore misleading
+in the *opposite* direction from what that copy usually implies -- the
+feature isn't unbuilt, there's just no in-app control surface for it.
+Also found, while tracing: the backend already had a working
+`DELETE /account/push-token` route + `unregister_push_token()` service
+function + a frontend `unregisterPushToken()` client function -- fully
+built, never called from anywhere. And permission was being requested
+automatically on every sign-in with zero explanation first.
+
+Fixed the actual gap (the control layer, not the plumbing):
+
+- New `src/services/pushNotifications.ts` -- extracted the real
+  lifecycle out of the hook: `getPushPermissionStatus()`,
+  `requestAndRegisterPush()` (the contextual, explicit-opt-in path),
+  `silentlyReregisterIfGranted()` (no-prompt, for a returning
+  already-granted user), `unregisterCurrentDevice()` (re-derives the
+  current device's token by re-fetching it -- Expo tokens are stable
+  per-install, so nothing needed persisting to know "which token is
+  ours").
+- `usePushNotifications.ts` is now a thin wrapper calling
+  `silentlyReregisterIfGranted()` only -- **no longer calls
+  `requestPermissionsAsync()` itself**, so a user is never prompted
+  without context.
+- `settings.tsx`'s Notifications row is now interactive: shows the real
+  current status (`Enabled` / `Off — tap to turn on` / `Off — tap to
+  open Settings` / `Not available on this build`), re-checked on every
+  screen focus (not just mount, so returning from the OS Settings app
+  reflects reality). Undetermined -> `Alert.alert` explaining the
+  benefit, then requests permission only if the user taps Enable.
+  Granted/denied -> `Linking.openSettings()` (no in-app toggle exists
+  yet -- deliberately not building a preferences model for a single
+  always-on notification category; flagged as premature rather than
+  built).
+- `authStore.ts`'s `signOut()` now calls `unregisterCurrentDevice()` --
+  closes the real gap where a device's registration outlived sign-out,
+  so a different account signing in later on the same device couldn't
+  still receive a stale moderation notification meant for the previous
+  account's content.
+- `_layout.tsx`: added notification-tap routing
+  (`addNotificationResponseReceivedListener` +
+  `getLastNotificationResponseAsync()` for the cold-start-via-tap case)
+  -- routes to `/place/{placeId}` when the notification's data carries
+  one (approved photo/video), no-ops for rejections (nowhere specific
+  to route those). Previously tapping any notification just opened the
+  app whereever it already was.
+
+Full suite: 293 passed (was 279), `tsc --noEmit` clean. No backend
+changes -- the register/unregister routes already existed; this was
+entirely wiring the frontend to use what was already there correctly.

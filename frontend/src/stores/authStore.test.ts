@@ -16,6 +16,11 @@ jest.mock('./cravesStore', () => ({
   useCravesStore: { getState: jest.fn(() => ({ clearSaves: mockClearSaves })) },
 }));
 
+const mockUnregisterCurrentDevice = jest.fn();
+jest.mock('../services/pushNotifications', () => ({
+  unregisterCurrentDevice: (...args: unknown[]) => mockUnregisterCurrentDevice(...args),
+}));
+
 const mockedSupabase = supabase as unknown as {
   auth: {
     getSession: jest.Mock;
@@ -33,6 +38,8 @@ beforeEach(() => {
     data: { subscription: { unsubscribe: jest.fn() } },
   });
   mockClearSaves.mockReset();
+  mockUnregisterCurrentDevice.mockReset();
+  mockUnregisterCurrentDevice.mockResolvedValue(undefined);
 });
 
 describe('useAuthStore.init', () => {
@@ -106,6 +113,15 @@ describe('useAuthStore.signOut', () => {
     await useAuthStore.getState().signOut();
 
     expect(mockClearSaves).toHaveBeenCalledTimes(1);
+  });
+
+  it('unregisters this device\'s push token on sign-out', async () => {
+    mockedSupabase.auth.signOut.mockResolvedValue(undefined);
+    useAuthStore.setState({ user: { id: 'u1' } as any, loading: false });
+
+    await useAuthStore.getState().signOut();
+
+    expect(mockUnregisterCurrentDevice).toHaveBeenCalledTimes(1);
   });
 
   it('does not throw even if the post-signout cleanup step fails', async () => {
