@@ -23,6 +23,7 @@ import { useFocusEffect, useRouter } from 'expo-router';
 
 import { Colors, Radius, Spacing } from '../../src/constants/colors';
 import { EmptyState } from '../../src/components/EmptyState';
+import { ErrorState } from '../../src/components/ErrorState';
 import { AuthSheet } from '../../src/components/AuthSheet';
 import { RankedPlaceRow } from '../../src/components/RankedPlaceRow';
 import { SkeletonRowList } from '../../src/components/SkeletonCard';
@@ -83,6 +84,11 @@ export default function ProfileScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [authVisible, setAuthVisible] = useState(false);
+  const [profileError, setProfileError] = useState(false);
+  const [rankingsError, setRankingsError] = useState(false);
+  const [followingError, setFollowingError] = useState(false);
+  const [followersError, setFollowersError] = useState(false);
+  const [streakError, setStreakError] = useState(false);
 
   // Signing out and back in as a different account while a previous
   // load() is still in flight (or useFocusEffect re-firing mid-request)
@@ -97,22 +103,32 @@ export default function ProfileScreen() {
       setLoading(false);
       return;
     }
+    setProfileError(false);
+    setRankingsError(false);
+    setFollowingError(false);
+    setFollowersError(false);
+    setStreakError(false);
     try {
       // Independent reads — one slow/failing call shouldn't blank the
       // whole screen, so they settle individually rather than all-or-nothing.
       const [p, r, following, followers, s] = await Promise.all([
-        fetchMyProfile().catch(() => null),
-        fetchMyRankings().catch(() => [] as RankedPlace[]),
-        fetchFollowing().catch(() => [] as string[]),
-        fetchFollowers().catch(() => [] as string[]),
-        fetchMyStreak().catch(() => null),
+        fetchMyProfile().then((value) => ({ value, failed: false })).catch(() => ({ value: null, failed: true })),
+        fetchMyRankings().then((value) => ({ value, failed: false })).catch(() => ({ value: [] as RankedPlace[], failed: true })),
+        fetchFollowing().then((value) => ({ value, failed: false })).catch(() => ({ value: [] as string[], failed: true })),
+        fetchFollowers().then((value) => ({ value, failed: false })).catch(() => ({ value: [] as string[], failed: true })),
+        fetchMyStreak().then((value) => ({ value, failed: false })).catch(() => ({ value: null, failed: true })),
       ]);
       if (myGeneration !== loadGenerationRef.current) return;
-      setProfile(p);
-      setRankings(r);
-      setFollowingCount(following.length);
-      setFollowerCount(followers.length);
-      setStreak(s);
+      setProfile(p.value);
+      setRankings(r.value);
+      setFollowingCount(following.value.length);
+      setFollowerCount(followers.value.length);
+      setStreak(s.value);
+      setProfileError(p.failed);
+      setRankingsError(r.failed);
+      setFollowingError(following.failed);
+      setFollowersError(followers.failed);
+      setStreakError(s.failed);
     } finally {
       if (myGeneration === loadGenerationRef.current) setLoading(false);
     }
@@ -156,6 +172,10 @@ export default function ProfileScreen() {
         <SkeletonRowList count={4} />
       </View>
     );
+  }
+
+  if (profileError) {
+    return <ErrorState message="Couldn't load your profile" onRetry={load} />;
   }
 
   // Signed in but never picked a username — everything social keys off it.
@@ -217,17 +237,21 @@ export default function ProfileScreen() {
       </View>
 
       <View style={styles.statsRow}>
-        <StatTile value={rankings.length} label="ranked" />
-        <StatTile value={followerCount} label="followers" />
-        <StatTile value={followingCount} label="following" />
+        <StatTile value={rankingsError ? '—' : rankings.length} label="ranked" />
+        <StatTile value={followersError ? '—' : followerCount} label="followers" />
+        <StatTile value={followingError ? '—' : followingCount} label="following" />
         {streak && streak.current_streak > 0 ? (
           <StatTile value={streak.current_streak} label="day streak" icon="flame" />
+        ) : streakError ? (
+          <StatTile value="—" label="day streak" icon="flame" />
         ) : null}
       </View>
 
-      <Text style={styles.headline}>{rankedListHeadline(rankings.length)}</Text>
+      {!rankingsError ? (
+        <Text style={styles.headline}>{rankedListHeadline(rankings.length)}</Text>
+      ) : null}
 
-      {!unlocked ? (
+      {!rankingsError && !unlocked ? (
         <View style={styles.unlockCard}>
           <Ionicons name="sparkles-outline" size={18} color={Colors.primary} />
           <Text style={styles.unlockText}>
@@ -259,7 +283,7 @@ export default function ProfileScreen() {
           <Ionicons name="trophy-outline" size={18} color={Colors.primary} />
           <Text style={styles.linkBtnText}>Leaderboard</Text>
         </TouchableOpacity>
-        {rankings.length > 0 && user && (
+        {!rankingsError && rankings.length > 0 && user && (
           <TouchableOpacity
             style={styles.linkBtn}
             onPress={() => router.push(`/taste-profile/${user.id}`)}
@@ -274,7 +298,9 @@ export default function ProfileScreen() {
 
       <Text style={styles.sectionTitle}>Your list</Text>
 
-      {rankings.length === 0 ? (
+      {rankingsError ? (
+        <ErrorState message="Couldn't load your ranked places" onRetry={load} />
+      ) : rankings.length === 0 ? (
         <View style={styles.emptyList}>
           <Text style={styles.emptyListTitle}>Nothing ranked yet</Text>
           <Text style={styles.emptyListBody}>

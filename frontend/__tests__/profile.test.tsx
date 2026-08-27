@@ -92,6 +92,16 @@ describe('ProfileScreen', () => {
     expect(mockPush).toHaveBeenCalledWith('/profile-setup');
   });
 
+  it('does not mistake a failed profile request for a missing username', async () => {
+    setAuthedUser({ id: 'user-1' });
+    mockedFetchMyProfile.mockRejectedValue(new Error('network'));
+
+    const { findByText, queryByText } = render(<ProfileScreen />);
+
+    expect(await findByText("Couldn't load your profile")).toBeTruthy();
+    expect(queryByText('Pick a username')).toBeNull();
+  });
+
   it('renders profile header, stats, and the below-threshold unlock nudge (no streak tile at zero)', async () => {
     setAuthedUser({ id: 'user-1' });
     mockedFetchMyRankings.mockResolvedValue([makeRanking('p0'), makeRanking('p1')]);
@@ -136,6 +146,28 @@ describe('ProfileScreen', () => {
 
     fireEvent.press(await findByText('Browse places'));
     expect(mockPush).toHaveBeenCalledWith('/');
+  });
+
+  it('does not mistake a failed rankings request for an empty list', async () => {
+    setAuthedUser({ id: 'user-1' });
+    mockedFetchMyRankings.mockRejectedValue(new Error('network'));
+
+    const { findByText, queryByText } = render(<ProfileScreen />);
+
+    expect(await findByText("Couldn't load your ranked places")).toBeTruthy();
+    expect(queryByText('Nothing ranked yet')).toBeNull();
+  });
+
+  it('shows unavailable stats instead of false zeroes when social reads fail', async () => {
+    setAuthedUser({ id: 'user-1' });
+    mockedFetchFollowing.mockRejectedValue(new Error('network'));
+    mockedFetchFollowers.mockRejectedValue(new Error('network'));
+    mockedFetchMyStreak.mockRejectedValue(new Error('network'));
+
+    const { findAllByText, findByText } = render(<ProfileScreen />);
+
+    expect((await findAllByText('—')).length).toBe(3);
+    expect(await findByText('day streak')).toBeTruthy();
   });
 
   it('shows the Taste Profile link and navigates to a ranked row', async () => {
