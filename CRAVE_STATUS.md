@@ -33,7 +33,7 @@ Auth: Supabase (JWKS, ES256).
 ## Test status
 
 Backend: **815 passed, 2 skipped** (`cd backend && python -m pytest -q`).
-Frontend: **271 passed**, `tsc --noEmit` clean (`cd frontend && npx jest`).
+Frontend: **279 passed**, `tsc --noEmit` clean (`cd frontend && npx jest`).
 Both clean as of this commit. CI runs both + a Postgres migration
 round-trip on every push to `main`, not yet a required branch-protection
 gate.
@@ -49,7 +49,8 @@ gate.
 - [ ] **Device verification** — these are fixed in code but unconfirmed
   on an actual rebuilt device/simulator: map over-clustering fix,
   global text-contrast fix, signed-out white-on-white fix, the
-  missing-config error screen, the rank/comparison flow end-to-end,
+  missing-config error screen, the new "DECIDE NOW" Decision Session
+  section on Feed, the rank/comparison flow end-to-end,
   video record→upload→moderation→push pipeline, push notification
   delivery.
 
@@ -68,8 +69,12 @@ gate.
   Map, add-spot, place detail, craves, rank flow, useTrending all
   confirmed guarded.
 - Test coverage: every screen has a dedicated test file (grew from 172
-  to 271 tests this pass); dependency audit confirms all 26 current npm
+  to 279 tests this pass); dependency audit confirms all 26 current npm
   audit findings are build-tooling-only, zero runtime-reachable.
+- Decision Session shipped end-to-end: `GET /api/v1/decision-session`
+  (best_fit/safe_bet/wildcard) plus a Feed "DECIDE NOW" section, built
+  jointly (backend by Claude, frontend by Codex against a frozen
+  contract) — see `docs/decision_session_spec.md`.
 
 ## Known gaps — product, not bugs
 
@@ -100,15 +105,12 @@ gate.
 **P0** — Require the 5 CI checks as branch-protection gates on `main`
 (GitHub dashboard setting, not code).
 
-**P1** — **Decision Session frontend** (backend done: `GET
-/api/v1/decision-session`, see `docs/decision_session_spec.md` for the
-frozen contract — hook, Feed-screen section, `PlaceCard` `role` prop,
-Ledger logging, tests). Place Detail redesign spec (no code yet, needs
-the info-order decision above). Record-video discoverability (product
-decision: Feed action vs. Place Detail affordance vs. tab). Confirm the
-food-classifier model is actually installed in prod vs. degrading to
-its fallback path. Physical-device smoke pass (Auth/Feed/Search/Place
-Detail/Save/Map/Upload/Offline/Push).
+**P1** — Place Detail redesign spec (no code yet, needs the info-order
+decision above). Record-video discoverability (product decision: Feed
+action vs. Place Detail affordance vs. tab). Confirm the food-classifier
+model is actually installed in prod vs. degrading to its fallback path.
+Physical-device smoke pass (Auth/Feed/Search/Place Detail/Save/Map/
+Upload/Offline/Push/**Decision Session**).
 
 **P2** — Recommendation Ledger fast-follows in order: Search-session
 instrumentation, Craves instrumentation, Map instrumentation (impressions

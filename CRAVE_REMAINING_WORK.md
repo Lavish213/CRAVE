@@ -5041,3 +5041,39 @@ test DB, which isn't real incremental-migration state).
 Frontend not started -- handed off per `docs/decision_session_spec.md`'s
 frozen contract (hook, Feed-screen section, PlaceCard `role` prop,
 Ledger logging, tests).
+
+## 2026-08-27 — Decision Session frontend, built by Codex, reviewed and merged by Claude
+
+Codex implemented the frontend half of the Decision Session against
+`docs/decision_session_spec.md`'s frozen contract, in a local worktree,
+on branch `codex/decision-session-frontend`: `src/api/decisionSession.ts`
+(typed client, normalizes each place through the existing
+`normalizePlaceOut`), `src/hooks/useDecisionSession.ts` (React Query,
+same city/GPS param shape as Feed's own query), an additive "DECIDE NOW"
+section on `app/(tabs)/index.tsx` above the tier-bucketed list
+(0-3 cards, never padded), a `role`/`reasonCaption` prop pair on the
+existing `PlaceCard` (reused, not forked), impression logging (deduped
+per unique card-set signature so a re-render with identical data doesn't
+re-log) and click-before-navigate logging with
+`decision_role`/`position`/`rank_percentile`, and save/unsave wired
+through `cravesStore`'s existing `addSave`/`removeSave` meta param
+(`surface: 'decision_session'`) -- no new store method invented.
+
+Before merging: reviewed the full diff directly (not just the reported
+numbers) -- confirmed zero backend files touched, confirmed the
+`cravesStore.addSave/removeSave(place, userId, meta?)` signature and
+`SaveEventMeta` shape used in the Feed integration are the real ones,
+not invented. Then independently re-ran the suite and typecheck against
+the merged tree myself rather than trust the reported counts: 279/279
+passing, `tsc --noEmit` clean -- matches what was reported. The "Jest
+open-handle" warning reported during their verification is the same
+known `--detectOpenHandles`-class false positive characterized earlier
+this session (already-completed timers, not a real leak) -- confirmed
+no *new* leak was introduced; `npx jest` (no `--forceExit`) exits with
+the correct pass count on the merged tree.
+
+Merged via `git merge --no-ff` into `claude/project-grade-systems-review-4ot7d0`
+(commit `6f2177b`), fast-forwarded `main` to match.
+
+Not yet done: device verification of the new Feed section (see
+CRAVE_STATUS.md's "needs your action").

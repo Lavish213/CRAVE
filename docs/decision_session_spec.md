@@ -1,7 +1,11 @@
 # Decision Session — spec (Phase 1, narrow slice)
 
-Status: backend implemented by Claude (this doc + code, same commit).
-Frontend not started — this is the handoff contract for whoever builds it.
+Status: **shipped end-to-end (2026-08-27)**. Backend implemented by
+Claude (`24a1b89`); frontend implemented by Codex against this doc's
+frozen contract (`codex/decision-session-frontend`), reviewed and
+merged by Claude (`6f2177b`) after independently re-running the full
+suite (279/279) and `tsc --noEmit` against the merged tree. Not yet
+device-verified — see CRAVE_STATUS.md's "needs your action" list.
 
 ## Why this exists
 
