@@ -1,27 +1,49 @@
-# H-20260827-autonomous-pass-review
+# H-20260827-release-campaign
 Status: ready-for-review
 Owner: Codex
-Branch: chat/autonomous-pass-1
-Base SHA: ea5c709ca049ba48a0f95a65911cf0d5e6bbb342
-Commit SHA: f4b305e
+Branch: codex/release-coordination
+Base SHA: 51d51555fd9e8ef3e53e5b724cd29788a1530749
+Commit SHA: none
 Allowed next files: none
 
 ## Outcome
-PR #50 contains the five CHAT_TASK_BRIEF outcomes. Current `main` was merged cleanly. CI exposed a pre-existing requirements mirror regression from the Starlette security bump; root `requirements.txt` now matches `backend/requirements.txt` at `starlette>=1.3.1`.
+The human explicitly wants us to stop debating ownership and execute one coordinated path to App Store readiness. Proposed split below is risk- and evidence-based, not a permanent frontend/backend monopoly.
+
+### Shared objective
+Produce a current-main release candidate that passes protected CI, live Playwright journeys, fresh native Debug/Release builds, a real-device smoke matrix, production-configuration verification, accessibility/performance checks, and App Store operational gates. Do not add product features until a release gate exposes a confirmed blocker.
+
+### Codex track — execution and live verification
+1. Configure `main` branch protection through the GitHub API: require the guard, backend SQLite/syntax, backend Postgres/migrations, frontend, and both CodeQL analyses; require resolved conversations and current branches. Preserve the agreed narrow admin-bypass policy only if GitHub can express it safely.
+2. Inventory E2E prerequisites by presence only—never print secrets. Run the three Playwright journeys against the approved API/Supabase test configuration when available. Capture exact failures, traces, and screenshots.
+3. Generate a fresh Expo/iOS project from current `main`, verify `com.crave.app`, run Debug and Release simulator builds, then execute the documented device smoke matrix.
+4. For each reproduced code defect, freeze exact files/acceptance criteria in the bridge before editing and open a dedicated PR. Claude independently reviews cross-cutting or security/production changes.
+
+### Claude track — production and release-readiness audit
+1. On a separate branch/worktree, inspect current-main committed configuration for Railway web/scheduler separation, duplicate-job risk, migration/start commands, classifier real-model versus fallback observability, Supabase/JWKS requirements, EAS project/config requirements, push prerequisites, account deletion, privacy/support URLs, and App Store declarations.
+2. Classify each item as: verified in code, needs dashboard/human evidence, or confirmed code defect. Do not turn missing external evidence into a speculative code change.
+3. Return the smallest ordered human-action checklist with exact dashboard/command evidence required. If a code defect is confirmed, claim only its files and write a frozen acceptance brief before implementing.
+4. Review Codex's E2E/native findings and every resulting cross-cutting PR; independently rerun the affected suites before merge.
+
+### Human track
+Approve or supply GitHub settings, Apple/EAS/Railway/Supabase account actions, seeded test credentials, physical-device confirmation, App Store metadata, and genuine product decisions. Secrets stay in the relevant platform store, never Git or bridge files.
+
+### Coordination rules
+- Separate worktrees and non-overlapping locks.
+- Current code, CI, live logs, screenshots, and device evidence outrank old markdown.
+- Small same-surface fixes may be handled by the engaged owner; features, auth/security, migrations, production configuration, ranking, and cross-agent handoffs require independent review.
+- No agent self-merges a cross-cutting release change.
+- Stop and hand off immediately when a required account, secret, paid action, or product decision is the true blocker.
 
 ## Verification
-- `python3 -c <root/backend package-line equality assertion>` → `requirements mirrors match`
-- `backend/.venv/bin/python -m pip install --dry-run -r requirements.txt` → resolved; Starlette 1.6.0 satisfies the new floor
-- `cd backend && .venv/bin/python -m pytest -q` → 818 passed, 2 skipped
-- `cd frontend && npm test -- --runInBand --forceExit` → 299 passed
-- `cd frontend && npx tsc --noEmit -p .` → clean
-- `cd frontend && npx playwright test --list` → 3 smoke journeys discovered
-- PR #50 CI → guard, backend syntax/import, backend Postgres, frontend, Python CodeQL, and JS/TS CodeQL all passed
+- `git fetch origin main` → current baseline `51d5155`
+- `git show origin/main:CRAVE_STATUS.md` → canonical order is branch protection, live E2E/device verification, production configuration, then App Store gates
+- `git show origin/main:.agent-bridge/STATE.md` → idle, no locks before this claim
 
 ## Known gaps / risks
-- Live Playwright execution still requires the documented API/Supabase configuration; Save → Craves additionally requires a seeded test account. No live E2E success is claimed.
-- CodeRabbit was requested twice and acknowledged the first request, but had not posted a final review or inline findings when this handoff was written.
-- Running `pytest` from the repository root collects legacy `backend/menu_system_test.py` and fails import; the repository's configured command from `backend/` passes. This file was outside the assigned scope and was not changed.
+- The local main checkout contains excluded user-owned changes; this coordination work uses an isolated worktree and must not touch them.
+- Live E2E requires approved API/Supabase configuration; Save → Craves additionally needs a seeded test account.
+- Apple signing, physical-device testing, and some dashboard settings require the human.
+- CodeRabbit is unavailable for this OSS repository; Claude/human review remains the independent gate.
 
 ## Next action
-Independently inspect PR #50 and `git show f4b305e`, then either resolve CodeRabbit findings when they arrive or explicitly defer the unavailable bot review before human merge.
+Claude: review this split now. If correct, acknowledge it in `claude-to-codex.md`, claim the production/readiness audit on a separate branch, and begin with read-only evidence collection. If incorrect, replace it with a concrete corrected split—do not return to abstract role debate.
