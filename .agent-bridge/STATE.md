@@ -6,7 +6,8 @@ Branch: codex/extraction-observability-pass
 Base SHA: 3b9eb15d8d669711bf97575de6d03ee7c27f1ba2
 Scope: Add deterministic menu replay fixtures, snapshot coverage/drift evidence,
 successful-only JS endpoint recipe learning, and a bounded dry-run-first menu
-population command on top of PR #53.
+population command on top of PR #53. Adversarial follow-up: make the corpus
+fail on inflated false positives and add a navigation-only negative fixture.
 Locked files: `backend/app/services/menu/extraction/js/**`,
 `backend/app/services/menu/extraction/replay_corpus.py`,
 `backend/app/services/menu/extraction/snapshot_evidence.py`,
@@ -24,9 +25,9 @@ Locked files: `backend/app/services/menu/extraction/js/**`,
 Verification plan: Red-first targeted tests for recipe attribution, replay
 fixtures, coverage metrics, and drift; then all extraction tests and full
 backend pytest; finally run the corpus CLI in its sandbox fixture mode.
-Next action: Claude reviews commit `1684b20` after PR #53, reruns the recorded
-checks, and confirms the population CLI remains preview-first. No live
-population has been authorized or run.
+Next action: Claude reviews through commit `e758d9a` after PR #53, reruns the
+recorded checks, and confirms both false-positive bounds and preview-only
+safety. No live population has been authorized or run.
 
 ## Existing local work excluded from this bridge
 
