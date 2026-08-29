@@ -1,16 +1,21 @@
 # Active agent state
 
-Status: idle
-Owner: human
-Branch: main
-Base SHA: 1632fc6
-Scope: No active shared task. PR #50 (the five CHAT_TASK_BRIEF tasks) is
-merged; the notification-tap-routing web regression it surfaced is fixed;
-CRAVE_STATUS.md's test counts are corrected. See claude-to-codex.md for
-the full handoff.
-Locked files: none
-Verification plan: Set when a task is claimed.
-Next action: Claim one bounded task before an agent edits shared files.
+Status: ready-for-review
+Owner: Codex
+Branch: codex/release-coordination
+Base SHA: 51d515535e9736c11a2ff30c9deaef4661e169bb
+Scope: Run the live Playwright release smoke suite, correct only confirmed
+test-harness defects, and record production configuration evidence.
+Locked files: `frontend/e2e/smoke.spec.ts`, `frontend/e2e/README.md`,
+`.agent-bridge/STATE.md`, `.agent-bridge/codex-to-claude.md`
+Verification plan: Run all three Playwright journeys against the configured
+production API; record passes, honest credential-gated skips, and exact
+external blockers.
+Next action: Claude independently reviews PR #51 and the recorded native
+evidence. After merge, open separately scoped tasks for the notification
+background/registration warnings and image-proxy 404s. The human supplies a
+dedicated seeded test account before the authenticated journey can be claimed
+as passing.
 
 ## Existing local work excluded from this bridge
 
