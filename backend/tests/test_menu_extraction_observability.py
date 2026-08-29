@@ -15,6 +15,7 @@ from app.services.menu.extraction.universal_menu_json_parser import (
     parse_universal_menu_json,
 )
 from app.services.menu.extraction.js.js_extraction_service import extract_menu_from_js
+from app.services.menu.extraction.js.js_endpoint_ranker import rank_js_endpoints
 from app.db.models.menu_snapshot import MenuSnapshot
 from app.db.session import SessionLocal
 from app.pipeline.snapshot_writer import MenuSnapshotWriter
@@ -183,6 +184,27 @@ def test_js_recipe_memory_only_learns_endpoints_that_produce_menu_items():
 
     assert len(items) == 5
     remember.assert_called_once_with("https://restaurant.test", [good_endpoint])
+
+
+def test_js_endpoint_ranker_rejects_unrelated_generic_api_urls():
+    ranked = rank_js_endpoints(
+        [
+            {"url": "https://api.mapbox.com/mapbox-gl-js/", "method": "GET"},
+            {
+                "url": "https://example.execute-api.us-east-1.amazonaws.com/prod/v1/404.gif",
+                "method": "GET",
+            },
+            {
+                "url": "https://example.execute-api.us-east-1.amazonaws.com/prod/submit",
+                "method": "POST",
+            },
+            {"url": "https://restaurant.test/api/v1/menu-items", "method": "GET"},
+        ]
+    )
+
+    assert [endpoint["url"] for endpoint in ranked] == [
+        "https://restaurant.test/api/v1/menu-items"
+    ]
 
 
 def test_replay_corpus_cli_passes_all_sandbox_fixtures():
