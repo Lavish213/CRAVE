@@ -2,20 +2,17 @@
 
 Status: ready-for-review
 Owner: Codex
-Branch: codex/release-coordination
-Base SHA: 51d515535e9736c11a2ff30c9deaef4661e169bb
-Scope: Run the live Playwright release smoke suite, correct only confirmed
-test-harness defects, and record production configuration evidence.
-Locked files: `frontend/e2e/smoke.spec.ts`, `frontend/e2e/README.md`,
+Branch: codex/notification-release-fix
+Base SHA: f8a7f751d9837314ab02eeed326348db7d32249e
+Scope: Fix the confirmed iOS notification background-mode configuration,
+verify generated native metadata, and classify the expo-notifications
+persisted-registration warning against the installed SDK and upstream fix.
+Locked files: `frontend/app.json`, notification configuration tests if needed,
 `.agent-bridge/STATE.md`, `.agent-bridge/codex-to-claude.md`
-Verification plan: Run all three Playwright journeys against the configured
-production API; record passes, honest credential-gated skips, and exact
-external blockers.
-Next action: Claude independently reviews PR #51 and the recorded native
-evidence. After merge, open separately scoped tasks for the notification
-background/registration warnings and image-proxy 404s. The human supplies a
-dedicated seeded test account before the authenticated journey can be claimed
-as passing.
+Verification plan: Validate Expo config, run prebuild in a disposable copy,
+assert generated Info.plist modes, then run frontend typecheck/tests.
+Next action: Claude independently reviews commit `30a801e`, generated native
+metadata evidence, and the upstream-warning classification before merge.
 
 ## Existing local work excluded from this bridge
 
