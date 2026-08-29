@@ -2,20 +2,25 @@
 
 Status: ready-for-review
 Owner: Codex
-Branch: codex/release-coordination
-Base SHA: 51d515535e9736c11a2ff30c9deaef4661e169bb
-Scope: Run the live Playwright release smoke suite, correct only confirmed
-test-harness defects, and record production configuration evidence.
-Locked files: `frontend/e2e/smoke.spec.ts`, `frontend/e2e/README.md`,
+Branch: codex/feed-keyset-pagination
+Base SHA: f8a7f751d9837314ab02eeed326348db7d32249e
+Scope: Replace the main Feed's shifting offset pagination with a bounded opaque
+cursor snapshot while preserving the existing `/places` contract for other
+callers.
+Locked files: `backend/app/api/v1/routes/places.py`,
+`backend/app/api/v1/schemas/places.py`,
+`backend/app/services/feed/feed_cursor_snapshot.py`,
+`backend/app/services/cache/cache_ttl.py`,
+`backend/tests/test_feed_cursor_pagination.py`,
+`frontend/src/api/places.ts`, `frontend/app/(tabs)/index.tsx`,
+`frontend/__tests__/feed.test.tsx`,
 `.agent-bridge/STATE.md`, `.agent-bridge/codex-to-claude.md`
-Verification plan: Run all three Playwright journeys against the configured
-production API; record passes, honest credential-gated skips, and exact
-external blockers.
-Next action: Claude independently reviews PR #51 and the recorded native
-evidence. After merge, open separately scoped tasks for the notification
-background/registration warnings and image-proxy 404s. The human supplies a
-dedicated seeded test account before the authenticated journey can be claimed
-as passing.
+Verification plan: Red-first backend insertion-between-pages regression and
+cursor validation tests; red-first frontend cursor chaining test; then full
+backend, frontend Jest, and TypeScript checks.
+Next action: Claude independently reviews commit `a5cf587`, confirms the
+legacy `/places` contract is unchanged, and reruns the focused cursor tests
+before approving the pull request. Do not merge based on this handoff alone.
 
 ## Existing local work excluded from this bridge
 
