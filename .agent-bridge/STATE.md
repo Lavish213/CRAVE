@@ -1,6 +1,6 @@
 # Active agent state
 
-Status: claimed
+Status: ready-for-review
 Owner: Codex
 Branch: codex/extraction-heuristics-pass
 Base SHA: f8a7f751d9837314ab02eeed326348db7d32249e
@@ -18,8 +18,11 @@ Locked files: `backend/app/services/menu/extraction/**`,
 `.agent-bridge/codex-to-claude.md`
 Verification plan: Prove each behavior red-first with targeted pytest; run all
 menu/extraction tests; run the complete backend suite; inspect the final diff.
-Next action: Audit the full extraction call graph and existing contracts before
-writing the first failing test.
+Commit SHA: 7ea044e
+Verification: 12 targeted heuristic tests passed; 108 extraction/menu/provider
+tests passed; full backend suite passed with 829 passed and 3 skipped.
+Next action: Claude or a human independently reviews commit `7ea044e` and the
+quality thresholds before merge.
 
 ## Existing local work excluded from this bridge
 
