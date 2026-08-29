@@ -25,16 +25,14 @@ installed, run with `PLAYWRIGHT_BROWSER_CHANNEL=chrome npm run test:e2e`.
 
 ## Current local verification
 
-The suite is discovered correctly and the Playwright configuration passes
-TypeScript validation. A real run against the locally configured environment
-currently exposes these external/runtime blockers:
+On 2026-08-28, the suite ran against the production Railway API from the
+mobile-Chrome project:
 
-- Expo web displays an error because the root layout calls
-  `ExpoNotifications.getLastNotificationResponse`, which is unavailable on
-  web. The task brief explicitly forbids changing that layout in this pass.
-- The configured API returned "Couldn't load places" and no city choices, so
-  the Feed and Search journeys had no place data to exercise.
-- Save -> Craves is intentionally skipped without a seeded account supplied
-  through `CRAVE_E2E_EMAIL` and `CRAVE_E2E_PASSWORD`.
+- Feed -> Place Detail passed.
+- Search -> Place Detail passed.
+- Save -> Craves -> Place Detail was intentionally skipped because no seeded
+  account was supplied through `CRAVE_E2E_EMAIL` and `CRAVE_E2E_PASSWORD`.
 
-These are reported blockers, not test skips disguised as passing coverage.
+The production API must allow the exact Playwright web-server origin via
+`CORS_ALLOW_ORIGINS` or browser preflights fail before any journey can reach
+application data. Do not replace that narrow origin with `*`.

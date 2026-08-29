@@ -24,7 +24,12 @@ async function expectPlaceDetail(page: Page) {
   await expect(
     page.getByRole('button', { name: /Save to Saves|Remove from Saves/ }),
   ).toBeVisible();
-  await expect(page.getByText(/CRAVE PICK|HIDDEN GEM|WORTH KNOWING|EXPLORE/).first()).toBeVisible();
+  // React Native Web can leave an off-screen duplicate from a previous card
+  // mounted during navigation. Assert the tier the user can actually see,
+  // rather than whichever matching node happens to appear first in the DOM.
+  await expect(
+    page.getByText(/CRAVE PICK|HIDDEN GEM|WORTH KNOWING|EXPLORE/).filter({ visible: true }).first(),
+  ).toBeVisible();
 }
 
 async function openTab(page: Page, name: 'Feed' | 'Search' | 'Craves') {
