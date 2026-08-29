@@ -8,6 +8,7 @@ from bs4 import BeautifulSoup
 
 from app.services.menu.contracts import ExtractedMenuItem
 from app.services.menu.extraction.heuristics import clean_text
+from app.services.menu.extraction.price_normalizer import coerce_price_cents
 
 
 logger = logging.getLogger(__name__)
@@ -154,7 +155,7 @@ def extract_jsonld_menu(
                 items.append(
                     ExtractedMenuItem(
                         name=clean_name,
-                        price=price,
+                        price_cents=coerce_price_cents(price),
                         section=None,
                         currency="USD",
                         description=clean_text(obj.get("description") or ""),
@@ -194,7 +195,7 @@ def extract_jsonld_menu(
                 items.append(
                     ExtractedMenuItem(
                         name=clean_name,
-                        price=price,
+                        price_cents=coerce_price_cents(price),
                         section=None,
                         currency="USD",
                         description=clean_text(sub.get("description") or ""),

@@ -94,18 +94,33 @@ class MenuWorker:
     def __init__(self):
         self.orchestrator = MenuOrchestrator()
 
-    def run(self):
+    def run(
+        self,
+        *,
+        max_places: int | None = None,
+        city_id: str | None = None,
+    ) -> dict[str, int]:
+
+        if max_places is None:
+            max_places = MAX_PLACES_PER_RUN
+        max_places = max(1, min(MAX_PLACES_PER_RUN, int(max_places)))
 
         total_processed = 0
         error_count = 0
+        materialized_count = 0
+        no_menu_count = 0
 
-        while total_processed < MAX_PLACES_PER_RUN:
+        while total_processed < max_places:
 
             db: Session = SessionLocal()
 
             try:
 
-                places = self._load_places_requiring_menu(db)
+                places = self._load_places_requiring_menu(
+                    db,
+                    city_id=city_id,
+                    limit=min(BATCH_SIZE, max_places - total_processed),
+                )
 
                 if not places:
                     logger.info("menu_worker_no_more_places")
@@ -130,6 +145,7 @@ class MenuWorker:
                         materialized = getattr(result, "materialized", False)
 
                         if materialized:
+                            materialized_count += 1
                             # Set has_menu flag and recompute score after successful materialization
                             place.has_menu = True
                             place.menu_extraction_failure_count = 0
@@ -146,6 +162,7 @@ class MenuWorker:
                             place.menu_extraction_attempted_at = datetime.now(timezone.utc)
                             recompute_places_v4(db, places=[place])
                         else:
+                            no_menu_count += 1
                             # No PlaceTruth was written (see module docstring) —
                             # record the attempt so this place backs off instead
                             # of occupying every future batch.
@@ -199,7 +216,7 @@ class MenuWorker:
                                 place.id,
                             )
 
-                    if total_processed >= MAX_PLACES_PER_RUN:
+                    if total_processed >= max_places:
                         break
 
                 logger.info(
@@ -214,15 +231,29 @@ class MenuWorker:
             time.sleep(SLEEP_BETWEEN_BATCHES)
 
         logger.info(
-            "menu_worker_run_complete total_processed=%s errors=%s",
+            "menu_worker_run_complete total_processed=%s errors=%s materialized=%s no_menu=%s",
             total_processed,
             error_count,
+            materialized_count,
+            no_menu_count,
         )
+
+        return {
+            "attempted": total_processed,
+            "errors": error_count,
+            "materialized": materialized_count,
+            "no_menu": no_menu_count,
+        }
 
     def _load_places_requiring_menu(
         self,
         db: Session,
+        *,
+        city_id: str | None = None,
+        limit: int = BATCH_SIZE,
     ) -> List[Place]:
+
+        limit = max(1, min(MAX_PLACES_PER_RUN, int(limit)))
 
         # Was: only Place.website IS NOT NULL. That silently skipped every
         # place whose only menu source is a delivery-platform URL (Grubhub)
@@ -265,6 +296,9 @@ class MenuWorker:
             )
         )
 
+        if city_id:
+            base_query = base_query.filter(Place.city_id == city_id)
+
         # Reserve a slice of the batch for the oldest eligible places
         # regardless of rank_score. Without this, a straight
         # `rank_score DESC LIMIT BATCH_SIZE` never-attempted place with a
@@ -277,8 +311,8 @@ class MenuWorker:
         # applied above prevents a repeat-failing place from hogging every
         # run — this fixes the separate case of a place that's simply
         # never been attempted at all.
-        starvation_reserve = max(1, BATCH_SIZE // 5)
-        priority_limit = BATCH_SIZE - starvation_reserve
+        starvation_reserve = 0 if limit == 1 else max(1, limit // 5)
+        priority_limit = limit - starvation_reserve
 
         priority_places = list(
             base_query.order_by(
