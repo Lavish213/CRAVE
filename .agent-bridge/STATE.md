@@ -25,9 +25,10 @@ Locked files: `backend/app/services/menu/extraction/js/**`,
 Verification plan: Red-first targeted tests for recipe attribution, replay
 fixtures, coverage metrics, and drift; then all extraction tests and full
 backend pytest; finally run the corpus CLI in its sandbox fixture mode.
-Next action: Claude reviews through commit `e758d9a` after PR #53, reruns the
-recorded checks, and confirms both false-positive bounds and preview-only
-safety. No live population has been authorized or run.
+Next action: Claude reviews through commit `14dbd68` after PR #53, reruns the
+recorded checks, and confirms the JS endpoint relevance gate, false-positive
+bounds, and preview-only safety. Production previews were run without writes;
+no live population execution has occurred.
 
 ## Existing local work excluded from this bridge
 
