@@ -24,7 +24,7 @@ def normalize_items(
         return []
 
     normalized: List[ExtractedMenuItem] = []
-    seen: Set[str] = set()
+    seen: Set[tuple[str, Optional[int], Optional[str]]] = set()
 
     for item in items:
 
@@ -34,7 +34,7 @@ def normalize_items(
             if not name:
                 continue
 
-            price_cents = _clean_price_to_cents(item.price)
+            price_cents = _clean_price_to_cents(item.price_cents)
 
             section = _clean_section(item.section)
 
@@ -46,18 +46,29 @@ def normalize_items(
                 currency="USD",
             )
 
-            if not fingerprint or fingerprint in seen:
+            dedupe_key = (fingerprint, price_cents, item.provider_item_id)
+
+            if not fingerprint or dedupe_key in seen:
                 continue
 
-            seen.add(fingerprint)
+            seen.add(dedupe_key)
 
             normalized.append(
                 ExtractedMenuItem(
                     name=name,
-                    price=price_cents,  # 🔥 now INT (cents)
+                    price_cents=price_cents,
                     section=section,
                     currency="USD",
                     description=description,
+                    image_url=_clean_text(item.image_url),
+                    provider=provider or item.provider,
+                    provider_item_id=item.provider_item_id,
+                    is_available=item.is_available,
+                    badges=list(item.badges),
+                    source_type=item.source_type,
+                    source_url=item.source_url,
+                    modifiers=list(item.modifiers),
+                    raw=item.raw,
                 )
             )
 
@@ -142,6 +153,11 @@ def _clean_price_to_cents(value) -> Optional[int]:
         return None
 
     try:
+        # ExtractedMenuItem's active contract stores integer cents. Preserve
+        # those values instead of interpreting 725 cents as $725.00.
+        if isinstance(value, int) and not isinstance(value, bool):
+            return value if 0 < value <= 100_000 else None
+
         text = str(value)
 
         # remove currency + junk

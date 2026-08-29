@@ -54,7 +54,7 @@ def _dedupe_items(items: List[ExtractedMenuItem]) -> List[ExtractedMenuItem]:
 
         key = (
             f"{(item.name or '').strip().lower()}|"
-            f"{(item.price_cents or '').strip()}|"
+            f"{item.price_cents if item.price_cents is not None else ''}|"
             f"{(item.section or '').strip().lower()}"
         )
 

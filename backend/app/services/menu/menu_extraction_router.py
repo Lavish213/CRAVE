@@ -7,7 +7,10 @@ from app.pipeline.snapshot_writer import MenuSnapshotWriter
 from app.services.menu.contracts import ExtractedMenuItem
 from app.services.menu.extraction.api_endpoint_discovery import discover_api_endpoints
 from app.services.menu.extraction.api_menu_extractor import extract_api_menu
-from app.services.menu.extraction.extraction_result_ranker import rank_extraction_results
+from app.services.menu.extraction.extraction_result_ranker import (
+    is_plausible_extraction_result,
+    rank_extraction_results,
+)
 from app.services.menu.extraction.graphql_menu_extractor import extract_graphql_menu
 from app.services.menu.extraction.hydration_menu_extractor import extract_hydration_menu
 from app.services.menu.extraction.html_menu_extractor import extract_html_menu
@@ -36,6 +39,8 @@ MIN_GOOD_RESULT = 5
 
 
 def _safe_text(val: Any) -> str:
+    if val is None:
+        return ""
     try:
         return str(val).strip()
     except Exception:
@@ -206,7 +211,7 @@ def _dedupe(items: List[ExtractedMenuItem]) -> List[ExtractedMenuItem]:
 
         key = (
             f"{name}|"
-            f"{getattr(item, 'price', None)}|"
+            f"{getattr(item, 'price_cents', None)}|"
             f"{_safe_text(getattr(item, 'section', None)).lower()}|"
             f"{_safe_text(getattr(item, 'description', None)).lower()}"
         )
@@ -232,9 +237,13 @@ def _normalize_snapshot_items(items: List[ExtractedMenuItem]) -> List[Dict[str, 
                 {
                     "name": _safe_text(getattr(item, "name", None)),
                     "category": _safe_text(getattr(item, "section", None)) or None,
-                    "price": getattr(item, "price", None),
+                    "price": (
+                        getattr(item, "price_cents", None) / 100
+                        if getattr(item, "price_cents", None) is not None
+                        else None
+                    ),
                     "description": _safe_text(getattr(item, "description", None)) or None,
-                    "image": getattr(item, "image", None),
+                    "image": getattr(item, "image_url", None),
                 }
             )
         except Exception:
@@ -327,25 +336,37 @@ def _run_extraction_pass(
     allow_llm_fallback: bool = True,
 ) -> List[ExtractedMenuItem]:
     provider_items = _safe_provider_extract(provider, html, url)
-    if len(provider_items) >= PROVIDER_FAST_RETURN_MIN:
+    if (
+        len(provider_items) >= PROVIDER_FAST_RETURN_MIN
+        and is_plausible_extraction_result(provider_items)
+    ):
         return _return(place_id, url, "provider_fast", provider_items)
 
     if not html:
         return _return(place_id, url, "provider_only", provider_items)
 
     hydration_items = _safe_extract(extract_hydration_menu, html, url)
-    if len(hydration_items) >= PROVIDER_FAST_RETURN_MIN:
+    if (
+        len(hydration_items) >= PROVIDER_FAST_RETURN_MIN
+        and is_plausible_extraction_result(hydration_items)
+    ):
         return _return(place_id, url, "hydration_fast", hydration_items)
 
     jsonld_items = _safe_extract(extract_jsonld_menu, html, url)
     js_items = _safe_extract(extract_menu_from_js, html, url)
 
     api_items = _safe_api_extract(html, url)
-    if len(api_items) >= API_FAST_RETURN_MIN:
+    if (
+        len(api_items) >= API_FAST_RETURN_MIN
+        and is_plausible_extraction_result(api_items)
+    ):
         return _return(place_id, url, "api", api_items)
 
     html_items = _safe_extract(extract_html_menu, html, url)
-    if len(html_items) >= HTML_FAST_RETURN_MIN:
+    if (
+        len(html_items) >= HTML_FAST_RETURN_MIN
+        and is_plausible_extraction_result(html_items)
+    ):
         return _return(place_id, url, "html", html_items)
 
     iframe_items = _safe_iframe_extract(html, url)
@@ -371,7 +392,7 @@ def _run_extraction_pass(
     except Exception as exc:
         logger.debug("rank_failed url=%s error=%s", url, exc)
 
-    if len(best) >= MIN_GOOD_RESULT:
+    if len(best) >= MIN_GOOD_RESULT and is_plausible_extraction_result(best):
         return _return(place_id, url, best_method, best)
 
     fallback = max(
@@ -388,7 +409,11 @@ def _run_extraction_pass(
         default=[],
     )
 
-    final = _return(place_id, url, "fallback", fallback)
+    final = (
+        _return(place_id, url, "fallback", fallback)
+        if is_plausible_extraction_result(fallback)
+        else []
+    )
 
     if final:
         return final
