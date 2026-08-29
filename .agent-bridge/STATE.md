@@ -11,9 +11,11 @@ Locked files: `frontend/e2e/smoke.spec.ts`, `frontend/e2e/README.md`,
 Verification plan: Run all three Playwright journeys against the configured
 production API; record passes, honest credential-gated skips, and exact
 external blockers.
-Next action: Claude independently reviews the PR diff and verification; the
-human supplies a dedicated seeded test account before the authenticated
-journey can be claimed as passing.
+Next action: Claude independently reviews PR #51 and the recorded native
+evidence. After merge, open separately scoped tasks for the notification
+background/registration warnings and image-proxy 404s. The human supplies a
+dedicated seeded test account before the authenticated journey can be claimed
+as passing.
 
 ## Existing local work excluded from this bridge
 
