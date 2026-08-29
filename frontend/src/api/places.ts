@@ -40,6 +40,7 @@ export interface PlacesResponse {
   page: number;
   page_size: number;
   items: PlaceOut[];
+  next_cursor?: string | null;
 }
 
 export async function fetchPlaces(params: {
@@ -49,12 +50,22 @@ export async function fetchPlaces(params: {
   radius_miles?: number;
   page?: number;
   page_size?: number;
+  cursor?: string | null;
+  pagination?: 'offset' | 'cursor';
 }): Promise<PlacesResponse> {
-  const { data } = await client.get<PlacesResponse>('/api/v1/places', { params });
+  const { pagination = 'offset', ...query } = params;
+  const endpoint = pagination === 'cursor' ? '/api/v1/places/feed' : '/api/v1/places';
+  const { data } = await client.get<PlacesResponse>(endpoint, { params: query });
   if (__DEV__) console.log('[API] FEED_RAW', { total: data?.total, count: data?.items?.length, sample: data?.items?.[0] });
   const items = Array.isArray(data?.items) ? data.items.map(normalizePlaceOut) : [];
   if (__DEV__) console.log('[API] FEED_NORMALIZED', { count: items.length, sample: items[0] ? { id: items[0].id, category: items[0].category, categories: items[0].categories } : null });
-  return { total: data?.total ?? 0, page: data?.page ?? 1, page_size: data?.page_size ?? 20, items };
+  return {
+    total: data?.total ?? 0,
+    page: data?.page ?? 1,
+    page_size: data?.page_size ?? 20,
+    items,
+    next_cursor: data?.next_cursor ?? null,
+  };
 }
 
 export async function fetchPlaceDetail(placeId: string): Promise<PlaceOut> {

@@ -135,27 +135,21 @@ export default function FeedScreen() {
     refetch,
   } = useInfiniteQuery({
     queryKey: ['feed', feedParams],
-    queryFn: ({ pageParam = 1 }) =>
-      fetchPlaces({ ...feedParams, page: pageParam }),
-    initialPageParam: 1,
-    getNextPageParam: (lastPage, allPages) => {
-      const loaded = allPages.reduce((sum, p) => sum + p.items.length, 0);
-      return loaded < lastPage.total ? allPages.length + 1 : undefined;
-    },
+    queryFn: ({ pageParam }) =>
+      fetchPlaces({
+        ...feedParams,
+        pagination: 'cursor',
+        cursor: pageParam,
+      }),
+    initialPageParam: null as string | null,
+    getNextPageParam: (lastPage) => lastPage.next_cursor ?? undefined,
     staleTime: 2 * 60 * 1000,
   });
 
-  // Pages are fetched by 1-indexed page number against an offset/limit
-  // backend query ordered by rank_score, not a stable cursor — live-
-  // confirmed via a real "duplicate key" crash that the discovery
-  // pipeline inserting new places between page fetches (it runs on a
-  // 5-minute interval, and now processes a growing OSM/Overture backlog
-  // faster than before this session) shifts every subsequent page's
-  // offset window, so the same place can land in both an already-loaded
-  // page and the next one fetched. De-duping here fixes the actual user-
-  // visible crash regardless of the underlying pagination-shift cause —
-  // a real cursor-based fix is a much larger backend change than
-  // warranted for this.
+  // The backend freezes one bounded ordered-ID snapshot for this feed session
+  // and returns an opaque next_cursor. Discovery inserts can no longer shift
+  // later pages. Keep de-duplication anyway: it is cheap defense against a
+  // malformed or stale server response and prevents a duplicate React key.
   const places = useMemo(() => {
     const seen = new Set<string>();
     const result: PlaceOut[] = [];

@@ -188,3 +188,4 @@ class PlacesResponse(BaseModel):
     page_size: int = Field(..., ge=1, le=500)
 
     items: List[PlaceOut] = Field(default_factory=list)
+    next_cursor: Optional[str] = None
