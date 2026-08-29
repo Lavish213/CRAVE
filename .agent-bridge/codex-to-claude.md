@@ -1,33 +1,35 @@
-# H-20260829-extraction-heuristics
+# H-20260829-extraction-observability
 Status: ready-for-review
 Owner: Codex
-Branch: codex/extraction-heuristics-pass
-Base SHA: f8a7f751d9837314ab02eeed326348db7d32249e
-Commit SHA: 7ea044e
-Allowed next files: none until review
+Branch: codex/extraction-observability-pass
+Base SHA: 3b9eb15d8d669711bf97575de6d03ee7c27f1ba2
+Commit SHA: 1684b20
+Allowed next files: none until independent review
 
 ## Outcome
-Audited the active menu extraction path end to end and repaired contract drift
-that disabled provider normalization, erased price/image snapshot evidence,
-made price-aware ranking ineffective, collapsed distinct price variants, and
-crashed seven integer-price dedupe paths. Added a cheap structural quality gate
-so high-count navigation scrapes cannot bypass the deterministic fallback
-ladder. No paid service or new runtime dependency was added.
+Repaired 22 stale `ExtractedMenuItem(price=...)` call sites through one
+price-to-cents normalizer; added three deterministic offline extraction
+fixtures; taught JS endpoint memory to retain only endpoints whose own payload
+produced plausible menu items; added snapshot coverage/fingerprint/drift
+evidence and aggregate regression diagnostics; and added a bounded,
+city-scoped, preview-first population CLI that reuses the real MenuWorker.
+Execution requires both `--execute` and exact `--confirm POPULATE`. Also fixed
+the existing manual trigger passing an unsupported orchestrator keyword.
 
 ## Verification
-- `/Users/angelowashington/CRAVE/venv/bin/python -m pytest tests/test_menu_extraction_heuristics.py -q` → `12 passed`
-- extraction/menu/provider/snapshot test selection → `108 passed`
-- `/Users/angelowashington/CRAVE/venv/bin/python -m pytest -q` → `829 passed, 3 skipped`
-- `git diff --cached --check` before commit → passed
+- extraction/menu test selection -> `120 passed in 1.87s`
+- `/Users/angelowashington/CRAVE/venv/bin/python -m pytest -q` -> `841 passed, 3 skipped, 32 warnings in 8.44s`
+- `python scripts/run_menu_extraction_corpus.py --manifest tests/fixtures/menu_extraction/manifest.json --json` -> `3 passed, 0 failed`
+- `DATABASE_URL=sqlite:///./test_crave.db python scripts/populate_menus.py --limit 3 --json` -> previewed one candidate and stated no writes performed
+- `python -m compileall -q app scripts/populate_menus.py scripts/run_menu_extraction_corpus.py` -> exit 0
+- `git diff --check` -> exit 0
 
 ## Known gaps / risks
-- This pass improves deterministic selection and contract correctness; it does
-  not add a persisted endpoint-recipe cache, historical drift scoring, or a
-  live-domain fixture corpus. Those should be separate measured changes.
-- The shared local virtualenv was missing four already-declared packages
-  (`pdfminer.six`, `playwright`, `pyarrow`, `h2`); they were installed locally
-  solely to run the repository-required suite. No dependency file changed.
+- This branch is stacked on PR #53 / commit `3b9eb15`; review and merge that dependency first or retarget after it lands.
+- The replay corpus contains three representative fixtures, not a claim of live-catalog coverage.
+- No production population was executed. A real migrated `DATABASE_URL` is required; preview should be reviewed before the explicitly confirmed execution command.
+- Full-suite warnings are pre-existing Pillow deprecation and test JWT key-length warnings.
 
 ## Next action
-Inspect commit `7ea044e`, independently run the targeted and full backend tests,
-and review the quality thresholds before approving the PR.
+Independently inspect commit `1684b20`, rerun the full backend suite and corpus,
+then review the stacked PR. Do not run live population as part of review.
