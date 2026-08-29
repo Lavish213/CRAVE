@@ -204,7 +204,39 @@ def test_replay_corpus_cli_passes_all_sandbox_fixtures():
     assert completed.returncode == 0, completed.stderr
     report = json.loads(completed.stdout)
     assert report["failed"] == 0
-    assert report["passed"] == 3
+    assert report["passed"] == 4
+
+
+def test_replay_corpus_rejects_inflated_false_positive_results(tmp_path, monkeypatch):
+    from app.services.menu.extraction import replay_corpus
+
+    fixture = tmp_path / "menu.html"
+    fixture.write_text("<p>menu</p>", encoding="utf-8")
+    manifest = tmp_path / "manifest.json"
+    manifest.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "cases": [
+                    {"id": "inflated", "fixture": fixture.name, "max_items": 2}
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        replay_corpus,
+        "extract_menu",
+        lambda *args, **kwargs: [
+            type("Item", (), {"name": f"Row {index}", "price_cents": 1000})()
+            for index in range(3)
+        ],
+    )
+
+    report = replay_corpus.run_replay_manifest(manifest)
+
+    assert report["failed"] == 1
+    assert report["cases"][0]["failures"] == ["item_count 3 > 2"]
 
 
 def test_snapshot_diagnostics_aggregate_coverage_and_regressions():

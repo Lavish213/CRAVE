@@ -6,6 +6,7 @@
       "fixture": "jsonld_menu.html",
       "url": "https://jsonld.test/menu",
       "min_items": 2,
+      "max_items": 2,
       "expected_names": ["Fish Taco", "Chips and Salsa"],
       "min_price_coverage": 1.0
     },
@@ -14,6 +15,7 @@
       "fixture": "hydration_menu.html",
       "url": "https://hydration.test/menu",
       "min_items": 2,
+      "max_items": 2,
       "expected_names": ["Margherita Pizza", "Caesar Salad"],
       "min_price_coverage": 1.0
     },
@@ -22,8 +24,18 @@
       "fixture": "html_menu.html",
       "url": "https://html.test/menu",
       "min_items": 2,
+      "max_items": 2,
       "expected_names": ["Classic Burger", "Veggie Burger"],
       "min_price_coverage": 1.0
+    },
+    {
+      "id": "navigation-only",
+      "fixture": "navigation_only.html",
+      "url": "https://restaurant.test/",
+      "min_items": 0,
+      "max_items": 0,
+      "expected_names": [],
+      "min_price_coverage": 0.0
     }
   ]
 }

@@ -32,6 +32,8 @@ def run_replay_manifest(manifest_path: str | Path) -> dict[str, Any]:
         names = {item.name for item in items if item.name}
         expected_names = set(case.get("expected_names") or [])
         min_items = int(case.get("min_items") or 0)
+        max_items_raw = case.get("max_items")
+        max_items = int(max_items_raw) if max_items_raw is not None else None
         priced = sum(1 for item in items if item.price_cents is not None)
         price_coverage = round(priced / len(items), 3) if items else 0.0
         min_price_coverage = float(case.get("min_price_coverage") or 0.0)
@@ -39,6 +41,8 @@ def run_replay_manifest(manifest_path: str | Path) -> dict[str, Any]:
         failures: list[str] = []
         if len(items) < min_items:
             failures.append(f"item_count {len(items)} < {min_items}")
+        if max_items is not None and len(items) > max_items:
+            failures.append(f"item_count {len(items)} > {max_items}")
         missing_names = sorted(expected_names - names)
         if missing_names:
             failures.append(f"missing_names={missing_names}")

@@ -8,7 +8,7 @@ from app.db.session import SessionLocal
 from app.services.menu.menu_trigger import run_menu_trigger
 from app.services.menu.processing.menu_orchestrator import MenuOrchestratorResult
 from app.services.workers.menu_worker import MenuWorker
-from scripts.populate_menus import execution_is_authorized
+from scripts.populate_menus import execution_is_authorized, main as population_main
 
 
 def _city(db, label: str) -> City:
@@ -134,3 +134,43 @@ def test_population_execution_requires_both_flags_and_exact_confirmation():
     assert execution_is_authorized(execute=True, confirmation=None) is False
     assert execution_is_authorized(execute=True, confirmation="yes") is False
     assert execution_is_authorized(execute=True, confirmation="POPULATE") is True
+
+
+def test_preview_and_bad_confirmation_do_not_mutate_population_state(capsys):
+    db = SessionLocal()
+    city_id = None
+    try:
+        city = _city(db, "Population Safety")
+        city_id = city.id
+        place = _place(db, city, "Safety", 7000)
+        place_id = place.id
+        city_slug = city.slug
+    finally:
+        db.close()
+
+    try:
+        assert population_main(["--city-slug", city_slug, "--limit", "1", "--json"]) == 0
+        assert population_main(
+            [
+                "--city-slug",
+                city_slug,
+                "--limit",
+                "1",
+                "--execute",
+                "--confirm",
+                "NOT-POPULATE",
+            ]
+        ) == 2
+        capsys.readouterr()
+
+        db = SessionLocal()
+        try:
+            unchanged = db.get(Place, place_id)
+            assert unchanged.menu_extraction_attempted_at is None
+            assert unchanged.menu_extraction_failure_count == 0
+            assert unchanged.has_menu is False
+        finally:
+            db.close()
+    finally:
+        if city_id:
+            _cleanup(city_id)
