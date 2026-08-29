@@ -3,7 +3,7 @@ Status: ready-for-review
 Owner: Codex
 Branch: codex/release-coordination
 Base SHA: 51d515535e9736c11a2ff30c9deaef4661e169bb
-Commit SHA: pending
+Commit SHA: b4c347f
 Allowed next files: none until review
 
 ## Outcome
@@ -25,6 +25,8 @@ React Native Web duplicates when asserting the visible tier badge.
 - Exact-origin OPTIONS preflight -> HTTP 200 with
   `access-control-allow-origin: http://127.0.0.1:4197`.
 - `cd frontend && npx tsc --noEmit -p .` -> clean.
+- `cd frontend && npm test -- --runInBand` -> 299 passed, 31 suites; the
+  process retained the repository's known open handle after reporting results.
 - `cd frontend && PLAYWRIGHT_BROWSER_CHANNEL=chrome npm run test:e2e` ->
   2 passed, 1 skipped (11.5s).
 
