@@ -3,7 +3,7 @@ Status: ready-for-review
 Owner: Codex
 Branch: codex/overture-production-apply-record
 Base SHA: 5f4e81f075f9dc402905f095bdeca0f5be632343
-Commit SHA: pending
+Commit SHA: db2a623
 Allowed next files: review only
 
 ## Outcome
