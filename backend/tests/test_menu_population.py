@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from datetime import datetime, timedelta, timezone
 
 from app.db.models.city import City
 from app.db.models.place import Place
@@ -8,7 +9,7 @@ from app.db.session import SessionLocal
 from app.services.menu.menu_trigger import run_menu_trigger
 from app.services.menu.processing.menu_orchestrator import MenuOrchestratorResult
 from app.services.workers.menu_worker import MenuWorker
-from scripts.populate_menus import execution_is_authorized, main as population_main
+from scripts.populate_menus import _source_for, execution_is_authorized, main as population_main
 
 
 def _city(db, label: str) -> City:
@@ -68,6 +69,99 @@ def test_population_selection_is_city_scoped_and_strictly_bounded():
     finally:
         db.close()
         _cleanup(*city_ids)
+
+
+def test_population_selection_rejects_non_http_sources():
+    db = SessionLocal()
+    city_id = None
+    try:
+        city = _city(db, "Population Source Validation")
+        city_id = city.id
+        invalid = _place(db, city, "Invalid", 9999)
+        invalid.website = "SpritzersCafe"
+        invalid_https = _place(db, city, "Invalid HTTPS", 9998)
+        invalid_https.website = "https://+15106716333"
+        valid = _place(db, city, "Valid", 1)
+        db.commit()
+
+        selected = MenuWorker()._load_places_requiring_menu(
+            db,
+            city_id=city.id,
+            limit=10,
+        )
+
+        assert valid.id in {place.id for place in selected}
+        assert invalid.id not in {place.id for place in selected}
+        assert invalid_https.id not in {place.id for place in selected}
+    finally:
+        db.close()
+        if city_id:
+            _cleanup(city_id)
+
+
+def test_population_selection_prioritizes_direct_menu_sources_over_locators():
+    db = SessionLocal()
+    city_id = None
+    try:
+        city = _city(db, "Population Source Priority")
+        city_id = city.id
+        locator = _place(db, city, "Locator", 9999)
+        locator.website = "https://locations.example.com/ca/alameda/store-1"
+        direct = _place(db, city, "Direct", 1)
+        direct.website = "https://restaurant.example.com/"
+        direct.menu_source_url = "https://restaurant.example.com/menu.pdf"
+        db.commit()
+
+        selected = MenuWorker()._load_places_requiring_menu(
+            db,
+            city_id=city.id,
+            limit=1,
+        )
+
+        assert [place.id for place in selected] == [direct.id]
+    finally:
+        db.close()
+        if city_id:
+            _cleanup(city_id)
+
+
+def test_population_selection_prioritizes_fresh_attempts_over_exhausted_retries():
+    db = SessionLocal()
+    city_id = None
+    try:
+        city = _city(db, "Population Retry Priority")
+        city_id = city.id
+        exhausted = _place(db, city, "Exhausted", 9999)
+        exhausted.menu_extraction_failure_count = 4
+        exhausted.menu_extraction_attempted_at = datetime.now(timezone.utc) - timedelta(days=4)
+        fresh = _place(db, city, "Fresh", 1)
+        db.commit()
+
+        selected = MenuWorker()._load_places_requiring_menu(
+            db,
+            city_id=city.id,
+            limit=1,
+        )
+
+        assert [place.id for place in selected] == [fresh.id]
+    finally:
+        db.close()
+        if city_id:
+            _cleanup(city_id)
+
+
+def test_population_source_display_falls_back_past_malformed_preferred_url():
+    place = type(
+        "Candidate",
+        (),
+        {
+            "menu_source_url": "https://+15106716333",
+            "grubhub_url": None,
+            "website": "https://restaurant.example/menu",
+        },
+    )()
+
+    assert _source_for(place) == "https://restaurant.example/menu"
 
 
 def test_bounded_worker_run_returns_an_auditable_summary(monkeypatch):

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import inspect
 import time
 from typing import Callable, Dict, List, Optional
 
@@ -82,6 +83,27 @@ def _is_valid_result(items: List[ExtractedMenuItem]) -> bool:
     return bool(items) and len(items) >= MIN_VALID_ITEMS
 
 
+def _invoke_extractor(
+    extractor: Callable,
+    *,
+    url: str,
+    html: Optional[str],
+) -> List[ExtractedMenuItem]:
+    """Call legacy provider adapters using their declared argument contract.
+
+    The direct adapters accept only ``url``. Older embedded-payload adapters
+    accept ``html`` first and ``url`` second. Keeping this normalization at the
+    registry boundary prevents signature mismatches from being swallowed as an
+    ordinary empty extraction.
+    """
+    parameters = list(inspect.signature(extractor).parameters.values())
+    if len(parameters) == 1:
+        return extractor(url)
+    if parameters and parameters[0].name == "html":
+        return extractor(html, url)
+    return extractor(url, html)
+
+
 # =========================================================
 # PUBLIC API
 # =========================================================
@@ -123,7 +145,7 @@ def extract_with_fallback(
 
         try:
 
-            result = extractor(url, html)
+            result = _invoke_extractor(extractor, url=url, html=html)
 
             elapsed = time.time() - start
 

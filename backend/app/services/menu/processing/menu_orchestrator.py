@@ -29,6 +29,7 @@ from app.services.menu.extraction.js.js_provider_router import route_provider
 from app.services.menu.extraction.provider.provider_detector import detect_provider
 from app.services.menu.extraction.html_menu_extractor import extract_html_menu
 from app.services.menu.discovery.menu_source_manager import menu_source_manager
+from app.services.menu.source_quality import best_usable_source, normalize_http_source
 
 
 logger = logging.getLogger(__name__)
@@ -83,8 +84,8 @@ class MenuOrchestrator:
 
         # Live-fetch Grubhub payload when not pre-loaded but URL is present
         if not grubhub_payload:
-            _gh_url = self._clean_str(getattr(place, "grubhub_url", None))
-            _website = self._clean_str(getattr(place, "website", None))
+            _gh_url = normalize_http_source(getattr(place, "grubhub_url", None))
+            _website = normalize_http_source(getattr(place, "website", None))
             _candidate = _gh_url or _website
             if _candidate and "grubhub.com" in _candidate:
                 try:
@@ -202,10 +203,10 @@ class MenuOrchestrator:
         #   1. Best active MenuSource URL (highest confidence, lineage-tracked)
         #   2. place.menu_source_url (denormalized pointer, may lag by one cycle)
         #   3. place.website (raw site, no provider detection yet)
-        menu_source_url = self._clean_str(getattr(place, "menu_source_url", None))
-        website = self._clean_str(getattr(place, "website", None))
+        menu_source_url = getattr(place, "menu_source_url", None)
+        website = getattr(place, "website", None)
         _best_known = menu_source_manager.get_best_source_url(db=db, place_id=place_id)
-        _probe_url = _best_known or menu_source_url or website
+        _probe_url = best_usable_source(_best_known, menu_source_url, website)
 
         if _probe_url and not extracted_items:
             _html: str | None = None

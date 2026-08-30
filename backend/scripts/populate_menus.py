@@ -22,6 +22,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from app.db.models.city import City
 from app.db.session import SessionLocal
 from app.services.workers.menu_worker import MAX_PLACES_PER_RUN, MenuWorker
+from app.services.menu.source_quality import best_usable_source
 
 
 def execution_is_authorized(*, execute: bool, confirmation: str | None) -> bool:
@@ -29,7 +30,11 @@ def execution_is_authorized(*, execute: bool, confirmation: str | None) -> bool:
 
 
 def _source_for(place) -> str | None:
-    return place.menu_source_url or place.grubhub_url or place.website
+    return best_usable_source(
+        place.menu_source_url,
+        place.grubhub_url,
+        place.website,
+    )
 
 
 def _build_parser() -> argparse.ArgumentParser:

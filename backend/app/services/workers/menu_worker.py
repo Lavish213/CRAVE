@@ -5,7 +5,7 @@ import time
 from datetime import datetime, timedelta, timezone
 from typing import List
 
-from sqlalchemy import and_, or_
+from sqlalchemy import and_, case, func, or_
 from sqlalchemy.orm import Session
 
 from app.db.session import SessionLocal
@@ -60,6 +60,58 @@ _BACKOFF_HOURS_MAX = 72  # failure_count >= 4
 # extractor, a place that closed). See _load_places_requiring_menu's
 # docstring for the full reasoning.
 MENU_STALENESS_DAYS = 60
+
+
+def _valid_http_source(column):
+    # Require a dotted host, not merely a scheme. Production contained both
+    # a bare label (``SpritzersCafe``) and ``https://+15106716333``; neither is
+    # a fetchable web source even though the latter begins with https://.
+    return or_(column.ilike("http://%.%"), column.ilike("https://%.%"))
+
+
+def _source_quality_clause():
+    """Prefer sources most likely to contain extractable menu truth.
+
+    Direct discovered menu sources and provider URLs outrank generic websites;
+    chain locator/store pages are deliberately demoted. This is queue ordering,
+    not acceptance: every extracted result still passes the normal plausibility
+    and materialization gates.
+    """
+    direct = func.lower(func.coalesce(Place.menu_source_url, ""))
+    grubhub = func.lower(func.coalesce(Place.grubhub_url, ""))
+    website = func.lower(func.coalesce(Place.website, ""))
+    best = case(
+        (_valid_http_source(Place.menu_source_url), direct),
+        (_valid_http_source(Place.grubhub_url), grubhub),
+        else_=website,
+    )
+    has_menu_signal = or_(
+        best.like("%/menu%"),
+        best.like("%menu.%"),
+        best.like("%.pdf%"),
+        best.like("%order%"),
+        best.like("%toasttab%"),
+        best.like("%chownow%"),
+        best.like("%clover%"),
+        best.like("%popmenu%"),
+        best.like("%square%"),
+        best.like("%menufy%"),
+        best.like("%grubhub%"),
+    )
+    is_locator = or_(
+        best.like("%://locations.%"),
+        best.like("%://restaurants.%"),
+        best.like("%/locations/%"),
+        best.like("%/location/%"),
+        best.like("%store-locator%"),
+    )
+    return case(
+        (_valid_http_source(Place.menu_source_url), 100),
+        (_valid_http_source(Place.grubhub_url), 90),
+        (has_menu_signal, 80),
+        (is_locator, 10),
+        else_=40,
+    )
 
 
 def _not_in_backoff_clause(now: datetime):
@@ -283,9 +335,9 @@ class MenuWorker:
             )
             .filter(
                 or_(
-                    (Place.website.isnot(None)) & (Place.website != ""),
-                    (Place.grubhub_url.isnot(None)) & (Place.grubhub_url != ""),
-                    (Place.menu_source_url.isnot(None)) & (Place.menu_source_url != ""),
+                    _valid_http_source(Place.website),
+                    _valid_http_source(Place.grubhub_url),
+                    _valid_http_source(Place.menu_source_url),
                 ),
                 or_(
                     PlaceTruth.id.is_(None),
@@ -316,6 +368,8 @@ class MenuWorker:
 
         priority_places = list(
             base_query.order_by(
+                func.coalesce(Place.menu_extraction_failure_count, 0).asc(),
+                _source_quality_clause().desc(),
                 Place.rank_score.desc(),
                 Place.id.asc(),
             )
