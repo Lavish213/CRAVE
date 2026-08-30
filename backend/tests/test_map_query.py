@@ -17,6 +17,7 @@ correctness, no cross-contamination between places in the same result.
 from __future__ import annotations
 
 import uuid
+from unittest.mock import Mock
 
 import pytest
 
@@ -130,3 +131,13 @@ def test_fetch_places_for_map_place_with_no_image_gets_none(db):
 
     row = next(p for p in result["places"] if p["id"] == place.id)
     assert row["primary_image_url"] is None
+
+
+def test_fetch_places_for_map_does_not_turn_database_failure_into_empty_catalog():
+    broken_db = Mock()
+    broken_db.query.side_effect = RuntimeError("database unavailable")
+
+    with pytest.raises(RuntimeError, match="database unavailable"):
+        fetch_places_for_map(
+            broken_db, lat=37.8, lng=-122.27, radius_km=5.0
+        )

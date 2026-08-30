@@ -106,6 +106,23 @@ def _score_url(url: str) -> int:
     return score
 
 
+def _has_menu_relevance(url: str) -> bool:
+    """Require a menu-domain signal before any endpoint is replayed.
+
+    A generic ``api`` hostname is not evidence of menu data. Live preview
+    probes found third-party analytics, Mapbox, form-submit, and even
+    ``404.gif`` endpoints being replayed solely because their host contained
+    ``api``. Those requests add latency and false-positive risk without a
+    plausible route to menu items.
+    """
+    lower = url.lower()
+    return (
+        any(word in lower for word in MENU_KEYWORDS)
+        or any(provider in lower for provider in PROVIDER_HINTS)
+        or "graphql" in lower
+    )
+
+
 # ---------------------------------------------------------
 # Payload Scoring
 # ---------------------------------------------------------
@@ -204,6 +221,9 @@ def rank_js_endpoints(
         url = endpoint.get("url")
 
         if not url:
+            continue
+
+        if not _has_menu_relevance(str(url)):
             continue
 
         if url in seen_urls:

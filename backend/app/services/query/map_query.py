@@ -10,6 +10,7 @@ from app.db.models.place_categories import place_categories
 from app.services.geo.bounding_box import bounding_box
 from app.services.query.place_image_visibility_query import get_primary_image_urls_bulk
 from app.services.query.place_category_query import get_categories_for_places_bulk
+from app.services.query.rank_percentile_query import get_rank_percentiles
 
 logger = logging.getLogger(__name__)
 
@@ -46,15 +47,8 @@ def fetch_places_for_map(
         lat = float(lat)
         lng = float(lng)
         radius_km = float(radius_km)
-    except Exception:
-        return {
-            "ok": False,
-            "center": {"lat": lat, "lng": lng},
-            "radius_km": radius_km,
-            "limit": limit,
-            "count": 0,
-            "places": [],
-        }
+    except Exception as exc:
+        raise ValueError("invalid map coordinates or radius") from exc
 
     limit = _clamp_limit(limit)
 
@@ -64,15 +58,8 @@ def fetch_places_for_map(
 
     try:
         bb = bounding_box(lat, lng, radius_km)
-    except Exception:
-        return {
-            "ok": False,
-            "center": {"lat": lat, "lng": lng},
-            "radius_km": radius_km,
-            "limit": limit,
-            "count": 0,
-            "places": [],
-        }
+    except Exception as exc:
+        raise ValueError("invalid map bounding box") from exc
 
     # ---------------------------------------------------------
     # Query (fully safe)
@@ -146,20 +133,15 @@ def fetch_places_for_map(
 
         rows = list(q.all())
 
-    except Exception as exc:
-        # HARD FAIL SAFE → prevents API crash
+    except Exception:
         logger.exception(
-            "map_query_failed lat=%s lng=%s city_id=%s category_id=%s error=%s",
-            lat, lng, city_id, category_id, exc,
+            "map_query_failed lat=%s lng=%s city_id=%s category_id=%s",
+            lat, lng, city_id, category_id,
         )
-        return {
-            "ok": False,
-            "center": {"lat": lat, "lng": lng},
-            "radius_km": radius_km,
-            "limit": limit,
-            "count": 0,
-            "places": [],
-        }
+        # An outage is not an empty catalog. Let the route translate this
+        # into a retryable 503 so the client can preserve stale pins and tell
+        # the user what actually happened.
+        raise
 
     # ---------------------------------------------------------
     # Categories (bulk, single query — avoids N+1 per pin)
@@ -228,34 +210,29 @@ get_map_places = fetch_places_for_map
 
 # --- GeoJSON / Mapbox support ---
 
-def _compute_tier_thresholds(scores: list) -> dict:
+def _assign_tier(score: float, rank_percentile: Optional[float]) -> str:
+    """Return a viewport-stable tier.
+
+    A map pan must not change a place from Hidden Gem to CRAVE Pick merely
+    because a different set of neighbors entered the response. Prefer the
+    hourly per-city ranking snapshot used by Feed/Search. New places that are
+    not in the snapshot yet use the same absolute-score fallback as the rest
+    of the app.
     """
-    Compute percentile-based tier thresholds from the scores in this result set.
-    elite = top 5%, trusted = next 15%, solid = next 30%, default = bottom 50%.
-    """
-    if not scores:
-        return {"elite": float("inf"), "trusted": float("inf"), "solid": float("inf")}
+    if rank_percentile is not None:
+        if rank_percentile >= 0.95:
+            return "elite"
+        if rank_percentile >= 0.80:
+            return "trusted"
+        if rank_percentile >= 0.40:
+            return "solid"
+        return "default"
 
-    sorted_scores = sorted(scores)
-    n = len(sorted_scores)
-
-    elite_idx   = max(0, int(n * 0.95))
-    trusted_idx = max(0, int(n * 0.80))
-    solid_idx   = max(0, int(n * 0.50))
-
-    return {
-        "elite":   sorted_scores[elite_idx],
-        "trusted": sorted_scores[trusted_idx],
-        "solid":   sorted_scores[solid_idx],
-    }
-
-
-def _assign_tier(score: float, thresholds: dict) -> str:
-    if score >= thresholds["elite"]:
+    if score >= 0.42:
         return "elite"
-    if score >= thresholds["trusted"]:
+    if score >= 0.32:
         return "trusted"
-    if score >= thresholds["solid"]:
+    if score >= 0.22:
         return "solid"
     return "default"
 
@@ -273,7 +250,7 @@ def fetch_places_for_map_geojson(
     """
     Returns a Mapbox-compatible GeoJSON FeatureCollection dict.
     Wraps fetch_places_for_map — same query, same cache eligibility.
-    Tiers are percentile-based within this result set.
+    Tiers use the stable per-city percentile snapshot, matching Feed/Search.
     """
     # Build kwargs — only pass params that fetch_places_for_map accepts
     kwargs = {"db": db, "lat": lat, "lng": lng}
@@ -287,9 +264,15 @@ def fetch_places_for_map_geojson(
         kwargs["category_id"] = category_id
 
     result = fetch_places_for_map(**kwargs)
+    if not result.get("ok"):
+        raise RuntimeError("map query failed")
     places = result.get("places", [])
-    scores = [p.get("rank_score", 0.0) for p in places]
-    thresholds = _compute_tier_thresholds(scores)
+    place_ids = [p.get("id") for p in places if p.get("id")]
+    try:
+        rank_percentiles = get_rank_percentiles(db, place_ids=place_ids)
+    except Exception:
+        logger.exception("map_rank_percentiles_failed place_count=%s", len(place_ids))
+        rank_percentiles = {}
 
     features = []
     for p in places:
@@ -303,7 +286,9 @@ def fetch_places_for_map_geojson(
                 "id": p.get("id"),
                 "name": p.get("name"),
                 "city_id": p.get("city_id"),
-                "tier": _assign_tier(p.get("rank_score", 0.0), thresholds),
+                "tier": _assign_tier(
+                    p.get("rank_score", 0.0), rank_percentiles.get(p.get("id"))
+                ),
                 "rank_score": p.get("rank_score", 0.0),
                 "price_tier": p.get("price_tier"),
                 # Already proxy-formatted by get_primary_image_urls_bulk

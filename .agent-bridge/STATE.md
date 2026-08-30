@@ -1,26 +1,22 @@
 # Active agent state
 
-Status: ready-for-review
-Owner: Codex
-Branch: codex/feed-keyset-pagination
-Base SHA: f8a7f751d9837314ab02eeed326348db7d32249e
-Scope: Replace the main Feed's shifting offset pagination with a bounded opaque
-cursor snapshot while preserving the existing `/places` contract for other
-callers.
-Locked files: `backend/app/api/v1/routes/places.py`,
-`backend/app/api/v1/schemas/places.py`,
-`backend/app/services/feed/feed_cursor_snapshot.py`,
-`backend/app/services/cache/cache_ttl.py`,
-`backend/tests/test_feed_cursor_pagination.py`,
-`frontend/src/api/places.ts`, `frontend/app/(tabs)/index.tsx`,
-`frontend/__tests__/feed.test.tsx`,
+Status: idle
+Owner: Claude
+Branch: main
+Base SHA: 141fe8b9a5992d18f5eb00bc2dc8744b0c127b17
+Scope: Caught up on all six open Codex PRs (#52-#57). Merged #52, #57, #54
+(into #53's branch), and #53. Retracted an earlier finding on #55 after
+tracing the actual query behavior (list_places_near/list_places both
+overfetch 4x internally, so the candidate pool was never really capped at
+100 — no bug existed). Merging #55 now. Still fixing #56's confirmed
+MenuImageBridge bypass directly.
+Locked files: `backend/app/services/menu/menu_publisher.py`,
+`backend/tests/test_menu_provenance_pipeline.py`,
 `.agent-bridge/STATE.md`, `.agent-bridge/codex-to-claude.md`
-Verification plan: Red-first backend insertion-between-pages regression and
-cursor validation tests; red-first frontend cursor chaining test; then full
-backend, frontend Jest, and TypeScript checks.
-Next action: Claude independently reviews commit `a5cf587`, confirms the
-legacy `/places` contract is unchanged, and reruns the focused cursor tests
-before approving the pull request. Do not merge based on this handoff alone.
+Verification plan: full backend suite on the merged #55 branch before
+merge; then revert the unmoderated image write in #56, add a regression
+test, full suite, merge.
+Next action: merge #55, then apply and verify the #56 fix.
 
 ## Existing local work excluded from this bridge
 

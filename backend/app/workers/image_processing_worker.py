@@ -231,9 +231,9 @@ def process_image_upload(image_id: str) -> None:
         # so it shows in the place-detail gallery but never as the feed
         # card / map pin thumbnail — both of those only ever query
         # is_primary=True. Meanwhile ImageIngestService.ingest_place_images
-        # skips a place entirely (unless force_refresh=True, which the
-        # scheduled ImageWorker never passes) the moment it has *any*
-        # image at all, primary or not. Combined, a place's first-ever
+        # historically skipped a place the moment it had *any* image at
+        # all, primary or not (it now requires a complete gallery).
+        # Combined at the time, a place's first-ever
         # photo being a user upload was a dead end: it would never become
         # primary, and its mere existence would permanently block the
         # scheduled job from ever fetching a Google Places photo either —
