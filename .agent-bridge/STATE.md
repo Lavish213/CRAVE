@@ -15,20 +15,25 @@ Locked files: `backend/app/services/menu/extraction/js/**`,
 `backend/app/pipeline/snapshot_writer.py`,
 `backend/app/services/menu/menu_diagnostics.py`,
 `backend/app/services/menu/menu_trigger.py`,
+`backend/app/services/menu/processing/menu_orchestrator.py`,
+`backend/app/services/menu/providers/provider_registry.py`,
+`backend/app/services/menu/source_quality.py`,
 `backend/app/services/workers/menu_worker.py`,
 `backend/scripts/run_menu_extraction_corpus.py`,
 `backend/scripts/populate_menus.py`,
 `backend/tests/fixtures/menu_extraction/**`,
 `backend/tests/test_menu_extraction_observability.py`,
 `backend/tests/test_menu_population.py`,
+`backend/tests/test_provider_registry_contract.py`,
 `.agent-bridge/STATE.md`, `.agent-bridge/codex-to-claude.md`
 Verification plan: Red-first targeted tests for recipe attribution, replay
 fixtures, coverage metrics, and drift; then all extraction tests and full
 backend pytest; finally run the corpus CLI in its sandbox fixture mode.
-Next action: Claude reviews through commit `14dbd68` after PR #53, reruns the
-recorded checks, and confirms the JS endpoint relevance gate, false-positive
-bounds, and preview-only safety. Production previews were run without writes;
-no live population execution has occurred.
+Next action: Claude reviews through commit `4d48b35` after PR #53, reruns the
+recorded checks, and confirms the JS endpoint relevance gate, provider adapter
+contract, source-quality queue, false-positive bounds, and preview-only safety.
+Production discovery and population previews were run without writes; no live
+population execution has occurred.
 
 ## Existing local work excluded from this bridge
 
