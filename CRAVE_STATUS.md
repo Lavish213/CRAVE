@@ -18,7 +18,7 @@ starting a new status file.
 - `CRAVE_FRONTEND_GUIDE_FOR_AI_EDITORS.md` — **local-only, gitignored,
   never commit.** House rules for AI editors working in this frontend.
 
-Last updated: 2026-08-29.
+Last updated: 2026-08-30.
 
 ---
 
@@ -32,14 +32,15 @@ Auth: Supabase (JWKS, ES256).
 
 ## Test status
 
-Backend: **820 passed, 3 skipped** (`cd backend && python -m pytest -q`).
-Frontend: **299 passed**, `tsc --noEmit` clean (`cd frontend && npx jest`).
-An E2E Playwright smoke suite also exists now (`frontend/e2e/`, 3
-journeys) — not part of the Jest count above, run separately via
+Backend: **876 passed, 2 skipped** (`cd backend && python -m pytest -q`).
+Frontend: **302 passed**, 32 suites (`cd frontend && npx jest`), `tsc
+--noEmit` clean. An E2E Playwright smoke suite also exists (`frontend/e2e/`,
+3 journeys) — not part of the Jest count above, run separately via
 `npx playwright test`; see `frontend/e2e/README.md` for required env vars.
-Both clean as of this commit. CI runs both + a Postgres migration
-round-trip on every push to `main`, not yet a required branch-protection
-gate.
+Branch protection on `main` is now genuinely live (not just a backlog
+item): 6 required checks, strict freshness, 1 approving review, dismiss-
+stale-approvals, conversation resolution, no force-push/deletion,
+administrator bypass retained for the agreed small-fix lane.
 
 ## Needs your action (not something I can do)
 
@@ -49,16 +50,28 @@ gate.
   anything sensitive.
 - [ ] **Set `DEBUG_API_KEY` in Railway** — the `/debug/*` routes fail
   closed (503) until this is set; see `backend/docs/DEBUG_ENDPOINTS.md`.
-- [ ] **Device verification** — these are fixed in code but unconfirmed
-  on an actual rebuilt device/simulator: map over-clustering fix,
-  global text-contrast fix, signed-out white-on-white fix, the
-  missing-config error screen, the new "DECIDE NOW" Decision Session
-  section on Feed, Leaderboard/Friends' new error-vs-empty distinction,
-  `add-spot`'s real header title, record-video's now-hidden native
-  header, the new Notifications settings row (status display, contextual
-  request, OS Settings link) and notification-tap routing, the
-  rank/comparison flow end-to-end, video record→upload→moderation→push
-  pipeline, push notification delivery.
+- [ ] **Device verification** — fixed in code but still unconfirmed on an
+  actual rebuilt device/simulator: global text-contrast fix, signed-out
+  white-on-white fix, the missing-config error screen, the new "DECIDE
+  NOW" Decision Session section on Feed, Leaderboard/Friends' new
+  error-vs-empty distinction, `add-spot`'s real header title,
+  record-video's now-hidden native header, the rank/comparison flow
+  end-to-end, video record→upload→moderation→push pipeline, signed push
+  delivery to a locked physical device. (Map clustering and the
+  Notifications settings row/tap-routing/`UIBackgroundModes` fix are now
+  confirmed on a real iPhone 17 Pro Simulator against production data —
+  see "What's solid" below.)
+- [ ] **Expo SDK 54→55 upgrade** — `expo-notifications` 0.32.17 has a known
+  Keychain/persisted-registration read error, fixed upstream only in the
+  SDK 55 package line (`expo-notifications` 55.0.13, expo/expo#43829). Not
+  urgent (app keeps running, Feed still loads) but the warning won't clear
+  without the upgrade.
+- [ ] **Menu population canary** — the population-readiness pass (identity
+  fix, Overture hardening, menu provenance) is merged but has never run
+  against production. `docs/POPULATION_READINESS.md` has the staged,
+  bounded one-city canary plan; needs a human to actually authorize and
+  run `backend/scripts/populate_menus.py --execute --confirm POPULATE`
+  for a single city first.
 
 ## What's solid right now
 
@@ -74,10 +87,10 @@ gate.
   fetches by a changeable key (place id, account, city) — Feed, Search,
   Map, add-spot, place detail, craves, rank flow, useTrending all
   confirmed guarded.
-- Test coverage: every screen has a dedicated test file (grew from 172
-  to 299 tests this pass), plus a Playwright E2E smoke suite (3
-  journeys); dependency audit confirms all 26 current npm audit
-  findings are build-tooling-only, zero runtime-reachable.
+- Test coverage: every screen has a dedicated test file (302 frontend
+  tests, grown from 172 over several sessions), plus a Playwright E2E
+  smoke suite (3 journeys); dependency audit confirms all 26 current npm
+  audit findings are build-tooling-only, zero runtime-reachable.
 - Profile, Taste Profile, and public-profile screens (and Leaderboard/
   Friends Feed before them) all distinguish a failed fetch from
   genuinely-empty data now — no screen in the app silently shows "no
@@ -91,6 +104,53 @@ gate.
   notification-tap routing, and sign-out unregistration all wired
   end-to-end (the register/unregister routes existed already; this pass
   was the missing control layer — see `src/services/pushNotifications.ts`).
+  `app.json` now also declares the iOS `fetch`/`remote-notification`
+  background modes the notification delegates require.
+- First real production E2E evidence for this project: live Playwright
+  runs against production (Feed→Detail, Search→Detail passed; Save→Craves
+  honestly skipped, no seeded test account yet) and a real native iOS
+  build — Xcode simulator installed, launched, and loaded live production
+  Feed/Map data on an iPhone 17 Pro Simulator.
+- Map is no longer a marker cloud: over-clustering was a real, confirmed
+  bug (a geographic cell-size floor that stopped shrinking well before a
+  user finished zooming in), now replaced with density-aware screen-space
+  collision clustering, confirmed on-device (250 production places →
+  roughly a dozen separated clusters). Map query failures now surface as
+  retryable 503s instead of a false empty catalog, and tiers use the same
+  stable per-city percentile snapshot Feed/Search already use, so a pin's
+  tier no longer flips as you pan.
+- Feed pagination is now cursor-based, not offset-based: `GET
+  /api/v1/places/feed` freezes a bounded, scope-bound snapshot of up to
+  200 ranked places for 15 minutes and hands back an opaque cursor, so
+  discovery inserts between page fetches can no longer shift or duplicate
+  results. The legacy offset `/places` contract is unchanged for other
+  callers.
+- Menu extraction hardened: a real bug (`ExtractedMenuItem(price=...)` —
+  an invalid constructor argument that silently crashed JSON-LD extraction
+  and the entire pattern-detector fallback family to empty results on
+  every call) is fixed, with an AST-based static test that fails the build
+  if that mistake is ever reintroduced anywhere in the menu service tree.
+  Deterministic offline replay fixtures, snapshot coverage/drift
+  diagnostics, and a safety-gated population preview CLI
+  (`backend/scripts/populate_menus.py` — preview by default, requires
+  `--execute --confirm POPULATE` to write anything) now exist.
+- Population pipeline identity fixed: places with the same name in the
+  same city (real chains/branches) can now coexist instead of colliding on
+  a name-derived ID; new places get a candidate-derived UUID instead.
+  Overture Maps discovery now surfaces real dataset/release failures as
+  errors instead of silently recording them as successful empty runs.
+- Menu item images are never written or served unmoderated: an
+  in-progress change would have piped raw extracted `image_url`s straight
+  to `/places/{id}/menu`, bypassing the mandatory `MenuImageBridge`
+  classify/score/visibility-assign pipeline — caught before merge and
+  reverted; that invariant ("no bypass") now has a regression test.
+- Image backfill pipeline hardened: a place's first-ever photo being a
+  user upload no longer permanently blocks the scheduled Google-photo job;
+  a place stuck `image_blocked` or with accumulated failed attempts now
+  gets rehabilitated after its next successful fetch instead of staying
+  excluded forever; Google Places Photos (a paid API) is now only called
+  when free sources (provider claims, the restaurant's own website) don't
+  yield enough images, instead of unconditionally on every place.
 
 ## Known gaps — product, not bugs
 
@@ -114,43 +174,33 @@ gate.
   right time." Video record has no discoverable entry point beyond a
   small chip on Place Detail.
 - **Search is keyword matching**, no typo tolerance or intent parsing.
-- **Feed cursor pagination is implemented but awaiting independent review.**
-  The Feed now freezes a bounded, scope-bound ordered-ID snapshot and chains
-  opaque cursors, so discovery inserts cannot shift later pages. The legacy
-  `/places` offset contract remains available to other callers, and the
-  client-side de-dup guard remains as defense in depth. Live/native behavior
-  must not be called complete until the review branch is merged and exercised.
 - **32 flat categories** mix cuisine/meal-period/dietary/experience/
   ownership in one list — fine today, will constrain filtering/
   personalization eventually.
 
 ## Prioritized backlog
 
-**P0** — ~~Require CI checks as branch-protection gates on `main`~~ — done:
-six named checks, strict freshness, one approving review, conversation
-resolution, and force-push/deletion protection are configured; administrator
-bypass is retained for the agreed emergency/small-fix lane.
+**P0** — ~~Require CI checks as branch-protection gates on `main`~~ — done.
+~~Feed keyset pagination~~ — done, merged. ~~Map over-clustering~~ — done,
+merged, confirmed on-device.
 
-**P1** — Record-video discoverability (product decision: Feed action
-vs. Place Detail affordance vs. tab). Confirm the food-classifier model
-is actually installed in prod vs. degrading to its fallback path.
-Physical-device smoke pass (Auth/Feed/Search/Place Detail/Save/Map/
-Upload/Offline/Push/**Decision Session**).
+**P1** — Run the menu-population one-city canary per
+`docs/POPULATION_READINESS.md` (needs a human to authorize the write — see
+"Needs your action"). Record-video discoverability (product decision:
+Feed action vs. Place Detail affordance vs. tab). Confirm the
+food-classifier model is actually installed in prod vs. degrading to its
+fallback path. Physical-device smoke pass (Auth/Feed/Search/Place
+Detail/Save/Map/Upload/Offline/Push/**Decision Session**).
 
-**P2** — ~~Recommendation Ledger fast-follows~~ — done: Search, Craves,
-and Map all already have `surface`-tagged Ledger instrumentation
-(confirmed by re-checking the actual files, not just this doc — it was
-stale here, already landed in an earlier session per
-`CRAVE_REMAINING_WORK.md`'s 2026-08-26 entries). Feed keyset pagination is
-implemented on `codex/feed-keyset-pagination` with stable snapshot insertion,
-scope-mismatch, expiry, and client cursor-chaining regressions; independent
-review and live verification remain before it is marked shipped. App Store prep (hosted Privacy Policy
-URL, Apple Developer membership, screenshots — needs the user, not
-buildable by an agent). ~~Visual regression / E2E coverage~~ — started:
-`frontend/e2e/` has the 3 planned journeys (Feed→Detail, Search→Detail,
-Save→Craves→Detail). The public Feed and Search journeys passed against the
-production API; the authenticated Save journey remains honestly skipped until
-a dedicated seeded account is supplied (see `frontend/e2e/README.md`).
+**P2** — ~~Recommendation Ledger fast-follows~~ — done. App Store prep
+(hosted Privacy Policy URL, Apple Developer membership, screenshots —
+needs the user, not buildable by an agent). ~~Visual regression / E2E
+coverage~~ — started: `frontend/e2e/` has the 3 planned journeys
+(Feed→Detail, Search→Detail, Save→Craves→Detail). The public Feed and
+Search journeys passed against the production API; the authenticated
+Save journey remains honestly skipped until a dedicated seeded account is
+supplied (see `frontend/e2e/README.md`). Expo SDK 54→55 upgrade (clears
+the persisted-registration warning; see "Needs your action").
 
 **P3** — Taste modeling / learned ranking (after real usage data exists,
 not before). Splitting the flat category taxonomy into real dimensions.
