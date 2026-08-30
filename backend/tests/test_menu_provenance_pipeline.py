@@ -7,7 +7,33 @@ from app.db.models.place import Place
 from app.db.models.place_claim import PlaceClaim
 from app.db.session import SessionLocal
 from app.services.menu.materialize_menu_truth import materialize_menu_truth
-from app.services.menu.menu_publisher import MenuPublisher
+from app.services.menu.menu_publisher import MenuPublisher, is_obvious_placeholder_item
+
+
+def test_placeholder_filter_is_narrow_and_requires_no_real_item_evidence():
+    assert is_obvious_placeholder_item(name="Test", price_cents=0, description=None)
+    assert is_obvious_placeholder_item(name="test2", price_cents=None, description="")
+    assert is_obvious_placeholder_item(
+        name="Placeholder item 4",
+        price_cents=0,
+        description=None,
+    )
+
+    assert not is_obvious_placeholder_item(
+        name="Test Kitchen Burger",
+        price_cents=0,
+        description=None,
+    )
+    assert not is_obvious_placeholder_item(
+        name="Test",
+        price_cents=1200,
+        description=None,
+    )
+    assert not is_obvious_placeholder_item(
+        name="Test",
+        price_cents=0,
+        description="Seasonal tasting item",
+    )
 
 
 def test_menu_truth_and_publisher_preserve_item_lineage_but_never_publish_a_raw_image_url():
