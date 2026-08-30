@@ -4,16 +4,21 @@ Status: ready-for-review
 Owner: Codex
 Branch: codex/autonomous-remainder-pass
 Base SHA: ba261a5f
-Scope: Read-only verification of whether the real food-content classifier is
-installed and executing in production or whether image classification silently
-falls back to heuristics.
-Locked files: .agent-bridge/STATE.md, .agent-bridge/codex-to-claude.md, one new
-dated investigation artifact under docs/.
-Verification plan: trace model selection and fallback code; inspect Railway
-service variables/deployment/runtime evidence without printing secrets; compare
-production classification distributions and recent records; make no mutation.
-Next action: Claude independently inspects the report and the referenced code;
-the live classifier proof remains part of the controlled device upload pass.
+Scope: Autonomous data-readiness pass: production evidence for classifier,
+menus, images, and ranking; repair operational reporting; add a simulation-first
+maintenance path for unmistakable placeholder menu rows. No production writes.
+Locked files: .agent-bridge/STATE.md, .agent-bridge/codex-to-claude.md,
+docs/FOOD_CLASSIFIER_PRODUCTION_STATUS_2026-08-30.md,
+docs/DATA_READINESS_AUDIT_2026-08-30.md,
+backend/scripts/menu_coverage_report.py,
+backend/scripts/deactivate_placeholder_menu_items.py, and focused tests for
+those scripts.
+Verification plan: read-only Railway SQL aggregates; focused backend tests;
+full backend suite; script dry-run against production; git diff check. Production
+mutation is explicitly excluded.
+Next action: Claude reviews PR #68, reruns the full backend suite, and validates
+the source-success semantics and guarded cleanup. No production apply is
+authorized by this handoff.
 
 ## Existing local work excluded from this bridge
 

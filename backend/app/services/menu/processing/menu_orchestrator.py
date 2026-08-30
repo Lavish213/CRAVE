@@ -57,6 +57,17 @@ PROVIDER_CONFIDENCE: dict[str, float] = {
 DEFAULT_CONFIDENCE = 0.70
 
 
+def record_materialized_source_success(
+    *, db: Session, place_id: str, source_url: str | None, published_count: int
+) -> None:
+    """Record source success only after truth produced public menu rows."""
+    if published_count <= 0 or not source_url:
+        return
+    menu_source_manager.record_success(
+        db=db, place_id=place_id, source_url=source_url
+    )
+
+
 @dataclass(slots=True)
 class MenuOrchestratorResult:
     place_id: str
@@ -64,6 +75,7 @@ class MenuOrchestratorResult:
     emitted_claim_count: int = 0
     materialized: bool = False
     source_count: int = 0
+    published_item_count: int = 0
 
 
 class MenuOrchestrator:
@@ -279,9 +291,6 @@ class MenuOrchestrator:
                                     (_provider or "").lower(), DEFAULT_CONFIDENCE
                                 ),
                             )
-                            menu_source_manager.record_success(
-                                db=db, place_id=place_id, source_url=_probe_url
-                            )
 
                         logger.info(
                             "menu_orchestrator.provider_complete place_id=%s provider=%s accepted=%s",
@@ -330,9 +339,6 @@ class MenuOrchestrator:
                                 source_type="hydration",
                                 confidence=PROVIDER_CONFIDENCE.get("hydration", DEFAULT_CONFIDENCE),
                             )
-                            menu_source_manager.record_success(
-                                db=db, place_id=place_id, source_url=_probe_url
-                            )
                             logger.info(
                                 "menu_orchestrator.hydration_complete place_id=%s accepted=%s",
                                 place_id,
@@ -375,9 +381,6 @@ class MenuOrchestrator:
                                 provider="html",
                                 source_type="html",
                                 confidence=PROVIDER_CONFIDENCE.get("html", DEFAULT_CONFIDENCE),
-                            )
-                            menu_source_manager.record_success(
-                                db=db, place_id=place_id, source_url=_probe_url
                             )
                         else:
                             menu_source_manager.record_failure(
@@ -442,9 +445,6 @@ class MenuOrchestrator:
 
                 if accepted > 0:
                     sources_used += 1
-                    menu_source_manager.record_success(
-                        db=db, place_id=place_id, source_url=_probe_url
-                    )
 
                 logger.info(
                     "menu_orchestrator.advanced_escalation_complete place_id=%s accepted=%s",
@@ -535,7 +535,20 @@ class MenuOrchestrator:
         if result.materialized:
             try:
                 publisher = MenuPublisher()
-                publisher.publish(place_id=place_id, db=db)
+                result.published_item_count = publisher.publish(
+                    place_id=place_id, db=db
+                )
+                # "Success" means public materialized output exists, not
+                # merely that a parser emitted some candidates. Recording it
+                # earlier made Square/Toast sources look healthy even when
+                # canonical validation rejected everything and no menu was
+                # served.
+                record_materialized_source_success(
+                    db=db,
+                    place_id=place_id,
+                    source_url=_probe_url,
+                    published_count=result.published_item_count,
+                )
             except Exception as exc:
                 logger.warning(
                     "menu_orchestrator.publish_failed place_id=%s error=%s",

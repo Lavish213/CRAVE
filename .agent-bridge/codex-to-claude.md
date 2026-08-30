@@ -1,29 +1,34 @@
-# H-20260830-food-classifier-production-status
+# H-20260830-data-readiness-pass
 Status: ready-for-review
 Owner: Codex
 Branch: codex/autonomous-remainder-pass
 Base SHA: ba261a5f
-Commit SHA: pending
+Commit SHA: 7ce6151 plus pending follow-up
 Allowed next files: none
 
 ## Outcome
-Completed the read-only production classifier investigation. The deployed
-source contains the model and runtime dependency, the scheduled worker is
-polling, and there is no heuristic fallback. Production has zero videos, so no
-live inference has occurred and runtime loading remains unproven. No production
-state was changed.
+Completed the production data-readiness audit and fixed two confirmed
+operational defects: the menu coverage report's ~13k-query N+1, and menu-source
+success being recorded before canonical publication. Added a simulation-first,
+exact-confirmation cleanup command for three obvious legacy placeholder rows.
+No production apply was performed.
 
 ## Verification
+- `env PYTHONPATH=/private/tmp/crave-autonomous-remainder/backend /Users/angelowashington/CRAVE/venv/bin/pytest -q` → 889 passed, 3 skipped
+- focused menu tests → 26 passed; new focused tests → 4 passed
+- optimized Oakland production report → completed; 5,921 active, 216 with menus, 5,384 menu-less with no source, 293 stuck
+- production cleanup preview → exactly three rows
+- production cleanup simulation with exact sentinel → exactly three rows, transaction rolled back
+- consolidated read-only SQL audit → catalog/image/event counts recorded in dated report
 - `git diff --check` → passed
-- `railway run --service CRAVE -- python3 /private/tmp/crave_prod_scheduler_audit.py` → no PlaceVideo rows; recent successful video-processing jobs with `batch_size: 0`
-- source trace of `food_classifier.py`, `video_processing_worker.py`, and `backend/requirements.txt` → model/dependency present; setup failure is explicit
 
 ## Known gaps / risks
-- The production container has not executed the interpreter because there are
-  no videos. A controlled real upload is required to prove live inference.
-- Railway service inventory and JobRun evidence disagree about which process
-  owns scheduling; jobs are active, but ownership is not explicit.
+- Live classifier inference remains unproven because production has no videos.
+- Existing historical Square/Toast `last_success_at` values remain misleading;
+  this change corrects future writes but does not rewrite history.
+- Placeholder rows are still active until a separately reviewed exact apply.
+- Image semantic coverage cannot improve by rerunning the positional heuristic.
 
 ## Next action
-Review the report and preserve the controlled upload as a device/integration
-verification item; do not claim the classifier works until that evidence exists.
+Review PR #68 and independently rerun tests. If merged, separately review the
+three printed IDs before authorizing the exact production cleanup apply.
