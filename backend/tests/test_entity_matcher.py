@@ -51,7 +51,7 @@ def test_different_brands_at_the_same_address_do_not_match():
 
 def test_brand_alias_match_still_requires_a_strong_signal_or_spatial_proximity():
     # Name-only match (even via brand alias) is not enough on its own —
-    # entity_match requires address/website match or spatial proximity too.
+    # entity_match requires address match or spatial proximity too.
     a = _candidate("KFC", address="123 Main St, Oakland, CA")
     b = _candidate("Kentucky Fried Chicken", address="999 Far Away Rd, Reno, NV")
     assert entity_match(a, b) is False
@@ -63,3 +63,22 @@ def test_identical_unbranded_names_at_the_same_address_still_match():
     a = _candidate("Horn Barbecue", address="2534 Mandela Pkwy, Oakland, CA")
     b = _candidate("Horn Barbecue", address="2534 Mandela Pkwy, Oakland, CA")
     assert entity_match(a, b) is True
+
+
+def test_distinct_branches_are_not_merged_by_shared_brand_website():
+    first = _candidate(
+        "North Beach Sandwicheez",
+        address="308 Jackson St #5, Oakland, CA",
+        lat=37.7946,
+        lng=-122.2694,
+        website="https://www.sandwicheez.com/",
+    )
+    second = _candidate(
+        "North Beach Sandwicheez",
+        address="300 Lakeside Dr #122, Oakland, CA",
+        lat=37.8086,
+        lng=-122.2646,
+        website="https://www.sandwicheez.com/",
+    )
+
+    assert entity_match(first, second) is False

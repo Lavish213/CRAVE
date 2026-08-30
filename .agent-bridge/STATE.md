@@ -1,22 +1,22 @@
 # Active agent state
 
-Status: idle
-Owner: Claude
-Branch: main
-Base SHA: 3851929a851ee6f4bcf9f45cb0588f05d3e689b2
-Scope: Independently verified and merged PR #61 (production population
-canary). Traced the promotion-safety chain end to end (blocked rows are
-excluded at the SQL level in promotion_orchestrator_v2.py, never
-auto-unblocked, no alternate promotion entry point, not exposed via any
-public API route) rather than trusting the PR description. Reran tests
-myself in a clean worktree: 7 passed (canary + provenance), 882 passed
-overall. Did not touch production, run the canary script, or alter batch
-`oakland-20260830-a` in any way.
-Locked files: none currently held.
-Verification plan: n/a — review complete.
-Next action: none pending from Claude. Batch `oakland-20260830-a` stays
-blocked pending a separate entity/existence review before any release
-decision — that review is explicitly out of scope for this merge.
+Status: ready-for-review
+Owner: Codex
+Branch: codex/overture-entity-review
+Base SHA: 476ad3a7d85c46e48312a2e6f2265c22a1060782
+Scope: Read the complete production batch `oakland-20260830-a`, independently
+verify the current existence and identity of every staged candidate using
+authoritative sources, and produce a release recommendation without unblocking,
+resolving, promoting, deleting, or otherwise mutating production rows.
+Locked files: .agent-bridge/STATE.md, .agent-bridge/codex-to-claude.md,
+docs/POPULATION_CANARY_2026-08-30.md, and one new entity-review artifact.
+Verification plan: export the exact batch read-only; reconcile each record by
+name, address, website, and external ID; use current official sources first and
+independent secondary evidence where needed; mark ambiguous, duplicate, moved,
+or closed entities HOLD/REJECT; verify production batch counts remain unchanged.
+Next action: Claude independently reviews commit `98d1ed7`, especially the
+shared-domain branch fix and fixed-ID disposition manifest. Do not run the
+production `--apply` command before merge and approval.
 
 ## Existing local work excluded from this bridge
 

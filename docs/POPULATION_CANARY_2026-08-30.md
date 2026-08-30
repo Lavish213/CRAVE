@@ -2,11 +2,12 @@
 
 ## Verdict
 
-**HOLD — staged safely, not released.** Ten Oakland Overture records are in
-production as blocked, unresolved `DiscoveryCandidate` rows. They cannot be
-picked up by the promotion worker or appear in the app. The batch proved that
-Overture is useful for coverage, but unsafe to auto-promote without current
-existence and entity-resolution checks.
+**ENTITY REVIEW COMPLETE; GUARDED APPLY AWAITS REVIEW/MERGE.** Ten Oakland
+Overture records remain in production as blocked, unresolved
+`DiscoveryCandidate` rows. The record-level review found one verified-new
+location, three existing matches, one historical alias, and five stale records.
+See `docs/OVERTURE_ENTITY_REVIEW_2026-08-30.md`. No disposition or release has
+been applied yet.
 
 Batch ID: `oakland-20260830-a`
 
