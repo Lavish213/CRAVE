@@ -6,6 +6,7 @@ import re
 from typing import Any, Dict, List, Optional
 
 from app.services.menu.contracts import ExtractedMenuItem
+from app.services.menu.extraction.price_normalizer import coerce_price_cents
 
 
 logger = logging.getLogger(__name__)
@@ -118,7 +119,7 @@ def _dedupe(items: List[ExtractedMenuItem]) -> List[ExtractedMenuItem]:
 
         key = (
             f"{(item.name or '').strip().lower()}|"
-            f"{(item.price_cents or '').strip()}|"
+            f"{item.price_cents if item.price_cents is not None else ''}|"
             f"{(item.section or '').strip().lower()}"
         )
 
@@ -224,7 +225,7 @@ def _scan(
             items.append(
                 ExtractedMenuItem(
                     name=name,
-                    price=_safe_price(price),
+                    price_cents=coerce_price_cents(_safe_price(price)),
                     section=section,
                     currency="USD",
                     description=description,

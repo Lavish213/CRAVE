@@ -12,6 +12,11 @@ from app.services.query.places_query import list_places as query_list_places
 from app.services.query.proximity_query import list_places_near
 from app.services.feed.feed_bucket_manager import get_feed_places
 from app.services.feed.feed_ranker import rank_feed
+from app.services.feed.feed_cursor_snapshot import (
+    build_scope,
+    create_snapshot,
+    read_snapshot,
+)
 from app.services.query.place_image_visibility_query import get_primary_image_urls_bulk
 from app.services.query.rank_percentile_query import get_rank_percentiles
 from app.api.v1.schemas.places import PlacesResponse, PlaceOut
@@ -34,6 +39,114 @@ router = APIRouter(
 _DEFAULT_RADIUS_MILES = 20.0
 _MIN_RADIUS_MILES = 0.25
 _MAX_RADIUS_MILES = 50.0
+_MAX_FEED_SNAPSHOT_PLACES = 200
+
+
+def _hydrate_place_outputs(db: Session, place_ids: list[str]) -> list[PlaceOut]:
+    if not place_ids:
+        return []
+    places = db.query(Place).filter(Place.id.in_(place_ids)).all()
+    place_map = {place.id: place for place in places}
+    ordered = [place_map[place_id] for place_id in place_ids if place_id in place_map]
+    image_urls = get_primary_image_urls_bulk(db, place_ids=place_ids)
+    rank_percentiles = get_rank_percentiles(db, place_ids=place_ids)
+    items: list[PlaceOut] = []
+    for place in ordered:
+        try:
+            place.primary_image_url = image_urls.get(place.id)
+            place.rank_percentile = rank_percentiles.get(place.id)
+            items.append(PlaceOut.model_validate(place, from_attributes=True))
+        except Exception as exc:
+            logger.warning("feed_cursor_serialize_failed place_id=%s error=%s", place.id, exc)
+    return items
+
+
+@router.get(
+    "/feed",
+    response_model=PlacesResponse,
+    summary="List places from a stable feed snapshot",
+)
+def get_cursor_feed(
+    city_id: Optional[str] = Query(None),
+    lat: Optional[float] = Query(None),
+    lng: Optional[float] = Query(None),
+    radius_miles: float = Query(_DEFAULT_RADIUS_MILES, ge=_MIN_RADIUS_MILES, le=_MAX_RADIUS_MILES),
+    page_size: int = Query(40, ge=1, le=100),
+    cursor: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+    _: None = Depends(rate_limit),
+) -> PlacesResponse:
+    has_location = lat is not None and lng is not None
+    scope = build_scope(
+        city_id=city_id,
+        lat=lat,
+        lng=lng,
+        radius_miles=radius_miles,
+        page_size=page_size,
+    )
+
+    if cursor:
+        try:
+            page = read_snapshot(cursor=cursor, scope=scope, page_size=page_size)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Cursor does not match this feed")
+        if page is None:
+            raise HTTPException(status_code=410, detail="Feed cursor expired; refresh the feed")
+    else:
+        try:
+            if has_location:
+                candidates, total = list_places_near(
+                    db=db,
+                    lat=lat,
+                    lng=lng,
+                    radius_miles=radius_miles,
+                    limit=100,
+                    offset=0,
+                )
+            elif city_id:
+                candidates, total = get_feed_places(
+                    db=db,
+                    city_id=city_id,
+                    limit=_MAX_FEED_SNAPSHOT_PLACES,
+                )
+            else:
+                candidates, total = query_list_places(
+                    db=db,
+                    city_id=None,
+                    limit=100,
+                    offset=0,
+                )
+        except Exception as exc:
+            logger.exception("feed_cursor_query_failed error=%s", exc)
+            raise HTTPException(status_code=503, detail="Service temporarily unavailable")
+
+        ordered = rank_feed(
+            candidates,
+            lat=lat,
+            lng=lng,
+            limit=min(len(candidates), _MAX_FEED_SNAPSHOT_PLACES),
+        )
+        page = create_snapshot(
+            scope=scope,
+            place_ids=[place.id for place in ordered],
+            total=total,
+            page_size=page_size,
+        )
+
+    items = _hydrate_place_outputs(db, page.place_ids)
+    page_number = 1
+    if cursor:
+        try:
+            page_number = int(cursor.rsplit(".", 1)[1]) // page_size + 1
+        except (ValueError, IndexError):
+            page_number = 1
+    return PlacesResponse(
+        total=page.total,
+        page=page_number,
+        page_size=page_size,
+        items=items,
+        next_cursor=page.next_cursor,
+    )
 
 
 @router.get(

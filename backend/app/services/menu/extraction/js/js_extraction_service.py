@@ -20,6 +20,7 @@ from app.services.menu.extraction.js.js_endpoint_replay import replay_js_endpoin
 from app.services.menu.extraction.js.js_endpoint_scanner import scan_parsed_bundle_metadata
 from app.services.menu.extraction.js.js_hydration_detector import detect_hydration_state
 from app.services.menu.extraction.js.js_menu_payload_adapter import convert_payload_to_menu_items
+from app.services.menu.extraction.extraction_result_ranker import is_plausible_extraction_result
 
 
 logger = logging.getLogger(__name__)
@@ -246,6 +247,39 @@ def _extract_payloads(responses: List[Dict]) -> tuple[List[Any], int]:
     return payloads, success
 
 
+def _successful_endpoint_recipes(
+    responses: List[Dict[str, Any]],
+    ranked_endpoints: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    successful_keys: set[tuple[str, str]] = set()
+
+    for response in responses:
+        payload = response.get("payload")
+        if not payload:
+            continue
+
+        converted = _dedupe(_convert_payloads([payload], response.get("url")))
+        if not is_plausible_extraction_result(converted):
+            continue
+
+        successful_keys.add(
+            (
+                str(response.get("url") or "").strip(),
+                str(response.get("method") or "GET").upper(),
+            )
+        )
+
+    return [
+        endpoint
+        for endpoint in ranked_endpoints
+        if (
+            str(endpoint.get("url") or "").strip(),
+            str(endpoint.get("method") or "GET").upper(),
+        )
+        in successful_keys
+    ]
+
+
 # ---------------------------------------------------------
 # PUBLIC API
 # ---------------------------------------------------------
@@ -309,9 +343,10 @@ def extract_menu_from_js(
     items = _dedupe(_convert_payloads(payloads, url))
 
     # memory store
-    if items and url:
+    successful_recipes = _successful_endpoint_recipes(responses, ranked)
+    if items and url and successful_recipes:
         try:
-            remember_endpoints(url, ranked)
+            remember_endpoints(url, successful_recipes)
         except Exception:
             pass
 

@@ -6,6 +6,7 @@ import re
 from typing import Any, Dict, List, Optional, Set
 
 from app.services.menu.contracts import ExtractedMenuItem
+from app.services.menu.extraction.price_normalizer import coerce_price_cents
 from app.services.network.http_fetcher import fetch
 
 
@@ -174,7 +175,7 @@ def _scan(
             items.append(
                 ExtractedMenuItem(
                     name=name,
-                    price=_extract_price(data),
+                    price_cents=coerce_price_cents(_extract_price(data)),
                     section=_extract_section(data, next_section),
                     currency="USD",
                     description=_extract_description(data),

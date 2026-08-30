@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, useWindowDimensions, View } from 'react-native';
 import MapView, { Marker, Region } from 'react-native-maps';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -57,25 +57,15 @@ const REGION_FETCH_DEBOUNCE_MS = 500;
 // reappeared.
 const PREFETCH_RADIUS_MULTIPLIER = 1.6;
 
-// Grid cell size clustering constants — cell size scales with the visible
-// longitude span so clustering density adapts to zoom level.
-//
-// MIN_CELL_SIZE_DEG was previously 0.0008 (~70-90m on the ground) as a
-// hard floor -- meant to guard against a pathological near-zero cell
-// size, but in practice it meant cellSize stopped shrinking well before
-// a user finished zooming in, so any 3+ places within ~80m of each other
-// (a food hall, a plaza, a busy block) could never be split into
-// individual pins no matter how far you zoomed, pinch or cluster-tap
-// alike. Confirmed live: this is what read as "over-clustered" and
-// "can't tap pins" -- not a tap-registration bug (see the Marker
-// onPress stopPropagation fix elsewhere in this file), but places
-// genuinely having no individual pin to tap. Dropped to 0.00005
-// (~5m) -- small enough to let cellSize keep shrinking all the way to
-// "basically never clusters at street-level zoom" (the actually correct
-// behavior), while still guarding against a literal zero/near-zero
-// region.longitudeDelta producing a degenerate cell size.
-const MIN_CLUSTER_SIZE = 3;
-const MIN_CELL_SIZE_DEG = 0.00005;
+// Screen-space clustering. The previous longitude-only grid used a fixed
+// geographic floor and left every 1-2 item bucket as separate pins. A city
+// result capped at 250 therefore still produced the live-confirmed marker
+// cloud. These radii are pixels/points on the rendered viewport: broad views
+// get stronger decluttering, while street views progressively reveal pins.
+const STREET_CLUSTER_RADIUS = 44;
+const NEIGHBORHOOD_CLUSTER_RADIUS = 56;
+const CITY_CLUSTER_RADIUS_MIN = 64;
+const CITY_CLUSTER_RADIUS_MAX = 84;
 
 // Floor for the region a cluster tap zooms into. Previously 0.003 -- itself
 // ~4x bigger than the old cell-size floor above, so tapping a cluster hit
@@ -182,43 +172,97 @@ interface ClusterPoint {
 
 // Simple grid-based clustering: bucket features into cells sized relative to
 // the current zoom level, and merge cells with 3+ points into one cluster pin.
-function buildClusters(features: NormalizedMapFeature[], region: Region): ClusterPoint[] {
-  const cellSize = Math.max(region.longitudeDelta / 40, MIN_CELL_SIZE_DEG);
-  const cells = new Map<string, NormalizedMapFeature[]>();
+export function buildClusters(
+  features: NormalizedMapFeature[],
+  region: Region,
+  viewportWidth: number,
+  viewportHeight: number,
+): ClusterPoint[] {
+  const densityBoost = Math.min(20, Math.max(0, features.length - 60) / 10);
+  const radiusPx = region.longitudeDelta <= 0.005
+    ? STREET_CLUSTER_RADIUS
+    : region.longitudeDelta <= 0.02
+      ? NEIGHBORHOOD_CLUSTER_RADIUS
+      : Math.min(CITY_CLUSTER_RADIUS_MAX, CITY_CLUSTER_RADIUS_MIN + densityBoost);
+  const safeWidth = Math.max(1, viewportWidth);
+  const safeHeight = Math.max(1, viewportHeight);
+  const west = region.longitude - region.longitudeDelta / 2;
+  const north = region.latitude + region.latitudeDelta / 2;
 
-  for (const f of features) {
-    const cellX = Math.floor(f.coordinate.lng / cellSize);
-    const cellY = Math.floor(f.coordinate.lat / cellSize);
-    const key = `${cellX}:${cellY}`;
-    const bucket = cells.get(key);
-    if (bucket) bucket.push(f);
-    else cells.set(key, [f]);
+  interface CollisionCluster {
+    key: string;
+    members: NormalizedMapFeature[];
+    x: number;
+    y: number;
+    sumLat: number;
+    sumLng: number;
   }
 
-  const clusters: ClusterPoint[] = [];
-  for (const [key, bucket] of cells) {
-    if (bucket.length < MIN_CLUSTER_SIZE) {
-      bucket.forEach((f, i) => {
-        clusters.push({
-          key: `${key}:${i}`,
-          latitude: f.coordinate.lat,
-          longitude: f.coordinate.lng,
-          count: 1,
-          feature: f,
-        });
+  const collisionClusters: CollisionCluster[] = [];
+  for (const feature of features) {
+    const x = ((feature.coordinate.lng - west) / region.longitudeDelta) * safeWidth;
+    const y = ((north - feature.coordinate.lat) / region.latitudeDelta) * safeHeight;
+    let nearest: CollisionCluster | undefined;
+    let nearestDistance = Number.POSITIVE_INFINITY;
+
+    for (const candidate of collisionClusters) {
+      const distance = Math.hypot(candidate.x - x, candidate.y - y);
+      if (distance < radiusPx && distance < nearestDistance) {
+        nearest = candidate;
+        nearestDistance = distance;
+      }
+    }
+
+    if (!nearest) {
+      collisionClusters.push({
+        key: feature.id,
+        members: [feature],
+        x,
+        y,
+        sumLat: feature.coordinate.lat,
+        sumLng: feature.coordinate.lng,
       });
       continue;
     }
 
-    const avgLat = bucket.reduce((sum, f) => sum + f.coordinate.lat, 0) / bucket.length;
-    const avgLng = bucket.reduce((sum, f) => sum + f.coordinate.lng, 0) / bucket.length;
-    clusters.push({ key, latitude: avgLat, longitude: avgLng, count: bucket.length });
+    nearest.members.push(feature);
+    nearest.sumLat += feature.coordinate.lat;
+    nearest.sumLng += feature.coordinate.lng;
+    // Keep subsequent collision checks anchored to the cluster centroid,
+    // matching the coordinate users actually see rather than an invisible
+    // grid origin.
+    nearest.x = nearest.members.reduce(
+      (sum, member) => sum + ((member.coordinate.lng - west) / region.longitudeDelta) * safeWidth,
+      0,
+    ) / nearest.members.length;
+    nearest.y = nearest.members.reduce(
+      (sum, member) => sum + ((north - member.coordinate.lat) / region.latitudeDelta) * safeHeight,
+      0,
+    ) / nearest.members.length;
   }
 
-  return clusters;
+  return collisionClusters.map((cluster) => {
+    if (cluster.members.length === 1) {
+      const feature = cluster.members[0];
+      return {
+        key: `point:${feature.id}`,
+        latitude: feature.coordinate.lat,
+        longitude: feature.coordinate.lng,
+        count: 1,
+        feature,
+      };
+    }
+    return {
+      key: `cluster:${cluster.key}`,
+      latitude: cluster.sumLat / cluster.members.length,
+      longitude: cluster.sumLng / cluster.members.length,
+      count: cluster.members.length,
+    };
+  });
 }
 
 export default function MapScreen() {
+  const { width: viewportWidth, height: viewportHeight } = useWindowDimensions();
   const router = useRouter();
   const selectedCity = useCityStore((s) => s.selectedCity);
   const userLocation = useLocation();
@@ -562,7 +606,10 @@ export default function MapScreen() {
     });
   }, [features, filters]);
 
-  const clusters = useMemo(() => buildClusters(filteredFeatures, mapRegion), [filteredFeatures, mapRegion]);
+  const clusters = useMemo(
+    () => buildClusters(filteredFeatures, mapRegion, viewportWidth, viewportHeight),
+    [filteredFeatures, mapRegion, viewportWidth, viewportHeight],
+  );
 
   // Snap back to GPS regardless of how far the user has panned — the map
   // otherwise has no way back to "where I actually am" once you've explored
@@ -630,6 +677,8 @@ export default function MapScreen() {
                   mapRef.current?.animateToRegion(zoomed, 300);
                 }}
                 tracksViewChanges={false}
+                accessibilityLabel={`Cluster of ${c.count} places. Double tap to zoom in.`}
+                accessibilityRole="button"
               >
                 <MapClusterDot count={c.count} />
               </Marker>
@@ -656,6 +705,9 @@ export default function MapScreen() {
                 });
               }}
               tracksViewChanges={false}
+              accessibilityLabel={`${f.name}${f.category ? `, ${f.category}` : ''}`}
+              accessibilityHint="Opens a place preview"
+              accessibilityRole="button"
             >
               <MapMarkerDot color={color} />
             </Marker>
@@ -685,18 +737,22 @@ export default function MapScreen() {
         </View>
       )}
 
-      {mapError && features.length === 0 && (
+      {mapError && (
         <TouchableOpacity
           style={styles.mapBanner}
           onPress={handleRetryMap}
           accessibilityRole="button"
           accessibilityLabel="Retry loading places"
         >
-          <Text style={styles.mapBannerText}>Could not load places — tap to retry</Text>
+          <Text style={styles.mapBannerText}>
+            {features.length > 0
+              ? 'Showing previously loaded places — tap to retry'
+              : 'Could not load places — tap to retry'}
+          </Text>
         </TouchableOpacity>
       )}
 
-      {mapLoaded && !mapLoading && features.length === 0 && (
+      {mapLoaded && !mapLoading && !mapError && features.length === 0 && (
         <View style={styles.mapBanner}>
           <Text style={styles.mapBannerText}>
             {viewMode === 'saved' ? "You haven't saved any places yet" : 'No places in this city yet'}
@@ -704,7 +760,7 @@ export default function MapScreen() {
         </View>
       )}
 
-      {mapLoaded && !mapLoading && features.length > 0 && filteredFeatures.length === 0 && (
+      {mapLoaded && !mapLoading && !mapError && features.length > 0 && filteredFeatures.length === 0 && (
         <TouchableOpacity
           style={styles.mapBanner}
           onPress={() => setFilters(EMPTY_FILTERS)}

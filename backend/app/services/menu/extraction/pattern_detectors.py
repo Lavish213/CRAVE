@@ -13,6 +13,7 @@ from app.services.menu.extraction.heuristics import (
     extract_name_from_price_line,
     is_junk_line,
 )
+from app.services.menu.extraction.price_normalizer import coerce_price_cents
 
 MAX_MENU_ITEMS = 1200
 
@@ -36,7 +37,7 @@ def _dedupe(items: List[ExtractedMenuItem]) -> List[ExtractedMenuItem]:
 
         key = (
             f"{(item.name or '').strip().lower()}|"
-            f"{(item.price_cents or '').strip()}"
+            f"{item.price_cents if item.price_cents is not None else ''}"
         )
 
         if key in seen:
@@ -122,7 +123,7 @@ def detect_json_ld_menu(soup: BeautifulSoup) -> List[ExtractedMenuItem]:
             items.append(
                 ExtractedMenuItem(
                     name=name,
-                    price=str(price) if price else None,
+                    price_cents=coerce_price_cents(price),
                 )
             )
 
@@ -154,7 +155,7 @@ def detect_table_menu(soup: BeautifulSoup) -> List[ExtractedMenuItem]:
         items.append(
             ExtractedMenuItem(
                 name=name,
-                price=price,
+                price_cents=coerce_price_cents(price),
             )
         )
 
@@ -188,7 +189,7 @@ def detect_list_menu(soup: BeautifulSoup) -> List[ExtractedMenuItem]:
         items.append(
             ExtractedMenuItem(
                 name=name,
-                price=price,
+                price_cents=coerce_price_cents(price),
             )
         )
 
@@ -232,7 +233,7 @@ def detect_menu_cards(soup: BeautifulSoup) -> List[ExtractedMenuItem]:
         items.append(
             ExtractedMenuItem(
                 name=name,
-                price=price,
+                price_cents=coerce_price_cents(price),
             )
         )
 
@@ -269,7 +270,7 @@ def detect_price_anchor_items(soup: BeautifulSoup) -> List[ExtractedMenuItem]:
         items.append(
             ExtractedMenuItem(
                 name=name,
-                price=price,
+                price_cents=coerce_price_cents(price),
             )
         )
 
@@ -299,7 +300,7 @@ def detect_fallback_items(soup: BeautifulSoup) -> List[ExtractedMenuItem]:
         items.append(
             ExtractedMenuItem(
                 name=text,
-                price=None,
+                price_cents=None,
             )
         )
 

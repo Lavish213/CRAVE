@@ -480,7 +480,7 @@ def dedupe_items(items: Iterable):
     for item in items:
 
         name = getattr(item, "name", "") or ""
-        price = getattr(item, "price", None)
+        price = getattr(item, "price_cents", None)
         section = getattr(item, "section", None)
 
         key = (

@@ -97,8 +97,8 @@ function makePlace(id: string, rank_percentile: number, overrides: Partial<Place
   } as PlaceOut;
 }
 
-function page(items: PlaceOut[], total?: number, pageNum = 1): PlacesResponse {
-  return { total: total ?? items.length, page: pageNum, page_size: 40, items };
+function page(items: PlaceOut[], total?: number, pageNum = 1, nextCursor: string | null = null): PlacesResponse {
+  return { total: total ?? items.length, page: pageNum, page_size: 40, items, next_cursor: nextCursor };
 }
 
 function decisionCard(
@@ -345,7 +345,7 @@ describe('FeedScreen', () => {
     // offset window, so the same place can land in two different pages
     // (p1 reappears in page 2 here, exactly like the live incident).
     mockedFetchPlaces
-      .mockResolvedValueOnce(page([makePlace('p0', 0.97), makePlace('p1', 0.5)], 3, 1))
+      .mockResolvedValueOnce(page([makePlace('p0', 0.97), makePlace('p1', 0.5)], 3, 1, 'snapshot.2'))
       .mockResolvedValueOnce(page([makePlace('p1', 0.5), makePlace('p2', 0.3)], 3, 2));
 
     const { findByLabelText, queryAllByLabelText, UNSAFE_getByType } = renderScreen();
@@ -363,5 +363,9 @@ describe('FeedScreen', () => {
     // p1 must render exactly once, not twice, despite appearing in both
     // page responses.
     expect(queryAllByLabelText(/^p1,/)).toHaveLength(1);
+    expect(mockedFetchPlaces).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ pagination: 'cursor', cursor: 'snapshot.2' }),
+    );
   });
 });

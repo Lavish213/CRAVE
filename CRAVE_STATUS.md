@@ -18,7 +18,7 @@ starting a new status file.
 - `CRAVE_FRONTEND_GUIDE_FOR_AI_EDITORS.md` — **local-only, gitignored,
   never commit.** House rules for AI editors working in this frontend.
 
-Last updated: 2026-08-27.
+Last updated: 2026-08-29.
 
 ---
 
@@ -32,7 +32,7 @@ Auth: Supabase (JWKS, ES256).
 
 ## Test status
 
-Backend: **818 passed, 2 skipped** (`cd backend && python -m pytest -q`).
+Backend: **820 passed, 3 skipped** (`cd backend && python -m pytest -q`).
 Frontend: **299 passed**, `tsc --noEmit` clean (`cd frontend && npx jest`).
 An E2E Playwright smoke suite also exists now (`frontend/e2e/`, 3
 journeys) — not part of the Jest count above, run separately via
@@ -114,18 +114,22 @@ gate.
   right time." Video record has no discoverable entry point beyond a
   small chip on Place Detail.
 - **Search is keyword matching**, no typo tolerance or intent parsing.
-- **Feed paginates by offset** against a query that reorders as
-  discovery adds inventory — not corrupting data (client-side dedup
-  guard exists) but wastes round-trips, worsens as discovery throughput
-  grows. Cursor/keyset pagination is the real fix, not yet started.
+- **Feed cursor pagination is implemented but awaiting independent review.**
+  The Feed now freezes a bounded, scope-bound ordered-ID snapshot and chains
+  opaque cursors, so discovery inserts cannot shift later pages. The legacy
+  `/places` offset contract remains available to other callers, and the
+  client-side de-dup guard remains as defense in depth. Live/native behavior
+  must not be called complete until the review branch is merged and exercised.
 - **32 flat categories** mix cuisine/meal-period/dietary/experience/
   ownership in one list — fine today, will constrain filtering/
   personalization eventually.
 
 ## Prioritized backlog
 
-**P0** — Require the 5 CI checks as branch-protection gates on `main`
-(GitHub dashboard setting, not code).
+**P0** — ~~Require CI checks as branch-protection gates on `main`~~ — done:
+six named checks, strict freshness, one approving review, conversation
+resolution, and force-push/deletion protection are configured; administrator
+bypass is retained for the agreed emergency/small-fix lane.
 
 **P1** — Record-video discoverability (product decision: Feed action
 vs. Place Detail affordance vs. tab). Confirm the food-classifier model
@@ -137,15 +141,16 @@ Upload/Offline/Push/**Decision Session**).
 and Map all already have `surface`-tagged Ledger instrumentation
 (confirmed by re-checking the actual files, not just this doc — it was
 stale here, already landed in an earlier session per
-`CRAVE_REMAINING_WORK.md`'s 2026-08-26 entries). Feed keyset pagination
-(now that impression/position data exists across every surface, worth
-actually instrument-checking whether it's needed before building — still
-a real decision, not yet made). App Store prep (hosted Privacy Policy
+`CRAVE_REMAINING_WORK.md`'s 2026-08-26 entries). Feed keyset pagination is
+implemented on `codex/feed-keyset-pagination` with stable snapshot insertion,
+scope-mismatch, expiry, and client cursor-chaining regressions; independent
+review and live verification remain before it is marked shipped. App Store prep (hosted Privacy Policy
 URL, Apple Developer membership, screenshots — needs the user, not
 buildable by an agent). ~~Visual regression / E2E coverage~~ — started:
 `frontend/e2e/` has the 3 planned journeys (Feed→Detail, Search→Detail,
-Save→Craves→Detail), not yet run live end-to-end (needs a real API/
-Supabase config and a seeded test account — see `frontend/e2e/README.md`).
+Save→Craves→Detail). The public Feed and Search journeys passed against the
+production API; the authenticated Save journey remains honestly skipped until
+a dedicated seeded account is supplied (see `frontend/e2e/README.md`).
 
 **P3** — Taste modeling / learned ranking (after real usage data exists,
 not before). Splitting the flat category taxonomy into real dimensions.

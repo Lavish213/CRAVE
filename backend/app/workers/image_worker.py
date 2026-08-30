@@ -205,6 +205,19 @@ class ImageWorker:
                     )
             elif not attempt_failed:
                 # Commit succeeded path (images returned)
+                # A successful fetch rehabilitates the place. Without this,
+                # transient failures remain sticky forever: force-refresh can
+                # rebuild a gallery for an image_blocked place, but normal
+                # scheduling still excludes it from every future refresh.
+                if place_id and (
+                    getattr(place, "image_fetch_attempts", 0)
+                    or getattr(place, "image_blocked", False)
+                ):
+                    db.execute(
+                        update(Place)
+                        .where(Place.id == place_id)
+                        .values(image_fetch_attempts=0, image_blocked=False)
+                    )
                 # Run invariant repair before commit to keep DB consistent
                 if place_id:
                     try:
@@ -255,7 +268,7 @@ class ImageWorker:
         place_ids: Optional[List[str]],
     ) -> Tuple[List[Place], Set[str]]:
 
-        # ImageIngestService (._has_existing_images) reads place.images, and
+        # ImageIngestService (._has_complete_gallery) reads place.images, and
         # ProviderImageExtractor (reached via ImageReader further down this
         # same pipeline) reads place.claims -- both default to lazy loading
         # now (see category.py's comment for why), so this batch fetch needs

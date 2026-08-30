@@ -9,6 +9,7 @@ from typing import List, Optional, Set
 from app.services.network.http_fetcher import fetch
 from app.services.menu.contracts import ExtractedMenu, ExtractedMenuItem
 from app.services.menu.extraction.provider_detector import detect_provider
+from app.services.menu.extraction.price_normalizer import coerce_price_cents
 
 
 logger = logging.getLogger(__name__)
@@ -54,7 +55,7 @@ def _dedupe_items(items: List[ExtractedMenuItem]) -> List[ExtractedMenuItem]:
 
         key = (
             f"{(item.name or '').strip().lower()}|"
-            f"{(item.price_cents or '').strip()}|"
+            f"{item.price_cents if item.price_cents is not None else ''}|"
             f"{(item.section or '').strip().lower()}"
         )
 
@@ -141,7 +142,7 @@ def _fetch_toast_menu(html: str) -> List[ExtractedMenuItem]:
             items.append(
                 ExtractedMenuItem(
                     name=name,
-                    price=price,
+                    price_cents=coerce_price_cents(price),
                     section=section,
                     currency="USD",
                 )
@@ -182,7 +183,7 @@ def _fetch_square_menu(html: str) -> List[ExtractedMenuItem]:
             items.append(
                 ExtractedMenuItem(
                     name=name,
-                    price=price,
+                    price_cents=coerce_price_cents(price),
                     section=section,
                     currency="USD",
                 )
@@ -225,7 +226,7 @@ def _fetch_olo_menu(html: str) -> List[ExtractedMenuItem]:
             items.append(
                 ExtractedMenuItem(
                     name=name,
-                    price=price,
+                    price_cents=coerce_price_cents(price),
                     section=section,
                     currency="USD",
                 )
@@ -268,7 +269,7 @@ def _fetch_chownow_menu(html: str) -> List[ExtractedMenuItem]:
             items.append(
                 ExtractedMenuItem(
                     name=name,
-                    price=price,
+                    price_cents=coerce_price_cents(price),
                     section=section,
                     currency="USD",
                 )

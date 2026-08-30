@@ -33,23 +33,17 @@ def test_geojson_properties_tier_values():
         )
         assert props.tier == tier
 
-from app.services.query.map_query import _compute_tier_thresholds, _assign_tier
+from app.services.query.map_query import _assign_tier
 
-def test_tier_thresholds_empty():
-    t = _compute_tier_thresholds([])
-    # anything returns default when no scores
-    assert _assign_tier(0.99, t) == "default"
+def test_tier_uses_stable_city_percentile_bands():
+    assert _assign_tier(0.01, 0.95) == "elite"
+    assert _assign_tier(0.99, 0.85) == "trusted"
+    assert _assign_tier(0.99, 0.55) == "solid"
+    assert _assign_tier(0.99, 0.20) == "default"
 
-def test_tier_percentile_ordering():
-    scores = list(range(100))  # 0–99
-    t = _compute_tier_thresholds([float(s) for s in scores])
-    # top 5% = score >= 95
-    assert _assign_tier(95.0, t) == "elite"
-    assert _assign_tier(85.0, t) == "trusted"
-    assert _assign_tier(55.0, t) == "solid"
-    assert _assign_tier(20.0, t) == "default"
 
-def test_tier_single_score():
-    t = _compute_tier_thresholds([0.5])
-    # only one score — it's both elite and everything
-    assert _assign_tier(0.5, t) == "elite"
+def test_tier_falls_back_to_app_wide_absolute_score_bands():
+    assert _assign_tier(0.42, None) == "elite"
+    assert _assign_tier(0.32, None) == "trusted"
+    assert _assign_tier(0.22, None) == "solid"
+    assert _assign_tier(0.21, None) == "default"
