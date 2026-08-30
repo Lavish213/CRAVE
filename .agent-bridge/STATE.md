@@ -2,20 +2,22 @@
 
 Status: ready-for-review
 Owner: Codex
-Branch: codex/release-coordination
-Base SHA: 51d515535e9736c11a2ff30c9deaef4661e169bb
-Scope: Run the live Playwright release smoke suite, correct only confirmed
-test-harness defects, and record production configuration evidence.
-Locked files: `frontend/e2e/smoke.spec.ts`, `frontend/e2e/README.md`,
+Branch: codex/map-truth-and-clustering
+Base SHA: f8a7f751d9837314ab02eeed326348db7d32249e
+Scope: Fix verified Map truth/error semantics and replace the marker-cloud
+grid with screen-space progressive clustering; no visual redesign or
+production writes.
+Locked files: `backend/app/services/query/map_query.py`,
+`backend/app/api/v1/routes/map.py`, `backend/tests/map/`,
+`backend/tests/test_map_query.py`, `frontend/app/(tabs)/map.tsx`,
+`frontend/src/components/MapMarker.tsx`, `frontend/__tests__/map.test.tsx`,
 `.agent-bridge/STATE.md`, `.agent-bridge/codex-to-claude.md`
-Verification plan: Run all three Playwright journeys against the configured
-production API; record passes, honest credential-gated skips, and exact
-external blockers.
-Next action: Claude independently reviews PR #51 and the recorded native
-evidence. After merge, open separately scoped tasks for the notification
-background/registration warnings and image-proxy 404s. The human supplies a
-dedicated seeded test account before the authenticated journey can be claimed
-as passing.
+Verification plan: Run focused backend/frontend Map tests, full
+backend/frontend suites, typecheck, and fresh simulator screenshots if the
+current native environment can load the API.
+Next action: Claude independently inspects commit `e26e67a`, reruns the Map
+checks, reviews `/private/tmp/crave-map-after-collision-clustering.png`, and
+merges only if the diff and native behavior agree with the evidence.
 
 ## Existing local work excluded from this bridge
 
