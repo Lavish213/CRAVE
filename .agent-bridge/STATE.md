@@ -1,6 +1,6 @@
 # Active agent state
 
-Status: claimed
+Status: ready-for-review
 Owner: Codex
 Branch: codex/overture-entity-review
 Base SHA: 476ad3a7d85c46e48312a2e6f2265c22a1060782
@@ -14,8 +14,9 @@ Verification plan: export the exact batch read-only; reconcile each record by
 name, address, website, and external ID; use current official sources first and
 independent secondary evidence where needed; mark ambiguous, duplicate, moved,
 or closed entities HOLD/REJECT; verify production batch counts remain unchanged.
-Next action: retrieve the exact 10-row batch read-only and begin evidence-backed
-entity reconciliation. No production write is authorized.
+Next action: Claude independently reviews commit `98d1ed7`, especially the
+shared-domain branch fix and fixed-ID disposition manifest. Do not run the
+production `--apply` command before merge and approval.
 
 ## Existing local work excluded from this bridge
 
