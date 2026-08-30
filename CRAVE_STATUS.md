@@ -66,12 +66,18 @@ administrator bypass retained for the agreed small-fix lane.
   SDK 55 package line (`expo-notifications` 55.0.13, expo/expo#43829). Not
   urgent (app keeps running, Feed still loads) but the warning won't clear
   without the upgrade.
-- [ ] **Menu population canary** — the population-readiness pass (identity
-  fix, Overture hardening, menu provenance) is merged but has never run
-  against production. `docs/POPULATION_READINESS.md` has the staged,
-  bounded one-city canary plan; needs a human to actually authorize and
-  run `backend/scripts/populate_menus.py --execute --confirm POPULATE`
-  for a single city first.
+- [ ] **Release the population canary batch (or don't).** A reversible
+  Overture canary already ran once: 10 Oakland candidates are staged in
+  production as `DiscoveryCandidate` rows, but every one is `blocked` and
+  `unresolved` — invisible to users, structurally excluded from the
+  promotion worker's own query (verified independently, not just
+  asserted). Verdict is **HOLD**: the sample included likely duplicates
+  and at least one moved/stale venue, so releasing needs a human (or a
+  separate, scoped pass) to classify each row as existing-match/moved-or-
+  closed/genuinely-new before any is unblocked. See
+  `docs/POPULATION_CANARY_2026-08-30.md` for the full findings and the
+  exact rollback command (`backend/scripts/run_overture_canary.py
+  --rollback-batch oakland-20260830-a --confirm ROLLBACK_OVERTURE`).
 
 ## What's solid right now
 
@@ -184,9 +190,9 @@ administrator bypass retained for the agreed small-fix lane.
 ~~Feed keyset pagination~~ — done, merged. ~~Map over-clustering~~ — done,
 merged, confirmed on-device.
 
-**P1** — Run the menu-population one-city canary per
-`docs/POPULATION_READINESS.md` (needs a human to authorize the write — see
-"Needs your action"). Record-video discoverability (product decision:
+**P1** — ~~Run the menu-population one-city canary~~ — done, ran once
+(see "Needs your action": the batch is staged and blocked, releasing it
+needs a human decision). Record-video discoverability (product decision:
 Feed action vs. Place Detail affordance vs. tab). Confirm the
 food-classifier model is actually installed in prod vs. degrading to its
 fallback path. Physical-device smoke pass (Auth/Feed/Search/Place
