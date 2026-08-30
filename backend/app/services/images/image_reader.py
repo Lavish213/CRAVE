@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 from typing import Dict, List, Optional
+from urllib.parse import urlparse
 
 from sqlalchemy.orm import Session
 
@@ -16,6 +17,7 @@ logger = logging.getLogger(__name__)
 
 
 MAX_SOURCE_IMAGES = 30
+MIN_FREE_SOURCE_IMAGES = 3
 
 
 class ImageReader:
@@ -61,9 +63,13 @@ class ImageReader:
 
         candidates: List[dict] = []
 
-        candidates.extend(self._read_google(place))
+        # Prefer already-collected provider claims and the restaurant's own
+        # website. Google Places is a paid fallback, not a mandatory call for
+        # every place that already has enough free candidates.
         candidates.extend(self._read_provider(place))
         candidates.extend(self._read_website(place, db=db))
+        if self._usable_free_candidate_count(candidates) < MIN_FREE_SOURCE_IMAGES:
+            candidates.extend(self._read_google(place))
 
         if not candidates:
             logger.debug(
@@ -85,6 +91,19 @@ class ImageReader:
         )
 
         return normalized
+
+    def _usable_free_candidate_count(self, candidates: List[dict]) -> int:
+        """Count unique, absolute HTTP(S) candidates before skipping Google."""
+        urls = set()
+        for candidate in candidates:
+            try:
+                url = str(candidate.get("url") or "").strip()
+                parsed = urlparse(url)
+                if parsed.scheme in {"http", "https"} and parsed.netloc:
+                    urls.add(url)
+            except Exception:
+                continue
+        return len(urls)
 
     # ---------------------------------------------------------
     # Source Readers

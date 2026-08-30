@@ -6,11 +6,9 @@ Before this fix: a successfully-processed user upload always landed with
 is_primary=False, visibility_status="gallery_only" (PlaceImage's column
 defaults) — it would show in the place-detail gallery but never as the
 feed card / map pin thumbnail, both of which only ever query
-is_primary=True. Worse, ImageIngestService.ingest_place_images skips a
-place entirely the moment it has *any* image (see
-_has_existing_images), and the scheduled ImageWorker never passes
-force_refresh=True. So a place whose first-ever photo came from a user
-upload would never get a primary image from any source — the card/pin
+is_primary=True. Worse, ImageIngestService.ingest_place_images historically
+skipped a place the moment it had *any* image. So a place whose first-ever
+photo came from a user upload could never get a primary image from any source — the card/pin
 stays on the empty-state fallback forever despite a real photo existing.
 
 The S3 client and the real network/DB boundary (R2) are mocked; PIL

@@ -23,6 +23,7 @@ logger = logging.getLogger(__name__)
 
 MAX_INPUT_IMAGES = 50
 MAX_GALLERY_IMAGES = 10
+MIN_COMPLETE_GALLERY_IMAGES = 3
 
 
 class ImageIngestService:
@@ -82,7 +83,7 @@ class ImageIngestService:
         if not place_id:
             raise ValueError("place.id is required")
 
-        if not force_refresh and self._has_existing_images(place):
+        if not force_refresh and self._has_complete_gallery(place):
             logger.debug(
                 "image_ingest_skip_existing place_id=%s",
                 place_id,
@@ -249,12 +250,15 @@ class ImageIngestService:
     # Internal stages
     # ---------------------------------------------------------
 
-    def _has_existing_images(
+    def _has_complete_gallery(
         self,
         place: Place,
     ) -> bool:
-        images = getattr(place, "images", None)
-        return bool(images)
+        images = list(getattr(place, "images", None) or [])
+        return (
+            len(images) >= MIN_COMPLETE_GALLERY_IMAGES
+            and any(bool(getattr(image, "is_primary", False)) for image in images)
+        )
 
     def _read_candidates(
         self,
@@ -374,4 +378,4 @@ class ImageIngestService:
             force_refresh=force_refresh,
         )
 
-        return images or [] 
+        return images or []

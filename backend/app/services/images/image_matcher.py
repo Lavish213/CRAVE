@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from typing import Dict, List
 from urllib.parse import urlparse
 
@@ -10,6 +11,9 @@ logger = logging.getLogger(__name__)
 
 MIN_URL_LENGTH = 15
 MIN_DIMENSION = 80
+GOOGLE_PHOTO_RESOURCE_RE = re.compile(
+    r"^places/[A-Za-z0-9_-]+/photos/[A-Za-z0-9_-]+$"
+)
 
 BLOCKED_PATH_KEYWORDS = {
     "logo",
@@ -150,6 +154,9 @@ class ImageMatcher:
     ) -> bool:
 
         try:
+
+            if GOOGLE_PHOTO_RESOURCE_RE.fullmatch(url):
+                return True
 
             parsed = urlparse(url)
 
