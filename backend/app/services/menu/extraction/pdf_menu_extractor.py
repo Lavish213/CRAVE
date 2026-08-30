@@ -9,6 +9,7 @@ from pdfminer.high_level import extract_text
 
 from app.services.network.http_fetcher import fetch
 from app.services.menu.contracts import ExtractedMenuItem
+from app.services.menu.extraction.price_normalizer import coerce_price_cents
 
 
 logger = logging.getLogger(__name__)
@@ -143,7 +144,7 @@ def _dedupe(items: List[ExtractedMenuItem]) -> List[ExtractedMenuItem]:
 
         key = (
             f"{(item.name or '').strip().lower()}|"
-            f"{(item.price_cents or '').strip()}|"
+            f"{item.price_cents if item.price_cents is not None else ''}|"
             f"{(item.section or '').strip().lower()}"
         )
 
@@ -236,7 +237,7 @@ def _parse_lines(text: str) -> List[ExtractedMenuItem]:
         items.append(
             ExtractedMenuItem(
                 name=name,
-                price=price,
+                price_cents=coerce_price_cents(price),
                 section=current_section,
                 currency="USD",
             )

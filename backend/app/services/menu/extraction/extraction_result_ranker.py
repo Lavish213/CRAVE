@@ -28,6 +28,7 @@ EXTRACTOR_PRIORITY = {
     "iframe": 0.98,
     "jsonld": 0.92,
     "hydration": 0.88,
+    "js": 0.84,
     "html": 0.78,
     "pdf": 0.60,
 }
@@ -119,7 +120,7 @@ def _price_ratio(items: List[ExtractedMenuItem]) -> float:
 
     for item in items:
 
-        price = getattr(item, "price", None)
+        price = getattr(item, "price_cents", None)
 
         if price:
             priced += 1
@@ -216,7 +217,7 @@ def _price_format_sanity(items: List[ExtractedMenuItem]) -> float:
 
     for item in items:
 
-        price = getattr(item, "price", None)
+        price = getattr(item, "price_cents", None)
 
         if not price:
             continue
@@ -225,6 +226,28 @@ def _price_format_sanity(items: List[ExtractedMenuItem]) -> float:
             good += 1
 
     return good / len(items)
+
+
+def is_plausible_extraction_result(items: List[ExtractedMenuItem]) -> bool:
+    """Cheap structural gate used before trusting a high-count result.
+
+    Count alone is not evidence of a menu: navigation scrapes commonly return
+    dozens of unique labels. This deliberately avoids requiring prices or
+    sections because legitimate menus may omit either one.
+    """
+
+    normalized = _normalize_items(items)
+    if len(normalized) < MIN_REASONABLE_ITEMS:
+        return False
+
+    if _unique_ratio(normalized) < 0.5:
+        return False
+
+    if _navigation_ratio(normalized) > 0.3:
+        return False
+
+    average_name_length = _avg_name_length(normalized)
+    return 2 <= average_name_length <= 100
 
 
 # ---------------------------------------------------------

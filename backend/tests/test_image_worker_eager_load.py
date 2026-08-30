@@ -2,7 +2,7 @@
 Regression test for the same bug class caught in
 test_recompute_scores_worker_city_lookup.py: Place.images and Place.claims
 were changed from lazy="selectin" to lazy="select" after a whole-app grep
-found "zero real usages" -- but ImageIngestService._has_existing_images()
+found "zero real usages" -- but ImageIngestService._has_complete_gallery()
 reads place.images, and ProviderImageExtractor._provider_payloads() (via
 ImageReader, reached from the same ingest_place_images() pipeline) reads
 place.claims, both via getattr(place, "...", default) rather than literal
@@ -78,7 +78,7 @@ def test_select_places_eagerly_loads_images_and_claims(db, city):
         unloaded = inspect(places[0]).unloaded
         assert "images" not in unloaded, (
             "place.images was not eagerly loaded -- "
-            "ImageIngestService._has_existing_images() would issue an "
+            "ImageIngestService._has_complete_gallery() would issue an "
             "extra query per place instead of using the batch fetch"
         )
         assert "claims" not in unloaded, (

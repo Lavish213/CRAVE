@@ -8,50 +8,59 @@ Allowed next files: none — this is a review/status handoff, not a code change
 
 ## Outcome
 Read through all six open PRs (#52-#57) plus their CodeRabbit and bridge
-comments after a session gap. Merged #52 (iOS UIBackgroundModes fix — clean,
-verified, all 8 checks green) and #57 (Map truth/clustering — independently
-reran its backend suite, no concerns). Independently verified findings on
-#53, #55, and #56 by reading the actual diffs rather than trusting either
-PR's description, and posted the confirmed ones as PR comments (GitHub
-blocks a formal APPROVE/REQUEST_CHANGES review on this account's own PRs,
-so review verdicts are recorded as regular comments instead — see each PR
-thread).
+comments after a session gap. Merged #52 (iOS UIBackgroundModes fix),
+#57 (Map truth/clustering — independently reran its backend suite, no
+concerns), and #54 (extraction observability + population preview,
+merged into PR #53's branch per its own base). Independently verified
+findings on #53, #55, and #56 by reading the actual diffs rather than
+trusting either PR's description, and posted the confirmed ones as PR
+comments (GitHub blocks a formal APPROVE/REQUEST_CHANGES review on this
+account's own PRs, so review verdicts are recorded as regular comments
+instead — see each PR thread).
 
 ## Verification
-- PR #53: reproduced the bug by inspecting `ExtractedMenuItem`'s dataclass
-  definition (`price_cents` only, `slots=True`, no `price` field) against
-  seven remaining `ExtractedMenuItem(price=...)` construction sites in
-  `jsonld_menu_extractor.py` (:157, :197) and all five `detect_*` functions
-  in `pattern_detectors.py`. `menu_extraction_router.py`'s `_safe_extract()`
-  catches the resulting `TypeError` at `logger.debug` and returns `[]`, so
-  JSON-LD extraction and the entire pattern-detector fallback family
-  silently return empty, unconditionally, on every call — the exact
-  opposite of what this PR's title claims to fix.
+- PR #53 (now includes #54's fix): read the H-20260829-extraction-
+  observability handoff above — Codex independently found and fixed the
+  same `price=` constructor bug via a `coerce_price_cents()` normalizer,
+  and added an AST-based static guard
+  (`test_every_extracted_menu_item_constructor_uses_the_active_price_contract`)
+  that fails if any `ExtractedMenuItem(...)` call anywhere in the menu
+  service tree still passes `price=`. Confirmed via `git grep` zero
+  remaining `price=` kwargs. Ran the full backend suite myself on #54's
+  branch in a clean worktree: 867 passed, 2 skipped. Re-reviewing the
+  combined #53+#54 diff next before merging to main.
 - PR #55: read `get_cursor_feed` in `backend/app/api/v1/routes/places.py` —
   the `has_location` and no-city branches cap candidates at `limit=100`
   before `rank_feed()` runs, so `min(len(candidates), 200)` collapses to
   100 regardless of `_MAX_FEED_SNAPSHOT_PLACES = 200`. Only the `city_id`
-  branch actually requests 200.
+  branch actually requests 200. Not yet fixed.
 - PR #56: the identity fix (candidate-derived place UUID, dropped
   `(city_id, name)` unique constraint) and the Overture loud-failure fix
   are both solid and well-tested. But `menu_publisher.py` now sets
   `MenuItem.image` directly from extracted `image_url`, bypassing
   `MenuImageBridge` — whose own docstring says "No bypass. Phase 3 is law."
   Unmoderated external image URLs now reach `/places/{id}/menu` directly.
+  Not yet fixed.
 - PR #52 and #57: both verified clean and merged. #57 confirmed by
   independently rerunning the focused Map tests (11 passed) and the full
   backend suite (820 passed, 2 skipped) in a clean worktree; all 8 required
   CI checks green on both.
 
 ## Known gaps / risks
-- PR #54 (stacked on #53's branch) not yet independently diff-reviewed —
-  blocked on #53's fix landing first since it inherits that branch's bug.
+- PR #53+#54's combined diff also includes a real, well-reasoned image-
+  pipeline hardening pass (ImageMatcher Google resource-name support,
+  ImageIngestService's complete-gallery threshold, ImageReader's free-
+  source-first ordering, ImageWorker's block/attempt-count rehabilitation)
+  that Codex's own bridge handoff documents in detail but the PR's GitHub
+  description never mentioned. Noted on the PR thread as a disclosure gap,
+  not a code-quality objection — the fixes themselves check out.
 - `CRAVE_STATUS.md` still reflects pre-PR-#51 state in places; not updated
   this pass — deferred in favor of finishing the PR backlog read-through
   the user explicitly asked for first.
 
 ## Next action
-Fix the three confirmed findings above (PR #53, #55, #56), each with a
-regression test that actually exercises the previously-broken path, since
-the existing suites didn't catch any of them. Once #53 is fixed, Claude
-will re-review #53 and then #54.
+Claude re-reviews PR #53 (now carrying #54's fix) and merges to main if
+the combined diff and full suite check out. Codex still needs to fix
+PR #55's 100-vs-200 candidate cap and PR #56's MenuImageBridge bypass,
+each with a regression test that actually exercises the previously-broken
+path.
