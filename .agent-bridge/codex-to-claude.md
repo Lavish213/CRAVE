@@ -1,36 +1,57 @@
-# H-20260830-map-truth-clustering
-Status: ready-for-review
-Owner: Codex
-Branch: codex/map-truth-and-clustering
-Base SHA: f8a7f751d9837314ab02eeed326348db7d32249e
-Commit SHA: e26e67a
-Allowed next files: review only; no edits until ownership is acknowledged
+# H-20260830-pr-catchup
+Status: information-only
+Owner: Claude
+Branch: main
+Base SHA: 141fe8b9a5992d18f5eb00bc2dc8744b0c127b17
+Commit SHA: 141fe8b
+Allowed next files: none — this is a review/status handoff, not a code change
 
 ## Outcome
-The live iPhone 17 Pro Map rendered a nearly unusable cloud for a 250-place
-response. This commit replaces the longitude grid with density-aware,
-screen-space collision clustering; preserves progressive street-level pin
-reveal; adds accessible pin/cluster labels; makes map tiers stable across
-viewport changes by using city rank percentiles; and turns DB/query failures
-into retryable 503s instead of false empty catalogs. If a later viewport fetch
-fails, retained pins are explicitly labeled as previously loaded.
+Read through all six open PRs (#52-#57) plus their CodeRabbit and bridge
+comments after a session gap. Merged #52 (iOS UIBackgroundModes fix — clean,
+verified, all 8 checks green) and #57 (Map truth/clustering — independently
+reran its backend suite, no concerns). Independently verified findings on
+#53, #55, and #56 by reading the actual diffs rather than trusting either
+PR's description, and posted the confirmed ones as PR comments (GitHub
+blocks a formal APPROVE/REQUEST_CHANGES review on this account's own PRs,
+so review verdicts are recorded as regular comments instead — see each PR
+thread).
 
 ## Verification
-- `/Users/angelowashington/CRAVE/venv/bin/pytest -q tests/test_map_query.py tests/map/test_map_geojson.py tests/map/test_map_error_contract.py` → 11 passed
-- `/Users/angelowashington/CRAVE/venv/bin/pytest -q` → 819 passed, 3 skipped
-- `npm test -- --runInBand __tests__/map.test.tsx` → 11 passed
-- `npx tsc --noEmit` → clean
-- `npm test -- --runInBand` → 31 suites / 301 tests passed; Jest then hit the repository's known open-handle hang and the idle process was interrupted (exit 130) after the complete pass summary
-- Native branch loaded 250 real production Map features on iPhone 17 Pro Simulator. Before: `/private/tmp/crave-map-audit-01.png`. Final: `/private/tmp/crave-map-after-collision-clustering.png` (roughly a dozen separated clusters, no original marker cloud).
-- `git diff --check` → clean
+- PR #53: reproduced the bug by inspecting `ExtractedMenuItem`'s dataclass
+  definition (`price_cents` only, `slots=True`, no `price` field) against
+  seven remaining `ExtractedMenuItem(price=...)` construction sites in
+  `jsonld_menu_extractor.py` (:157, :197) and all five `detect_*` functions
+  in `pattern_detectors.py`. `menu_extraction_router.py`'s `_safe_extract()`
+  catches the resulting `TypeError` at `logger.debug` and returns `[]`, so
+  JSON-LD extraction and the entire pattern-detector fallback family
+  silently return empty, unconditionally, on every call — the exact
+  opposite of what this PR's title claims to fix.
+- PR #55: read `get_cursor_feed` in `backend/app/api/v1/routes/places.py` —
+  the `has_location` and no-city branches cap candidates at `limit=100`
+  before `rank_feed()` runs, so `min(len(candidates), 200)` collapses to
+  100 regardless of `_MAX_FEED_SNAPSHOT_PLACES = 200`. Only the `city_id`
+  branch actually requests 200.
+- PR #56: the identity fix (candidate-derived place UUID, dropped
+  `(city_id, name)` unique constraint) and the Overture loud-failure fix
+  are both solid and well-tested. But `menu_publisher.py` now sets
+  `MenuItem.image` directly from extracted `image_url`, bypassing
+  `MenuImageBridge` — whose own docstring says "No bypass. Phase 3 is law."
+  Unmoderated external image URLs now reach `/places/{id}/menu` directly.
+- PR #52 and #57: both verified clean and merged. #57 confirmed by
+  independently rerunning the focused Map tests (11 passed) and the full
+  backend suite (820 passed, 2 skipped) in a clean worktree; all 8 required
+  CI checks green on both.
 
 ## Known gaps / risks
-- The Expo Simulator displays the known notification entitlement error toast; this is not caused by Map and obscures the bottom tab bar in the screenshot.
-- Cluster counts cover the API's capped 250 returned places, not the entire catalog. A later server-side aggregation/truncation contract is still needed for exact whole-city counts.
-- This is a verified logic/usability repair, not the final CRAVE visual redesign. Search↔Map state synchronization, a deliberate “Search this area” interaction, and selected-place decision-card content remain product/design work.
-- Population PR #56 remains separately blocked on independent review; no migrations, deployment, or production population writes were performed here.
+- PR #54 (stacked on #53's branch) not yet independently diff-reviewed —
+  blocked on #53's fix landing first since it inherits that branch's bug.
+- `CRAVE_STATUS.md` still reflects pre-PR-#51 state in places; not updated
+  this pass — deferred in favor of finishing the PR backlog read-through
+  the user explicitly asked for first.
 
 ## Next action
-Fetch `codex/map-truth-and-clustering`, inspect `e26e67a`, rerun the focused
-checks, compare the native before/after screenshots, and review the PR before
-merge.
+Fix the three confirmed findings above (PR #53, #55, #56), each with a
+regression test that actually exercises the previously-broken path, since
+the existing suites didn't catch any of them. Once #53 is fixed, Claude
+will re-review #53 and then #54.

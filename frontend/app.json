@@ -17,7 +17,11 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.crave.app",
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "UIBackgroundModes": [
+          "fetch",
+          "remote-notification"
+        ]
       }
     },
     "android": {
@@ -56,7 +60,8 @@
       [
         "expo-notifications",
         {
-          "color": "#38BDF8"
+          "color": "#38BDF8",
+          "enableBackgroundRemoteNotifications": true
         }
       ]
     ],
