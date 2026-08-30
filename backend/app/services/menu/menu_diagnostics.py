@@ -38,6 +38,27 @@ def _analyze_snapshots(
 
     latest = snapshots[0] if snapshots else None
 
+    price_coverage: list[float] = []
+    image_coverage: list[float] = []
+    regression_count = 0
+
+    for snapshot in snapshots:
+        payload = snapshot.raw_payload if isinstance(snapshot.raw_payload, dict) else {}
+        evidence = payload.get("evidence")
+        drift = payload.get("drift")
+
+        if isinstance(evidence, dict):
+            if evidence.get("price_coverage") is not None:
+                price_coverage.append(float(evidence["price_coverage"]))
+            if evidence.get("image_coverage") is not None:
+                image_coverage.append(float(evidence["image_coverage"]))
+
+        if isinstance(drift, dict) and drift.get("status") == "regressed":
+            regression_count += 1
+
+    def average(values: list[float]) -> float:
+        return round(sum(values) / len(values), 3) if values else 0.0
+
     return {
         "total": total,
         "success": success,
@@ -47,6 +68,9 @@ def _analyze_snapshots(
         "latest_method": getattr(latest, "extraction_method", None),
         "latest_success": getattr(latest, "success", None),
         "latest_item_count": getattr(latest, "item_count", None),
+        "avg_price_coverage": average(price_coverage),
+        "avg_image_coverage": average(image_coverage),
+        "regression_count": regression_count,
     }
 
 

@@ -5,7 +5,7 @@ import time
 from datetime import datetime, timedelta, timezone
 from typing import List
 
-from sqlalchemy import and_, or_
+from sqlalchemy import and_, case, func, or_
 from sqlalchemy.orm import Session
 
 from app.db.session import SessionLocal
@@ -62,6 +62,58 @@ _BACKOFF_HOURS_MAX = 72  # failure_count >= 4
 MENU_STALENESS_DAYS = 60
 
 
+def _valid_http_source(column):
+    # Require a dotted host, not merely a scheme. Production contained both
+    # a bare label (``SpritzersCafe``) and ``https://+15106716333``; neither is
+    # a fetchable web source even though the latter begins with https://.
+    return or_(column.ilike("http://%.%"), column.ilike("https://%.%"))
+
+
+def _source_quality_clause():
+    """Prefer sources most likely to contain extractable menu truth.
+
+    Direct discovered menu sources and provider URLs outrank generic websites;
+    chain locator/store pages are deliberately demoted. This is queue ordering,
+    not acceptance: every extracted result still passes the normal plausibility
+    and materialization gates.
+    """
+    direct = func.lower(func.coalesce(Place.menu_source_url, ""))
+    grubhub = func.lower(func.coalesce(Place.grubhub_url, ""))
+    website = func.lower(func.coalesce(Place.website, ""))
+    best = case(
+        (_valid_http_source(Place.menu_source_url), direct),
+        (_valid_http_source(Place.grubhub_url), grubhub),
+        else_=website,
+    )
+    has_menu_signal = or_(
+        best.like("%/menu%"),
+        best.like("%menu.%"),
+        best.like("%.pdf%"),
+        best.like("%order%"),
+        best.like("%toasttab%"),
+        best.like("%chownow%"),
+        best.like("%clover%"),
+        best.like("%popmenu%"),
+        best.like("%square%"),
+        best.like("%menufy%"),
+        best.like("%grubhub%"),
+    )
+    is_locator = or_(
+        best.like("%://locations.%"),
+        best.like("%://restaurants.%"),
+        best.like("%/locations/%"),
+        best.like("%/location/%"),
+        best.like("%store-locator%"),
+    )
+    return case(
+        (_valid_http_source(Place.menu_source_url), 100),
+        (_valid_http_source(Place.grubhub_url), 90),
+        (has_menu_signal, 80),
+        (is_locator, 10),
+        else_=40,
+    )
+
+
 def _not_in_backoff_clause(now: datetime):
     return or_(
         Place.menu_extraction_attempted_at.is_(None),
@@ -94,18 +146,33 @@ class MenuWorker:
     def __init__(self):
         self.orchestrator = MenuOrchestrator()
 
-    def run(self):
+    def run(
+        self,
+        *,
+        max_places: int | None = None,
+        city_id: str | None = None,
+    ) -> dict[str, int]:
+
+        if max_places is None:
+            max_places = MAX_PLACES_PER_RUN
+        max_places = max(1, min(MAX_PLACES_PER_RUN, int(max_places)))
 
         total_processed = 0
         error_count = 0
+        materialized_count = 0
+        no_menu_count = 0
 
-        while total_processed < MAX_PLACES_PER_RUN:
+        while total_processed < max_places:
 
             db: Session = SessionLocal()
 
             try:
 
-                places = self._load_places_requiring_menu(db)
+                places = self._load_places_requiring_menu(
+                    db,
+                    city_id=city_id,
+                    limit=min(BATCH_SIZE, max_places - total_processed),
+                )
 
                 if not places:
                     logger.info("menu_worker_no_more_places")
@@ -130,6 +197,7 @@ class MenuWorker:
                         materialized = getattr(result, "materialized", False)
 
                         if materialized:
+                            materialized_count += 1
                             # Set has_menu flag and recompute score after successful materialization
                             place.has_menu = True
                             place.menu_extraction_failure_count = 0
@@ -146,6 +214,7 @@ class MenuWorker:
                             place.menu_extraction_attempted_at = datetime.now(timezone.utc)
                             recompute_places_v4(db, places=[place])
                         else:
+                            no_menu_count += 1
                             # No PlaceTruth was written (see module docstring) —
                             # record the attempt so this place backs off instead
                             # of occupying every future batch.
@@ -199,7 +268,7 @@ class MenuWorker:
                                 place.id,
                             )
 
-                    if total_processed >= MAX_PLACES_PER_RUN:
+                    if total_processed >= max_places:
                         break
 
                 logger.info(
@@ -214,15 +283,29 @@ class MenuWorker:
             time.sleep(SLEEP_BETWEEN_BATCHES)
 
         logger.info(
-            "menu_worker_run_complete total_processed=%s errors=%s",
+            "menu_worker_run_complete total_processed=%s errors=%s materialized=%s no_menu=%s",
             total_processed,
             error_count,
+            materialized_count,
+            no_menu_count,
         )
+
+        return {
+            "attempted": total_processed,
+            "errors": error_count,
+            "materialized": materialized_count,
+            "no_menu": no_menu_count,
+        }
 
     def _load_places_requiring_menu(
         self,
         db: Session,
+        *,
+        city_id: str | None = None,
+        limit: int = BATCH_SIZE,
     ) -> List[Place]:
+
+        limit = max(1, min(MAX_PLACES_PER_RUN, int(limit)))
 
         # Was: only Place.website IS NOT NULL. That silently skipped every
         # place whose only menu source is a delivery-platform URL (Grubhub)
@@ -252,9 +335,9 @@ class MenuWorker:
             )
             .filter(
                 or_(
-                    (Place.website.isnot(None)) & (Place.website != ""),
-                    (Place.grubhub_url.isnot(None)) & (Place.grubhub_url != ""),
-                    (Place.menu_source_url.isnot(None)) & (Place.menu_source_url != ""),
+                    _valid_http_source(Place.website),
+                    _valid_http_source(Place.grubhub_url),
+                    _valid_http_source(Place.menu_source_url),
                 ),
                 or_(
                     PlaceTruth.id.is_(None),
@@ -264,6 +347,9 @@ class MenuWorker:
                 _not_in_backoff_clause(now),
             )
         )
+
+        if city_id:
+            base_query = base_query.filter(Place.city_id == city_id)
 
         # Reserve a slice of the batch for the oldest eligible places
         # regardless of rank_score. Without this, a straight
@@ -277,11 +363,13 @@ class MenuWorker:
         # applied above prevents a repeat-failing place from hogging every
         # run — this fixes the separate case of a place that's simply
         # never been attempted at all.
-        starvation_reserve = max(1, BATCH_SIZE // 5)
-        priority_limit = BATCH_SIZE - starvation_reserve
+        starvation_reserve = 0 if limit == 1 else max(1, limit // 5)
+        priority_limit = limit - starvation_reserve
 
         priority_places = list(
             base_query.order_by(
+                func.coalesce(Place.menu_extraction_failure_count, 0).asc(),
+                _source_quality_clause().desc(),
                 Place.rank_score.desc(),
                 Place.id.asc(),
             )

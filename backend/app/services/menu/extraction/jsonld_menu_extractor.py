@@ -8,6 +8,7 @@ from bs4 import BeautifulSoup
 
 from app.services.menu.contracts import ExtractedMenuItem
 from app.services.menu.extraction.heuristics import clean_text
+from app.services.menu.extraction.price_normalizer import coerce_price_cents
 
 
 logger = logging.getLogger(__name__)
@@ -72,20 +73,36 @@ def _build_key(name: str, price: Optional[str]) -> str:
 # 🔥 NEW: Handle Menu → Section → Item structures
 # ---------------------------------------------------------
 
-def _extract_from_menu_structure(obj: dict) -> List[dict]:
-    items = []
+def _walk_menu_items(
+    value,
+    *,
+    section: Optional[str] = None,
+) -> Iterable[tuple[dict, Optional[str]]]:
+    """Yield leaf MenuItem nodes from arbitrarily nested schema.org menus."""
+    if isinstance(value, list):
+        for entry in value:
+            yield from _walk_menu_items(entry, section=section)
+        return
 
-    has_menu = obj.get("hasMenu")
-    has_menu_section = obj.get("hasMenuSection")
-    has_menu_item = obj.get("hasMenuItem")
+    if not isinstance(value, dict):
+        return
 
-    for field in (has_menu, has_menu_section, has_menu_item):
-        if isinstance(field, dict):
-            items.append(field)
-        elif isinstance(field, list):
-            items.extend(field)
+    obj_type = value.get("@type")
+    if isinstance(obj_type, list):
+        obj_type = obj_type[0] if obj_type else None
 
-    return items
+    current_section = section
+    if obj_type == "MenuSection":
+        current_section = _clean_name(value.get("name") or "") or section
+
+    if obj_type == "MenuItem":
+        yield value, current_section
+        return
+
+    for field in ("hasMenu", "hasMenuSection", "hasMenuItem"):
+        nested = value.get(field)
+        if nested is not None:
+            yield from _walk_menu_items(nested, section=current_section)
 
 
 # ---------------------------------------------------------
@@ -154,7 +171,7 @@ def extract_jsonld_menu(
                 items.append(
                     ExtractedMenuItem(
                         name=clean_name,
-                        price=price,
+                        price_cents=coerce_price_cents(price),
                         section=None,
                         currency="USD",
                         description=clean_text(obj.get("description") or ""),
@@ -167,13 +184,7 @@ def extract_jsonld_menu(
             # 🔥 NEW: Nested menu extraction
             # ---------------------------------------------------------
 
-            nested = _extract_from_menu_structure(obj)
-
-            for sub in nested:
-
-                if not isinstance(sub, dict):
-                    continue
-
+            for sub, section in _walk_menu_items(obj):
                 name = sub.get("name")
                 if not name:
                     continue
@@ -194,8 +205,8 @@ def extract_jsonld_menu(
                 items.append(
                     ExtractedMenuItem(
                         name=clean_name,
-                        price=price,
-                        section=None,
+                        price_cents=coerce_price_cents(price),
+                        section=section,
                         currency="USD",
                         description=clean_text(sub.get("description") or ""),
                         source_url=source_url,

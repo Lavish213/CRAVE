@@ -5,6 +5,7 @@ import re
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 from app.services.menu.contracts import ExtractedMenuItem
+from app.services.menu.extraction.price_normalizer import coerce_price_cents
 
 
 logger = logging.getLogger(__name__)
@@ -482,7 +483,7 @@ def _parse_square(data: Dict[str, Any]) -> List[ExtractedMenuItem]:
         items.append(
             ExtractedMenuItem(
                 name=name,
-                price=_extract_price(data_node),
+                price_cents=coerce_price_cents(_extract_price(data_node)),
                 section=section,
                 currency="USD",
                 description=_extract_description(data_node),
@@ -524,7 +525,7 @@ def _parse_toast(data: Dict[str, Any]) -> List[ExtractedMenuItem]:
                 items.append(
                     ExtractedMenuItem(
                         name=name,
-                        price=_extract_price(item),
+                        price_cents=coerce_price_cents(_extract_price(item)),
                         section=section,
                         currency="USD",
                         description=_extract_description(item),
@@ -554,7 +555,7 @@ def _parse_toast(data: Dict[str, Any]) -> List[ExtractedMenuItem]:
                         items.append(
                             ExtractedMenuItem(
                                 name=mod_name,
-                                price=_extract_price(mod),
+                                price_cents=coerce_price_cents(_extract_price(mod)),
                                 section=section,
                                 currency="USD",
                                 description=_extract_description(mod),
@@ -608,7 +609,7 @@ def _parse_clover(data: Dict[str, Any]) -> List[ExtractedMenuItem]:
                 items.append(
                     ExtractedMenuItem(
                         name=name,
-                        price=_extract_price(node),
+                        price_cents=coerce_price_cents(_extract_price(node)),
                         section=_extract_section_name(node, next_section),
                         currency="USD",
                         description=_extract_description(node),
@@ -680,7 +681,7 @@ def _scan(
                 items.append(
                     ExtractedMenuItem(
                         name=name,
-                        price=_extract_price(nested),
+                        price_cents=coerce_price_cents(_extract_price(nested)),
                         section=_extract_section_name(nested, next_section),
                         currency="USD",
                         description=_extract_description(nested),
@@ -701,7 +702,7 @@ def _scan(
             items.append(
                 ExtractedMenuItem(
                     name=name,
-                    price=_extract_price(data),
+                    price_cents=coerce_price_cents(_extract_price(data)),
                     section=_extract_section_name(data, next_section),
                     currency="USD",
                     description=_extract_description(data),

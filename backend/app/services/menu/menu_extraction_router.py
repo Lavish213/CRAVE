@@ -35,7 +35,6 @@ MAX_IFRAMES = 10
 PROVIDER_FAST_RETURN_MIN = 5
 API_FAST_RETURN_MIN = 10
 HTML_FAST_RETURN_MIN = 12
-MIN_GOOD_RESULT = 5
 
 
 def _safe_text(val: Any) -> str:
@@ -334,6 +333,7 @@ def _run_extraction_pass(
     provider: Optional[str],
     allow_browser_escalation: bool,
     allow_llm_fallback: bool = True,
+    allow_network_fallbacks: bool = True,
 ) -> List[ExtractedMenuItem]:
     provider_items = _safe_provider_extract(provider, html, url)
     if (
@@ -355,7 +355,7 @@ def _run_extraction_pass(
     jsonld_items = _safe_extract(extract_jsonld_menu, html, url)
     js_items = _safe_extract(extract_menu_from_js, html, url)
 
-    api_items = _safe_api_extract(html, url)
+    api_items = _safe_api_extract(html, url) if allow_network_fallbacks else []
     if (
         len(api_items) >= API_FAST_RETURN_MIN
         and is_plausible_extraction_result(api_items)
@@ -369,7 +369,7 @@ def _run_extraction_pass(
     ):
         return _return(place_id, url, "html", html_items)
 
-    iframe_items = _safe_iframe_extract(html, url)
+    iframe_items = _safe_iframe_extract(html, url) if allow_network_fallbacks else []
 
     results = [
         {"extractor": "provider", "items": _dedupe(provider_items)},
@@ -392,7 +392,9 @@ def _run_extraction_pass(
     except Exception as exc:
         logger.debug("rank_failed url=%s error=%s", url, exc)
 
-    if len(best) >= MIN_GOOD_RESULT and is_plausible_extraction_result(best):
+    # A small real menu is still better than a larger low-quality scrape.
+    # The structural plausibility gate already enforces the two-item floor.
+    if is_plausible_extraction_result(best):
         return _return(place_id, url, best_method, best)
 
     fallback = max(
@@ -445,6 +447,7 @@ def _run_extraction_pass(
                 provider=provider,
                 allow_browser_escalation=False,
                 allow_llm_fallback=True,
+                allow_network_fallbacks=allow_network_fallbacks,
             )
 
     return final
@@ -454,6 +457,8 @@ def extract_menu(
     html: str,
     url: Optional[str] = None,
     place_id: Optional[str] = None,
+    *,
+    allow_network_fallbacks: bool = True,
 ) -> List[ExtractedMenuItem]:
     if not html and not url:
         return []
@@ -477,6 +482,7 @@ def extract_menu(
                     place_id=place_id,
                     provider=provider,
                     allow_browser_escalation=False,
+                    allow_network_fallbacks=allow_network_fallbacks,
                 )
 
         return []
@@ -486,5 +492,7 @@ def extract_menu(
         url=url,
         place_id=place_id,
         provider=provider,
-        allow_browser_escalation=True,
+        allow_browser_escalation=allow_network_fallbacks,
+        allow_llm_fallback=allow_network_fallbacks,
+        allow_network_fallbacks=allow_network_fallbacks,
     )

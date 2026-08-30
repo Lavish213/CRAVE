@@ -7,6 +7,10 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app.db.models.menu_snapshot import MenuSnapshot
 from app.db.session import SessionLocal
+from app.services.menu.extraction.snapshot_evidence import (
+    build_snapshot_evidence,
+    compare_snapshot_evidence,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -97,13 +101,35 @@ class MenuSnapshotWriter:
         cleaned_url = _clean_str(source_url)
         cleaned_error = _clean_str(error_message)
 
-        safe_raw_payload = raw_payload if isinstance(raw_payload, dict) else None
+        safe_raw_payload = dict(raw_payload) if isinstance(raw_payload, dict) else {}
         safe_items = _normalize_items(normalized_items)
         item_count = len(safe_items)
 
         db = SessionLocal()
 
         try:
+            previous = (
+                db.query(MenuSnapshot)
+                .filter(
+                    MenuSnapshot.place_id == clean_place_id,
+                    MenuSnapshot.success.is_(True),
+                )
+                .order_by(MenuSnapshot.created_at.desc())
+                .first()
+            )
+            evidence = build_snapshot_evidence(safe_items)
+            previous_evidence = None
+            if previous and isinstance(previous.raw_payload, dict):
+                candidate = previous.raw_payload.get("evidence")
+                if isinstance(candidate, dict):
+                    previous_evidence = candidate
+
+            safe_raw_payload["evidence"] = evidence
+            safe_raw_payload["drift"] = compare_snapshot_evidence(
+                evidence,
+                previous_evidence,
+            )
+
             snapshot = MenuSnapshot(
                 place_id=clean_place_id,
                 extraction_method=method,

@@ -114,7 +114,6 @@ def run_menu_trigger(
             result = orchestrator.run_for_place(
                 db=db,
                 place=place,
-                force_refresh=force_refresh,
             )
 
             duration = round(time.monotonic() - place_start, 3)
