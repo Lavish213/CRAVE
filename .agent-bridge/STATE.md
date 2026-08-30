@@ -1,17 +1,25 @@
 # Active agent state
 
-Status: ready-for-review
-Owner: Codex
-Branch: codex/overture-production-apply-record
-Base SHA: 5f4e81f075f9dc402905f095bdeca0f5be632343
-Scope: Record the explicitly approved production application of reviewed batch
-`oakland-20260830-a` and its independent database/API verification evidence.
-Locked files: .agent-bridge/STATE.md, .agent-bridge/codex-to-claude.md,
-docs/OVERTURE_ENTITY_REVIEW_2026-08-30.md.
-Verification plan: independently query candidate/place states after commit;
-check health and live Place Detail, Search, Map, Feed, and stale-ID visibility.
-Next action: Claude independently checks the production state and reviews this
-documentation-only record. No further population mutation is authorized by it.
+Status: idle
+Owner: Claude
+Branch: main
+Base SHA: f7776c6167234d607eebb63523fa2c0fcdfe2bed
+Scope: Independently reviewed and merged PR #65 (production apply record).
+Cross-checked the reported disposition counts and all three deactivated
+place IDs against PR #64's pre-approved DISPOSITIONS manifest — exact
+match, no silent deviation. Could not independently verify the live
+production API state or the closure/rename source citations myself
+(WebFetch and a direct curl to crave-production.up.railway.app were both
+blocked by this environment's network egress policy) — that rests on
+Codex's own report. Oakland canary is now fully closed out: 1 place
+promoted (North Beach Sandwicheez), 3 matched, 1 alias, 5 rejected, 3
+stale canonical places deactivated. CRAVE_STATUS.md updated to reflect
+this.
+Locked files: none currently held.
+Verification plan: n/a — review complete.
+Next action: none pending from Claude. Any further population work
+(a second city, a repeatable process per the systems/screens brief) is
+new scope, not a continuation of this batch.
 
 ## Existing local work excluded from this bridge
 
