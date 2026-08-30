@@ -1,108 +1,66 @@
-# H-20260829-extraction-observability
-Status: ready-for-review
-Owner: Codex
-Branch: codex/extraction-observability-pass
-Base SHA: 3b9eb15d8d669711bf97575de6d03ee7c27f1ba2
-Commit SHA: 554c013
-Allowed next files: none until independent review
+# H-20260830-pr-catchup
+Status: information-only
+Owner: Claude
+Branch: main
+Base SHA: 141fe8b9a5992d18f5eb00bc2dc8744b0c127b17
+Commit SHA: 141fe8b
+Allowed next files: none — this is a review/status handoff, not a code change
 
 ## Outcome
-Repaired 22 stale `ExtractedMenuItem(price=...)` call sites through one
-price-to-cents normalizer; added three deterministic offline extraction
-fixtures; taught JS endpoint memory to retain only endpoints whose own payload
-produced plausible menu items; added snapshot coverage/fingerprint/drift
-evidence and aggregate regression diagnostics; and added a bounded,
-city-scoped, preview-first population CLI that reuses the real MenuWorker.
-Execution requires both `--execute` and exact `--confirm POPULATE`. Also fixed
-the existing manual trigger passing an unsupported orchestrator keyword. An
-adversarial follow-up makes the corpus fail on inflated item counts, adds a
-navigation-only page that must yield zero items, and proves preview/bad
-confirmation leave population state unchanged.
-Live preview probes then exposed generic JS endpoints being replayed solely
-because their host contained `api` (Mapbox, form-submit APIs, tracking/error
-URLs, and `404.gif`). A red-first regression now requires an actual menu,
-catalog/product/item, known-provider, or GraphQL signal before endpoint replay.
-The production queue now rejects malformed pseudo-URLs, prefers direct menu and
-provider sources over locator pages, and prefers fresh attempts over exhausted
-retries. A shared source normalizer prevents a malformed preferred URL from
-hiding a valid fallback. Finally, a live no-write provider probe exposed that
-the registry passed `(url, html)` into legacy `(html, url)` adapters and passed
-two arguments into one-argument direct adapters. The registry now normalizes
-both contracts. A real Square page that returned zero through the router before
-the fix returned 21 named and priced items afterward.
-
-Follow-up live validation found ChowNow's menu nested as schema.org
-Restaurant/Menu/MenuSection/MenuItem JSON-LD. The shallow walker emitted
-containers instead of usable leaves; the recursive walker now returns 126 real
-items and preserves section names. A Toast page returned 112 items live.
-Clover's old URLs redirect to a new React/Flight storefront the adapter does
-not parse, and Popmenu has no production sample corpus; neither is claimed as
-working.
-
-The Feed-image trace found three production defects. Google extraction emits
-safe bare `places/.../photos/...` references, but ImageMatcher rejected every
-non-HTTP value although the proxy/downloader/persistence layers support that
-format. ImageWorker selected partial galleries while ImageIngestService skipped
-anything with one existing image, causing repeated false progress. Successful
-forced recovery also never cleared failure/block state. Red-first regressions
-cover all three. ImageReader now tries free provider/official-site sources
-first and calls paid Google only below three unique usable free URLs.
+Read through all six open PRs (#52-#57) plus their CodeRabbit and bridge
+comments after a session gap. Merged #52 (iOS UIBackgroundModes fix),
+#57 (Map truth/clustering — independently reran its backend suite, no
+concerns), and #54 (extraction observability + population preview,
+merged into PR #53's branch per its own base). Independently verified
+findings on #53, #55, and #56 by reading the actual diffs rather than
+trusting either PR's description, and posted the confirmed ones as PR
+comments (GitHub blocks a formal APPROVE/REQUEST_CHANGES review on this
+account's own PRs, so review verdicts are recorded as regular comments
+instead — see each PR thread).
 
 ## Verification
-- focused endpoint relevance regression -> failed before the fix, then `2 passed, 8 deselected`
-- extraction/observability/population selection -> `27 passed in 0.99s`
-- provider contract regressions -> failed `2` before the fix, then `2 passed`
-- menu population/worker/observability regressions -> `31 passed`
-- `/Users/angelowashington/CRAVE/venv/bin/python -m pytest -q` -> `847 passed, 3 failed, 3 skipped`; the three failures were unrelated streak tests crossing the UTC/Pacific date boundary
-- `TZ=UTC /Users/angelowashington/CRAVE/venv/bin/python -m pytest -q` -> `850 passed, 3 skipped, 32 warnings in 10.86s`
-- `python scripts/run_menu_extraction_corpus.py --manifest tests/fixtures/menu_extraction/manifest.json --json` -> `4 passed, 0 failed` (including navigation-only negative fixture)
-- `DATABASE_URL=sqlite:///./test_crave.db python scripts/populate_menus.py --limit 3 --json` -> previewed one candidate and stated no writes performed
-- `python -m compileall -q app scripts/populate_menus.py scripts/run_menu_extraction_corpus.py` -> exit 0
-- `git diff --check` -> exit 0
-- Railway production preview, Oakland limit 10 -> 10 candidates, all at four
-  failures; no writes. One malformed bare source (`SpritzersCafe`) was exposed.
-- Railway production preview, Alameda limit 10 -> 10 first-attempt candidates;
-  no writes. Most were chain locator pages rather than direct menu URLs.
-- Railway discovery dry-run, limit 20 -> live baseline `57,669` items and
-  `928/34,934` active places (2.7%); found seven Toast/Square sources, no writes.
-- read-only extraction probe of those seven sources -> all initially returned
-  zero through the provider registry, exposing the adapter contract defect.
-- corrected router + fetched public Viva Tacos Square page -> 21 structured
-  items, including names and cent-denominated prices; no DB writes.
-- live ChowNow page after recursive JSON-LD fix -> 126 items with sections;
-  live Toast page -> 112 items; no DB writes.
-- focused image/provider suite -> `82 passed, 8 warnings`.
-- final `TZ=UTC ... pytest -q` -> `866 passed, 3 skipped, 32 warnings in 7.19s`.
-- production image counts (read-only): 34,934 active; 20,646 zero-image;
-  20,648 no-primary; 1,909 blocked; only 117 both blocked and image-empty.
-- 1,792 blocked places already have >=3 images and one primary, proving stale
-  block state survived later success.
-- the latest 12 scheduler jobs each reported the identical
-  `processed=100, succeeded=100, images_written=177`, corroborating churn.
-- 7,872 zero-image places have an official website available for free-first
-  extraction before Google fallback.
-- No-write/no-LLM probe after the endpoint fix -> MOD Pizza HTTP 200 / 0 items,
-  Chipotle HTTP 200 / 0 items, Cafe Jolie HTTP failure; no unrelated endpoint
-  spray appeared.
+- PR #53 (now includes #54's fix): read the H-20260829-extraction-
+  observability handoff above — Codex independently found and fixed the
+  same `price=` constructor bug via a `coerce_price_cents()` normalizer,
+  and added an AST-based static guard
+  (`test_every_extracted_menu_item_constructor_uses_the_active_price_contract`)
+  that fails if any `ExtractedMenuItem(...)` call anywhere in the menu
+  service tree still passes `price=`. Confirmed via `git grep` zero
+  remaining `price=` kwargs. Ran the full backend suite myself on #54's
+  branch in a clean worktree: 867 passed, 2 skipped. Re-reviewing the
+  combined #53+#54 diff next before merging to main.
+- PR #55: read `get_cursor_feed` in `backend/app/api/v1/routes/places.py` —
+  the `has_location` and no-city branches cap candidates at `limit=100`
+  before `rank_feed()` runs, so `min(len(candidates), 200)` collapses to
+  100 regardless of `_MAX_FEED_SNAPSHOT_PLACES = 200`. Only the `city_id`
+  branch actually requests 200. Not yet fixed.
+- PR #56: the identity fix (candidate-derived place UUID, dropped
+  `(city_id, name)` unique constraint) and the Overture loud-failure fix
+  are both solid and well-tested. But `menu_publisher.py` now sets
+  `MenuItem.image` directly from extracted `image_url`, bypassing
+  `MenuImageBridge` — whose own docstring says "No bypass. Phase 3 is law."
+  Unmoderated external image URLs now reach `/places/{id}/menu` directly.
+  Not yet fixed.
+- PR #52 and #57: both verified clean and merged. #57 confirmed by
+  independently rerunning the focused Map tests (11 passed) and the full
+  backend suite (820 passed, 2 skipped) in a clean worktree; all 8 required
+  CI checks green on both.
 
 ## Known gaps / risks
-- This branch is stacked on PR #53 / commit `3b9eb15`; review and merge that dependency first or retarget after it lands.
-- The replay corpus contains four representative fixtures, not a claim of live-catalog coverage.
-- No production population was executed. Live previews show candidate-source
-  quality is materially better after the queue change, but requires independent
-  review before the explicitly confirmed command.
-- Clover needs a separate React/Flight adapter migration; Popmenu remains
-  unvalidated because production has no sample URLs.
-- ChowNow and Toast samples exposed zero item-level images. This image fix
-  improves place/feed coverage, not menu-item photo coverage.
-- The 117 image-empty blocked places need an independently reviewed, bounded
-  retry decision after deployment; this branch makes no production mutation.
-- The discovery sample's 7/20 hit rate is biased toward known-provider URLs and
-  must not be projected across all active places.
-- Full-suite warnings are pre-existing Pillow deprecation and test JWT key-length warnings.
+- PR #53+#54's combined diff also includes a real, well-reasoned image-
+  pipeline hardening pass (ImageMatcher Google resource-name support,
+  ImageIngestService's complete-gallery threshold, ImageReader's free-
+  source-first ordering, ImageWorker's block/attempt-count rehabilitation)
+  that Codex's own bridge handoff documents in detail but the PR's GitHub
+  description never mentioned. Noted on the PR thread as a disclosure gap,
+  not a code-quality objection — the fixes themselves check out.
+- `CRAVE_STATUS.md` still reflects pre-PR-#51 state in places; not updated
+  this pass — deferred in favor of finishing the PR backlog read-through
+  the user explicitly asked for first.
 
 ## Next action
-Independently inspect commits `1684b20..554c013`, rerun the full backend suite
-with a stable test timezone and the replay corpus, then review the stacked PR.
-Confirm provider behavior and all image-pipeline changes. Do not run live
-population or image backfill as part of review.
+Claude re-reviews PR #53 (now carrying #54's fix) and merges to main if
+the combined diff and full suite check out. Codex still needs to fix
+PR #55's 100-vs-200 candidate cap and PR #56's MenuImageBridge bypass,
+each with a regression test that actually exercises the previously-broken
+path.

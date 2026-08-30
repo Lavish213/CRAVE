@@ -1,55 +1,27 @@
 # Active agent state
 
-Status: ready-for-review
-Owner: Codex
-Branch: codex/extraction-observability-pass
-Base SHA: 3b9eb15d8d669711bf97575de6d03ee7c27f1ba2
-Scope: Add deterministic menu replay fixtures, snapshot coverage/drift evidence,
-successful-only JS endpoint recipe learning, and a bounded dry-run-first menu
-population command on top of PR #53. Adversarial follow-up: make the corpus
-fail on inflated false positives and add a navigation-only negative fixture.
-Follow-up scope: live-validate remaining provider adapters, repair only verified
-failures, then trace the image pipeline end to end and repair verified causes of
-missing Feed images.
-Locked files: `backend/app/services/menu/extraction/js/**`,
-`backend/app/services/menu/extraction/replay_corpus.py`,
-`backend/app/services/menu/extraction/snapshot_evidence.py`,
-`backend/app/services/menu/extraction/jsonld_menu_extractor.py`,
-`backend/app/services/images/image_matcher.py`,
-`backend/app/services/images/image_ingest_service.py`,
-`backend/app/services/images/image_reader.py`,
-`backend/app/workers/image_worker.py`,
-`backend/app/workers/image_processing_worker.py`,
-`backend/app/services/menu/menu_extraction_router.py`,
-`backend/app/pipeline/snapshot_writer.py`,
-`backend/app/services/menu/menu_diagnostics.py`,
-`backend/app/services/menu/menu_trigger.py`,
-`backend/app/services/menu/processing/menu_orchestrator.py`,
-`backend/app/services/menu/providers/provider_registry.py`,
-`backend/app/services/menu/source_quality.py`,
-`backend/app/services/workers/menu_worker.py`,
-`backend/scripts/run_menu_extraction_corpus.py`,
-`backend/scripts/populate_menus.py`,
-`backend/tests/fixtures/menu_extraction/**`,
-`backend/tests/test_menu_extraction_observability.py`,
-`backend/tests/test_menu_population.py`,
-`backend/tests/test_provider_registry_contract.py`,
-`backend/tests/test_jsonld_menu_extractor.py`,
-`backend/tests/test_image_matcher.py`,
-`backend/tests/test_image_ingest_service.py`,
-`backend/tests/test_image_reader.py`,
-`backend/tests/test_image_worker_attempt_reset.py`,
-`backend/tests/test_image_processing_worker.py`,
-`backend/tests/test_image_worker_eager_load.py`,
-`.agent-bridge/STATE.md`, `.agent-bridge/codex-to-claude.md`
-Verification plan: Red-first targeted tests for recipe attribution, replay
-fixtures, coverage metrics, and drift; then all extraction tests and full
-backend pytest; finally run the corpus CLI in its sandbox fixture mode.
-Next action: Claude reviews through commit `554c013` after PR #53, reruns the
-recorded checks, and confirms the provider fixes plus the image matcher,
-partial-gallery retry, failure-state reset, and free-source-first behavior.
-Production discovery, extraction, and coverage probes were read-only; no live
-population or image backfill execution has occurred.
+Status: idle
+Owner: Claude
+Branch: main
+Base SHA: 141fe8b9a5992d18f5eb00bc2dc8744b0c127b17
+Scope: Caught up on all six open Codex PRs (#52-#57) after a session gap.
+Merged #52 (iOS UIBackgroundModes), #57 (Map truth/clustering), and #54
+(extraction observability + population preview — independently confirmed
+it already fixes PR #53's price-constructor bug, plus a solid image-
+pipeline hardening pass that was documented in this file's locked-files
+list but not in the PR's own description). Filed blocking findings on #55
+(100-vs-200 feed candidate cap) and #56 (menu-image MenuImageBridge bypass)
+as PR comments (GitHub blocks a formal review on this account's own PRs).
+#53 now carries #54's fix forward via the merge into its branch;
+re-reviewing it next before merge to main.
+Locked files: none currently held.
+Verification plan: n/a — reviewing others' work, not authoring a change.
+Next action: Claude re-reviews PR #53 (now includes #54's price_cents fix)
+and merges to main if the combined diff and full backend suite check out.
+Codex still needs to fix PR #55's 100-vs-200 candidate cap
+(backend/app/api/v1/routes/places.py's has_location/no-city branches) and
+PR #56's MenuImageBridge bypass in menu_publisher.py, each with a
+regression test that actually exercises the previously-broken path.
 
 ## Existing local work excluded from this bridge
 
