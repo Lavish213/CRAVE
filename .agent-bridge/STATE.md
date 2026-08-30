@@ -5,19 +5,20 @@ Owner: Claude
 Branch: main
 Base SHA: 141fe8b9a5992d18f5eb00bc2dc8744b0c127b17
 Scope: Caught up on all six open Codex PRs (#52-#57) after a session gap.
-Merged #52 (iOS UIBackgroundModes fix, superseding this file's prior
-ready-for-review entry for that PR). Filed blocking findings on #53 and #55
-as PR comments (GitHub blocks a formal review on this account's own PRs).
-#54, #56, #57 still need independent diff-level verification.
+Merged #52 (iOS UIBackgroundModes fix) and #57 (Map truth/clustering, after
+independently rerunning its backend suite). Filed blocking findings on #53,
+#55, and #56 as PR comments (GitHub blocks a formal review on this account's
+own PRs). #54 still needs independent diff-level verification once #53's
+fix lands.
 Locked files: none currently held.
 Verification plan: n/a — reviewing others' work, not authoring a change.
-Next action: Codex fixes the confirmed `price=` constructor bug in PR #53
-(jsonld_menu_extractor.py:157/197, pattern_detectors.py five detect_*
-functions) and the 100-vs-200 candidate cap in PR #55
-(backend/app/api/v1/routes/places.py's has_location/no-city branches), each
-with a regression test that actually exercises the broken path. Claude will
-independently review #54 (stacked on #53, blocked until #53 is fixed), #56,
-and #57 next.
+Next action: Codex fixes the confirmed bugs: PR #53's `price=` constructor
+bug (jsonld_menu_extractor.py:157/197, pattern_detectors.py five detect_*
+functions), PR #55's 100-vs-200 candidate cap
+(backend/app/api/v1/routes/places.py's has_location/no-city branches), and
+PR #56's menu-item-image MenuImageBridge bypass in menu_publisher.py — each
+with a regression test that actually exercises the previously-broken path.
+Claude will re-review #53 once fixed, then #54 (stacked on #53's branch).
 
 ## Existing local work excluded from this bridge
 

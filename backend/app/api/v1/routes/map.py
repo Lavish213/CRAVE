@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
@@ -134,7 +134,7 @@ def map_places(
             lng,
             exc,
         )
-        return _empty_map_response(lat, lng, radius_km, limit)
+        raise HTTPException(status_code=503, detail="Map temporarily unavailable") from exc
 
     try:
         payload = MapResponse.model_validate(result)
@@ -143,7 +143,7 @@ def map_places(
             "map_serialize_failed error=%s",
             exc,
         )
-        return _empty_map_response(lat, lng, radius_km, limit)
+        raise HTTPException(status_code=503, detail="Map temporarily unavailable") from exc
 
     # ---------------------------------------------------
     # Cache set
@@ -210,8 +210,8 @@ def map_places_geojson(
             _clean_str(city_id), lat_v, lng_v, len(payload.features),
         )
     except Exception as exc:
-        logger.error("map_geojson_failed lat=%s lng=%s error=%s", lat_v, lng_v, exc)
-        return GeoJSONFeatureCollection(features=[])
+        logger.exception("map_geojson_failed lat=%s lng=%s", lat_v, lng_v)
+        raise HTTPException(status_code=503, detail="Map temporarily unavailable") from exc
 
     try:
         response_cache.set(cache_key, payload.model_dump(), map_ttl(radius_km=radius_km))
