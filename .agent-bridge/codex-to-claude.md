@@ -1,62 +1,56 @@
-# H-20260828-live-e2e
-Status: ready-for-review
-Owner: Codex
-Branch: codex/release-coordination
-Base SHA: 51d515535e9736c11a2ff30c9deaef4661e169bb
-Commit SHA: 26b9f52
-Allowed next files: none until review
+# H-20260830-pr-catchup
+Status: information-only
+Owner: Claude
+Branch: main
+Base SHA: 141fe8b9a5992d18f5eb00bc2dc8744b0c127b17
+Commit SHA: 141fe8b
+Allowed next files: none — this is a review/status handoff, not a code change
 
 ## Outcome
-Enabled the agreed balanced GitHub protection for `main`: six named required
-checks, strict branch freshness, one approving review with stale approvals
-dismissed, conversation resolution, no force pushes/deletions, and administrator
-bypass retained. A live Playwright run then exposed missing production CORS for
-the exact local E2E origin. Railway was configured with only
-`http://127.0.0.1:4197`; the unchanged `main` deployment completed successfully
-and its preflight now returns that exact origin. Feed and Search journeys reach
-real production data and Place Detail. The harness now ignores off-screen
-React Native Web duplicates when asserting the visible tier badge.
+Read through all six open PRs (#52-#57) plus their CodeRabbit and bridge
+comments after a session gap. Merged #52 (iOS UIBackgroundModes fix — clean,
+verified, all 8 checks green). Independently verified two of CodeRabbit's
+findings by reading the actual diffs rather than trusting either PR's
+description, and posted the confirmed ones as PR comments (GitHub blocks a
+formal APPROVE/REQUEST_CHANGES review on this account's own PRs, so review
+verdicts are recorded as regular comments instead — see each PR thread).
 
 ## Verification
-- GitHub branch-protection GET -> six exact required contexts, strict=true,
-  approvals=1, enforce_admins=false, force pushes/deletions disabled.
-- Railway deployment `a6040b26-9f39-46a0-be7f-96d0e5d3e72c` -> SUCCESS at
-  `51d515535e9736c11a2ff30c9deaef4661e169bb`.
-- Exact-origin OPTIONS preflight -> HTTP 200 with
-  `access-control-allow-origin: http://127.0.0.1:4197`.
-- `cd frontend && npx tsc --noEmit -p .` -> clean.
-- `cd frontend && npm test -- --runInBand` -> 299 passed, 31 suites; the
-  process retained the repository's known open handle after reporting results.
-- `cd frontend && PLAYWRIGHT_BROWSER_CHANNEL=chrome npm run test:e2e` ->
-  2 passed, 1 skipped (11.5s).
-- Clean detached `origin/main` checkout at `51d5155`: `npx expo prebuild
-  --platform ios --no-install --clean` and `pod install` -> passed (106
-  dependencies, 113 pods).
-- Xcode 26.3 / iOS 26.2 / iPhone 17 Pro simulator: Debug simulator build of
-  `CRAVE.app` -> passed with bundle ID `com.crave.app`; the app installed,
-  launched, reached Feed, and loaded production place data.
-- `npx expo export --platform ios --output-dir /private/tmp/crave-export-ios
-  --clear` -> passed; 1,508 modules, 42 assets, 4.66 MB iOS Hermes bundle.
+- PR #53: reproduced the bug by inspecting `ExtractedMenuItem`'s dataclass
+  definition (`price_cents` only, `slots=True`, no `price` field) against
+  seven remaining `ExtractedMenuItem(price=...)` construction sites in
+  `jsonld_menu_extractor.py` (:157, :197) and all five `detect_*` functions
+  in `pattern_detectors.py`. `menu_extraction_router.py`'s `_safe_extract()`
+  catches the resulting `TypeError` at `logger.debug` and returns `[]`, so
+  JSON-LD extraction and the entire pattern-detector fallback family
+  silently return empty, unconditionally, on every call — the exact
+  opposite of what this PR's title claims to fix. Full comment on the PR
+  thread with exact line numbers and a one-line repro.
+- PR #55: read `get_cursor_feed` in `backend/app/api/v1/routes/places.py` —
+  the `has_location` and no-city branches cap candidates at `limit=100`
+  before `rank_feed()` runs, so `min(len(candidates), 200)` collapses to
+  100 regardless of `_MAX_FEED_SNAPSHOT_PLACES = 200`. Only the `city_id`
+  branch actually requests 200. Not a crash, but a real under-delivery of
+  the feature's own stated bound for the (likely most common) location-based
+  path. Posted on the PR thread.
+- PR #52: diff matched its description exactly (4 files, no scope creep),
+  `UIBackgroundModes` fix matches the exact gap PR #51's native build
+  surfaced, new config test correctly asserts it, all 8 required checks
+  green. Merged as `141fe8b`.
 
 ## Known gaps / risks
-- Save -> Craves -> Place Detail is not verified: no dedicated seeded account
-  was available through `CRAVE_E2E_EMAIL` / `CRAVE_E2E_PASSWORD`.
-- The public app API key remains exposed by design in client builds and was
-  previously pasted in chat. Rotate it only as a coordinated client/backend
-  release; changing Railway alone would break installed clients.
-- No signed iOS Release archive, TestFlight build, authenticated device
-  journey, or physical-device smoke evidence yet.
-- Native launch emitted two push-related release findings that require a
-  separately scoped fix/review: generated Info.plist lacks the `fetch` and
-  `remote-notification` `UIBackgroundModes` requested by the implemented app
-  delegates, and the debug UI reported an expo-notifications persisted server
-  registration read error. The app remained running and loaded Feed data; do
-  not classify either warning as resolved without a targeted fix and retest.
-- Several production image proxy requests returned HTTP 404 during the native
-  Feed launch, leaving visible image placeholders. This needs a scoped data/
-  proxy investigation; it is not a native compile blocker.
+- PR #54 (stacked on #53's branch) not yet independently diff-reviewed —
+  blocked on #53's fix landing first since it inherits that branch's bug.
+- PR #56 (population pipeline) and PR #57 (map clustering) not yet
+  independently diff-reviewed by Claude. CodeRabbit flagged migration-
+  rollback/concurrent-promotion concerns on #56 and hit its rate limit on
+  #57 (no actual review produced there yet).
+- `CRAVE_STATUS.md` still reflects pre-PR-#51 state in places; not updated
+  this pass — deferred in favor of finishing the PR backlog read-through
+  the user explicitly asked for first.
 
 ## Next action
-Review this diff and evidence. If correct, approve PR #51. Do not mark the
-authenticated journey, signed archive/TestFlight build, notification path,
-image pipeline, or physical-device matrix complete.
+Fix the two confirmed findings above (with regression tests that actually
+exercise the previously-broken paths, since the existing suites didn't
+catch either). Once #53 is fixed, Claude will re-review #53 and then #54.
+Claude will separately do a first-pass diff review of #56 and #57.

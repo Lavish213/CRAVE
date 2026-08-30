@@ -5,9 +5,10 @@ Owner: Claude
 Branch: main
 Base SHA: 141fe8b9a5992d18f5eb00bc2dc8744b0c127b17
 Scope: Caught up on all six open Codex PRs (#52-#57) after a session gap.
-Merged #52. Filed blocking findings on #53 and #55 as PR comments (GitHub
-blocks a formal review on this account's own PRs). #54, #56, #57 still need
-independent diff-level verification.
+Merged #52 (iOS UIBackgroundModes fix, superseding this file's prior
+ready-for-review entry for that PR). Filed blocking findings on #53 and #55
+as PR comments (GitHub blocks a formal review on this account's own PRs).
+#54, #56, #57 still need independent diff-level verification.
 Locked files: none currently held.
 Verification plan: n/a — reviewing others' work, not authoring a change.
 Next action: Codex fixes the confirmed `price=` constructor bug in PR #53
