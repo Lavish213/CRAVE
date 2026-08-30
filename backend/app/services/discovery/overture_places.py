@@ -23,8 +23,10 @@ each file's data for a city-sized bounding box without downloading it.
 """
 from __future__ import annotations
 
+import json
 import logging
 import re
+from urllib.request import Request, urlopen
 from typing import Dict, List, Optional
 
 import pyarrow.compute as pc
@@ -35,6 +37,7 @@ logger = logging.getLogger(__name__)
 
 OVERTURE_BUCKET = "overturemaps-us-west-2"
 OVERTURE_REGION = "us-west-2"
+OVERTURE_STAC_URL = "https://stac.overturemaps.org/catalog.json"
 
 # Overture's own taxonomy top-level grouping for restaurants/cafes/bars/
 # bakeries/etc — confirmed live: 'restaurant'/'cafe'/'bar' all carry
@@ -80,26 +83,27 @@ def _build_address(addr: Optional[Dict]) -> Optional[str]:
     return address or None
 
 
-def _latest_release() -> Optional[str]:
-    """Overture publishes a new dated release monthly; discover the current
-    one rather than hardcoding a version that will eventually go stale."""
-    try:
-        import boto3
-        from botocore import UNSIGNED
-        from botocore.config import Config
+def _latest_release() -> str:
+    """Return the authoritative latest release from Overture's STAC catalog.
 
-        client = boto3.client(
-            "s3", region_name=OVERTURE_REGION, config=Config(signature_version=UNSIGNED)
+    Bucket prefix listing used to work, but Overture now explicitly directs
+    consumers to STAC for release discovery.  Keeping discovery errors loud is
+    intentional: a source outage must not be recorded as a successful zero-
+    result acquisition run.
+    """
+    try:
+        request = Request(
+            OVERTURE_STAC_URL,
+            headers={"User-Agent": "CRAVE-data-ingestion/1.0"},
         )
-        resp = client.list_objects_v2(
-            Bucket=OVERTURE_BUCKET, Prefix="release/", Delimiter="/"
-        )
-        prefixes = [p["Prefix"] for p in resp.get("CommonPrefixes", [])]
-        releases = sorted(p.strip("/").split("/")[-1] for p in prefixes if p)
-        return releases[-1] if releases else None
+        with urlopen(request, timeout=20) as response:
+            payload = json.load(response)
+        release = payload.get("latest")
+        if not isinstance(release, str) or not release.strip():
+            raise RuntimeError("Overture STAC catalog has no latest release")
+        return release.strip()
     except Exception as exc:
-        logger.warning("overture_latest_release_lookup_failed error=%s", exc)
-        return None
+        raise RuntimeError("Overture release discovery failed") from exc
 
 
 def fetch_overture_places(
@@ -111,8 +115,6 @@ def fetch_overture_places(
 ) -> List[Dict]:
 
     release = _latest_release()
-    if not release:
-        return []
 
     try:
         s3 = pafs.S3FileSystem(anonymous=True, region=OVERTURE_REGION)
@@ -134,8 +136,7 @@ def fetch_overture_places(
             filter=filt,
         )
     except Exception as exc:
-        logger.warning("overture_fetch_failed error=%s release=%s", exc, release)
-        return []
+        raise RuntimeError(f"Overture dataset fetch failed for release {release}") from exc
 
     ids = table.column("id")
     names = table.column("names").combine_chunks().field("primary")

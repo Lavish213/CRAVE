@@ -80,6 +80,27 @@ def test_menu_route_handles_null_price_cents():
     assert items[0]["price"] is None
 
 
+def test_menu_route_exposes_item_image_and_lineage_when_available():
+    place_id = _make_place_with_menu(price_cents_values=[1200])
+    db = SessionLocal()
+    try:
+        item = db.query(MenuItem).filter(MenuItem.place_id == place_id).one()
+        item.image = "https://cdn.example/menu-item.jpg"
+        item.provider = "toast"
+        item.source_type = "provider"
+        db.commit()
+    finally:
+        db.close()
+
+    response = client.get(f"/api/v1/places/{place_id}/menu")
+
+    assert response.status_code == 200
+    item = response.json()["items"][0]
+    assert item["image_url"] == "https://cdn.example/menu-item.jpg"
+    assert item["provider"] == "toast"
+    assert item["source_type"] == "provider"
+
+
 def test_menu_route_returns_404_for_unknown_place():
     response = client.get(f"/api/v1/places/{uuid.uuid4()}/menu")
     assert response.status_code == 404

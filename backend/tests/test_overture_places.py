@@ -9,6 +9,7 @@ taxonomy.hierarchy, websites, phones, addresses, bbox.
 """
 from __future__ import annotations
 
+import io
 import pyarrow as pa
 import pytest
 
@@ -60,12 +61,33 @@ def _bbox_kwargs(**overrides):
     return kwargs
 
 
-def test_fetch_overture_places_returns_empty_when_no_release_found(monkeypatch):
-    monkeypatch.setattr(overture_places, "_latest_release", lambda: None)
-    assert fetch_overture_places(**_bbox_kwargs()) == []
+def test_latest_release_uses_authoritative_stac_latest(monkeypatch):
+    class _Response(io.BytesIO):
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            self.close()
+
+    monkeypatch.setattr(
+        overture_places,
+        "urlopen",
+        lambda _request, timeout: _Response(b'{"latest":"2026-08-19.0"}'),
+    )
+
+    assert overture_places._latest_release() == "2026-08-19.0"
 
 
-def test_fetch_overture_places_returns_empty_on_dataset_exception(monkeypatch):
+def test_fetch_overture_places_surfaces_release_discovery_failure(monkeypatch):
+    def _raise():
+        raise RuntimeError("no release")
+
+    monkeypatch.setattr(overture_places, "_latest_release", _raise)
+    with pytest.raises(RuntimeError, match="no release"):
+        fetch_overture_places(**_bbox_kwargs())
+
+
+def test_fetch_overture_places_surfaces_dataset_exception(monkeypatch):
     monkeypatch.setattr(overture_places, "_latest_release", lambda: "2026-07-22.0")
     monkeypatch.setattr(overture_places.pafs, "S3FileSystem", lambda **kw: object())
 
@@ -73,7 +95,8 @@ def test_fetch_overture_places_returns_empty_on_dataset_exception(monkeypatch):
         raise RuntimeError("s3 unreachable")
 
     monkeypatch.setattr(overture_places.pads, "dataset", _raise)
-    assert fetch_overture_places(**_bbox_kwargs()) == []
+    with pytest.raises(RuntimeError, match="dataset fetch failed"):
+        fetch_overture_places(**_bbox_kwargs())
 
 
 def test_fetch_overture_places_maps_fields_correctly(monkeypatch):
