@@ -10,7 +10,7 @@ from app.services.menu.materialize_menu_truth import materialize_menu_truth
 from app.services.menu.menu_publisher import MenuPublisher
 
 
-def test_menu_truth_and_publisher_preserve_item_lineage_and_image():
+def test_menu_truth_and_publisher_preserve_item_lineage_but_never_publish_a_raw_image_url():
     db = SessionLocal()
     place_id = str(uuid.uuid4())
     try:
@@ -49,10 +49,13 @@ def test_menu_truth_and_publisher_preserve_item_lineage_and_image():
         rows = db.query(MenuItem).filter(MenuItem.place_id == place_id).all()
         assert {row.provider for row in rows} == {"toast"}
         assert {row.source_type for row in rows} == {"provider"}
-        assert {row.image for row in rows} == {
-            "https://cdn.example/1.jpg",
-            "https://cdn.example/2.jpg",
-        }
+        # image_url is a real field on the claim, but MenuItem.image must
+        # never be set directly from it -- only MenuImageBridge.ingest() is
+        # allowed to populate an item image, since it runs classification
+        # and visibility assignment first ("No bypass. Phase 3 is law.").
+        # Publishing the raw extracted URL here would put an unmoderated
+        # external image directly in front of users.
+        assert {row.image for row in rows} == {None}
         assert {row.raw_payload["source_url"] for row in rows} == {
             "https://order.example/menu"
         }

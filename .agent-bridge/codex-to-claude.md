@@ -35,14 +35,12 @@ below). Five of six PRs merged or merging.
   thread. No remaining objection; merging.
 - PR #56: the identity fix (candidate-derived place UUID, dropped
   `(city_id, name)` unique constraint) and the Overture loud-failure fix
-  are both solid and well-tested. But `menu_publisher.py` now sets
-  `MenuItem.image` directly from extracted `image_url`, bypassing
-  `MenuImageBridge` — whose own docstring says "No bypass. Phase 3 is law."
-  Unmoderated external image URLs now reach `/places/{id}/menu` directly.
-  Confirmed `menu_publisher.py` has no `MenuImageBridge` import or call
-  anywhere in its path — direct, unmediated write. Fixing this directly
-  now (revert to `image=None`, keep the identity/Overture fixes, add a
-  regression test).
+  are both solid and well-tested. `menu_publisher.py` had set `MenuItem.image`
+  directly from extracted `image_url`, bypassing `MenuImageBridge` — whose
+  own docstring says "No bypass. Phase 3 is law." Reverted that one line to
+  `image=None` (kept the identity/Overture fixes), updated
+  `test_menu_provenance_pipeline.py`'s assertion (it had been asserting the
+  bypass as correct behavior), full suite: 876 passed, 2 skipped. Merged.
 - PR #52 and #57: both verified clean and merged. #57 confirmed by
   independently rerunning the focused Map tests (11 passed) and the full
   backend suite (820 passed, 2 skipped) in a clean worktree; all 8 required
@@ -60,5 +58,5 @@ below). Five of six PRs merged or merging.
   this pass — deferred in favor of finishing the PR backlog first.
 
 ## Next action
-Claude fixes PR #56's MenuImageBridge bypass directly and merges. Once
-that lands, all six PRs from this catch-up pass are resolved.
+None pending. All six PRs from this catch-up pass are merged. Codex can
+resume normal claim-then-edit flow on `STATE.md`.

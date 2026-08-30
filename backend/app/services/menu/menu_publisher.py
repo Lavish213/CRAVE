@@ -104,7 +104,15 @@ class MenuPublisher:
                                 category=section_name,
                                 price_cents=price_cents,
                                 description=item.get("description"),
-                                image=item.get("image_url"),
+                                # Never write extracted image_url straight onto
+                                # the served field -- MenuImageBridge is the
+                                # only path allowed to set this, since it runs
+                                # classification/visibility-assignment first
+                                # ("No bypass. Phase 3 is law." --
+                                # menu_image_bridge.py). Publishing raw
+                                # extraction URLs here would put unmoderated
+                                # external images directly in front of users.
+                                image=None,
                                 confidence_score=float(item.get("confidence") or 0.0),
                                 provider=item.get("provider"),
                                 source_type=item.get("source_type") or "truth",
