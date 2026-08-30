@@ -3,7 +3,7 @@ Status: ready-for-review
 Owner: Codex
 Branch: codex/extraction-observability-pass
 Base SHA: 3b9eb15d8d669711bf97575de6d03ee7c27f1ba2
-Commit SHA: 4d48b35
+Commit SHA: 554c013
 Allowed next files: none until independent review
 
 ## Outcome
@@ -31,6 +31,23 @@ two arguments into one-argument direct adapters. The registry now normalizes
 both contracts. A real Square page that returned zero through the router before
 the fix returned 21 named and priced items afterward.
 
+Follow-up live validation found ChowNow's menu nested as schema.org
+Restaurant/Menu/MenuSection/MenuItem JSON-LD. The shallow walker emitted
+containers instead of usable leaves; the recursive walker now returns 126 real
+items and preserves section names. A Toast page returned 112 items live.
+Clover's old URLs redirect to a new React/Flight storefront the adapter does
+not parse, and Popmenu has no production sample corpus; neither is claimed as
+working.
+
+The Feed-image trace found three production defects. Google extraction emits
+safe bare `places/.../photos/...` references, but ImageMatcher rejected every
+non-HTTP value although the proxy/downloader/persistence layers support that
+format. ImageWorker selected partial galleries while ImageIngestService skipped
+anything with one existing image, causing repeated false progress. Successful
+forced recovery also never cleared failure/block state. Red-first regressions
+cover all three. ImageReader now tries free provider/official-site sources
+first and calls paid Google only below three unique usable free URLs.
+
 ## Verification
 - focused endpoint relevance regression -> failed before the fix, then `2 passed, 8 deselected`
 - extraction/observability/population selection -> `27 passed in 0.99s`
@@ -52,6 +69,18 @@ the fix returned 21 named and priced items afterward.
   zero through the provider registry, exposing the adapter contract defect.
 - corrected router + fetched public Viva Tacos Square page -> 21 structured
   items, including names and cent-denominated prices; no DB writes.
+- live ChowNow page after recursive JSON-LD fix -> 126 items with sections;
+  live Toast page -> 112 items; no DB writes.
+- focused image/provider suite -> `82 passed, 8 warnings`.
+- final `TZ=UTC ... pytest -q` -> `866 passed, 3 skipped, 32 warnings in 7.19s`.
+- production image counts (read-only): 34,934 active; 20,646 zero-image;
+  20,648 no-primary; 1,909 blocked; only 117 both blocked and image-empty.
+- 1,792 blocked places already have >=3 images and one primary, proving stale
+  block state survived later success.
+- the latest 12 scheduler jobs each reported the identical
+  `processed=100, succeeded=100, images_written=177`, corroborating churn.
+- 7,872 zero-image places have an official website available for free-first
+  extraction before Google fallback.
 - No-write/no-LLM probe after the endpoint fix -> MOD Pizza HTTP 200 / 0 items,
   Chipotle HTTP 200 / 0 items, Cafe Jolie HTTP failure; no unrelated endpoint
   spray appeared.
@@ -62,14 +91,18 @@ the fix returned 21 named and priced items afterward.
 - No production population was executed. Live previews show candidate-source
   quality is materially better after the queue change, but requires independent
   review before the explicitly confirmed command.
-- Toast sources still return zero because public page/API requests hit
-  Cloudflare in this environment. Square is proven; Toast is not.
+- Clover needs a separate React/Flight adapter migration; Popmenu remains
+  unvalidated because production has no sample URLs.
+- ChowNow and Toast samples exposed zero item-level images. This image fix
+  improves place/feed coverage, not menu-item photo coverage.
+- The 117 image-empty blocked places need an independently reviewed, bounded
+  retry decision after deployment; this branch makes no production mutation.
 - The discovery sample's 7/20 hit rate is biased toward known-provider URLs and
   must not be projected across all active places.
 - Full-suite warnings are pre-existing Pillow deprecation and test JWT key-length warnings.
 
 ## Next action
-Independently inspect commits `1684b20..4d48b35`, rerun the full backend suite
+Independently inspect commits `1684b20..554c013`, rerun the full backend suite
 with a stable test timezone and the replay corpus, then review the stacked PR.
-Confirm the provider signature normalization and queue ordering. Do not run live
-population as part of review.
+Confirm provider behavior and all image-pipeline changes. Do not run live
+population or image backfill as part of review.

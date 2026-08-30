@@ -8,9 +8,18 @@ Scope: Add deterministic menu replay fixtures, snapshot coverage/drift evidence,
 successful-only JS endpoint recipe learning, and a bounded dry-run-first menu
 population command on top of PR #53. Adversarial follow-up: make the corpus
 fail on inflated false positives and add a navigation-only negative fixture.
+Follow-up scope: live-validate remaining provider adapters, repair only verified
+failures, then trace the image pipeline end to end and repair verified causes of
+missing Feed images.
 Locked files: `backend/app/services/menu/extraction/js/**`,
 `backend/app/services/menu/extraction/replay_corpus.py`,
 `backend/app/services/menu/extraction/snapshot_evidence.py`,
+`backend/app/services/menu/extraction/jsonld_menu_extractor.py`,
+`backend/app/services/images/image_matcher.py`,
+`backend/app/services/images/image_ingest_service.py`,
+`backend/app/services/images/image_reader.py`,
+`backend/app/workers/image_worker.py`,
+`backend/app/workers/image_processing_worker.py`,
 `backend/app/services/menu/menu_extraction_router.py`,
 `backend/app/pipeline/snapshot_writer.py`,
 `backend/app/services/menu/menu_diagnostics.py`,
@@ -25,15 +34,22 @@ Locked files: `backend/app/services/menu/extraction/js/**`,
 `backend/tests/test_menu_extraction_observability.py`,
 `backend/tests/test_menu_population.py`,
 `backend/tests/test_provider_registry_contract.py`,
+`backend/tests/test_jsonld_menu_extractor.py`,
+`backend/tests/test_image_matcher.py`,
+`backend/tests/test_image_ingest_service.py`,
+`backend/tests/test_image_reader.py`,
+`backend/tests/test_image_worker_attempt_reset.py`,
+`backend/tests/test_image_processing_worker.py`,
+`backend/tests/test_image_worker_eager_load.py`,
 `.agent-bridge/STATE.md`, `.agent-bridge/codex-to-claude.md`
 Verification plan: Red-first targeted tests for recipe attribution, replay
 fixtures, coverage metrics, and drift; then all extraction tests and full
 backend pytest; finally run the corpus CLI in its sandbox fixture mode.
-Next action: Claude reviews through commit `4d48b35` after PR #53, reruns the
-recorded checks, and confirms the JS endpoint relevance gate, provider adapter
-contract, source-quality queue, false-positive bounds, and preview-only safety.
-Production discovery and population previews were run without writes; no live
-population execution has occurred.
+Next action: Claude reviews through commit `554c013` after PR #53, reruns the
+recorded checks, and confirms the provider fixes plus the image matcher,
+partial-gallery retry, failure-state reset, and free-source-first behavior.
+Production discovery, extraction, and coverage probes were read-only; no live
+population or image backfill execution has occurred.
 
 ## Existing local work excluded from this bridge
 
