@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from typing import Optional
 
 from sqlalchemy.orm import Session
@@ -13,6 +14,32 @@ from app.services.menu.normalization.fingerprint import build_menu_fingerprint
 
 
 logger = logging.getLogger(__name__)
+
+
+_PLACEHOLDER_ITEM_NAME = re.compile(
+    r"^(?:test(?:\s+(?:item|menu\s+item))?|fake(?:\s+item)?|"
+    r"mock(?:\s+item)?|placeholder(?:\s+item)?|dummy(?:\s+item)?)[-_ ]*\d*$",
+    re.IGNORECASE,
+)
+
+
+def is_obvious_placeholder_item(
+    *,
+    name: str,
+    price_cents: int | None,
+    description: str | None,
+) -> bool:
+    """Reject only unmistakable zero-value POS/test artifacts.
+
+    A real name containing ``test`` (for example, "Test Kitchen") is kept.
+    The narrow exact-name pattern must also have no positive price and no
+    description before it is excluded from the public MenuItem cache.
+    """
+    return bool(
+        _PLACEHOLDER_ITEM_NAME.fullmatch(name.strip())
+        and (price_cents is None or price_cents == 0)
+        and not (description or "").strip()
+    )
 
 
 class MenuPublisher:
@@ -84,6 +111,18 @@ class MenuPublisher:
                                 price_cents = None
                         except (TypeError, ValueError):
                             price_cents = None
+
+                    if is_obvious_placeholder_item(
+                        name=name,
+                        price_cents=price_cents,
+                        description=item.get("description"),
+                    ):
+                        logger.info(
+                            "menu_placeholder_item_skipped place_id=%s name=%r",
+                            place_id,
+                            name,
+                        )
+                        continue
 
                     # Fingerprint: match the normalization/fingerprint.py contract
                     fp = (

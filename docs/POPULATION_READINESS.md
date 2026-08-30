@@ -3,6 +3,11 @@
 **Status:** prepared for a one-city canary after this change is reviewed,
 merged, migrated, and deployed. This is not authorization for a global import.
 
+The first production canary was staged as blocked/unresolved rows on
+2026-08-30 and is intentionally on hold pending entity/current-existence
+review. See `docs/POPULATION_CANARY_2026-08-30.md` for measurements, findings,
+and the exact rollback.
+
 ## Verified production baseline (2026-08-29/30)
 
 Read-only Railway queries produced this baseline:
@@ -140,4 +145,3 @@ the underlying menu evidence.
 - OSM tile policy: <https://operations.osmfoundation.org/policies/tiles/>
 - Robots Exclusion Protocol: <https://www.rfc-editor.org/info/rfc9309/>
 - Wikimedia Commons metadata: <https://www.mediawiki.org/wiki/Extension:CommonsMetadata/en>
-

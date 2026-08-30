@@ -1,62 +1,42 @@
-# H-20260830-pr-catchup
-Status: information-only
-Owner: Claude
-Branch: main
-Base SHA: 141fe8b9a5992d18f5eb00bc2dc8744b0c127b17
-Commit SHA: 141fe8b
-Allowed next files: none — this is a review/status handoff, not a code change
+# H-20260830-production-population-canary
+Status: ready-for-review
+Owner: Codex
+Branch: codex/production-population-canary
+Base SHA: 8a9307d2be442b952b8885f04947827c31ed528a
+Commit SHA: 00a9046
+Allowed next files: review only; do not release or edit production canary rows
 
 ## Outcome
-Read through all six open PRs (#52-#57) plus their CodeRabbit and bridge
-comments after a session gap. Merged #52 (iOS UIBackgroundModes fix),
-#57 (Map truth/clustering — independently reran its backend suite, no
-concerns), #54 (extraction observability + population preview, merged
-into PR #53's branch per its own base), and #53 itself (heuristic menu
-extraction, now carrying #54's fix forward). Merging #55 now too (see
-below). Five of six PRs merged or merging.
+Added a preview-first, capped Overture population canary with explicit staging
+and exact-batch rollback. Staged production batch `oakland-20260830-a` contains
+exactly 10 candidates; every row remains blocked, unresolved, and unpromoted.
+Also repaired the Phase 4 audit's stale menu-price column and added a narrow
+publisher guard against obvious zero-signal test menu items.
 
 ## Verification
-- PR #53 (merged, now includes #54's fix): read the H-20260829-extraction-
-  observability handoff above — Codex independently found and fixed the
-  same `price=` constructor bug via a `coerce_price_cents()` normalizer,
-  and added an AST-based static guard
-  (`test_every_extracted_menu_item_constructor_uses_the_active_price_contract`)
-  that fails if any `ExtractedMenuItem(...)` call anywhere in the menu
-  service tree still passes `price=`. Confirmed via `git grep` zero
-  remaining `price=` kwargs. Ran the full backend suite twice: 867 passed
-  on #54's branch alone, then 869 passed, 2 skipped after merging latest
-  `main` (#52/#57) into #53's branch — no interaction issues. Merged to
-  `main` as `dfa026b`.
-- PR #55: **retracted my earlier finding.** `list_places_near`/`list_places`
-  both apply their own documented 4x pool-overfetch multiplier internally
-  (`fetch_limit = min(limit*4, cap)`), so `limit=100` actually returns up
-  to 400/200 raw candidates, not 100 — the snapshot was never really
-  capped below 200. Posted a correction retracting the finding on the PR
-  thread. No remaining objection; merging.
-- PR #56: the identity fix (candidate-derived place UUID, dropped
-  `(city_id, name)` unique constraint) and the Overture loud-failure fix
-  are both solid and well-tested. `menu_publisher.py` had set `MenuItem.image`
-  directly from extracted `image_url`, bypassing `MenuImageBridge` — whose
-  own docstring says "No bypass. Phase 3 is law." Reverted that one line to
-  `image=None` (kept the identity/Overture fixes), updated
-  `test_menu_provenance_pipeline.py`'s assertion (it had been asserting the
-  bypass as correct behavior), full suite: 876 passed, 2 skipped. Merged.
-- PR #52 and #57: both verified clean and merged. #57 confirmed by
-  independently rerunning the focused Map tests (11 passed) and the full
-  backend suite (820 passed, 2 skipped) in a clean worktree; all 8 required
-  CI checks green on both.
+- Full backend: 881 passed, 3 skipped.
+- Focused canary/provenance tests: 7 passed.
+- Python compilation and `git diff --check`: clean.
+- Production health: API, database, cache, and worker all healthy.
+- Production Alembic current and code head: `c3d4e5f6a7b8`.
+- Oakland preview: 769 fetched, 10 selected; all had address/category, eight
+  had websites, and five were flagged as likely duplicates.
+- Staged batch: 10 rows, 10 blocked, 0 resolved, 0 promoted.
+- Legacy-image scoring dry-run: 2,530 inspected; 2 candidate-primary, 2,418
+  gallery-only, 110 hidden. No write was executed because the signal was weak.
 
 ## Known gaps / risks
-- PR #53+#54's combined diff also includes a real, well-reasoned image-
-  pipeline hardening pass (ImageMatcher Google resource-name support,
-  ImageIngestService's complete-gallery threshold, ImageReader's free-
-  source-first ordering, ImageWorker's block/attempt-count rehabilitation)
-  that Codex's own bridge handoff documents in detail but the PR's GitHub
-  description never mentioned. Noted on the PR thread as a disclosure gap,
-  not a code-quality objection — the fixes themselves check out.
-- `CRAVE_STATUS.md` still reflects pre-PR-#51 state in places; not updated
-  this pass — deferred in favor of finishing the PR backlog first.
+- Do not unblock or promote this batch. Overture contains stale aliases and at
+  least one moved venue in the reviewed sample.
+- Two existing placeholder menu rows remain until the guard is deployed and
+  their source menus are republished or cleaned through a separately reviewed
+  operation.
+- Provider-menu coverage remains zero until existing menus are rematerialized.
+- The legacy-image backfill was intentionally held because 90.3% of rows still
+  had unknown content classification.
 
 ## Next action
-None pending. All six PRs from this catch-up pass are merged. Codex can
-resume normal claim-then-edit flow on `STATE.md`.
+Claude independently inspects commit `00a9046`, the canary script's stage and
+rollback constraints, the tests, and `docs/POPULATION_CANARY_2026-08-30.md`.
+Approve or request changes on the PR. Keep `oakland-20260830-a` blocked pending
+a separate existence/entity review and release decision.

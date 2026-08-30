@@ -24,6 +24,7 @@ from sqlalchemy import text
 sys.path.insert(0, ".")
 
 from app.db.session import SessionLocal  # noqa: E402
+from app.services.menu.menu_publisher import is_obvious_placeholder_item  # noqa: E402
 
 
 logging.basicConfig(level=logging.WARNING)
@@ -110,10 +111,13 @@ def main():
             else:
                 ok(f"menu_items.{field} — no NULLs (or expected NULLs)")
 
-        # Items with price
+        # Items with price. ``price_cents`` is the canonical integer-cents
+        # column; the old ``price`` column never existed in the deployed
+        # schema. Keep this audit aligned with MenuItem so a readiness check
+        # cannot fail before reaching the image integrity gates.
         row = _run_query(
             db,
-            "SELECT COUNT(*) FROM menu_items WHERE price IS NOT NULL",
+            "SELECT COUNT(*) FROM menu_items WHERE price_cents IS NOT NULL",
         ).fetchone()
         priced = row[0] if row else 0
         pct = (priced / total_items * 100) if total_items else 0
@@ -195,11 +199,18 @@ def main():
 
         # Check menu items for fake names — use whole-word patterns to avoid
         # false-positives like "intestine" (matches "test") or "mocktail" (matches "mock")
-        row = _run_query(
+        item_rows = _run_query(
             db,
-            "SELECT COUNT(*) FROM menu_items WHERE LOWER(name) IN ('test item', 'fake item', 'mock item', 'placeholder item', 'test', 'fake', 'mock', 'placeholder', 'test menu item', 'dummy item')",
-        ).fetchone()
-        fake_items = row[0] if row else 0
+            "SELECT name, price_cents, description FROM menu_items",
+        ).fetchall()
+        fake_items = sum(
+            is_obvious_placeholder_item(
+                name=row[0] or "",
+                price_cents=row[1],
+                description=row[2],
+            )
+            for row in item_rows
+        )
         if fake_items > 0:
             fail(f"Exact fake menu item names found: {fake_items}")
             issues.append(f"HIGH: {fake_items} menu items with exact fake names")
