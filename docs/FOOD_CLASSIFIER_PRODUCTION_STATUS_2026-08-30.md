@@ -33,11 +33,16 @@ model cannot load, the upload is marked `failed` with
     with `batch_size: 0`.
   - Other scheduler jobs continued through 22:59 UTC, proving that a scheduler
     process is active against the production database.
-- Railway's visible service inventory contained `CRAVE` and `Postgres`, while
-  the web-service log said its embedded scheduler was disabled. The active
-  `JobRun` rows therefore establish execution but do not identify the owning
-  Railway process. Scheduler ownership should be made explicit later; it is
-  not evidence that classification is failing.
+- The primary Railway project (`innovative-youth`) contains the web `CRAVE`
+  service and Postgres. Its web-service log correctly reports
+  `scheduler_embedded_disabled`; the web process is not the scheduler owner.
+- Scheduler ownership was verified in a separate Railway project
+  (`rare-sparkle`). Its running `CRAVE` service is deployed from the same
+  revision, uses `railway.scheduler-worker.toml`, and starts with
+  `cd backend && python -m app.scheduler_worker`. Its log reports
+  `scheduler_worker_started jobs=10`, and its activity agrees with production
+  `JobRun` timestamps. No embedded-scheduler flag should be enabled on the web
+  service; doing so would create duplicate job ownership.
 - Direct container SSH could not be used because this workstation has no SSH
   key configured for Railway. No key or credential was created as part of this
   read-only investigation.

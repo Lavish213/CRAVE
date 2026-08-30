@@ -17,8 +17,10 @@ Verification plan: read-only Railway SQL aggregates; focused backend tests;
 full backend suite; script dry-run against production; git diff check. Production
 mutation is explicitly excluded.
 Next action: Claude reviews PR #68, reruns the full backend suite, and validates
-the source-success semantics and guarded cleanup. No production apply is
-authorized by this handoff.
+the source-success semantics, guarded cleanup, and separate Railway scheduler
+evidence. No scheduler config change or production apply is authorized by this
+handoff. If accepted, the next operational investigation is bounded menu-job
+throughput/yield, not re-enabling the embedded scheduler.
 
 ## Existing local work excluded from this bridge
 

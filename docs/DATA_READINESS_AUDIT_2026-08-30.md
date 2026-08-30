@@ -5,6 +5,12 @@ not a promise that the database will remain unchanged.
 
 ## Executive verdict
 
+- **The scheduler is running; it is not the root cause.** The web service has
+  its embedded scheduler intentionally disabled, while a separate running
+  Railway project (`rare-sparkle`) starts `python -m app.scheduler_worker`
+  from `railway.scheduler-worker.toml`. Worker logs report 10 registered jobs,
+  and current production `JobRun` rows corroborate execution. Enabling the web
+  scheduler would risk duplicate work rather than restore missing work.
 - **Menu coverage is source-limited first, extractor-limited second.** Only
   985 of 37,761 active places have a menu (2.6%). Of the 36,776 without one,
   23,628 have no website, Grubhub URL, or menu-source URL, so no extractor can
@@ -23,6 +29,40 @@ not a promise that the database will remain unchanged.
   recommendation events from five sessions, only five outcome events, one
   signed-in user, and two rankings. Building a learned model now would fit one
   person's test behavior, not user preference.
+
+## Scheduler and throughput evidence
+
+The scheduler question was checked at the process, service, log, workflow, and
+database layers before drawing a conclusion:
+
+- the primary Railway web service logs `scheduler_embedded_disabled` and runs
+  only the API server;
+- a separate Railway project, `rare-sparkle`, has a running `CRAVE` service on
+  the same deployed revision with start command
+  `cd backend && python -m app.scheduler_worker`;
+- that worker reports `scheduler_worker_started jobs=10`;
+- production `JobRun` records show current two-, three-, and five-minute jobs,
+  plus score recomputation, image ingestion, and menu enrichment;
+- GitHub Actions has no workflow that invokes these jobs, and the primary
+  Railway project has no cron that could be mistaken for the worker.
+
+The important operational finding is therefore **throughput and yield**, not
+absence of scheduling. One observed image-ingestion run processed 100 places,
+succeeded for all 100, and wrote 123 images. By contrast, a menu-enrichment run
+was still active more than 17 minutes after starting while logs showed repeated
+low-yield endpoint probes, redirects, DNS failures, 403 responses, and both GET
+and POST attempts against generic API/GraphQL paths. Before raising menu batch
+size or concurrency, measure time and yield per strategy/domain, bound endpoint
+probing, and preserve resumable rate limits.
+
+This result does not make the remaining investigations moot:
+
+- menu provenance remains necessary because scheduling cannot invent the
+  23,628 missing source URLs, and existing sourced jobs are slow/low-yield;
+- image diagnosis remains necessary because ingestion is active while semantic
+  classification still records opaque Google-hosted images as `unknown`;
+- thin ranking data reflects the current one-user/five-outcome population, not
+  a scheduler failure.
 
 ## Menu evidence
 
@@ -125,8 +165,10 @@ and atmosphere dimensions with backward compatibility.
 1. Review and merge this PR.
 2. Independently review the three printed placeholder IDs; then run the exact
    apply command and verify all three are inactive (separate production act).
-3. Run a small source-discovery/enrichment canary before attempting more menu
-   extraction; the 23,628 source-less places are the largest coverage lever.
+3. Profile and bound menu-enrichment strategies by domain, elapsed time, and
+   published-item yield before increasing batch size or concurrency. Then run
+   a small source-discovery/enrichment canary; the 23,628 source-less places
+   remain the largest coverage lever.
 4. Investigate why the two historical Square/Toast candidate sets failed
    canonical publication before retrying them. Do not blindly rematerialize
    empty truth.
