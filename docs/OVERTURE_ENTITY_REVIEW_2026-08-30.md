@@ -83,3 +83,37 @@ python3 scripts/apply_overture_entity_review.py \
 After application, verify the exact new Jackson Street place on Feed, Search,
 Map, and Place Detail; verify the old Forge, NIDO, and Tiger's records no longer
 appear; and verify the API/database/cache/worker health endpoints remain green.
+
+## Production application record
+
+Applied on 2026-08-30 from merged commit `5f4e81f`, after an unchanged
+production preview, an exact-count transaction simulation that rolled back,
+and a second unchanged preview. The guarded apply returned:
+
+- 3 matched candidates
+- 1 historical alias
+- 5 rejected stale candidates
+- 1 promoted new location
+- 3 deactivated stale canonical places
+
+Independent post-commit database verification found all 10 candidates resolved
+and still blocked. Status counts were `matched=3`, `alias=1`, `rejected=5`, and
+`promoted=1`.
+
+The new active place is **North Beach Sandwicheez**, ID
+`1ca94f55-9d2d-5f5a-84ea-5c39f88291e9`, at 308 Jackson Street, Suite 5.
+The deactivated records are:
+
+- old Forge: `1e4a547c-e3f8-52dd-99bd-2c578d4cbdd3`
+- old NIDO: `5ca2b059-5eec-55d7-bf68-e713b639e3d1`
+- Tiger's Taproom: `c6d7a916-0cde-508a-8074-3a85b79a70ce`
+
+Live HTTP verification after commit:
+
+- `/health` returned 200 with DB, cache, and worker all `ok`.
+- `/api/v1/place/1ca94f55-9d2d-5f5a-84ea-5c39f88291e9` returned 200.
+- exact Search returned the new place once.
+- a 0.2 km Map query returned the new place once.
+- all three deactivated place-detail IDs returned 404.
+- the global Feed endpoint returned 200. The new zero-score place was not in
+  its first ranked 100, which is expected and is not an API visibility failure.

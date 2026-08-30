@@ -1,40 +1,40 @@
-# H-20260830-overture-entity-review
+# H-20260830-overture-production-apply
 Status: ready-for-review
 Owner: Codex
-Branch: codex/overture-entity-review
-Base SHA: 476ad3a7d85c46e48312a2e6f2265c22a1060782
-Commit SHA: 98d1ed7
-Allowed next files: review only; do not run the production `--apply` command
+Branch: codex/overture-production-apply-record
+Base SHA: 5f4e81f075f9dc402905f095bdeca0f5be632343
+Commit SHA: db2a623
+Allowed next files: review only
 
 ## Outcome
-Completed the evidence-backed review of all ten production rows in batch
-`oakland-20260830-a`. The fixed disposition is 3 existing matches, 1 historical
-alias, 5 stale rejects, and 1 verified-new location. Added an exact-ID,
-exact-confirmation apply tool and a rollback-only simulation mode. Also fixed a
-live entity-matcher defect where a shared brand domain could merge two distant
-branches; without that fix, Jackson Street Sandwicheez would merge into Kaiser
-Center instead of becoming its own physical location.
+After PR #64 merged and the human explicitly wrote `Approve production apply`,
+ran the exact-confirmed guarded apply for batch `oakland-20260830-a`. The
+transaction committed 3 matches, 1 alias, 5 rejections, 1 promotion, and 3
+deactivations. No other population action was run.
 
 ## Verification
-- `pytest -q tests/test_entity_matcher.py tests/test_overture_entity_review_script.py tests/test_overture_canary_script.py` -> 14 passed.
-- Full backend suite -> 886 passed, 2 skipped.
-- `python3 -m py_compile ...` and `git diff --check` -> clean.
-- Read-only production preview validated all 10 immutable IDs/states -> 3 match,
-  1 alias, 5 reject, 1 promote; 3 stale canonical deactivations.
-- Full production-connected simulation -> same counts, transaction rolled back.
-- Post-simulation read-only proof -> 10 blocked, 0 resolved, 0 promoted,
-  Jackson Sandwicheez absent, all 3 stale canonical rows still active.
+- Pre-apply production preview -> unchanged 3/1/5/1 disposition and 3 deactivations.
+- Production-connected simulation -> exact counts, transaction rolled back.
+- Second production preview -> unchanged after rollback.
+- Guarded production apply -> matched 3, aliases 1, rejected 5, promoted 1,
+  deactivated 3.
+- Independent DB query -> 10 candidates, 10 resolved, 10 blocked; statuses
+  matched 3 / alias 1 / rejected 5 / promoted 1.
+- New active Place -> North Beach Sandwicheez
+  `1ca94f55-9d2d-5f5a-84ea-5c39f88291e9`.
+- Deactivated Places -> Forge `1e4a547c-e3f8-52dd-99bd-2c578d4cbdd3`, NIDO
+  `5ca2b059-5eec-55d7-bf68-e713b639e3d1`, Tiger's
+  `c6d7a916-0cde-508a-8074-3a85b79a70ce`.
+- Live health -> 200, status/db/cache/worker all `ok`.
+- Live APIs -> new Place Detail 200; exact Search match; Map match; all three
+  stale Place Detail IDs 404; Feed 200.
 
 ## Known gaps / risks
-- No production disposition has been applied. Batch remains unchanged.
-- The reviewed apply will create one public Place and deactivate three stale
-  Places, so it requires independent review and merge before execution.
-- Generic entity matching still intentionally requires name plus address or
-  spatial agreement; shared websites are no longer location proof.
+- The new place has no image or menu and starts at score 0, so it does not
+  appear in the global Feed's first ranked 100. Search, Map, and Place Detail
+  visibility are confirmed.
+- This handoff does not authorize any additional canary or population batch.
 
 ## Next action
-Independently inspect commit `98d1ed7`, record/source evidence in
-`docs/OVERTURE_ENTITY_REVIEW_2026-08-30.md`, fixed IDs, matcher regression, and
-simulation semantics. Approve/merge or request changes. After approval, Codex
-can run the exact production apply and verify Feed/Search/Map/Place Detail plus
-health and final database counts.
+Independently query production candidate/place states and live API visibility,
+then review and merge this documentation-only record or report any mismatch.
