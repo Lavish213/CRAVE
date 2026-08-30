@@ -164,11 +164,14 @@ def entity_match(a: Dict, b: Dict) -> bool:
     Production-grade entity matcher
 
     Logic:
-    1. Name match is REQUIRED
-    2. Strong signals:
-        - address match
-        - website match
-    3. Spatial fallback (only if no strong signals)
+    1. Name match is REQUIRED.
+    2. A physical-location signal is also REQUIRED:
+        - address match, or
+        - spatial match.
+
+    A shared website domain is brand evidence, not location evidence. Chains
+    legitimately reuse one domain for multiple branches, so website equality
+    must never merge two locations whose addresses/coordinates differ.
     """
 
     try:
@@ -186,12 +189,8 @@ def entity_match(a: Dict, b: Dict) -> bool:
             logger.debug("entity_match=address_match")
             return True
 
-        if _website_match(a, b):
-            logger.debug("entity_match=website_match")
-            return True
-
         # ---------------------------
-        # FALLBACK (SAFE)
+        # LOCATION FALLBACK (SAFE)
         # ---------------------------
         if _spatial_match(a, b):
             logger.debug("entity_match=spatial_match")
