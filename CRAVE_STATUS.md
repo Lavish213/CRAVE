@@ -66,20 +66,21 @@ administrator bypass retained for the agreed small-fix lane.
   SDK 55 package line (`expo-notifications` 55.0.13, expo/expo#43829). Not
   urgent (app keeps running, Feed still loads) but the warning won't clear
   without the upgrade.
-- [ ] **Release the population canary batch (or don't).** A reversible
-  Overture canary already ran once: 10 Oakland candidates are staged in
-  production as `DiscoveryCandidate` rows, but every one is `blocked` and
-  `unresolved` — invisible to users, structurally excluded from the
-  promotion worker's own query (verified independently, not just
-  asserted). Verdict is **HOLD**: the sample included likely duplicates
-  and at least one moved/stale venue, so releasing needs a human (or a
-  separate, scoped pass) to classify each row as existing-match/moved-or-
-  closed/genuinely-new before any is unblocked. See
-  `docs/POPULATION_CANARY_2026-08-30.md` for the full findings and the
-  exact rollback command (`backend/scripts/run_overture_canary.py
-  --rollback-batch oakland-20260830-a --confirm ROLLBACK_OVERTURE`).
-
 ## What's solid right now
+
+- **Oakland population canary applied and closed out.** All 10 staged
+  Overture candidates were individually reviewed (existing-match/alias/
+  stale/genuinely-new) before anything touched production — see
+  `docs/OVERTURE_ENTITY_REVIEW_2026-08-30.md`. Result: 1 new place
+  promoted (North Beach Sandwicheez, confirmed live via Place Detail/
+  Search/Map/Feed), 3 candidates matched to existing places, 1 alias
+  resolved (NIDO → Odin), 5 rejected as stale, and 3 already-live places
+  found stale during the review and deactivated (old Forge, old NIDO,
+  Tiger's Taproom — confirmed 404 post-deactivation). Entity matcher was
+  also fixed in the process: a shared brand website across chain
+  locations was being treated as proof of identical physical location,
+  which would have wrongly merged the new Jackson Street location into a
+  distant branch.
 
 - Auth (Supabase JWKS), Feed, Map, Search, Craves/saves (offline outbox,
   idempotent), personal ranking (binary-insertion comparison, replay-safe),
@@ -190,9 +191,10 @@ administrator bypass retained for the agreed small-fix lane.
 ~~Feed keyset pagination~~ — done, merged. ~~Map over-clustering~~ — done,
 merged, confirmed on-device.
 
-**P1** — ~~Run the menu-population one-city canary~~ — done, ran once
-(see "Needs your action": the batch is staged and blocked, releasing it
-needs a human decision). Record-video discoverability (product decision:
+**P1** — ~~Run the menu-population one-city canary~~ — done, fully
+applied (see "What's solid right now"). A second city needs its own
+scoped entity review, not a copy-paste of this one. Record-video
+discoverability (product decision:
 Feed action vs. Place Detail affordance vs. tab). Confirm the
 food-classifier model is actually installed in prod vs. degrading to its
 fallback path. Physical-device smoke pass (Auth/Feed/Search/Place

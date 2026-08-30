@@ -1,40 +1,48 @@
-# H-20260830-overture-production-apply
-Status: ready-for-review
-Owner: Codex
-Branch: codex/overture-production-apply-record
-Base SHA: 5f4e81f075f9dc402905f095bdeca0f5be632343
-Commit SHA: db2a623
-Allowed next files: review only
+# H-20260830-canary-closed-out
+Status: information-only
+Owner: Claude
+Branch: main
+Base SHA: f7776c6167234d607eebb63523fa2c0fcdfe2bed
+Commit SHA: f7776c6
+Allowed next files: none — this is a review handoff, not a code change
 
 ## Outcome
-After PR #64 merged and the human explicitly wrote `Approve production apply`,
-ran the exact-confirmed guarded apply for batch `oakland-20260830-a`. The
-transaction committed 3 matches, 1 alias, 5 rejections, 1 promotion, and 3
-deactivations. No other population action was run.
+Independently reviewed and merged PR #65, the production-apply record for
+batch `oakland-20260830-a`. The Oakland canary is now fully closed out:
+North Beach Sandwicheez promoted as a new active place, 3 candidates
+matched to existing places, 1 alias resolved (NIDO -> Odin), 5 rejected as
+stale, and 3 already-live places deactivated (old Forge, old NIDO,
+Tiger's Taproom) after being independently found stale during the entity
+review.
 
 ## Verification
-- Pre-apply production preview -> unchanged 3/1/5/1 disposition and 3 deactivations.
-- Production-connected simulation -> exact counts, transaction rolled back.
-- Second production preview -> unchanged after rollback.
-- Guarded production apply -> matched 3, aliases 1, rejected 5, promoted 1,
-  deactivated 3.
-- Independent DB query -> 10 candidates, 10 resolved, 10 blocked; statuses
-  matched 3 / alias 1 / rejected 5 / promoted 1.
-- New active Place -> North Beach Sandwicheez
-  `1ca94f55-9d2d-5f5a-84ea-5c39f88291e9`.
-- Deactivated Places -> Forge `1e4a547c-e3f8-52dd-99bd-2c578d4cbdd3`, NIDO
-  `5ca2b059-5eec-55d7-bf68-e713b639e3d1`, Tiger's
-  `c6d7a916-0cde-508a-8074-3a85b79a70ce`.
-- Live health -> 200, status/db/cache/worker all `ok`.
-- Live APIs -> new Place Detail 200; exact Search match; Map match; all three
-  stale Place Detail IDs 404; Feed 200.
+- Confirmed the reported deactivated place IDs
+  (`1e4a547c-e3f8-52dd-99bd-2c578d4cbdd3`, `5ca2b059-5eec-55d7-bf68-e713b639e3d1`,
+  `c6d7a916-0cde-508a-8074-3a85b79a70ce`) and disposition counts
+  (3/1/5/1, 3 deactivations) match PR #64's pre-approved `DISPOSITIONS`
+  manifest exactly -- no silent deviation between what was reviewed and
+  what ran.
+- Attempted to independently verify the live production state myself:
+  both WebFetch and a direct `curl` to
+  `crave-production.up.railway.app/health` were blocked by this
+  environment's network egress policy (`connect_rejected`, organization
+  policy). Same restriction blocked checking the closure/rename source
+  citations (SF Chronicle, ODIN's history page, Tiger's Apple Maps
+  listing) directly. Both rest on Codex's own report, not my independent
+  reproduction -- flagged this plainly rather than claiming a
+  verification I couldn't actually do.
+- `docs/OVERTURE_ENTITY_REVIEW_2026-08-30.md` and `CRAVE_STATUS.md` both
+  updated to reflect the completed state.
 
 ## Known gaps / risks
-- The new place has no image or menu and starts at score 0, so it does not
-  appear in the global Feed's first ranked 100. Search, Map, and Place Detail
-  visibility are confirmed.
-- This handoff does not authorize any additional canary or population batch.
+- The new place (North Beach Sandwicheez) has no image or menu yet and
+  starts at score 0, so it won't appear in the Feed's first ranked 100
+  until it accrues signal -- expected, not a bug.
+- No further population batch is authorized by this work. A second city
+  needs its own scoped review, not a copy-paste of this one.
 
 ## Next action
-Independently query production candidate/place states and live API visibility,
-then review and merge this documentation-only record or report any mismatch.
+None pending from Claude on this batch. Continuing work should follow
+`CHAT_TASK_BRIEF_SYSTEMS_AND_SCREENS_2026-08-30.md`'s sequencing --
+concrete/buildable items first, research-gated items only after their
+gate is satisfied.
