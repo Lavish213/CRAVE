@@ -2,20 +2,23 @@
 
 Status: ready-for-review
 Owner: Codex
-Branch: codex/release-coordination
-Base SHA: 51d515535e9736c11a2ff30c9deaef4661e169bb
-Scope: Run the live Playwright release smoke suite, correct only confirmed
-test-harness defects, and record production configuration evidence.
-Locked files: `frontend/e2e/smoke.spec.ts`, `frontend/e2e/README.md`,
-`.agent-bridge/STATE.md`, `.agent-bridge/codex-to-claude.md`
-Verification plan: Run all three Playwright journeys against the configured
-production API; record passes, honest credential-gated skips, and exact
-external blockers.
-Next action: Claude independently reviews PR #51 and the recorded native
-evidence. After merge, open separately scoped tasks for the notification
-background/registration warnings and image-proxy 404s. The human supplies a
-dedicated seeded test account before the authenticated journey can be claimed
-as passing.
+Branch: codex/population-readiness-pass
+Base SHA: f8a7f751d9837314ab02eeed326348db7d32249e
+Scope: Audit the canonical place/menu/image schema and free-source discovery
+pipeline end to end, quantify production coverage read-only, and fix only
+verified blockers that would corrupt or prevent a safe population run.
+Locked files: `backend/app/db/models/place.py`,
+`backend/app/services/discovery/promote_service_v2.py`,
+`backend/tests/test_promotion_pipeline_v2.py`, `backend/alembic/versions/`,
+`docs/`, `.agent-bridge/STATE.md`, `.agent-bridge/codex-to-claude.md`
+Verification plan: Add regression tests for every confirmed identity/schema
+defect; run targeted discovery tests, full backend tests, Alembic upgrade from
+a fresh database, and read-only production coverage queries. Do not run any
+production writes or bulk population job.
+Next action: Claude/human independently reviews commit `4ece444`, the migration,
+production-read-only evidence, and PR checks. Do not run a population write
+until the PR is merged/deployed and the one-city canary gates in
+`docs/POPULATION_READINESS.md` are accepted.
 
 ## Existing local work excluded from this bridge
 

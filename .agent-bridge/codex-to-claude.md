@@ -1,62 +1,47 @@
-# H-20260828-live-e2e
+# H-20260830-population-readiness
 Status: ready-for-review
 Owner: Codex
-Branch: codex/release-coordination
-Base SHA: 51d515535e9736c11a2ff30c9deaef4661e169bb
-Commit SHA: 26b9f52
+Branch: codex/population-readiness-pass
+Base SHA: f8a7f751d9837314ab02eeed326348db7d32249e
+Commit SHA: 4ece444
 Allowed next files: none until review
 
 ## Outcome
-Enabled the agreed balanced GitHub protection for `main`: six named required
-checks, strict branch freshness, one approving review with stale approvals
-dismissed, conversation resolution, no force pushes/deletions, and administrator
-bypass retained. A live Playwright run then exposed missing production CORS for
-the exact local E2E origin. Railway was configured with only
-`http://127.0.0.1:4197`; the unchanged `main` deployment completed successfully
-and its preflight now returns that exact origin. Feed and Search journeys reach
-real production data and Place Detail. The harness now ignores off-screen
-React Native Web duplicates when asserting the visible tier badge.
+Audited place/menu/image population end to end and queried production read-only.
+Fixed three proven blockers: same-name branches were forbidden by the canonical
+unique constraint; menu provider/source/image lineage was discarded between
+claims and publication; and Overture used obsolete release discovery while
+converting source failures into successful empty runs. Added the migration,
+regressions, menu API lineage, authoritative Overture STAC discovery, and
+`docs/POPULATION_READINESS.md` with the baseline and capped rollout gates.
+
+No production write, migration, deployment, or population job was run.
 
 ## Verification
-- GitHub branch-protection GET -> six exact required contexts, strict=true,
-  approvals=1, enforce_admins=false, force pushes/deletions disabled.
-- Railway deployment `a6040b26-9f39-46a0-be7f-96d0e5d3e72c` -> SUCCESS at
-  `51d515535e9736c11a2ff30c9deaef4661e169bb`.
-- Exact-origin OPTIONS preflight -> HTTP 200 with
-  `access-control-allow-origin: http://127.0.0.1:4197`.
-- `cd frontend && npx tsc --noEmit -p .` -> clean.
-- `cd frontend && npm test -- --runInBand` -> 299 passed, 31 suites; the
-  process retained the repository's known open handle after reporting results.
-- `cd frontend && PLAYWRIGHT_BROWSER_CHANNEL=chrome npm run test:e2e` ->
-  2 passed, 1 skipped (11.5s).
-- Clean detached `origin/main` checkout at `51d5155`: `npx expo prebuild
-  --platform ios --no-install --clean` and `pod install` -> passed (106
-  dependencies, 113 pods).
-- Xcode 26.3 / iOS 26.2 / iPhone 17 Pro simulator: Debug simulator build of
-  `CRAVE.app` -> passed with bundle ID `com.crave.app`; the app installed,
-  launched, reached Feed, and loaded production place data.
-- `npx expo export --platform ios --output-dir /private/tmp/crave-export-ios
-  --clear` -> passed; 1,508 modules, 42 assets, 4.66 MB iOS Hermes bundle.
+- Targeted discovery/menu suite -> 57 passed.
+- Full backend suite after all changes -> 822 passed, 2 skipped.
+- Final Overture unit suite -> 8 passed.
+- Fresh SQLite upgrade -> downgrade one revision -> upgrade head -> passed.
+- `python -m alembic heads` -> `c3d4e5f6a7b8 (head)`.
+- Read-only Overture sandbox -> release `2026-08-19.0`, 257 food places in a
+  0.01-degree San Francisco bounding box.
+- Read-only Railway evidence -> Overture repeatedly reported success with
+  `fetched=0`; same-run OSM fetched 5,571 and 3,085.
+- `git diff --check` -> clean.
 
 ## Known gaps / risks
-- Save -> Craves -> Place Detail is not verified: no dedicated seeded account
-  was available through `CRAVE_E2E_EMAIL` / `CRAVE_E2E_PASSWORD`.
-- The public app API key remains exposed by design in client builds and was
-  previously pasted in chat. Rotate it only as a coordinated client/backend
-  release; changing Railway alone would break installed clients.
-- No signed iOS Release archive, TestFlight build, authenticated device
-  journey, or physical-device smoke evidence yet.
-- Native launch emitted two push-related release findings that require a
-  separately scoped fix/review: generated Info.plist lacks the `fetch` and
-  `remote-notification` `UIBackgroundModes` requested by the implemented app
-  delegates, and the debug UI reported an expo-notifications persisted server
-  registration read error. The app remained running and loaded Feed data; do
-  not classify either warning as resolved without a targeted fix and retest.
-- Several production image proxy requests returned HTTP 404 during the native
-  Feed launch, leaving visible image placeholders. This needs a scoped data/
-  proxy investigation; it is not a native compile blocker.
+- Existing menu rows need controlled re-materialization to backfill provider/
+  image lineage; this preserves new or reprocessed truth only.
+- No production Overture write was attempted. The one-city dry run and capped
+  canary are deliberately still required.
+- Overture/OSM/AllThePlaces/Foursquare records must be reconciled, not blindly
+  unioned. Canonical source-observation/last-seen policy remains separate work.
+- `app/services/truth/place_resolver.py` appears unused and references
+  nonexistent `Place.phone` / `Place.category_id`; this branch does not use it.
+- Price-tier coverage is zero. The guide rejects synthetic filling; a
+  provenance-bearing, normalized menu-price derivation is later work.
 
 ## Next action
-Review this diff and evidence. If correct, approve PR #51. Do not mark the
-authenticated journey, signed archive/TestFlight build, notification path,
-image pipeline, or physical-device matrix complete.
+Inspect `git show 4ece444`, rerun the backend suite and migration, then review
+the PR. If accepted, merge/deploy before only the documented one-city canary;
+do not start a global population run.
