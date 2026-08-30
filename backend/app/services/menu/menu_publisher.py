@@ -104,9 +104,13 @@ class MenuPublisher:
                                 category=section_name,
                                 price_cents=price_cents,
                                 description=item.get("description"),
-                                image=None,  # item-level images handled by MenuImageBridge
+                                image=item.get("image_url"),
                                 confidence_score=float(item.get("confidence") or 0.0),
-                                source_type="truth",
+                                provider=item.get("provider"),
+                                source_type=item.get("source_type") or "truth",
+                                raw_payload={
+                                    "source_url": item.get("source_url"),
+                                } if item.get("source_url") else None,
                             )
                         )
                         created_count += 1

@@ -118,8 +118,12 @@ def _build_menu_items(
                 price_cents=_safe_int(payload.get("price_cents")),
                 currency=_safe_str(payload.get("currency")) or DEFAULT_CURRENCY,
                 description=_safe_str(payload.get("description")),
+                image_url=_safe_str(payload.get("image_url")),
                 confidence_score=_extract_confidence(confidence),
                 fingerprint=fingerprint,
+                provider=_safe_str(payload.get("provider")),
+                source_type=_safe_str(payload.get("source_type")),
+                source_url=_safe_str(payload.get("source_url")),
             )
         )
 
@@ -285,8 +289,12 @@ def _serialize_menu(menu: CanonicalMenu, previous_menu: Optional[dict]) -> dict:
                         "price_cents": item.price_cents,
                         "currency": item.currency or DEFAULT_CURRENCY,
                         "description": item.description,
+                        "image_url": item.image_url,
                         "confidence": item.confidence_score,
                         "fingerprint": item.fingerprint,
+                        "provider": item.provider,
+                        "source_type": item.source_type,
+                        "source_url": item.source_url,
                     }
                     for item in section.items
                 ],

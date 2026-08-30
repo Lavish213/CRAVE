@@ -9,7 +9,6 @@ from sqlalchemy import (
     Index,
     Integer,
     String,
-    UniqueConstraint,
     DateTime,
     inspect,
     text,
@@ -38,11 +37,24 @@ def place_uuid(name: str, city_id: str) -> str:
     return str(uuid.uuid5(PLACE_NAMESPACE, f"{normalized_city_id}:{normalized_name}"))
 
 
+def candidate_place_uuid(candidate_id: str) -> str:
+    """Stable canonical id for a place first created from a candidate.
+
+    Candidate ids are source/location-specific, unlike the legacy
+    ``city_id:name`` seed key.  Keeping this helper deterministic makes a
+    retried promotion idempotent while allowing two real branches with the
+    same display name in one city to remain distinct.
+    """
+    normalized_candidate_id = (candidate_id or "").strip()
+    if not normalized_candidate_id:
+        raise ValueError("candidate_id cannot be empty")
+    return str(uuid.uuid5(PLACE_NAMESPACE, f"candidate:{normalized_candidate_id}"))
+
+
 class Place(Base, TimestampMixin):
     __tablename__ = "places"
 
     __table_args__ = (
-        UniqueConstraint("city_id", "name", name="uq_places_city_name"),
         Index("ix_places_city_rank_id", "city_id", "rank_score", "id"),
         Index("ix_places_city_active", "city_id", "is_active"),
         Index("ix_places_geo", "lat", "lng"),

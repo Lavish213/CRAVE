@@ -231,6 +231,9 @@ def get_place_menu(
             "price": (row.price_cents / 100) if row.price_cents is not None else None,
             "description": row.description,
             "category": row.category,
+            "image_url": row.image,
+            "provider": row.provider,
+            "source_type": row.source_type,
         }
         for row in rows
     ]

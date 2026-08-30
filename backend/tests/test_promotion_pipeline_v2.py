@@ -196,6 +196,42 @@ def test_promote_merges_into_existing_place_on_name_and_address_match(db, city):
     assert len(matches) == 1
 
 
+def test_promote_keeps_distinct_same_name_branches_in_one_city(db, city):
+    """A chain can legitimately have multiple locations in one city.
+
+    The entity matcher correctly rejects a merge when address and location
+    disagree, so persistence must also permit both canonical places.
+    """
+    first = _make_candidate(
+        db,
+        city.id,
+        name="Branch Cafe",
+        address="100 First St",
+        lat=37.7700,
+        lng=-122.4200,
+    )
+    second = _make_candidate(
+        db,
+        city.id,
+        name="Branch Cafe",
+        address="900 Ninth St",
+        lat=37.7900,
+        lng=-122.4000,
+    )
+
+    first_place_id = promote_candidate_v2(db=db, candidate_id=first.id)
+    db.commit()
+    second_place_id = promote_candidate_v2(db=db, candidate_id=second.id)
+    db.commit()
+
+    assert first_place_id != second_place_id
+    branches = db.query(Place).filter(
+        Place.city_id == city.id,
+        Place.name == "Branch Cafe",
+    ).all()
+    assert {p.address for p in branches} == {"100 First St", "900 Ninth St"}
+
+
 def test_promote_backfills_missing_fields_on_existing_place(db, city):
     existing = Place(
         name="Bare Place", city_id=city.id, lat=37.77, lng=-122.42,

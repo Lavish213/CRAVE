@@ -6,7 +6,7 @@ from typing import Optional
 
 from sqlalchemy.orm import Session
 
-from app.db.models.place import Place
+from app.db.models.place import Place, candidate_place_uuid
 from app.db.models.category import Category
 from app.db.models.discovery_candidate import DiscoveryCandidate
 from app.db.models.place_claim import PlaceClaim
@@ -140,6 +140,7 @@ def promote_candidate_v2(
 
     if not place:
         place = Place(
+            id=candidate_place_uuid(candidate.id),
             name=candidate.name,
             city_id=candidate.city_id,
             lat=lat,
