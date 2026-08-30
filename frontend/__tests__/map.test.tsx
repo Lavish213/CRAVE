@@ -18,7 +18,7 @@
 // the correct region, and a real pan still triggers a real fetch.
 import React from 'react';
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
-import MapScreen from '../app/(tabs)/map';
+import MapScreen, { buildClusters } from '../app/(tabs)/map';
 import { fetchMapGeoJSON } from '../src/api/map';
 import { useCityStore } from '../src/stores/cityStore';
 import { useAuthStore } from '../src/stores/authStore';
@@ -222,6 +222,40 @@ describe('MapScreen — onMapReady / spurious first-region fix', () => {
     expect(firstArgs.radius_km).toBeDefined();
     expect(secondArgs.radius_km).toBeCloseTo(firstArgs.radius_km as number, 5);
   });
+
+  it('labels retained pins as stale when a later viewport request fails', async () => {
+    mockedFetch.mockReset();
+    mockedFetch.mockResolvedValueOnce([REAL_FEATURE]);
+    mockedFetch.mockRejectedValueOnce(new Error('network unavailable'));
+
+    const { findByText } = render(<MapScreen />);
+    await waitFor(() => expect(mockedFetch).toHaveBeenCalledTimes(1));
+
+    await act(async () => {
+      mapViewProps.current.onRegionChangeComplete({
+        latitude: 37.6, longitude: -122.6, latitudeDelta: 0.018, longitudeDelta: 0.018,
+      });
+      await new Promise((r) => setTimeout(r, 600));
+    });
+    act(() => mapViewProps.current.onMapReady());
+    await act(async () => {
+      mapViewProps.current.onRegionChangeComplete({
+        latitude: SF_CITY.lat,
+        longitude: SF_CITY.lng,
+        latitudeDelta: 0.08,
+        longitudeDelta: 0.08,
+      });
+      await new Promise((r) => setTimeout(r, 600));
+    });
+    await act(async () => {
+      mapViewProps.current.onRegionChangeComplete({
+        latitude: 38.0, longitude: -122.8, latitudeDelta: 0.08, longitudeDelta: 0.08,
+      });
+      await new Promise((r) => setTimeout(r, 600));
+    });
+
+    expect(await findByText(/showing previously loaded places/i)).toBeTruthy();
+  });
 });
 
 describe('MapScreen — clustering resolves as you zoom in', () => {
@@ -291,6 +325,27 @@ describe('MapScreen — clustering resolves as you zoom in', () => {
     expect(getByTestId('marker-nearby-a')).toBeTruthy();
     expect(getByTestId('marker-nearby-b')).toBeTruthy();
     expect(getByTestId('marker-nearby-c')).toBeTruthy();
+  });
+
+  it('bounds city-scale visual density instead of rendering a marker cloud', () => {
+    const features = Array.from({ length: 250 }, (_, i) => ({
+      ...REAL_FEATURE,
+      id: `dense-${i}`,
+      coordinate: {
+        lat: 37.74 + (i % 25) * 0.003,
+        lng: -122.45 + Math.floor(i / 25) * 0.008,
+      },
+    }));
+
+    const clusters = buildClusters(
+      features,
+      { latitude: 37.7749, longitude: -122.4194, latitudeDelta: 0.08, longitudeDelta: 0.08 },
+      393,
+      650,
+    );
+
+    expect(clusters.reduce((sum, cluster) => sum + cluster.count, 0)).toBe(250);
+    expect(clusters.length).toBeLessThanOrEqual(60);
   });
 });
 
