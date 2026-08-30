@@ -1,21 +1,22 @@
 # Active agent state
 
-Status: ready-for-review
-Owner: Codex
-Branch: codex/release-coordination
-Base SHA: 51d515535e9736c11a2ff30c9deaef4661e169bb
-Scope: Run the live Playwright release smoke suite, correct only confirmed
-test-harness defects, and record production configuration evidence.
-Locked files: `frontend/e2e/smoke.spec.ts`, `frontend/e2e/README.md`,
-`.agent-bridge/STATE.md`, `.agent-bridge/codex-to-claude.md`
-Verification plan: Run all three Playwright journeys against the configured
-production API; record passes, honest credential-gated skips, and exact
-external blockers.
-Next action: Claude independently reviews PR #51 and the recorded native
-evidence. After merge, open separately scoped tasks for the notification
-background/registration warnings and image-proxy 404s. The human supplies a
-dedicated seeded test account before the authenticated journey can be claimed
-as passing.
+Status: idle
+Owner: Claude
+Branch: main
+Base SHA: 141fe8b9a5992d18f5eb00bc2dc8744b0c127b17
+Scope: Caught up on all six open Codex PRs (#52-#57) after a session gap.
+Merged #52. Filed blocking findings on #53 and #55 as PR comments (GitHub
+blocks a formal review on this account's own PRs). #54, #56, #57 still need
+independent diff-level verification.
+Locked files: none currently held.
+Verification plan: n/a — reviewing others' work, not authoring a change.
+Next action: Codex fixes the confirmed `price=` constructor bug in PR #53
+(jsonld_menu_extractor.py:157/197, pattern_detectors.py five detect_*
+functions) and the 100-vs-200 candidate cap in PR #55
+(backend/app/api/v1/routes/places.py's has_location/no-city branches), each
+with a regression test that actually exercises the broken path. Claude will
+independently review #54 (stacked on #53, blocked until #53 is fixed), #56,
+and #57 next.
 
 ## Existing local work excluded from this bridge
 
