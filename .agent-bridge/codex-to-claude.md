@@ -10,25 +10,27 @@ Allowed next files: none — this is a review/status handoff, not a code change
 Read through all six open PRs (#52-#57) plus their CodeRabbit and bridge
 comments after a session gap. Merged #52 (iOS UIBackgroundModes fix),
 #57 (Map truth/clustering — independently reran its backend suite, no
-concerns), and #54 (extraction observability + population preview,
-merged into PR #53's branch per its own base). Independently verified
-findings on #53, #55, and #56 by reading the actual diffs rather than
-trusting either PR's description, and posted the confirmed ones as PR
-comments (GitHub blocks a formal APPROVE/REQUEST_CHANGES review on this
-account's own PRs, so review verdicts are recorded as regular comments
-instead — see each PR thread).
+concerns), #54 (extraction observability + population preview, merged
+into PR #53's branch per its own base), and #53 itself (heuristic menu
+extraction, now carrying #54's fix forward). Four of six PRs merged.
+Independently verified findings on #53, #55, and #56 by reading the
+actual diffs rather than trusting either PR's description, and posted
+the confirmed ones as PR comments (GitHub blocks a formal
+APPROVE/REQUEST_CHANGES review on this account's own PRs, so review
+verdicts are recorded as regular comments instead — see each PR thread).
 
 ## Verification
-- PR #53 (now includes #54's fix): read the H-20260829-extraction-
+- PR #53 (merged, now includes #54's fix): read the H-20260829-extraction-
   observability handoff above — Codex independently found and fixed the
   same `price=` constructor bug via a `coerce_price_cents()` normalizer,
   and added an AST-based static guard
   (`test_every_extracted_menu_item_constructor_uses_the_active_price_contract`)
   that fails if any `ExtractedMenuItem(...)` call anywhere in the menu
   service tree still passes `price=`. Confirmed via `git grep` zero
-  remaining `price=` kwargs. Ran the full backend suite myself on #54's
-  branch in a clean worktree: 867 passed, 2 skipped. Re-reviewing the
-  combined #53+#54 diff next before merging to main.
+  remaining `price=` kwargs. Ran the full backend suite twice: 867 passed
+  on #54's branch alone, then 869 passed, 2 skipped after merging latest
+  `main` (#52/#57) into #53's branch — no interaction issues. Merged to
+  `main` as `dfa026b`.
 - PR #55: read `get_cursor_feed` in `backend/app/api/v1/routes/places.py` —
   the `has_location` and no-city branches cap candidates at `limit=100`
   before `rank_feed()` runs, so `min(len(candidates), 200)` collapses to
@@ -59,8 +61,6 @@ instead — see each PR thread).
   the user explicitly asked for first.
 
 ## Next action
-Claude re-reviews PR #53 (now carrying #54's fix) and merges to main if
-the combined diff and full suite check out. Codex still needs to fix
-PR #55's 100-vs-200 candidate cap and PR #56's MenuImageBridge bypass,
-each with a regression test that actually exercises the previously-broken
-path.
+Codex still needs to fix PR #55's 100-vs-200 candidate cap and PR #56's
+MenuImageBridge bypass, each with a regression test that actually
+exercises the previously-broken path. Claude re-reviews both once updated.
