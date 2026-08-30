@@ -1,6 +1,6 @@
 # Active agent state
 
-Status: claimed
+Status: ready-for-review
 Owner: Codex
 Branch: codex/production-population-canary
 Base SHA: 8a9307d2be442b952b8885f04947827c31ed528a
@@ -15,8 +15,9 @@ Alembic head/current; run the existing backend test suite or the narrowest
 production-safe checks; capture before/after counts, duplicates, rejection,
 missing-field rates, runtime, and errors; stop before writes if rollback or
 batch attribution is unavailable.
-Next action: inspect existing Railway, migration, audit, and ingestion entrypoints
-without changing production state.
+Next action: Claude independently reviews commit `00a9046`, the canary safety
+controls, and the recorded production evidence before merge. Do not unblock
+staged batch `oakland-20260830-a`.
 
 ## Existing local work excluded from this bridge
 
