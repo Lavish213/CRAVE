@@ -1,43 +1,56 @@
-# H-20260829-ios-notification-modes
-Status: ready-for-review
-Owner: Codex
-Branch: codex/notification-release-fix
-Base SHA: f8a7f751d9837314ab02eeed326348db7d32249e
-Commit SHA: 30a801e
-Allowed next files: none until review
+# H-20260830-pr-catchup
+Status: information-only
+Owner: Claude
+Branch: main
+Base SHA: 141fe8b9a5992d18f5eb00bc2dc8744b0c127b17
+Commit SHA: 141fe8b
+Allowed next files: none — this is a review/status handoff, not a code change
 
 ## Outcome
-Fixed the confirmed native-launch warnings that CRAVE implemented background
-fetch and remote-notification delegates without declaring their iOS background
-modes. `app.json` now declares both modes and enables Expo's documented
-background-remote-notification config option. Added a regression test for the
-source configuration.
-
-Classified, but did not conceal or locally patch, the separate persisted server
-registration warning. CRAVE is on Expo SDK 54 with `expo-notifications`
-0.32.17. Expo fixed the Keychain/rejection defect upstream in the SDK 55
-package line (`expo-notifications` 55.0.13, expo/expo#43829). Pulling that native
-fix safely requires an Expo SDK upgrade or a deliberately maintained patch;
-neither belongs in this narrow configuration PR.
+Read through all six open PRs (#52-#57) plus their CodeRabbit and bridge
+comments after a session gap. Merged #52 (iOS UIBackgroundModes fix — clean,
+verified, all 8 checks green). Independently verified two of CodeRabbit's
+findings by reading the actual diffs rather than trusting either PR's
+description, and posted the confirmed ones as PR comments (GitHub blocks a
+formal APPROVE/REQUEST_CHANGES review on this account's own PRs, so review
+verdicts are recorded as regular comments instead — see each PR thread).
 
 ## Verification
-- `npx jest src/config/appConfig.test.ts --runInBand` -> 1 passed.
-- `npx tsc --noEmit -p .` -> clean.
-- Disposable `npx expo prebuild --platform ios --no-install --clean` -> passed.
-- `PlistBuddy -c 'Print :UIBackgroundModes' ios/CRAVE/Info.plist` -> `fetch`,
-  `remote-notification`.
-- `npm test -- --runInBand` -> 300 passed, 32 suites; Jest reported the known
-  retained open handle after results and was manually stopped.
+- PR #53: reproduced the bug by inspecting `ExtractedMenuItem`'s dataclass
+  definition (`price_cents` only, `slots=True`, no `price` field) against
+  seven remaining `ExtractedMenuItem(price=...)` construction sites in
+  `jsonld_menu_extractor.py` (:157, :197) and all five `detect_*` functions
+  in `pattern_detectors.py`. `menu_extraction_router.py`'s `_safe_extract()`
+  catches the resulting `TypeError` at `logger.debug` and returns `[]`, so
+  JSON-LD extraction and the entire pattern-detector fallback family
+  silently return empty, unconditionally, on every call — the exact
+  opposite of what this PR's title claims to fix. Full comment on the PR
+  thread with exact line numbers and a one-line repro.
+- PR #55: read `get_cursor_feed` in `backend/app/api/v1/routes/places.py` —
+  the `has_location` and no-city branches cap candidates at `limit=100`
+  before `rank_feed()` runs, so `min(len(candidates), 200)` collapses to
+  100 regardless of `_MAX_FEED_SNAPSHOT_PLACES = 200`. Only the `city_id`
+  branch actually requests 200. Not a crash, but a real under-delivery of
+  the feature's own stated bound for the (likely most common) location-based
+  path. Posted on the PR thread.
+- PR #52: diff matched its description exactly (4 files, no scope creep),
+  `UIBackgroundModes` fix matches the exact gap PR #51's native build
+  surfaced, new config test correctly asserts it, all 8 required checks
+  green. Merged as `141fe8b`.
 
 ## Known gaps / risks
-- A locked-device, signed physical-device push delivery/tap test is still
-  required before the notification path can be called release-verified.
-- The SDK 54 persisted-registration warning remains an upstream dependency
-  issue. Do not suppress `console.error` as a substitute for the native fix.
-- No application source, backend, Railway configuration, or push credentials
-  changed.
+- PR #54 (stacked on #53's branch) not yet independently diff-reviewed —
+  blocked on #53's fix landing first since it inherits that branch's bug.
+- PR #56 (population pipeline) and PR #57 (map clustering) not yet
+  independently diff-reviewed by Claude. CodeRabbit flagged migration-
+  rollback/concurrent-promotion concerns on #56 and hit its rate limit on
+  #57 (no actual review produced there yet).
+- `CRAVE_STATUS.md` still reflects pre-PR-#51 state in places; not updated
+  this pass — deferred in favor of finishing the PR backlog read-through
+  the user explicitly asked for first.
 
 ## Next action
-Independently inspect `30a801e`, rerun the config test/typecheck, and verify a
-fresh prebuild contains both modes. If correct, approve the PR; keep the SDK 55
-upgrade/physical push test as explicit follow-up work.
+Fix the two confirmed findings above (with regression tests that actually
+exercise the previously-broken paths, since the existing suites didn't
+catch either). Once #53 is fixed, Claude will re-review #53 and then #54.
+Claude will separately do a first-pass diff review of #56 and #57.
