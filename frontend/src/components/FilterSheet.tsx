@@ -75,8 +75,10 @@ export function FilterSheet({ visible, onClose, filters, onChange, availableCate
       onRequestClose={onClose}
       statusBarTranslucent
     >
-      {/* Backdrop */}
-      <Pressable style={styles.backdrop} onPress={onClose} />
+      {/* Backdrop -- accessible=false so VoiceOver/TalkBack skip straight
+          to the labeled "Close filter" button below instead of stopping
+          on an invisible, undescribed full-screen element first. */}
+      <Pressable style={styles.backdrop} onPress={onClose} accessible={false} />
 
       {/* Sheet */}
       <View style={styles.sheet}>

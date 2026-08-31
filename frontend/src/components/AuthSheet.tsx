@@ -219,7 +219,10 @@ export function AuthSheet({ visible, onClose, reason = 'default' }: Props) {
       onRequestClose={resetAndClose}
       statusBarTranslucent
     >
-      <Pressable style={styles.backdrop} onPress={resetAndClose} />
+      {/* accessible=false so VoiceOver/TalkBack skip straight to the
+          labeled "Close"/"Back" button below instead of stopping on an
+          invisible, undescribed full-screen element first. */}
+      <Pressable style={styles.backdrop} onPress={resetAndClose} accessible={false} />
 
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
