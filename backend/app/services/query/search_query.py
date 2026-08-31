@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from difflib import SequenceMatcher
 from typing import Optional, Tuple, List
 
 from sqlalchemy.orm import Session
@@ -11,6 +12,18 @@ from app.db.models.place_categories import place_categories
 
 DEFAULT_LIMIT = 20
 MAX_LIMIT = 100
+
+# Typo-tolerance fallback, only triggered when the exact ilike search
+# returns nothing. No pg_trgm/schema dependency -- this environment has no
+# way to verify a Postgres extension migration would even be allowed on
+# Railway's managed instance, so this stays pure Python/stdlib and behaves
+# identically on SQLite (tests) and production Postgres.
+#
+# Bounded regardless of city size: fetches at most this many rank_score-
+# ordered candidates to fuzzy-compare against, so a global (no city_id)
+# fallback can't load the entire catalog into memory.
+_FUZZY_CANDIDATE_POOL = 500
+_FUZZY_MIN_SIMILARITY = 0.6
 
 # Sentinel "distance" for a place with no coordinates, so it still sorts
 # after every real match instead of needing dialect-specific NULLS LAST
@@ -33,6 +46,66 @@ def _clamp_offset(offset: int) -> int:
     except Exception:
         return 0
     return max(0, n)
+
+
+def _fuzzy_fallback_search(
+    db: Session,
+    *,
+    query: str,
+    city_id: Optional[str],
+    category_id: Optional[str],
+    price_tier: Optional[int],
+    limit: int,
+) -> Tuple[List[Place], int]:
+    """Typo-tolerant fallback for when the exact name match finds nothing.
+
+    Fetches a bounded, rank_score-ordered candidate pool under the same
+    non-name filters (city/category/price), then ranks candidates by
+    difflib similarity to the query. Deliberately not merged into the
+    exact-match query itself -- keeping the common case (a real substring
+    match) a single cheap indexed ilike, and only paying the candidate-pool
+    fetch + in-memory comparison cost on the genuinely-typo'd, zero-result
+    case.
+    """
+    candidates_stmt = select(Place).where(Place.is_active.is_(True))
+
+    if city_id:
+        candidates_stmt = candidates_stmt.where(Place.city_id == city_id)
+
+    if category_id:
+        candidates_stmt = (
+            candidates_stmt.join(
+                place_categories,
+                Place.id == place_categories.c.place_id,
+            )
+            .where(place_categories.c.category_id == category_id)
+        )
+
+    if price_tier is not None:
+        candidates_stmt = candidates_stmt.where(Place.price_tier == price_tier)
+
+    candidates_stmt = (
+        candidates_stmt.distinct()
+        .order_by(Place.rank_score.desc(), Place.id.asc())
+        .limit(_FUZZY_CANDIDATE_POOL)
+    )
+
+    candidates = db.execute(candidates_stmt).scalars().all()
+
+    query_lower = query.lower()
+    scored: List[Tuple[float, Place]] = []
+    for place in candidates:
+        name = (place.name or "").lower()
+        if not name:
+            continue
+        similarity = SequenceMatcher(None, query_lower, name).ratio()
+        if similarity >= _FUZZY_MIN_SIMILARITY:
+            scored.append((similarity, place))
+
+    scored.sort(key=lambda pair: pair[0], reverse=True)
+    matched = [place for _, place in scored[:limit]]
+
+    return matched, len(scored)
 
 
 def search_places(
@@ -82,6 +155,16 @@ def search_places(
 
     count_stmt = select(func.count()).select_from(stmt.subquery())
     total_count = db.execute(count_stmt).scalar_one()
+
+    if total_count == 0:
+        return _fuzzy_fallback_search(
+            db,
+            query=query,
+            city_id=city_id,
+            category_id=category_id,
+            price_tier=price_tier,
+            limit=limit,
+        )
 
     # Without an explicit city scope, a name match is fetched from the
     # entire catalog ordered by rank_score alone — a real nearby match
