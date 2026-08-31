@@ -3,46 +3,48 @@
 Status: idle
 Owner: Claude
 Branch: main
-Base SHA: c5ff3292b2f1cec05f7223cc3c0870deae79bb63
-Scope: Worked through Master Plan items directly per the user's "chat down,
-you go" instruction, since Codex's session is offline. Merged PR #74
-(A2 throughput bounding + A6 dead code cleanup) and PR #75
-(A4 BentoBox adapter).
+Base SHA: b90b97c (PR #77 merged)
+Scope: Continuing through CRAVE_MASTER_PLAN_2026-08-31.md items that don't
+need production/device access, per the user's "if ya cant do it leave for
+codex do what u can do keep going" instruction, since Codex's session is
+still offline.
 
-Done this pass:
-- A2: added MAX_API_PROBE_SECONDS (20s) / MAX_IFRAME_PROBE_SECONDS (15s)
-  wall-clock budgets in menu_extraction_router.py. Confirmed the actual
-  math behind the 17-minute run: up to 20 API-endpoint candidates x ~8s
-  timeout each = up to ~160s on that one sub-stage alone, per place, with
-  only a count cap before this fix, no time cap.
-- A6: deleted menu_link_finder.py, menu_link_discovery.py,
-  menu_site_crawler.py -- confirmed zero callers repo-wide.
-- A4: added bentobox_extractor.py -- BentoBox has no JSON ordering API to
-  build a normal adapter against, so this handles the one confirmed-real
-  pattern (a static PDF menu on bentoboxcdn.com/getbento.com, evidenced by
-  the North Beach Sandwicheez entity review) via the existing
-  extract_pdf_menu(). Registered in provider_registry.py.
+Done this pass (since the last STATE.md update, which only covered
+through PR #75):
+- E9: PR #77 merged. Added a bounded, dependency-free fuzzy fallback
+  (stdlib difflib.SequenceMatcher, no Postgres extension) to
+  search_query.py's search_places() -- fires only when the exact-match
+  path returns zero results. 4 new tests.
+- B1: PR #78 open (self-reviewed, awaiting CI before merge). Design doc
+  at docs/IMAGE_CLASSIFICATION_HOLDOUT_DESIGN_2026-08-31.md -- key finding
+  is that the "already-bundled TFLite classifier" your earlier audit
+  gestured at is app/services/video/food_classifier.py (real MobileNetV2
+  model), not image_classifier.py (the URL-heuristic responsible for the
+  77,701 unknown images). Added score_image() wrapper + 2 tests. Steps 2
+  (real image fetch) and 4 (manual holdout labeling) are explicitly
+  blocked in this session -- no production image URLs, no image-viewing
+  capability against fetched content here.
 
-Partial / needs your production access:
-- A3 (the 2 historical Square/Toast sources): traced as far as static code
-  analysis allows. Ruled out one hypothesis -- provider_registry.py's
-  MIN_VALID_ITEMS=2 gate and menu_claim_emitter.py's MIN_ITEMS_TO_EMIT=2
-  are numerically aligned, so a sub-2-item extraction can't slip through
-  the registry and then get killed at the claims stage; that's not the
-  mismatch. Could not go further without the actual PlaceClaim/PlaceTruth
-  rows for Itani Ramen (Toast) and Reem's California (Square) -- I have no
-  production DB access in this session. Needs your query access to see
-  what these two sources' claims actually contained (if any) between
-  extraction and canonical publish.
+Partial / needs your production access (unchanged from before):
+- A3 (the 2 historical Square/Toast sources): ruled out the
+  MIN_VALID_ITEMS/MIN_ITEMS_TO_EMIT mismatch hypothesis via static
+  tracing. Needs your query access to see what Itani Ramen's (Toast) and
+  Reem's California's (Square) actual PlaceClaim/PlaceTruth rows contained.
+- A1 (run the 13,148-place menu backlog with the new throughput budgets
+  from PR #74) -- needs production access to run.
+- A7 (new source discovery beyond BentoBox) -- same.
+- B1 steps 2 and 4 above.
 
 Locked files: none currently held.
-Verification plan: full backend suite green on each change (896, then 902
-passed, 2 skipped); each new/changed test independently verified to catch
-its corresponding regression (temporarily reverted, watched fail, restored).
-Next action: Codex, when back: (1) review/merge PR #75 if not already done,
-(2) finish A3 with actual production data using the ruled-out hypothesis
-above as a starting point, (3) continue with Master Plan sequencing --
-A1 (run the 13,148 backlog) is next now that A2/A6 are done, then A7/A5.
+Verification plan: full backend suite green on each change (908 passed,
+2 skipped as of PR #78's branch); every new/changed test independently
+verified to catch its corresponding regression (temporarily reverted,
+watched fail, restored) before merge.
+Next action: Codex, when back: (1) merge PR #78 if CI is green and I
+haven't already, (2) A1 backlog run now that throughput is bounded (PR
+#74) and BentoBox coverage exists (PR #75), (3) A3 with actual production
+row data, (4) B1 steps 2/4 (real image sample + manual labeling) once
+A1/A3 are handled.
 
 ## Existing local work excluded from this bridge
 

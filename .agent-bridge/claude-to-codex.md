@@ -1,56 +1,62 @@
-# H-20260830-pr-catchup
+# H-20260831-b1-design-and-e9-search
+
 Status: information-only
 Owner: Claude
 Branch: main
-Base SHA: 141fe8b9a5992d18f5eb00bc2dc8744b0c127b17
-Commit SHA: 141fe8b
-Allowed next files: none — this is a review/status handoff, not a code change
+Base SHA: b90b97c
+Allowed next files: none — this is a status handoff, not a code change
 
 ## Outcome
-Read through all six open PRs (#52-#57) plus their CodeRabbit and bridge
-comments after a session gap. Merged #52 (iOS UIBackgroundModes fix — clean,
-verified, all 8 checks green). Independently verified two of CodeRabbit's
-findings by reading the actual diffs rather than trusting either PR's
-description, and posted the confirmed ones as PR comments (GitHub blocks a
-formal APPROVE/REQUEST_CHANGES review on this account's own PRs, so review
-verdicts are recorded as regular comments instead — see each PR thread).
+Codex, addressed to you directly, picking up from where H-20260830-data-
+readiness-reviewed left off. Since your session went offline the user told
+me to keep working through CRAVE_MASTER_PLAN_2026-08-31.md's non-production
+items rather than wait. Merged since then:
+
+- **PR #74** (A2 + A6): wall-clock budgets (`MAX_API_PROBE_SECONDS=20`,
+  `MAX_IFRAME_PROBE_SECONDS=15`) on the API/iframe endpoint probes in
+  `menu_extraction_router.py` -- this is the actual root cause of the
+  17-minute production run you flagged: up to 20 API candidates x 8s
+  timeout each with only a count cap, no time cap. Also deleted 3 dead
+  files (`menu_link_finder.py`, `menu_link_discovery.py`,
+  `menu_site_crawler.py`) with zero callers repo-wide.
+- **PR #75** (A4): `bentobox_extractor.py` -- narrow adapter for the one
+  confirmed-real BentoBox pattern (static PDF on bentoboxcdn.com/
+  getbento.com), evidenced by North Beach Sandwicheez in your own entity
+  review doc. Registered in `provider_registry.py`.
+- **PR #77** (E9): typo-tolerant search fallback in `search_query.py`
+  using stdlib `difflib` (deliberately not a Postgres extension --
+  unverifiable on Railway's managed instance without your access).
+- **PR #78** (B1, design + scaffolding): design doc at
+  `docs/IMAGE_CLASSIFICATION_HOLDOUT_DESIGN_2026-08-31.md`. Important
+  finding for you specifically: the classifier your data-readiness audit
+  called "already-bundled TFLite classifier" without naming is
+  `app/services/video/food_classifier.py` -- a real MobileNetV2 model,
+  currently only wired to video frames. It is NOT
+  `image_classifier.py` (the URL-heuristic behind the 77,701 unknown
+  images). Added `score_image()`, a thin wrapper exposing that model for
+  single images. This PR does not and cannot execute the actual holdout --
+  steps 2 (fetch real image URLs) and 4 (hand-label ~400 images) need
+  your production access, not mine.
 
 ## Verification
-- PR #53: reproduced the bug by inspecting `ExtractedMenuItem`'s dataclass
-  definition (`price_cents` only, `slots=True`, no `price` field) against
-  seven remaining `ExtractedMenuItem(price=...)` construction sites in
-  `jsonld_menu_extractor.py` (:157, :197) and all five `detect_*` functions
-  in `pattern_detectors.py`. `menu_extraction_router.py`'s `_safe_extract()`
-  catches the resulting `TypeError` at `logger.debug` and returns `[]`, so
-  JSON-LD extraction and the entire pattern-detector fallback family
-  silently return empty, unconditionally, on every call — the exact
-  opposite of what this PR's title claims to fix. Full comment on the PR
-  thread with exact line numbers and a one-line repro.
-- PR #55: read `get_cursor_feed` in `backend/app/api/v1/routes/places.py` —
-  the `has_location` and no-city branches cap candidates at `limit=100`
-  before `rank_feed()` runs, so `min(len(candidates), 200)` collapses to
-  100 regardless of `_MAX_FEED_SNAPSHOT_PLACES = 200`. Only the `city_id`
-  branch actually requests 200. Not a crash, but a real under-delivery of
-  the feature's own stated bound for the (likely most common) location-based
-  path. Posted on the PR thread.
-- PR #52: diff matched its description exactly (4 files, no scope creep),
-  `UIBackgroundModes` fix matches the exact gap PR #51's native build
-  surfaced, new config test correctly asserts it, all 8 required checks
-  green. Merged as `141fe8b`.
+Full backend suite green after every merge (908 passed, 2 skipped as of
+PR #78). Every new/changed test in each PR was independently verified to
+catch its own regression (temporarily reverted the fix, confirmed the
+test failed, restored) before merging -- same discipline as your own
+H-20260830 handoff.
 
 ## Known gaps / risks
-- PR #54 (stacked on #53's branch) not yet independently diff-reviewed —
-  blocked on #53's fix landing first since it inherits that branch's bug.
-- PR #56 (population pipeline) and PR #57 (map clustering) not yet
-  independently diff-reviewed by Claude. CodeRabbit flagged migration-
-  rollback/concurrent-promotion concerns on #56 and hit its rate limit on
-  #57 (no actual review produced there yet).
-- `CRAVE_STATUS.md` still reflects pre-PR-#51 state in places; not updated
-  this pass — deferred in favor of finishing the PR backlog read-through
-  the user explicitly asked for first.
+- A3 (Itani Ramen / Reem's California historical Square/Toast failures):
+  still blocked on your DB access. I ruled out one hypothesis (the
+  MIN_VALID_ITEMS/MIN_ITEMS_TO_EMIT gate mismatch) via static tracing --
+  they're numerically aligned, so that's not it.
+- A1 (13,148-place backlog run) hasn't been run yet -- now safe to run
+  given PR #74's throughput bounding.
+- No production/device access in this session for any of the above, same
+  limitation as every prior handoff.
 
 ## Next action
-Fix the two confirmed findings above (with regression tests that actually
-exercise the previously-broken paths, since the existing suites didn't
-catch either). Once #53 is fixed, Claude will re-review #53 and then #54.
-Claude will separately do a first-pass diff review of #56 and #57.
+When you're back, in order: (1) merge PR #78 if I haven't already and CI
+is green, (2) run A1's backlog now that throughput is bounded, (3) use
+your production access to finish A3, (4) come back to B1 steps 2/4 (real
+sample + labeling) once A1/A3 are clear.
