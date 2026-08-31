@@ -1,120 +1,111 @@
 # Active agent state
 
-Status: ready-for-review
-Owner: Codex
-Branch: codex/scheduler-safe-rollout
-Base SHA: 924ce41 (PR #93 merged)
-Scope: Add a default-off standalone scheduler-worker rollout gate and an
-explicit job allowlist so a Railway worker service can be provisioned without
-immediately executing every accumulated production backlog. Preserve existing
-embedded/local scheduler behavior. Do not provision or enable the production
-worker until this change is independently reviewed, merged, and deployed.
-Locked files: .agent-bridge/STATE.md, .agent-bridge/codex-to-claude.md,
-backend/app/config/settings.py, backend/app/scheduler.py,
-backend/app/scheduler_worker.py, backend/tests/test_scheduler_worker_rollout.py,
-and docs/SCHEDULER_WORKER_ROLLOUT.md.
-Verification plan: red/green focused tests for default-off behavior and exact
-allowlisting; existing scheduler-adjacent tests; full backend suite; CI/CodeQL;
-independent Claude review before any production service creation.
-Verification result: focused scheduler/recovery suite 16 passed; full backend
-suite 939 passed, 2 skipped, 33 warnings in 9.92s with TZ=UTC.
-Known gaps: no Railway scheduler service was created and no production job was
-enabled. Provisioning is blocked on independent review, merge, deployment, and
-disabled-service log verification.
-Next action: Claude independently reviews the branch and PR. If accepted and
-deployed, Codex may provision the worker default-off per the rollout document.
+Status: reviewed-and-merged
+Owner: Claude
+Branch: main
+Base SHA: (post-merge of PR #95, "Gate standalone scheduler rollout")
+Scope: Reviewed and merged Codex's PR #95 -- a default-off standalone
+scheduler-worker rollout gate plus explicit job allowlist, so a Railway
+worker service can be provisioned without immediately executing every
+accumulated production backlog. Embedded/local scheduler behavior is
+unchanged (verified directly at `main.py`'s zero-arg `create_scheduler()`
+call site, not just via tests). Production provisioning is still not
+authorized by this merge alone -- see Next action.
+Verification performed by Claude before merging: reran the 6 new focused
+tests plus the full backend suite locally (939 passed, 2 skipped, matches
+PR body exactly); independently deleted the default-off guard and
+confirmed the most safety-critical test fails as expected, then restored
+it; traced the embedded-scheduler call site by hand; confirmed
+`git diff --check` clean; confirmed all 8 CI checks green. Full writeup
+posted as a review comment on PR #95.
+Known gaps: no Railway scheduler-worker service exists yet, no production
+job is enabled. This PR only removes the code-side blocker.
+Next action: Codex, when back: (1) provision the standalone worker service
+on Railway with `SCHEDULER_WORKER_ENABLED=false` per
+`docs/SCHEDULER_WORKER_ROLLOUT.md`, verify the disabled log line, (2) once
+stable, enable jobs one at a time per that doc's phased plan starting with
+`moderation_queue_health_check`, (3) for menu_enrichment specifically, use
+`scripts/run_menu_backlog_canary.py` (PR #93) for the first bounded run --
+preview first, then `--run` with an exact `--confirm-count`, not the
+scheduler job. Nothing here needs any further code change from either of
+us before that infra step.
 
-## Prior Claude pass
+## Prior Claude pass (E8 audit + PR #93 canary)
 
-Scope: A large end-to-end audit pass per the user's request to "search
-project end to end for all gaps and bugs... check everything... pretend
-to be user... fix or log" — covering a user walkthrough (incl. camera/
-upload), a full schema audit, an accessibility re-verification, and 2
-design/tradeoff docs (E8 taxonomy, E2/E3/E10). Still working solo since
-Codex's session is offline; nothing here needed production access.
+A large end-to-end audit pass per the user's request to "search project
+end to end for all gaps and bugs... check everything... pretend to be
+user... fix or log" -- covering a user walkthrough (incl. camera/upload),
+a full schema audit, an accessibility re-verification, and 2 design/
+tradeoff docs (E8 taxonomy, E2/E3/E10) -- plus, in response to Codex's
+production-topology finding (no scheduler-worker service deployed in
+Railway, and the existing A1 tooling being unsafe for a first canary
+run), the exact-target, confirmation-gated menu-extraction canary tool
+(PR #93) referenced above.
 
-## Real fixes merged this pass (PRs #88, #89)
+## The scheduler-worker finding (Codex's, confirmed by me at the code level)
 
-- **PR #88 — stuck photo uploads.** Found by walking the actual photo-
-  upload flow end-to-end: `process_image_upload()` runs as a FastAPI
-  BackgroundTask off `POST /upload/confirm`, with no durability (unlike
-  video, deliberately moved to its own scheduler job for exactly this
-  reason -- see `_job_video_processing`'s own docstring: "unlike
-  photos"). A process restart/redeploy mid-task left the row stuck at
-  'processing'/'pending' forever, with the frontend's status poll
-  spinning indefinitely. Added `reclaim_stale_image_uploads()` +
-  a new scheduler job (`image_processing_recovery`, every 10 min),
-  mirroring video's existing self-healing pattern. 6 new tests.
-- **PR #89 — modal backdrop accessibility.** A repo-wide re-scan for
-  icon-only touchables found zero remaining gaps of that shape (PR #80
-  already fixed the only 2). Found something related instead: 4 modal
-  sheets (Filter/ShareLink/Auth/MenuSubmission) had an unlabeled full-
-  screen backdrop Pressable sitting in VoiceOver's traversal order right
-  before each sheet's own properly-labeled Close button. Fixed with
-  `accessible={false}` on the backdrop (not a label -- would've been a
-  second, confusing "close" announcement). Left `ReportPhotoSheet.tsx`
-  alone -- its backdrop is the sole dismiss path there, already correctly
-  labeled.
+Codex found via direct Railway inspection: only a `CRAVE` web service +
+Postgres exist, no scheduler-worker service, `RUN_EMBEDDED_SCHEDULER=false`
+on the web service. I traced this in the code and it's fully consistent:
+`app/main.py`'s lifespan correctly skips starting the scheduler when that
+flag is false, and `app/scheduler_worker.py` (a complete, production-
+ready standalone process -- proper SIGTERM handling, Sentry init, clean
+shutdown) is exactly the replacement service that flag expects to exist
+elsewhere. It just isn't deployed. This means every scheduled job --
+menu enrichment, image ingestion, video processing, score recompute, my
+own PR #88 stuck-photo-recovery job -- is currently running nowhere in
+production, regardless of what the code says it should do.
 
-## Findings with no code change (verified, not guessed)
+This directly supersedes an earlier "false alarm, scheduler verified
+running in a separate Railway project, do not touch" resolution from
+earlier in this session's master plan -- that earlier finding should be
+treated as stale/wrong now, not Codex's fresh, specific inspection.
 
-- **Schema audit (all 37 models)**: genuinely well-built. Every single
-  ForeignKey in the schema has an explicit `ondelete` (confirmed via a
-  script scanning every model file, zero gaps found). Indexing is query-
-  pattern-matched (composite indexes matching real ORDER BY clauses, not
-  blanket single-column indexing). Zero orphaned/unused model classes.
-  Zero risky migrations (no NOT NULL column ever added without a
-  server_default). One minor, non-urgent latent gap noted:
-  `MenuSubmission.submitted_by` has no index, but nothing queries by it
-  yet -- not worth a speculative index.
-- **E8 (category taxonomy)**: corrected the Master Plan's own framing --
-  `Category.type` (cuisine/venue/specialty) already exists in the
-  schema, it's just completely unused end-to-end (not in `CategoryOut`,
-  not anywhere in the frontend). Design doc at
-  `docs/CATEGORY_TAXONOMY_DESIGN_2026-08-31.md` lays out a low-risk data
-  fix plus 3 Filter-UI options, explicitly flagging the ownership/
-  identity category grouping and the michelin_rated-as-a-category
-  question as needing your call, not mine.
-- **E2/E3/E10 tradeoffs**: doc at
-  `docs/E2_E3_E10_PRODUCT_TRADEOFFS_2026-08-31.md`. E2: CraveItem already
-  has rich provenance, HitlistSave is missing visited/notes state --
-  concrete options laid out. E3: video is PlaceVideoGallery-only,
-  confirmed by grep -- 3 options, flagging a dedicated tab as the
-  highest-risk one (most directly overlaps TikTok's lane per doctrine's
-  own positioning). E10: confirmed zero implementation exists anywhere;
-  correctly last given Decision Session itself is still unproven (~5
-  outcome events).
+One correction to Codex's own framing: `scheduler_worker.py` doesn't
+need to be built -- it already exists, complete. The actual gap is purely
+deploying it as its own Railway service. That's infrastructure work
+outside what either of us can do without Railway/production access.
 
-## Recap: PRs #82-#87 (previous consolidated update, still accurate)
+## What I built (PR #93): the exact-target A1 canary
 
-Dead code cleanup (#82), a real IDOR fix on the upload status route
-(#83), a real N+1 fix in menu_worker.py (#84), Codex's A3 diagnosis
-reviewed and merged by me (#85), bridge reconciliation (#86 closed in
-favor of #87).
+Codex separately flagged the existing A1 tooling (the scheduler job +
+`scripts/run_menu_worker.py`) as unsafe for a first backlog run: it
+selects places itself (highest rank_score first), no preview, no way to
+confirm you ran against exactly N intended places.
 
-Partial / needs production access (unchanged):
-- A1 (13,148-place backlog run): safe to run, throughput bounded (PR
-  #74) and the recompute N+1 fixed (PR #84).
-- A3: diagnosis complete (PR #85). Both sources remain correctly
-  unpublished pending a bounded, verified retry -- per Codex's own gate,
-  do not retry until the deployed revision is confirmed (last known:
-  Codex confirmed Railway deployed 95d9063, the PR #85 merge SHA, before
-  its own session hit a usage limit mid-search for the bounded retry
-  command).
-- A7 (source discovery), B1 steps 2/4 (real image fetch + hand-
-  labeling).
+`backend/scripts/run_menu_backlog_canary.py` (new): takes an explicit
+place-ID list only, never a discovered/ranked selection. Preview-by-
+default; `--run --confirm-count N` (must exactly match) to execute --
+same discipline as the existing Overture population canary. Refuses on
+any missing/inactive place ID. Capped at 100 places/run. Does NOT attempt
+automated rollback of a materialized menu (explained in the script's own
+docstring why that's harder than the Overture canary's case) -- but
+every result row names exactly which place_ids were touched, for a
+reviewable manual rollback if one's ever needed.
+
+Refactored menu_worker.py's per-place logic into a shared
+`_process_one_place()` method (pure, behavior-preserving refactor -- all
+13 pre-existing tests pass unchanged) so the canary and the batch worker
+call identical, already-tested code instead of risking drift.
+
+## Current state of the Master Plan
+
+- A1: the exact-target tool now exists (PR #93). Running it against real
+  place IDs, and deploying the scheduler-worker service, are both still
+  blocked on production access.
+- A3: diagnosis complete (PR #85, merged and deployed, confirmed at SHA
+  95d9063). Both sources remain correctly unpublished.
+- A7, B1 steps 2/4: unchanged, still need production access.
 
 Locked files: none currently held.
-Verification plan: full suite green on every change (926 backend passed/
-2 skipped, 302 frontend passed, both confirmed on current main); every
-new/changed test independently verified to catch its own regression
-before merge -- same discipline the whole session.
-Next action: Codex, when back: (1) finish locating the bounded A3 retry
-command and run it only if the deployed SHA still matches, (2) A1
-backlog run, (3) B1 steps 2/4. Nothing from this pass needs your
-follow-up -- both real fixes (#88, #89) are merged, and the design docs
-(E8, E2/E3/E10) are addressed to the user/team for a product decision,
-not to you.
+Verification plan: full suite green on every change (933 backend passed,
+2 skipped as of this pass); every new/changed test independently
+verified to catch its corresponding regression before merge.
+Next action: Codex, when back: (1) provision the scheduler-worker
+Railway service (code is ready, this is pure infra), (2) once that's
+live and observed stable, use scripts/run_menu_backlog_canary.py for a
+small, reviewed A1 canary batch -- preview first, then --run with an
+exact --confirm-count, (3) B1 steps 2/4 whenever convenient.
 
 ## Existing local work excluded from this bridge
 
