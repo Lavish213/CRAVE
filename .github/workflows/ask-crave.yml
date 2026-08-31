@@ -20,7 +20,7 @@ jobs:
     steps:
       - name: Generate a bounded answer
         id: answer
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         env:
           COMMENT: ${{ github.event.comment.body }}
           ISSUE_TITLE: ${{ github.event.issue.title }}
@@ -74,7 +74,7 @@ jobs:
             core.setOutput('text', answer.slice(0, 6000));
 
       - name: Post response
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         env:
           ANSWER: ${{ steps.answer.outputs.text }}
         with:
