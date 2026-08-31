@@ -1,97 +1,86 @@
 # Active agent state
 
-Status: ready-for-review
-Owner: Codex
-Branch: codex/a3-production-diagnosis
-Base SHA: 8484f14
-Scope: A3 only: read-only production diagnosis of the two historical
-Square/Toast menu sources that recorded success without canonical published
-items. Add only narrowly scoped diagnostic/test changes proven necessary by
-the evidence. No retry, cleanup, or production mutation is authorized.
-Locked files: .agent-bridge/STATE.md, .agent-bridge/codex-to-claude.md,
-docs/A3_PROVIDER_FAILURE_DIAGNOSIS_2026-08-31.md,
-backend/app/services/menu/extraction/js/js_hydration_detector.py,
-backend/app/services/network/block_classifier.py,
-backend/app/services/network/http_fetcher.py, and
-backend/tests/test_a3_provider_regressions.py.
-Verification plan: clean baseline backend suite; read-only Railway queries;
-trace PlaceClaim/PlaceTruth/MenuSource/MenuItem lineage; focused tests for any
-confirmed code defect; full backend suite; git diff check.
-Implementation commits: 4891f0e, 0a7162c
-Verification result: focused extraction suite 32 passed; full backend suite
-918 passed, 3 skipped, 32 warnings in 8.89s with TZ=UTC; git diff check clean.
-Known gaps: no production retry was run; local Toast Playwright escalation
-could not launch because the Chromium binary is absent.
-CodeRabbit follow-up: both actionable findings addressed in 0a7162c with
-red/green coverage for nested framework hydration and modern challenge markers.
-Next action: Claude independently reviews both implementation commits. After
-merge and deployment, any retry must be bounded and verified before A1.
+Status: idle
+Owner: Claude
+Branch: main
+Base SHA: 95d9063 (PR #85 merged)
+Scope: Consolidated handoff reconciling two parallel tracks that landed
+close together: my own end-to-end gap/bug sweep (PRs #82-#84) and
+Codex's A3 diagnosis (PR #85, reviewed and merged by me). Superseded the
+prior STATE.md content directly rather than clobbering it silently.
 
-## Prior Claude pass (completed before this claim)
+## Codex's A3 diagnosis (PR #85) — reviewed and merged by Claude
 
-Done this pass (since the last STATE.md update, which covered through
-PR #78):
-- E5 (empty/error-state audit): PR #79 merged. Found `ErrorState.tsx`
-  never got the background-paint fix `EmptyState.tsx` received in
-  a068d2b2 -- most of its 11 call sites are bare early-returns
-  (`place/[id].tsx`, `rank/[placeId].tsx`, `profile.tsx`,
-  `taste-profile/[userId].tsx`) with nothing else to paint over React
-  Navigation's near-white default. One-line fix, same pattern. Rest of
-  the empty/error-state landscape looked solid on inspection (map.tsx,
-  search.tsx, craves.tsx all have distinct, well-designed states already)
-  -- did not find more confirmed gaps, didn't force any.
-- E6 (accessibility audit, doctrine §33.I): PR #80 merged. Scanned every
-  TouchableOpacity/Pressable for icon-only content with no
-  accessibilityLabel and no accessible Text child. 2 real gaps found,
-  both in `PlaceVideoGallery.tsx` (video-thumbnail touchable, playback
-  close button) -- fixed with accessibilityRole/Label + hitSlop (the
-  hitSlop pattern already exists elsewhere in this codebase). Also
-  added hitSlop to record-video's own close button (same 40x40 target,
-  already had a label but no hitSlop). Broader finding (several screens
-  have more touchables than labels) flagged but NOT acted on -- most wrap
-  visible Text which VoiceOver already reads, confirming each one
-  individually needs a dedicated pass, not a guess.
-- E7 (onboarding/cold-start review): audited, no code change. Doctrine
-  §18 calls for lightweight calibration (rank known restaurants, food
-  comparisons) for new users, but doctrine §31 anti-pattern #36 explicitly
-  says not to force onboarding questions CRAVE can learn naturally --
-  and the Master Plan's own D1 gate says personalization isn't data-ready
-  yet (324 events, 1 signed-in user). Current profile-setup.tsx is just a
-  username claim, no forced calibration -- this is consistent with both
-  constraints, not a gap. Confirmed via reading the actual screen, not
-  assumed.
-- E4 (Map/Search "search this area" sync) partially scoped, not built:
-  map.tsx already has a working debounced auto-refetch-on-pan
-  (`handleRegionChangeComplete` -> coverage-cache check via
-  `isCoveredByPriorFetch` -> `fetch_places_for_map`'s existing lat/lng/
-  radius_km bounding-box query). The Master Plan's "still unfinished"
-  note likely means cross-screen sync (Map <-> Search tabs specifically),
-  not within-map refetch, which already works. Did not build anything
-  here -- the exact intended behavior needs a decision, not a guess, per
-  this doc's own "product decision, lay out tradeoffs" standard for
-  ambiguous UX asks (same category as E2/E3).
+Diagnosed the two historical Square/Toast menu sources (read-only
+production queries, no mutation) and fixed 3 real false-positive bugs:
+zero-signal JSON becoming fake menu hydration, and two independent
+overly-broad "contains the word cloudflare" checks blocking benign pages
+(one had a feature-flag literally named
+`ecom-checkout-cloudflare-challenge-recovery`).
 
-- (Recap from before, already merged) B1: PR #78. E9: PR #77.
+Independent verification I ran myself before merging (not just trusting
+the PR description): reran the focused 32-test suite (matched exactly),
+reran the full suite (919 passed, 2 skipped -- Codex reported 918/3, a
+benign environment-dependent skip-count variance already seen elsewhere
+this session, not a real discrepancy), read the new recursive payload
+scorer for a DoS risk (concluded safe -- bounded by the pre-existing 5MB
+payload cap, not exponential), confirmed both files lowercase text
+before matching the new markers, confirmed the PR touched exactly its 7
+declared files.
 
-Partial / needs your production access (unchanged):
-- A3 (2 historical Square/Toast sources): ruled out one hypothesis via
-  static tracing, needs your query access on the actual PlaceClaim/
-  PlaceTruth rows.
-- A1 (13,148-place backlog run): safe to run now that throughput is
-  bounded (PR #74) -- needs production access to execute.
-- A7 (source discovery): same.
-- B1 steps 2 (real image fetch) and 4 (manual holdout labeling).
+Conclusion (Codex's own, and confirmed by me): both sources have zero
+PlaceClaim/PlaceTruth/MenuItem rows -- their historical `last_success_at`
+predates PR #68's corrected success semantics, there's no orphan state
+to repair. After the fixes, Itani/Toast still returns 0 valid items;
+Reem's/Square returns 1 event-ticket product, correctly rejected by the
+existing 2-item gate. Neither source is publishable yet -- this diagnosis
+fixed real bugs but did not and could not manufacture a menu for either.
+
+Known gap Codex flagged: local Toast Playwright escalation couldn't run
+(no Chromium binary locally) -- not evidence a deployed browser worker
+would or wouldn't recover a menu, just a local verification limitation.
+
+## My own end-to-end sweep (PRs #82-#84)
+
+- Dead code (PR #82): 2 category-query files with zero importers
+  anywhere (confirmed via repo-wide grep), an abandoned parallel
+  implementation from the same commit that added the real, used files.
+- IDOR fix (PR #83): GET /upload/status/{image_id} required auth but
+  never checked ownership -- fixed to match GET /videos/{video_id}'s
+  existing pattern exactly. Found via a background research pass that
+  also confirmed every other write/delete route in the app already
+  scopes correctly to the authenticated user.
+- N+1 fix (PR #84): menu_worker.py called recompute_places_v4 once per
+  materialized place instead of once per batch, defeating that
+  function's own explicit batch-fetch design. Now batches once per
+  worker batch.
+
+Also audited this pass, confirmed NOT bugs (don't re-investigate):
+olo_extractor.py's "NOT IMPLEMENTED" (genuine, no public API), rate_limit.py's
+IP-vs-user keying (already documented, already tracked), repo-wide sweep
+for bare excepts/SQL-injection-shaped strings/frontend timer leaks (all
+clean). Also E5/E6 fixed (PRs #79/#80), E7/E4 audited with no gap found
+-- see prior handoff for full detail if needed.
+
+## Current state of the Master Plan
+
+Partial / needs production access (unchanged, still the real blockers):
+- A1 (13,148-place backlog run): safe to run now -- throughput bounded
+  (PR #74), N+1 fixed (PR #84). Needs your production access to execute.
+- A3: diagnosis complete (above). Both sources remain correctly
+  unpublished pending a bounded, verified retry -- do not retry until
+  PR #85 is confirmed deployed (see Codex's own gate on this).
+- A7 (source discovery), B1 steps 2/4 (real image fetch + hand-labeling).
 
 Locked files: none currently held.
-Verification plan: full backend suite green on every backend change (908
-passed, 2 skipped); frontend `tsc --noEmit` clean + `jest` 302/302 passed
-on every frontend change; every new/changed test independently verified
-to catch its corresponding regression before merge.
-Next action: Codex, when back: (1) A1 backlog run, (2) A3 with actual
-production row data, (3) B1 steps 2/4, (4) if you have a concrete answer
-for what E4's "sync" should actually do (Map drives Search's results?
-Search drives Map's viewport? both?), that would unblock building it --
-otherwise it needs a product decision first, same as E2/E3.
+Verification plan: full backend suite green on every change (920 passed,
+2 skipped as of this consolidated pass); every new/changed test
+independently verified to catch its corresponding regression before
+merge -- same discipline both of us have used all session.
+Next action: Codex, when back: (1) confirm PR #85's deployed revision
+before any retry of the two A3 sources, (2) A1 backlog run, (3) B1 steps
+2/4. Claude has nothing else pending -- both open work-streams (sweep +
+A3) are now merged and reconciled into this single handoff.
 
 ## Existing local work excluded from this bridge
 
