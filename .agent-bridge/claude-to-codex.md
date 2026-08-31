@@ -1,62 +1,63 @@
-# H-20260831-b1-design-and-e9-search
+# H-20260831-e5-e6-e7-audit-pass
 
 Status: information-only
 Owner: Claude
 Branch: main
-Base SHA: b90b97c
+Base SHA: 7ae8ecb
 Allowed next files: none — this is a status handoff, not a code change
 
 ## Outcome
-Codex, addressed to you directly, picking up from where H-20260830-data-
-readiness-reviewed left off. Since your session went offline the user told
-me to keep working through CRAVE_MASTER_PLAN_2026-08-31.md's non-production
-items rather than wait. Merged since then:
+Codex, addressed to you directly, continuing from H-20260831-b1-design-
+and-e9-search. Still working solo through CRAVE_MASTER_PLAN_2026-08-31.md
+since your session is offline. Merged since that handoff:
 
-- **PR #74** (A2 + A6): wall-clock budgets (`MAX_API_PROBE_SECONDS=20`,
-  `MAX_IFRAME_PROBE_SECONDS=15`) on the API/iframe endpoint probes in
-  `menu_extraction_router.py` -- this is the actual root cause of the
-  17-minute production run you flagged: up to 20 API candidates x 8s
-  timeout each with only a count cap, no time cap. Also deleted 3 dead
-  files (`menu_link_finder.py`, `menu_link_discovery.py`,
-  `menu_site_crawler.py`) with zero callers repo-wide.
-- **PR #75** (A4): `bentobox_extractor.py` -- narrow adapter for the one
-  confirmed-real BentoBox pattern (static PDF on bentoboxcdn.com/
-  getbento.com), evidenced by North Beach Sandwicheez in your own entity
-  review doc. Registered in `provider_registry.py`.
-- **PR #77** (E9): typo-tolerant search fallback in `search_query.py`
-  using stdlib `difflib` (deliberately not a Postgres extension --
-  unverifiable on Railway's managed instance without your access).
-- **PR #78** (B1, design + scaffolding): design doc at
-  `docs/IMAGE_CLASSIFICATION_HOLDOUT_DESIGN_2026-08-31.md`. Important
-  finding for you specifically: the classifier your data-readiness audit
-  called "already-bundled TFLite classifier" without naming is
-  `app/services/video/food_classifier.py` -- a real MobileNetV2 model,
-  currently only wired to video frames. It is NOT
-  `image_classifier.py` (the URL-heuristic behind the 77,701 unknown
-  images). Added `score_image()`, a thin wrapper exposing that model for
-  single images. This PR does not and cannot execute the actual holdout --
-  steps 2 (fetch real image URLs) and 4 (hand-label ~400 images) need
-  your production access, not mine.
+- **PR #79** (E5): `ErrorState.tsx` was missing the background-paint fix
+  `EmptyState.tsx` already got (`a068d2b2`) — most of its 11 call sites
+  are bare early-returns with nothing else painting over React
+  Navigation's near-white default. One-line fix, same pattern.
+- **PR #80** (E6): 2 confirmed icon-only touchables in
+  `PlaceVideoGallery.tsx` had no accessible name for VoiceOver (video
+  thumbnail, playback close button). Added labels/role + `hitSlop` on
+  both (its close button's 40×40 visual size is under iOS HIG's 44pt
+  minimum — `hitSlop`, not resizing, is this codebase's existing pattern
+  for that). Also added the same `hitSlop` to `record-video/[placeId].tsx`'s
+  own close button, which had a label already but the same missing
+  hitSlop.
+
+Also audited (no code change, both explicitly not-a-gap):
+- **E7** (onboarding): doctrine §18 wants lightweight calibration, but §31
+  anti-pattern #36 says don't force onboarding questions CRAVE can learn
+  naturally, and the Master Plan's own D1 gate says personalization isn't
+  data-ready. `profile-setup.tsx` is just a username claim — consistent
+  with both constraints, confirmed by reading the actual screen.
+- **E4** (Map/Search sync): `map.tsx` already has a working debounced
+  auto-refetch-on-pan with a coverage cache (`handleRegionChangeComplete`
+  → `isCoveredByPriorFetch` → the existing lat/lng/radius_km bounding-box
+  query in `map_query.py`). Didn't build anything — the Master Plan's
+  "still unfinished" note most likely means cross-screen sync between the
+  Map and Search tabs specifically, not within-map refetch (which already
+  works), and which direction that sync should go is a product decision,
+  not something to guess at blind.
 
 ## Verification
-Full backend suite green after every merge (908 passed, 2 skipped as of
-PR #78). Every new/changed test in each PR was independently verified to
-catch its own regression (temporarily reverted the fix, confirmed the
-test failed, restored) before merging -- same discipline as your own
-H-20260830 handoff.
+Backend: 908 passed, 2 skipped, unchanged. Frontend: `tsc --noEmit` clean
+and `jest` 302/302 passed on both PRs. Neither PR added a new test file —
+no style/accessibility-prop assertion convention exists anywhere in this
+frontend test suite (confirmed by grep), and `EmptyState`'s own original
+background-paint fix shipped without one too, so both follow that same
+precedent rather than inventing a new pattern for a one-line/additive-prop
+change.
 
 ## Known gaps / risks
-- A3 (Itani Ramen / Reem's California historical Square/Toast failures):
-  still blocked on your DB access. I ruled out one hypothesis (the
-  MIN_VALID_ITEMS/MIN_ITEMS_TO_EMIT gate mismatch) via static tracing --
-  they're numerically aligned, so that's not it.
-- A1 (13,148-place backlog run) hasn't been run yet -- now safe to run
-  given PR #74's throughput bounding.
-- No production/device access in this session for any of the above, same
-  limitation as every prior handoff.
+- Same production-access gaps as every prior handoff: A1, A3, A7, B1
+  steps 2/4.
+- E4 needs a concrete product answer before it's buildable — see above.
+- E6's broader finding (several screens have more TouchableOpacitys than
+  accessibilityLabels) was deliberately NOT acted on — most wrap visible
+  Text, which VoiceOver reads by default, so confirming each one
+  individually needs a dedicated pass, not a guess.
 
 ## Next action
-When you're back, in order: (1) merge PR #78 if I haven't already and CI
-is green, (2) run A1's backlog now that throughput is bounded, (3) use
-your production access to finish A3, (4) come back to B1 steps 2/4 (real
-sample + labeling) once A1/A3 are clear.
+When you're back: (1) A1 backlog run, (2) A3 with actual production row
+data, (3) B1 steps 2/4. If you have a concrete answer for what E4's
+"sync" should actually mean, that unblocks building it.
