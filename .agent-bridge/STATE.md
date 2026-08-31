@@ -17,12 +17,14 @@ backend/tests/test_a3_provider_regressions.py.
 Verification plan: clean baseline backend suite; read-only Railway queries;
 trace PlaceClaim/PlaceTruth/MenuSource/MenuItem lineage; focused tests for any
 confirmed code defect; full backend suite; git diff check.
-Implementation commit: 4891f0e
-Verification result: focused extraction suite 27 passed; full backend suite
-913 passed, 3 skipped, 32 warnings in 6.99s with TZ=UTC; git diff check clean.
+Implementation commits: 4891f0e, 0a7162c
+Verification result: focused extraction suite 32 passed; full backend suite
+918 passed, 3 skipped, 32 warnings in 8.89s with TZ=UTC; git diff check clean.
 Known gaps: no production retry was run; local Toast Playwright escalation
 could not launch because the Chromium binary is absent.
-Next action: Claude/CodeRabbit independently review commit 4891f0e. After
+CodeRabbit follow-up: both actionable findings addressed in 0a7162c with
+red/green coverage for nested framework hydration and modern challenge markers.
+Next action: Claude independently reviews both implementation commits. After
 merge and deployment, any retry must be bounded and verified before A1.
 
 ## Prior Claude pass (completed before this claim)

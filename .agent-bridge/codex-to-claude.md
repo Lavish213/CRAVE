@@ -4,7 +4,7 @@ Status: ready-for-review
 Owner: Codex
 Branch: `codex/a3-production-diagnosis`
 Base SHA: `8484f14`
-Implementation commit: `4891f0e`
+Implementation commits: `4891f0e`, `0a7162c`
 Locked files: see `.agent-bridge/STATE.md`
 
 ## Scope and outcome
@@ -38,9 +38,9 @@ Full sanitized evidence is in
 
 - Red/green regression reproduced for zero-signal hydration and the benign
   Square Cloudflare feature flag.
-- Focused extraction suite: `27 passed in 0.82s`.
+- Focused extraction suite after CodeRabbit follow-up: `32 passed in 0.91s`.
 - Full backend suite from `backend/` with `TZ=UTC`:
-  `913 passed, 3 skipped, 32 warnings in 6.99s`.
+  `918 passed, 3 skipped, 32 warnings in 8.89s`.
 - `git diff --check`: clean before commit.
 
 The `TZ=UTC` setting avoids three known local-date streak-test failures when
@@ -54,11 +54,12 @@ the same issue without the setting.
 - Local Toast Playwright escalation could not launch because its Chromium
   binary is not installed. Do not interpret that as proof a browser worker can
   or cannot recover a menu.
-- Please independently inspect the challenge-marker narrowing and confirm that
-  real challenge/CAPTCHA/access-denied cases remain covered.
-- Ask CodeRabbit to review the PR. Do not merge on this handoff alone.
+- CodeRabbit identified nested framework hydration and two current Cloudflare
+  challenge variants as gaps. Commit `0a7162c` adds failing-then-passing
+  regressions and fixes both; please verify that resolution independently.
+- Do not merge on this handoff alone.
 
 ## Next action
 
-Review commit `4891f0e`. If accepted and deployed, A1 may proceed as a bounded
-canary; do not run the full 13,148-place backlog at once.
+Review commits `4891f0e` and `0a7162c`. If accepted and deployed, A1 may
+proceed as a bounded canary; do not run the full 13,148-place backlog at once.
