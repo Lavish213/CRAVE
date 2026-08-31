@@ -3,48 +3,75 @@
 Status: idle
 Owner: Claude
 Branch: main
-Base SHA: b90b97c (PR #77 merged)
+Base SHA: 7ae8ecb (PR #80 merged)
 Scope: Continuing through CRAVE_MASTER_PLAN_2026-08-31.md items that don't
 need production/device access, per the user's "if ya cant do it leave for
 codex do what u can do keep going" instruction, since Codex's session is
 still offline.
 
-Done this pass (since the last STATE.md update, which only covered
-through PR #75):
-- E9: PR #77 merged. Added a bounded, dependency-free fuzzy fallback
-  (stdlib difflib.SequenceMatcher, no Postgres extension) to
-  search_query.py's search_places() -- fires only when the exact-match
-  path returns zero results. 4 new tests.
-- B1: PR #78 open (self-reviewed, awaiting CI before merge). Design doc
-  at docs/IMAGE_CLASSIFICATION_HOLDOUT_DESIGN_2026-08-31.md -- key finding
-  is that the "already-bundled TFLite classifier" your earlier audit
-  gestured at is app/services/video/food_classifier.py (real MobileNetV2
-  model), not image_classifier.py (the URL-heuristic responsible for the
-  77,701 unknown images). Added score_image() wrapper + 2 tests. Steps 2
-  (real image fetch) and 4 (manual holdout labeling) are explicitly
-  blocked in this session -- no production image URLs, no image-viewing
-  capability against fetched content here.
+Done this pass (since the last STATE.md update, which covered through
+PR #78):
+- E5 (empty/error-state audit): PR #79 merged. Found `ErrorState.tsx`
+  never got the background-paint fix `EmptyState.tsx` received in
+  a068d2b2 -- most of its 11 call sites are bare early-returns
+  (`place/[id].tsx`, `rank/[placeId].tsx`, `profile.tsx`,
+  `taste-profile/[userId].tsx`) with nothing else to paint over React
+  Navigation's near-white default. One-line fix, same pattern. Rest of
+  the empty/error-state landscape looked solid on inspection (map.tsx,
+  search.tsx, craves.tsx all have distinct, well-designed states already)
+  -- did not find more confirmed gaps, didn't force any.
+- E6 (accessibility audit, doctrine §33.I): PR #80 merged. Scanned every
+  TouchableOpacity/Pressable for icon-only content with no
+  accessibilityLabel and no accessible Text child. 2 real gaps found,
+  both in `PlaceVideoGallery.tsx` (video-thumbnail touchable, playback
+  close button) -- fixed with accessibilityRole/Label + hitSlop (the
+  hitSlop pattern already exists elsewhere in this codebase). Also
+  added hitSlop to record-video's own close button (same 40x40 target,
+  already had a label but no hitSlop). Broader finding (several screens
+  have more touchables than labels) flagged but NOT acted on -- most wrap
+  visible Text which VoiceOver already reads, confirming each one
+  individually needs a dedicated pass, not a guess.
+- E7 (onboarding/cold-start review): audited, no code change. Doctrine
+  §18 calls for lightweight calibration (rank known restaurants, food
+  comparisons) for new users, but doctrine §31 anti-pattern #36 explicitly
+  says not to force onboarding questions CRAVE can learn naturally --
+  and the Master Plan's own D1 gate says personalization isn't data-ready
+  yet (324 events, 1 signed-in user). Current profile-setup.tsx is just a
+  username claim, no forced calibration -- this is consistent with both
+  constraints, not a gap. Confirmed via reading the actual screen, not
+  assumed.
+- E4 (Map/Search "search this area" sync) partially scoped, not built:
+  map.tsx already has a working debounced auto-refetch-on-pan
+  (`handleRegionChangeComplete` -> coverage-cache check via
+  `isCoveredByPriorFetch` -> `fetch_places_for_map`'s existing lat/lng/
+  radius_km bounding-box query). The Master Plan's "still unfinished"
+  note likely means cross-screen sync (Map <-> Search tabs specifically),
+  not within-map refetch, which already works. Did not build anything
+  here -- the exact intended behavior needs a decision, not a guess, per
+  this doc's own "product decision, lay out tradeoffs" standard for
+  ambiguous UX asks (same category as E2/E3).
 
-Partial / needs your production access (unchanged from before):
-- A3 (the 2 historical Square/Toast sources): ruled out the
-  MIN_VALID_ITEMS/MIN_ITEMS_TO_EMIT mismatch hypothesis via static
-  tracing. Needs your query access to see what Itani Ramen's (Toast) and
-  Reem's California's (Square) actual PlaceClaim/PlaceTruth rows contained.
-- A1 (run the 13,148-place menu backlog with the new throughput budgets
-  from PR #74) -- needs production access to run.
-- A7 (new source discovery beyond BentoBox) -- same.
-- B1 steps 2 and 4 above.
+- (Recap from before, already merged) B1: PR #78. E9: PR #77.
+
+Partial / needs your production access (unchanged):
+- A3 (2 historical Square/Toast sources): ruled out one hypothesis via
+  static tracing, needs your query access on the actual PlaceClaim/
+  PlaceTruth rows.
+- A1 (13,148-place backlog run): safe to run now that throughput is
+  bounded (PR #74) -- needs production access to execute.
+- A7 (source discovery): same.
+- B1 steps 2 (real image fetch) and 4 (manual holdout labeling).
 
 Locked files: none currently held.
-Verification plan: full backend suite green on each change (908 passed,
-2 skipped as of PR #78's branch); every new/changed test independently
-verified to catch its corresponding regression (temporarily reverted,
-watched fail, restored) before merge.
-Next action: Codex, when back: (1) merge PR #78 if CI is green and I
-haven't already, (2) A1 backlog run now that throughput is bounded (PR
-#74) and BentoBox coverage exists (PR #75), (3) A3 with actual production
-row data, (4) B1 steps 2/4 (real image sample + manual labeling) once
-A1/A3 are handled.
+Verification plan: full backend suite green on every backend change (908
+passed, 2 skipped); frontend `tsc --noEmit` clean + `jest` 302/302 passed
+on every frontend change; every new/changed test independently verified
+to catch its corresponding regression before merge.
+Next action: Codex, when back: (1) A1 backlog run, (2) A3 with actual
+production row data, (3) B1 steps 2/4, (4) if you have a concrete answer
+for what E4's "sync" should actually do (Map drives Search's results?
+Search drives Map's viewport? both?), that would unblock building it --
+otherwise it needs a product decision first, same as E2/E3.
 
 ## Existing local work excluded from this bridge
 
