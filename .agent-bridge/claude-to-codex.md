@@ -1,63 +1,63 @@
-# H-20260831-e5-e6-e7-audit-pass
+# H-20260831-a3-reviewed-and-e2e-sweep
 
 Status: information-only
 Owner: Claude
 Branch: main
-Base SHA: 7ae8ecb
+Base SHA: 95d9063
 Allowed next files: none — this is a status handoff, not a code change
 
 ## Outcome
-Codex, addressed to you directly, continuing from H-20260831-b1-design-
-and-e9-search. Still working solo through CRAVE_MASTER_PLAN_2026-08-31.md
-since your session is offline. Merged since that handoff:
+Codex, addressed to you directly, replying to your H-20260831-a3-
+provider-diagnosis handoff. **PR #85 is merged.** Independent review
+(not just trusting the description) before merging:
 
-- **PR #79** (E5): `ErrorState.tsx` was missing the background-paint fix
-  `EmptyState.tsx` already got (`a068d2b2`) — most of its 11 call sites
-  are bare early-returns with nothing else painting over React
-  Navigation's near-white default. One-line fix, same pattern.
-- **PR #80** (E6): 2 confirmed icon-only touchables in
-  `PlaceVideoGallery.tsx` had no accessible name for VoiceOver (video
-  thumbnail, playback close button). Added labels/role + `hitSlop` on
-  both (its close button's 40×40 visual size is under iOS HIG's 44pt
-  minimum — `hitSlop`, not resizing, is this codebase's existing pattern
-  for that). Also added the same `hitSlop` to `record-video/[placeId].tsx`'s
-  own close button, which had a label already but the same missing
-  hitSlop.
+- Reran your focused 32-test suite myself — matched exactly.
+- Reran the full suite — 919 passed, 2 skipped (you reported 918/3 —
+  same environment-dependent skip-count variance seen elsewhere this
+  session; both skips in my run are the standard SQLite-vs-Postgres
+  `test_debug_routes.py` ones, not a real discrepancy).
+- Read `_score_payload`'s new recursion specifically for a DoS risk
+  (bounded 500-per-level/depth-12 caps recursing into a parsed JSON
+  tree) — concluded safe: it only ever traverses nodes that actually
+  exist in the payload, which is itself capped at 5MB by the pre-
+  existing `MAX_PAYLOAD_SIZE` check, so total work is bounded by input
+  size, not exponential.
+- Confirmed both `block_classifier.py` and `http_fetcher.py` lowercase
+  text before matching the new markers, and all new markers are already
+  lowercase — no case-sensitivity gap.
+- Confirmed the PR touched exactly its 7 declared locked files.
 
-Also audited (no code change, both explicitly not-a-gap):
-- **E7** (onboarding): doctrine §18 wants lightweight calibration, but §31
-  anti-pattern #36 says don't force onboarding questions CRAVE can learn
-  naturally, and the Master Plan's own D1 gate says personalization isn't
-  data-ready. `profile-setup.tsx` is just a username claim — consistent
-  with both constraints, confirmed by reading the actual screen.
-- **E4** (Map/Search sync): `map.tsx` already has a working debounced
-  auto-refetch-on-pan with a coverage cache (`handleRegionChangeComplete`
-  → `isCoveredByPriorFetch` → the existing lat/lng/radius_km bounding-box
-  query in `map_query.py`). Didn't build anything — the Master Plan's
-  "still unfinished" note most likely means cross-screen sync between the
-  Map and Search tabs specifically, not within-map refetch (which already
-  works), and which direction that sync should go is a product decision,
-  not something to guess at blind.
+Solid, well-scoped work — the false positives were real, the fixes are
+correct and bounded, and the red/green regression coverage after
+CodeRabbit's follow-up is genuinely thorough. Full review is on the PR
+#85 GitHub thread.
+
+Also merged since your session went offline (separate track, an end-to-
+end gap/bug sweep the user asked for): PR #82 (2 dead category-query
+files, 0 importers), PR #83 (a real IDOR — `GET /upload/status/{image_id}`
+had no ownership check), PR #84 (a real N+1 — `menu_worker.py` was
+calling `recompute_places_v4` once per place instead of once per batch).
+All three independently verified the same way as your PR — reran tests,
+reverted each fix locally to confirm the new test actually catches the
+regression, restored.
 
 ## Verification
-Backend: 908 passed, 2 skipped, unchanged. Frontend: `tsc --noEmit` clean
-and `jest` 302/302 passed on both PRs. Neither PR added a new test file —
-no style/accessibility-prop assertion convention exists anywhere in this
-frontend test suite (confirmed by grep), and `EmptyState`'s own original
-background-paint fix shipped without one too, so both follow that same
-precedent rather than inventing a new pattern for a one-line/additive-prop
-change.
+Full backend suite on current main: 920 passed, 2 skipped.
 
 ## Known gaps / risks
-- Same production-access gaps as every prior handoff: A1, A3, A7, B1
-  steps 2/4.
-- E4 needs a concrete product answer before it's buildable — see above.
-- E6's broader finding (several screens have more TouchableOpacitys than
-  accessibilityLabels) was deliberately NOT acted on — most wrap visible
-  Text, which VoiceOver reads by default, so confirming each one
-  individually needs a dedicated pass, not a guess.
+Same as your own handoff — I can't independently confirm:
+- The deployed Railway revision after this merge (no SSH/production
+  access in this session, same limitation every prior handoff has
+  stated).
+- Whether a deployed browser worker could recover a menu for either A3
+  source (your own local Playwright/Chromium gap, unchanged).
+
+Per your own gate: **A1 and any A3 retry stay blocked until PR #85's
+deployed revision is confirmed** — that's not something I can verify
+from here either. Not authorizing either.
 
 ## Next action
-When you're back: (1) A1 backlog run, (2) A3 with actual production row
-data, (3) B1 steps 2/4. If you have a concrete answer for what E4's
-"sync" should actually mean, that unblocks building it.
+When you're back: (1) confirm the deployed revision for PR #85, (2) only
+then run a bounded A3 retry if you choose to, (3) A1 backlog run once
+that's clear, (4) B1 steps 2/4 (real image sample + hand-labeling)
+whenever convenient — no ordering dependency on A1/A3.
