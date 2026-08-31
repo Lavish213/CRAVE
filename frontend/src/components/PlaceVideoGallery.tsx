@@ -70,8 +70,14 @@ export function PlaceVideoGallery({ placeId }: Props) {
           <Ionicons name="videocam" size={22} color={Colors.text} />
           <Text style={styles.recordThumbText}>Record</Text>
         </TouchableOpacity>
-        {videos.map((v) => (
-          <TouchableOpacity key={v.id} style={styles.thumbWrap} onPress={() => setPlayingVideo(v)}>
+        {videos.map((v, index) => (
+          <TouchableOpacity
+            key={v.id}
+            style={styles.thumbWrap}
+            onPress={() => setPlayingVideo(v)}
+            accessibilityRole="button"
+            accessibilityLabel={`Play video ${index + 1} of ${videos.length}`}
+          >
             {v.thumbnailUrl ? (
               <Image source={{ uri: v.thumbnailUrl }} style={styles.thumb} contentFit="cover" cachePolicy="disk" />
             ) : (
@@ -102,7 +108,13 @@ function VideoPlaybackModal({ video, onClose }: { video: FeedVideo; onClose: () 
   return (
     <View style={styles.playbackContainer}>
       <VideoView player={player} style={StyleSheet.absoluteFill} contentFit="contain" />
-      <TouchableOpacity style={styles.playbackClose} onPress={onClose}>
+      <TouchableOpacity
+        style={styles.playbackClose}
+        onPress={onClose}
+        accessibilityRole="button"
+        accessibilityLabel="Close video"
+        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+      >
         <Ionicons name="close" size={28} color={Colors.text} />
       </TouchableOpacity>
     </View>
