@@ -28,21 +28,26 @@ experiment rather than rerunning the positional heuristic, (4) investigate
 why the two historical Square/Toast sources failed canonical publication
 before retrying them. No scheduler config change is authorized or needed.
 
-New item (0, do this first): the human wants menu extraction on the free
-route only (no per-request paid providers). Found a real gap while
-checking this — `menu_extraction_router.py`'s `extract_menu()` ties
-`allow_llm_fallback` and `allow_browser_escalation` to the SAME
-`allow_network_fallbacks` flag, and `menu_orchestrator.py` calls it
-without overriding either, so it uses the default (`True` for both).
-Production menu extraction currently falls through to a paid LLM call
-automatically whenever all 7 free strategies miss — there's no way today
-to keep Playwright (compute-only) while excluding the LLM (per-request
-billed). Split these into two independent parameters, pass
-`allow_llm_fallback=False` explicitly from `menu_orchestrator.py`, and
-add a test asserting the free-route path never reaches
-`_safe_llm_extract` even when every free strategy returns empty. Do this
-before any throughput/batch-size scaling work, since scaling a pipeline
-that's silently billing an LLM per miss is the wrong order.
+Item 0 is DONE (PR #71, merged as `876dbc0`) — I implemented and locked it
+myself per the human's explicit request rather than waiting for Codex.
+`allow_llm_fallback` and `allow_browser_escalation` are now independent
+parameters on `extract_menu()`/`_run_extraction_pass()`;
+`menu_orchestrator.py` passes `allow_llm_fallback=False` explicitly.
+Also fixed a hardcoded `allow_llm_fallback=True` on the post-browser-
+escalation retry path that would have silently re-enabled the LLM on
+retry regardless of the caller's setting -- that one would have been
+easy to miss. Three tests lock this: two direct-call tests plus an
+AST-based static guard on `menu_orchestrator.py`'s call site (same
+pattern as the existing price-contract guard), so it survives future
+refactors. All three were verified to actually fail without their
+corresponding fix (temporarily reverted each, watched it fail, restored),
+not just written to pass. Full suite: 893 passed, 2 skipped.
+`replay_corpus.py` updated too, since splitting the flags changed its
+previously-coupled fully-offline behavior.
+
+Codex: menu extraction is now genuinely free-route-only in code, not
+just by convention. Safe to proceed with the throughput/batch-size
+profiling work from the prior note.
 
 ## Existing local work excluded from this bridge
 
