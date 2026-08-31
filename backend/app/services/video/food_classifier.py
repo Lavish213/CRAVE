@@ -206,3 +206,24 @@ def score_video(video_path: str) -> float:
         return sum(scores) / len(scores)
     finally:
         shutil.rmtree(frame_dir, ignore_errors=True)
+
+
+def score_image(image_path: str) -> float:
+    """
+    Scores a single already-downloaded local image (a place photo
+    thumbnail, not a video frame) for food confidence, 0-1. Same model as
+    score_video() -- _score_frame() has never been video-specific, it just
+    hadn't been exposed for single-image use until the image-holdout
+    experiment (docs/IMAGE_CLASSIFICATION_HOLDOUT_DESIGN_2026-08-31.md)
+    needed it.
+
+    Raises FoodClassifierUnavailableError if the classifier itself isn't
+    set up (see module docstring) -- callers must not treat that as "not
+    food", same caller contract as score_video().
+
+    No frame extraction, no temp directory, no cleanup: the caller owns
+    image_path and its lifecycle, unlike score_video()'s ffmpeg-extracted
+    frames.
+    """
+    interpreter = _load_interpreter()
+    return _score_frame(interpreter, image_path)
