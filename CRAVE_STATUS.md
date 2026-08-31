@@ -32,7 +32,7 @@ Auth: Supabase (JWKS, ES256).
 
 ## Test status
 
-Backend: **908 passed, 2 skipped** (`cd backend && python -m pytest -q`).
+Backend: **910 passed, 2 skipped** (`cd backend && python -m pytest -q`).
 Frontend: **302 passed**, 32 suites (`cd frontend && npx jest`), `tsc
 --noEmit` clean. An E2E Playwright smoke suite also exists (`frontend/e2e/`,
 3 journeys) — not part of the Jest count above, run separately via

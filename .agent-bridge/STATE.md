@@ -3,75 +3,66 @@
 Status: idle
 Owner: Claude
 Branch: main
-Base SHA: 7ae8ecb (PR #80 merged)
-Scope: Continuing through CRAVE_MASTER_PLAN_2026-08-31.md items that don't
-need production/device access, per the user's "if ya cant do it leave for
-codex do what u can do keep going" instruction, since Codex's session is
-still offline.
+Base SHA: 2d97f11 (PR #84 merged)
+Scope: End-to-end gap/bug sweep across the whole project, per the user's
+"search project end to end for all gaps and bugs and anything broken if
+u can fix it, if not leave and log for codex" instruction. Still working
+solo since Codex's session is offline.
 
 Done this pass (since the last STATE.md update, which covered through
-PR #78):
-- E5 (empty/error-state audit): PR #79 merged. Found `ErrorState.tsx`
-  never got the background-paint fix `EmptyState.tsx` received in
-  a068d2b2 -- most of its 11 call sites are bare early-returns
-  (`place/[id].tsx`, `rank/[placeId].tsx`, `profile.tsx`,
-  `taste-profile/[userId].tsx`) with nothing else to paint over React
-  Navigation's near-white default. One-line fix, same pattern. Rest of
-  the empty/error-state landscape looked solid on inspection (map.tsx,
-  search.tsx, craves.tsx all have distinct, well-designed states already)
-  -- did not find more confirmed gaps, didn't force any.
-- E6 (accessibility audit, doctrine §33.I): PR #80 merged. Scanned every
-  TouchableOpacity/Pressable for icon-only content with no
-  accessibilityLabel and no accessible Text child. 2 real gaps found,
-  both in `PlaceVideoGallery.tsx` (video-thumbnail touchable, playback
-  close button) -- fixed with accessibilityRole/Label + hitSlop (the
-  hitSlop pattern already exists elsewhere in this codebase). Also
-  added hitSlop to record-video's own close button (same 40x40 target,
-  already had a label but no hitSlop). Broader finding (several screens
-  have more touchables than labels) flagged but NOT acted on -- most wrap
-  visible Text which VoiceOver already reads, confirming each one
-  individually needs a dedicated pass, not a guess.
-- E7 (onboarding/cold-start review): audited, no code change. Doctrine
-  §18 calls for lightweight calibration (rank known restaurants, food
-  comparisons) for new users, but doctrine §31 anti-pattern #36 explicitly
-  says not to force onboarding questions CRAVE can learn naturally --
-  and the Master Plan's own D1 gate says personalization isn't data-ready
-  yet (324 events, 1 signed-in user). Current profile-setup.tsx is just a
-  username claim, no forced calibration -- this is consistent with both
-  constraints, not a gap. Confirmed via reading the actual screen, not
-  assumed.
-- E4 (Map/Search "search this area" sync) partially scoped, not built:
-  map.tsx already has a working debounced auto-refetch-on-pan
-  (`handleRegionChangeComplete` -> coverage-cache check via
-  `isCoveredByPriorFetch` -> `fetch_places_for_map`'s existing lat/lng/
-  radius_km bounding-box query). The Master Plan's "still unfinished"
-  note likely means cross-screen sync (Map <-> Search tabs specifically),
-  not within-map refetch, which already works. Did not build anything
-  here -- the exact intended behavior needs a decision, not a guess, per
-  this doc's own "product decision, lay out tradeoffs" standard for
-  ambiguous UX asks (same category as E2/E3).
+PR #81):
+- Dead code (PR #82): app/services/query/categories_query.py (103 lines,
+  its own parallel get_categories/get_category/get_category_by_slug) and
+  categories.py (0-byte empty file) had zero importers anywhere in app/
+  or tests/ -- confirmed via repo-wide grep before deleting. Both look
+  like an abandoned parallel implementation from the same commit
+  (79c5343) that added the real, actually-used category_query.py and
+  place_category_query.py.
+- IDOR fix (PR #83): GET /upload/status/{image_id} required auth but
+  never checked ownership -- any authenticated user could poll any other
+  user's photo upload and read moderation_reason/error_message (internal
+  review-queue detail). Fixed to match the exact pattern already used by
+  GET /videos/{video_id} (uploaded_by != user_id -> 403). Found by a
+  background research pass specifically hunting IDOR/N+1 patterns; that
+  same pass checked blocks.py/follows.py/hitlist.py/rankings.py/
+  saves.py/account.py/profile.py/moderation.py/menu_submissions.py and
+  confirmed all correctly scope writes/deletes to the authenticated user
+  already -- this was the one real gap.
+- N+1 fix (PR #84): menu_worker.py called recompute_places_v4(db,
+  places=[place]) once per successfully-materialized place inside its
+  per-place loop, defeating that function's own explicitly batch-fetch
+  design (_fetch_signal_context's own docstring: "never per-place").
+  A 40-place batch materializing N menus cost N x 7 signal queries
+  instead of 7 total, plus N redundant per-city cache invalidations.
+  Now collects materialized places across the batch and calls it once
+  after the per-place loop, still in the same session -- each place's
+  own extraction result was already committed per-place earlier in the
+  loop, so the batched call reads correct state regardless of ordering.
 
-- (Recap from before, already merged) B1: PR #78. E9: PR #77.
+Also audited, no code change needed:
+- app/services/menu/providers/olo_extractor.py's "NOT IMPLEMENTED" is a
+  genuine, correctly-documented limitation (no public Olo API, not a bug)
+  -- confirmed this is still accurate, not something to build around.
+- app/core/rate_limit.py's IP-vs-authenticated-user keying is a known,
+  already-documented limitation (see its own module docstring and
+  CRAVE_REMEDIATION_PLAN.md's security section) -- not new, not silently
+  broken, correctly labeled as a deliberate follow-up.
+- Backend-wide sweep for bare/silent excepts, SQL-injection-shaped string
+  formatting, and frontend timer/listener leaks: all clean, nothing found.
 
-Partial / needs your production access (unchanged):
-- A3 (2 historical Square/Toast sources): ruled out one hypothesis via
-  static tracing, needs your query access on the actual PlaceClaim/
-  PlaceTruth rows.
-- A1 (13,148-place backlog run): safe to run now that throughput is
-  bounded (PR #74) -- needs production access to execute.
-- A7 (source discovery): same.
-- B1 steps 2 (real image fetch) and 4 (manual holdout labeling).
+Partial / needs your production access (unchanged from before):
+- A3 (2 historical Square/Toast sources), A1 (13,148-place backlog run),
+  A7 (source discovery), B1 steps 2/4 (real image fetch + hand-labeling).
 
 Locked files: none currently held.
-Verification plan: full backend suite green on every backend change (908
-passed, 2 skipped); frontend `tsc --noEmit` clean + `jest` 302/302 passed
-on every frontend change; every new/changed test independently verified
-to catch its corresponding regression before merge.
+Verification plan: full backend suite green on every change (910
+passed, 2 skipped as of this pass); every new/changed test independently
+verified to catch its corresponding regression (temporarily reverted,
+watched fail, restored) before merge -- same discipline as every prior
+pass this session.
 Next action: Codex, when back: (1) A1 backlog run, (2) A3 with actual
-production row data, (3) B1 steps 2/4, (4) if you have a concrete answer
-for what E4's "sync" should actually do (Map drives Search's results?
-Search drives Map's viewport? both?), that would unblock building it --
-otherwise it needs a product decision first, same as E2/E3.
+production row data, (3) B1 steps 2/4. Nothing from this sweep needs your
+follow-up -- both real findings (IDOR, N+1) are already fixed and merged.
 
 ## Existing local work excluded from this bridge
 
