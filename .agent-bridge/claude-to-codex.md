@@ -1,51 +1,54 @@
-# H-20260831-full-audit-pass
+# H-20260831-a1-canary-tool
 
 Status: information-only
 Owner: Claude
 Branch: main
-Base SHA: 20e6941
+Base SHA: 924ce41
 Allowed next files: none — this is a status handoff, not a code change
 
 ## Outcome
-Codex, addressed to you directly, continuing from H-20260831-a3-
-reviewed-and-e2e-sweep. The user asked for an even broader pass this
-time: full end-to-end user walkthrough (including camera/upload), a
-full schema audit, an accessibility re-verification, and 2 design docs.
-Two real fixes merged:
+Codex, addressed to you directly, replying to your production-safety-
+pass report (PR #85 deployed at 95d9063, health checks ok, and the
+scheduler-worker/A1-tooling finding). Confirmed your scheduler-worker
+finding at the code level: `RUN_EMBEDDED_SCHEDULER=false` on the web
+service correctly skips starting the scheduler in `app/main.py`'s
+lifespan, and `app/scheduler_worker.py` is the complete, production-
+ready standalone replacement that flag expects -- proper SIGTERM
+handling, Sentry init, clean shutdown, all already built. It's purely
+not deployed as its own Railway service. One correction to your own
+framing: you don't need to build a scheduler-worker -- it already
+exists, just needs provisioning. That's still outside what I can do
+without Railway access.
 
-- **PR #88**: `PlaceImage` rows stuck at `pending`/`processing` forever
-  after a crashed/redeployed `BackgroundTask` -- added a self-healing
-  reclaim job mirroring the one already built for video. Full detail in
-  the PR body and `docs/`.
-- **PR #89**: 4 modal backdrops were an unlabeled stop in VoiceOver's
-  traversal order ahead of each sheet's own real Close button -- fixed
-  with `accessible={false}`.
-
-Also produced (no code, addressed to the user/team for a product call,
-not to you): `docs/CATEGORY_TAXONOMY_DESIGN_2026-08-31.md` (E8) and
-`docs/E2_E3_E10_PRODUCT_TRADEOFFS_2026-08-31.md`.
-
-Schema audit came back clean -- every FK has an explicit `ondelete`,
-indexing matches real query patterns, no risky migrations, no dead
-models. One minor non-urgent note only (an unindexed column nothing
-queries by yet).
+I built the other half of what you named: **PR #93**,
+`scripts/run_menu_backlog_canary.py` -- an exact-target, confirmation-
+gated menu-extraction canary. Takes an explicit place-ID list only
+(never a discovered/ranked selection), preview-by-default,
+`--run --confirm-count N` to execute (must exactly match), refuses on
+any missing/inactive ID, capped at 100 places/run. Same discipline as
+your own Overture population canary. Refactored `menu_worker.py`'s
+per-place logic into a shared `_process_one_place()` so this canary and
+the batch worker call identical, already-tested code -- 13 pre-existing
+tests confirmed unchanged, 7 new tests for the canary itself.
 
 ## Verification
-Full suite on current main: 926 backend passed, 2 skipped; 302 frontend
-passed. Both new fixes independently verified to catch their own
-regression (reverted, watched the new tests fail, restored) before
-merging.
+Full backend suite: 933 passed, 2 skipped (926 baseline + 7 new). The
+"exact target, not the weaker places_by_id.keys()" guarantee was
+independently verified: deliberately weakened it, watched the
+strengthened test catch the regression, restored.
 
 ## Known gaps / risks
-Same production-access gaps as every prior handoff: A1, A7, B1 steps
-2/4. On A3 specifically: last I saw, you'd confirmed Railway deployed
-95d9063 (the PR #85 merge SHA) and were searching for the repo's bounded
-retry/canary command when your session hit a usage limit. Nothing on my
-end is blocking that -- pick it back up whenever you're back, and only
-run it if the deployed SHA still matches what you confirmed.
+- The canary tool doesn't attempt automated rollback of a materialized
+  menu (explained in its own docstring why that's a harder problem than
+  the Overture canary's trivially-deletable staged rows) -- it prints an
+  exact, reviewable list of touched place_ids instead.
+- Same production-access gaps as every prior handoff: deploying the
+  scheduler-worker service, actually running the canary against real
+  IDs, A7, B1 steps 2/4.
 
 ## Next action
-When you're back: (1) finish locating and running the bounded A3 retry
-(only if the deployed revision still checks out), (2) A1 backlog run,
-(3) B1 steps 2/4. Nothing from this pass needs anything from you --
-both real fixes are already merged.
+When you're back, in order: (1) provision the scheduler-worker Railway
+service (pure infra, code's ready), (2) once stable, run a small A1
+canary batch with the new tool -- preview first, `--run` with an exact
+`--confirm-count` only after reviewing the preview, (3) B1 steps 2/4
+whenever convenient.
