@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from typing import Any, Dict, List, Optional
 
 from app.pipeline.snapshot_writer import MenuSnapshotWriter
@@ -31,6 +32,19 @@ logger = logging.getLogger(__name__)
 MAX_ITEMS = 1500
 MAX_API_ENDPOINTS = 20
 MAX_IFRAMES = 10
+
+# Each candidate endpoint gets its own ~8s network timeout (see
+# api_menu_extractor.REQUEST_TIMEOUT), so MAX_API_ENDPOINTS alone bounds a
+# single place's worst case at ~160s if every candidate is slow or dead --
+# confirmed as the actual cause of a production run exceeding 17 minutes,
+# mostly spent on low-yield generic endpoint probes. This wall-clock budget
+# stops probing further candidates once it's spent, independent of how many
+# endpoints were discovered.
+MAX_API_PROBE_SECONDS = 20.0
+
+# Same reasoning as MAX_API_PROBE_SECONDS: MAX_IFRAMES * http_fetcher's
+# DEFAULT_TIMEOUT (6s) is a ~60s worst case on its own; bound it too.
+MAX_IFRAME_PROBE_SECONDS = 15.0
 
 PROVIDER_FAST_RETURN_MIN = 5
 API_FAST_RETURN_MIN = 10
@@ -106,8 +120,18 @@ def _safe_api_extract(html: str, url: Optional[str]) -> List[ExtractedMenuItem]:
 
     try:
         endpoints = discover_api_endpoints(html, url)[:MAX_API_ENDPOINTS]
+        probe_deadline = time.monotonic() + MAX_API_PROBE_SECONDS
 
         for endpoint in endpoints:
+            if time.monotonic() >= probe_deadline:
+                logger.info(
+                    "api_probe_budget_exhausted url=%s endpoints_tried=%s of=%s",
+                    url,
+                    endpoints.index(endpoint),
+                    len(endpoints),
+                )
+                break
+
             try:
                 endpoint_text = _safe_text(endpoint).lower()
 
@@ -165,8 +189,13 @@ def _safe_iframe_extract(html: str, url: Optional[str]) -> List[ExtractedMenuIte
 
     try:
         iframe_urls = detect_menu_iframes(html, url)[:MAX_IFRAMES]
+        probe_deadline = time.monotonic() + MAX_IFRAME_PROBE_SECONDS
 
         for iframe_url in iframe_urls:
+            if time.monotonic() >= probe_deadline:
+                logger.info("iframe_probe_budget_exhausted url=%s", url)
+                break
+
             try:
                 response = fetch(iframe_url, mode="document", referer=url)
 
