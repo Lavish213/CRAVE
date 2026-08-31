@@ -146,7 +146,10 @@ export function MenuSubmissionSheet({ visible, placeId, onClose, onSubmitted }: 
       onRequestClose={handleClose}
       statusBarTranslucent
     >
-      <Pressable style={styles.backdrop} onPress={handleClose} />
+      {/* accessible=false so VoiceOver/TalkBack skip straight to the
+          labeled "Close" button below instead of stopping on an
+          invisible, undescribed full-screen element first. */}
+      <Pressable style={styles.backdrop} onPress={handleClose} accessible={false} />
 
       <View style={styles.sheet}>
         <View style={styles.handle} />
