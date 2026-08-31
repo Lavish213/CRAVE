@@ -128,7 +128,16 @@ def _extract_all_payloads(html: str) -> List[Any]:
 # Payload Quality Scoring
 # ---------------------------------------------------------
 
-def _score_payload(payload: Any) -> int:
+def _score_payload(payload: Any, *, depth: int = 0) -> int:
+
+    if depth > 12:
+        return 0
+
+    if isinstance(payload, list):
+        return max(
+            (_score_payload(value, depth=depth + 1) for value in payload[:500]),
+            default=0,
+        )
 
     if not isinstance(payload, dict):
         return 0
@@ -149,10 +158,15 @@ def _score_payload(payload: Any) -> int:
     if "price" in keys:
         score += 10
 
-    if len(payload) > 5:
-        score += 5
+    nested_score = max(
+        (
+            _score_payload(value, depth=depth + 1)
+            for value in list(payload.values())[:500]
+        ),
+        default=0,
+    )
 
-    return score
+    return max(score, nested_score)
 
 
 # ---------------------------------------------------------
@@ -171,11 +185,20 @@ def detect_hydration_state(html: str) -> Dict[str, Any]:
 
     # pick best payload
     best_payload = max(payloads, key=_score_payload)
+    best_score = _score_payload(best_payload)
+
+    # Generic application/json blobs often contain only page/business
+    # metadata (for example {"name": "Itani Ramen"}). Passing a zero-signal
+    # payload to the permissive recursive adapter turns that metadata into a
+    # fake menu item. Hydration is useful only when the payload or one of its
+    # bounded nested nodes carries at least one menu-shaped key.
+    if best_score <= 0:
+        return {}
 
     logger.info(
         "hydration_detected payloads=%s best_score=%s",
         len(payloads),
-        _score_payload(best_payload),
+        best_score,
     )
 
     return {

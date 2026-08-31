@@ -80,7 +80,15 @@ def classify_response(
     # -----------------------------------------------------
     # HARDCODED BLOCK DETECTION (HTML SIGNALS)
     # -----------------------------------------------------
-    if "cf-challenge" in body or "cloudflare" in body:
+    cloudflare_challenge_markers = (
+        "cf-challenge",
+        "cf_chl_",
+        "cf-turnstile",
+        "/cdn-cgi/challenge-platform/",
+        "challenges.cloudflare.com",
+        "attention required! | cloudflare",
+    )
+    if any(marker in body for marker in cloudflare_challenge_markers):
         return BlockClassification(
             is_blocked=True,
             reason=_CLOUDFLARE,
