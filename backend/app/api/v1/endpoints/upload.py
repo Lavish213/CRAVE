@@ -121,6 +121,9 @@ def get_upload_status(
     if not image:
         raise HTTPException(status_code=404, detail="Image not found")
 
+    if image.uploaded_by != user_id:
+        raise HTTPException(status_code=403, detail="Not your upload")
+
     return {
         "status": image.status,
         "error": image.error_message,

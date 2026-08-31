@@ -114,3 +114,21 @@ def test_missing_image_returns_404(db):
     _as_user("user-a")
     resp = client.get(f"/api/v1/upload/status/{uuid.uuid4()}")
     assert resp.status_code == 404
+
+
+def test_another_users_upload_is_not_readable(db, place):
+    """IDOR guard: this route requires auth but the image_id itself is an
+    unguessable-in-theory but otherwise unauthorized-access-checked path
+    param -- without an ownership check, any authenticated caller could
+    poll any other user's upload and read moderation_reason/error, which
+    can contain review-queue detail (e.g. why a photo was flagged) that
+    isn't meant for anyone but the uploader."""
+    img = _make_image(
+        db, place, status="ready", moderation_status=MOD_PENDING_REVIEW,
+        moderation_reason="untrusted_contributor",
+    )
+
+    _as_user("someone-else")
+    resp = client.get(f"/api/v1/upload/status/{img.id}")
+
+    assert resp.status_code == 403
