@@ -196,87 +196,17 @@ class MenuWorker:
 
                 for place in places:
 
-                    try:
+                    outcome = self._process_one_place(db, place)
 
-                        result = self.orchestrator.run_for_place(
-                            db=db,
-                            place=place,
-                        )
-
+                    if not outcome["error"]:
                         total_processed += 1
-                        materialized = getattr(result, "materialized", False)
-
-                        if materialized:
+                        if outcome["materialized"]:
                             materialized_count += 1
-                            # Set has_menu flag and recompute score after successful materialization
-                            place.has_menu = True
-                            place.menu_extraction_failure_count = 0
-                            # Also stamped on success (not just failure) —
-                            # this is the staleness clock _load_places_
-                            # requiring_menu uses to eventually re-check an
-                            # already-menu'd place. materialize_menu_truth
-                            # skips writing PlaceTruth.updated_at when a
-                            # re-extraction hashes identical to what's
-                            # already there (see its own dedup check), so
-                            # that column alone can't be used for this —
-                            # a place whose menu never changes would get
-                            # re-attempted every single cycle forever.
-                            place.menu_extraction_attempted_at = datetime.now(timezone.utc)
                             materialized_places.append(place)
                         else:
                             no_menu_count += 1
-                            # No PlaceTruth was written (see module docstring) —
-                            # record the attempt so this place backs off instead
-                            # of occupying every future batch.
-                            place.menu_extraction_attempted_at = datetime.now(timezone.utc)
-                            place.menu_extraction_failure_count = (
-                                place.menu_extraction_failure_count or 0
-                            ) + 1
-
-                        logger.info(
-                            "menu_worker_place_complete place_id=%s sources=%s extracted=%s claims=%s materialized=%s",
-                            place.id,
-                            getattr(result, "source_count", 0),
-                            getattr(result, "extracted_item_count", 0),
-                            getattr(result, "emitted_claim_count", 0),
-                            materialized,
-                        )
-
-                        db.commit()
-
-                    except Exception as exc:
-
-                        db.rollback()
+                    else:
                         error_count += 1
-
-                        logger.exception(
-                            "menu_worker_place_failed place_id=%s error=%s",
-                            place.id,
-                            exc,
-                        )
-
-                        # Same backoff bookkeeping as the "ran but came up
-                        # empty" branch above — an exception here (fetch
-                        # timeout, parser crash, whatever) is just as much a
-                        # reason to back off this place as an empty result,
-                        # and it must land in its own transaction since the
-                        # main one was just rolled back.
-                        try:
-                            retry_place = (
-                                db.query(Place).filter(Place.id == place.id).one_or_none()
-                            )
-                            if retry_place is not None:
-                                retry_place.menu_extraction_attempted_at = datetime.now(timezone.utc)
-                                retry_place.menu_extraction_failure_count = (
-                                    retry_place.menu_extraction_failure_count or 0
-                                ) + 1
-                                db.commit()
-                        except Exception:
-                            db.rollback()
-                            logger.exception(
-                                "menu_worker_failure_bookkeeping_failed place_id=%s",
-                                place.id,
-                            )
 
                     if total_processed >= max_places:
                         break
@@ -322,6 +252,92 @@ class MenuWorker:
             "materialized": materialized_count,
             "no_menu": no_menu_count,
         }
+
+    def _process_one_place(self, db: Session, place: Place) -> dict:
+        """
+        Runs extraction for exactly one place and applies the same
+        success/failure bookkeeping run()'s batch loop always has. Pulled
+        out of that loop so a caller that already has its own exact place
+        list -- e.g. a bounded, confirmation-gated canary script -- can
+        reuse this identical, already-tested logic instead of
+        reimplementing it and risking drift between the two.
+
+        Returns {"materialized": bool, "error": bool}. "error" is True
+        only when run_for_place() itself raised (a fetch timeout, parser
+        crash, etc.) -- mirrors run()'s own original behavior of NOT
+        counting a raised place toward total_processed, only toward
+        error_count.
+        """
+        try:
+            result = self.orchestrator.run_for_place(db=db, place=place)
+            materialized = getattr(result, "materialized", False)
+
+            if materialized:
+                # Set has_menu flag and recompute score after successful materialization
+                place.has_menu = True
+                place.menu_extraction_failure_count = 0
+                # Also stamped on success (not just failure) — this is the
+                # staleness clock _load_places_requiring_menu uses to
+                # eventually re-check an already-menu'd place.
+                # materialize_menu_truth skips writing PlaceTruth.updated_at
+                # when a re-extraction hashes identical to what's already
+                # there (see its own dedup check), so that column alone
+                # can't be used for this — a place whose menu never changes
+                # would get re-attempted every single cycle forever.
+                place.menu_extraction_attempted_at = datetime.now(timezone.utc)
+            else:
+                # No PlaceTruth was written (see module docstring) — record
+                # the attempt so this place backs off instead of occupying
+                # every future batch.
+                place.menu_extraction_attempted_at = datetime.now(timezone.utc)
+                place.menu_extraction_failure_count = (
+                    place.menu_extraction_failure_count or 0
+                ) + 1
+
+            logger.info(
+                "menu_worker_place_complete place_id=%s sources=%s extracted=%s claims=%s materialized=%s",
+                place.id,
+                getattr(result, "source_count", 0),
+                getattr(result, "extracted_item_count", 0),
+                getattr(result, "emitted_claim_count", 0),
+                materialized,
+            )
+
+            db.commit()
+            return {"materialized": materialized, "error": False}
+
+        except Exception as exc:
+            db.rollback()
+
+            logger.exception(
+                "menu_worker_place_failed place_id=%s error=%s",
+                place.id,
+                exc,
+            )
+
+            # Same backoff bookkeeping as the "ran but came up empty"
+            # branch above — an exception here (fetch timeout, parser
+            # crash, whatever) is just as much a reason to back off this
+            # place as an empty result, and it must land in its own
+            # transaction since the main one was just rolled back.
+            try:
+                retry_place = (
+                    db.query(Place).filter(Place.id == place.id).one_or_none()
+                )
+                if retry_place is not None:
+                    retry_place.menu_extraction_attempted_at = datetime.now(timezone.utc)
+                    retry_place.menu_extraction_failure_count = (
+                        retry_place.menu_extraction_failure_count or 0
+                    ) + 1
+                    db.commit()
+            except Exception:
+                db.rollback()
+                logger.exception(
+                    "menu_worker_failure_bookkeeping_failed place_id=%s",
+                    place.id,
+                )
+
+            return {"materialized": False, "error": True}
 
     def _load_places_requiring_menu(
         self,
