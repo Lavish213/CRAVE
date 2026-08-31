@@ -184,6 +184,16 @@ class MenuWorker:
                     total_processed,
                 )
 
+                # Collected across the whole batch so recompute_places_v4 --
+                # whose _fetch_signal_context is explicitly batch-fetch,
+                # "never per-place" (see recompute_scores_worker.py) -- is
+                # called once per batch instead of once per materialized
+                # place. Calling it per-place defeated that design: a
+                # BATCH_SIZE-place batch cost BATCH_SIZE x as many signal
+                # queries (and BATCH_SIZE redundant cache invalidations for
+                # the same cities) as it needed to.
+                materialized_places: List[Place] = []
+
                 for place in places:
 
                     try:
@@ -212,7 +222,7 @@ class MenuWorker:
                             # a place whose menu never changes would get
                             # re-attempted every single cycle forever.
                             place.menu_extraction_attempted_at = datetime.now(timezone.utc)
-                            recompute_places_v4(db, places=[place])
+                            materialized_places.append(place)
                         else:
                             no_menu_count += 1
                             # No PlaceTruth was written (see module docstring) —
@@ -270,6 +280,22 @@ class MenuWorker:
 
                     if total_processed >= max_places:
                         break
+
+                if materialized_places:
+                    try:
+                        recompute_places_v4(db, places=materialized_places)
+                        db.commit()
+                    except Exception:
+                        db.rollback()
+                        logger.exception(
+                            "menu_worker_batch_recompute_failed place_ids=%s",
+                            [p.id for p in materialized_places],
+                        )
+                        # Extraction/materialization for these places was
+                        # already committed per-place above -- a recompute
+                        # failure here just means their score/cache go stale
+                        # until the next scheduled recompute pass picks them
+                        # up, not a lost extraction.
 
                 logger.info(
                     "menu_worker_batch_complete processed=%s errors=%s",

@@ -300,3 +300,39 @@ class TestRunRecordsFailures:
         # re-checking again (see TestBackoffQuery's staleness tests).
         assert place.menu_extraction_attempted_at is not None
         assert place.menu_extraction_attempted_at.replace(tzinfo=None) >= before
+
+    def test_recompute_is_called_once_per_batch_not_once_per_materialized_place(self, db, monkeypatch):
+        """recompute_places_v4's own _fetch_signal_context is explicitly
+        batch-fetch, "never per-place" -- calling recompute once per
+        materialized place instead of once for the whole batch defeats that
+        design (N places -> N x as many signal queries). This locks in that
+        a batch with multiple materialized places makes exactly one
+        recompute_places_v4 call, covering all of them together."""
+        city = _make_city(db)
+        place_a = _make_place(db, city, rank_score=0.9)
+        place_b = _make_place(db, city, rank_score=0.8)
+
+        worker = MenuWorker()
+        monkeypatch.setattr(
+            worker.orchestrator, "run_for_place",
+            lambda *, db, place: MenuOrchestratorResult(
+                place_id=place.id, materialized=True, extracted_item_count=3,
+            ),
+        )
+        monkeypatch.setattr("app.services.workers.menu_worker.MAX_PLACES_PER_RUN", 2)
+        monkeypatch.setattr("app.services.workers.menu_worker.BATCH_SIZE", 2)
+        monkeypatch.setattr("app.services.workers.menu_worker.SLEEP_BETWEEN_BATCHES", 0)
+
+        recompute_calls = []
+        monkeypatch.setattr(
+            "app.services.workers.menu_worker.recompute_places_v4",
+            lambda db, places: recompute_calls.append(list(places)),
+        )
+
+        # Scoped to this test's own city -- this file's `db` fixture has no
+        # teardown between tests, so without this the batch could pick up
+        # places left over from other tests instead of place_a/place_b.
+        worker.run(city_id=city.id)
+
+        assert len(recompute_calls) == 1
+        assert {p.id for p in recompute_calls[0]} == {place_a.id, place_b.id}
