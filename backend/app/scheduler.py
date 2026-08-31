@@ -263,6 +263,31 @@ def _job_image_ingestion() -> None:
             db.close()
 
 
+def _job_image_processing_recovery() -> None:
+    """
+    Reclaims PlaceImage rows stuck 'pending'/'processing' past
+    settings.photo_stale_processing_minutes -- process_image_upload() runs
+    as a FastAPI BackgroundTask off POST /upload/confirm (unlike videos,
+    which are entirely scheduler-driven for exactly this durability reason
+    -- see _job_video_processing's own docstring). A BackgroundTask has no
+    persistence: if the serving process is killed or redeployed mid-task
+    (every Railway deploy), the row is stuck forever with nothing else to
+    ever revisit it, and the frontend's status poll spins indefinitely.
+    See reclaim_stale_image_uploads()'s own docstring for the full case.
+    """
+    from contextlib import suppress
+    from app.core.job_run_tracker import track_job_run
+    from app.workers.image_processing_worker import reclaim_stale_image_uploads
+
+    try:
+        with track_job_run("image_processing_recovery") as run:
+            reclaimed = reclaim_stale_image_uploads(limit=50)
+            logger.info("scheduler_image_processing_recovery_complete reclaimed=%s", reclaimed)
+            run.set_summary(f"reclaimed={reclaimed}")
+    except Exception as exc:
+        logger.exception("scheduler_image_processing_recovery_failed error=%s", exc)
+
+
 def _job_moderation_queue_health_check() -> None:
     """
     Catches a silent deadlock, not a routine failure: review_image/review_queue
@@ -444,6 +469,17 @@ def create_scheduler() -> BackgroundScheduler:
         minutes=20,
         id="image_ingestion",
         name="CRAVE image ingestion",
+    )
+
+    # image processing recovery — every 10 minutes. Reclaims uploads stuck
+    # 'pending'/'processing' past photo_stale_processing_minutes (30) after
+    # a crashed/redeployed BackgroundTask -- see the job's own docstring.
+    scheduler.add_job(
+        _job_image_processing_recovery,
+        trigger="interval",
+        minutes=10,
+        id="image_processing_recovery",
+        name="CRAVE image processing recovery",
     )
 
     # moderation queue health check — every 6 hours. Cheap (one COUNT query)

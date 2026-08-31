@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timedelta, timezone
 from io import BytesIO
+from typing import List
 
 from sqlalchemy.orm import Session
 from PIL import Image
 
+from app.config.settings import settings
 from app.db.session import SessionLocal
 from app.db.models.place_image import (
     PlaceImage,
@@ -311,3 +314,62 @@ def process_image_upload(image_id: str) -> None:
 
     finally:
         db.close()
+
+
+def reclaim_stale_image_uploads(limit: int = 50) -> int:
+    """
+    Self-healing sweep for PlaceImage rows stuck in 'pending' or
+    'processing' -- process_image_upload() is normally triggered once, as
+    a FastAPI BackgroundTask off POST /upload/confirm (unlike videos,
+    which run entirely through a scheduler job precisely because ffmpeg/
+    ML work is too heavy to run in-process -- see scheduler.py's
+    _job_video_processing docstring). A BackgroundTask has no durability:
+    if the process serving that request is killed or redeployed while the
+    task is mid-flight (which happens on every Railway deploy), the row
+    is left stuck at 'processing' forever with nothing to ever revisit
+    it -- the frontend's status poll (useImageStatusPoll.ts) then spins
+    indefinitely with no way to reach 'ready' or 'failed'.
+
+    Rows past settings.photo_stale_processing_minutes since creation are
+    reclaimed by simply calling process_image_upload() again --  it's
+    already safe to re-enter (its own guard at the top only skips rows
+    NOT in ('processing', 'pending'), so this is exactly the same
+    invocation the original BackgroundTask made). A row whose R2 upload
+    never actually completed (client crashed before the PUT finished)
+    fails cleanly through the function's own existing error handling --
+    turning "stuck forever" into a correctly-terminal 'failed' status
+    either way, matching the self-healing pattern already established for
+    videos (see reject_abandoned_pending_uploads /
+    video_processing_worker.py's own stale-processing reclaim).
+    """
+    cutoff = datetime.now(timezone.utc) - timedelta(
+        minutes=settings.photo_stale_processing_minutes
+    )
+
+    db: Session = SessionLocal()
+    try:
+        stale_ids: List[str] = [
+            row.id
+            for row in (
+                db.query(PlaceImage.id)
+                .filter(
+                    PlaceImage.status.in_(("pending", "processing")),
+                    PlaceImage.created_at < cutoff,
+                )
+                .order_by(PlaceImage.created_at.asc())
+                .limit(limit)
+                .all()
+            )
+        ]
+    finally:
+        db.close()
+
+    for image_id in stale_ids:
+        try:
+            process_image_upload(image_id)
+        except Exception:
+            logger.exception(
+                "image_processing_reclaim_failed image_id=%s", image_id
+            )
+
+    return len(stale_ids)

@@ -173,6 +173,17 @@ class Settings(BaseSettings):
     # by their own timeouts well under this. The batch-select query
     # re-claims rows this stale instead of leaving them stuck forever.
     video_stale_processing_minutes: int = 15
+    # Photo upload's equivalent of the two video settings above, collapsed
+    # into one: PlaceImage has no `updated_at` column (unlike PlaceVideo),
+    # so `created_at` is the only timestamp available to judge staleness by
+    # for both a never-confirmed 'pending' row and a crashed 'processing'
+    # one. That's still safe -- process_image_upload() is a single HTTP-
+    # bound background task (R2 download/upload, one safety-scan API call),
+    # not staged/resumable work like ffmpeg encoding, so it's expected to
+    # finish in well under a minute; nothing legitimate should still be
+    # 'pending' or 'processing' this long after its upload slot was created.
+    # See reclaim_stale_image_uploads() in image_processing_worker.py.
+    photo_stale_processing_minutes: int = 30
     # Path to the interpreter that has tflite-runtime (or tensorflow)
     # installed, if it differs from whatever "python3" resolves to on the
     # worker box (e.g. a dedicated venv). See
