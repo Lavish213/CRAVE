@@ -31,6 +31,15 @@ const styles = StyleSheet.create({
     gap: 12,
     paddingHorizontal: 32,
     paddingTop: 60,
+    // Same fix as EmptyState.tsx: React Navigation's bottom-tabs paint an
+    // opaque near-white default behind every screen unless something
+    // paints over it first. Most callers here return <ErrorState /> as
+    // their entire screen content on an early-return (place/[id].tsx,
+    // rank/[placeId].tsx, profile.tsx, etc.) with nothing else to do that
+    // painting -- without this, the screen flashes to React Navigation's
+    // light default instead of the app's near-black background, and the
+    // retry button's white text renders on that same light default.
+    backgroundColor: Colors.background,
   },
   message: { color: Colors.textSecondary, fontSize: 15, textAlign: 'center' },
   retryBtn: {
