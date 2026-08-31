@@ -3,51 +3,46 @@
 Status: idle
 Owner: Claude
 Branch: main
-Base SHA: 8676c7bbed7e248d1cabad1fb24ca35950e57e60
-Scope: Independently reviewed and merged PR #68 (data-readiness pass) while
-Codex's session was offline. Reran the new focused tests (4 passed) and the
-full backend suite (890 passed, 2 skipped) myself in a clean worktree,
-traced record_materialized_source_success() to confirm it's wired
-correctly for all four extraction paths (provider/hydration/html/
-escalation) via the single result.materialized checkpoint, and confirmed
-the placeholder-cleanup script reuses is_obvious_placeholder_item() rather
-than reimplementing it. Full review is on the PR #68 thread for Codex to
-read when it's back, including an explicit note that the scheduler finding
-corrects earlier advice I gave the user (I'd said "no scheduler" was the
-headline problem; Codex's multi-layer check found it's running fine in a
-separate Railway project, `rare-sparkle` — good catch, don't revisit it).
+Base SHA: c5ff3292b2f1cec05f7223cc3c0870deae79bb63
+Scope: Worked through Master Plan items directly per the user's "chat down,
+you go" instruction, since Codex's session is offline. Merged PR #74
+(A2 throughput bounding + A6 dead code cleanup) and PR #75
+(A4 BentoBox adapter).
+
+Done this pass:
+- A2: added MAX_API_PROBE_SECONDS (20s) / MAX_IFRAME_PROBE_SECONDS (15s)
+  wall-clock budgets in menu_extraction_router.py. Confirmed the actual
+  math behind the 17-minute run: up to 20 API-endpoint candidates x ~8s
+  timeout each = up to ~160s on that one sub-stage alone, per place, with
+  only a count cap before this fix, no time cap.
+- A6: deleted menu_link_finder.py, menu_link_discovery.py,
+  menu_site_crawler.py -- confirmed zero callers repo-wide.
+- A4: added bentobox_extractor.py -- BentoBox has no JSON ordering API to
+  build a normal adapter against, so this handles the one confirmed-real
+  pattern (a static PDF menu on bentoboxcdn.com/getbento.com, evidenced by
+  the North Beach Sandwicheez entity review) via the existing
+  extract_pdf_menu(). Registered in provider_registry.py.
+
+Partial / needs your production access:
+- A3 (the 2 historical Square/Toast sources): traced as far as static code
+  analysis allows. Ruled out one hypothesis -- provider_registry.py's
+  MIN_VALID_ITEMS=2 gate and menu_claim_emitter.py's MIN_ITEMS_TO_EMIT=2
+  are numerically aligned, so a sub-2-item extraction can't slip through
+  the registry and then get killed at the claims stage; that's not the
+  mismatch. Could not go further without the actual PlaceClaim/PlaceTruth
+  rows for Itani Ramen (Toast) and Reem's California (Square) -- I have no
+  production DB access in this session. Needs your query access to see
+  what these two sources' claims actually contained (if any) between
+  extraction and canonical publish.
+
 Locked files: none currently held.
-Verification plan: n/a — review complete.
-Next action: Codex, when back: per your own PR #68 "Remaining controlled
-actions" — (1) independently re-review the three printed placeholder menu
-IDs yourself before running the exact apply (don't skip this just because
-I merged the tooling; the apply itself is a separate, still-gated act),
-(2) profile/bound menu-enrichment throughput per-domain before raising
-batch size or concurrency, (3) design the bounded byte-based image holdout
-experiment rather than rerunning the positional heuristic, (4) investigate
-why the two historical Square/Toast sources failed canonical publication
-before retrying them. No scheduler config change is authorized or needed.
-
-Item 0 is DONE (PR #71, merged as `876dbc0`) — I implemented and locked it
-myself per the human's explicit request rather than waiting for Codex.
-`allow_llm_fallback` and `allow_browser_escalation` are now independent
-parameters on `extract_menu()`/`_run_extraction_pass()`;
-`menu_orchestrator.py` passes `allow_llm_fallback=False` explicitly.
-Also fixed a hardcoded `allow_llm_fallback=True` on the post-browser-
-escalation retry path that would have silently re-enabled the LLM on
-retry regardless of the caller's setting -- that one would have been
-easy to miss. Three tests lock this: two direct-call tests plus an
-AST-based static guard on `menu_orchestrator.py`'s call site (same
-pattern as the existing price-contract guard), so it survives future
-refactors. All three were verified to actually fail without their
-corresponding fix (temporarily reverted each, watched it fail, restored),
-not just written to pass. Full suite: 893 passed, 2 skipped.
-`replay_corpus.py` updated too, since splitting the flags changed its
-previously-coupled fully-offline behavior.
-
-Codex: menu extraction is now genuinely free-route-only in code, not
-just by convention. Safe to proceed with the throughput/batch-size
-profiling work from the prior note.
+Verification plan: full backend suite green on each change (896, then 902
+passed, 2 skipped); each new/changed test independently verified to catch
+its corresponding regression (temporarily reverted, watched fail, restored).
+Next action: Codex, when back: (1) review/merge PR #75 if not already done,
+(2) finish A3 with actual production data using the ruled-out hypothesis
+above as a starting point, (3) continue with Master Plan sequencing --
+A1 (run the 13,148 backlog) is next now that A2/A6 are done, then A7/A5.
 
 ## Existing local work excluded from this bridge
 
