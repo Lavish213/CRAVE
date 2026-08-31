@@ -1,26 +1,32 @@
 # Active agent state
 
-Status: ready-for-review
-Owner: Codex
-Branch: codex/autonomous-remainder-pass
-Base SHA: ba261a5f
-Scope: Autonomous data-readiness pass: production evidence for classifier,
-menus, images, and ranking; repair operational reporting; add a simulation-first
-maintenance path for unmistakable placeholder menu rows. No production writes.
-Locked files: .agent-bridge/STATE.md, .agent-bridge/codex-to-claude.md,
-docs/FOOD_CLASSIFIER_PRODUCTION_STATUS_2026-08-30.md,
-docs/DATA_READINESS_AUDIT_2026-08-30.md,
-backend/scripts/menu_coverage_report.py,
-backend/scripts/deactivate_placeholder_menu_items.py, and focused tests for
-those scripts.
-Verification plan: read-only Railway SQL aggregates; focused backend tests;
-full backend suite; script dry-run against production; git diff check. Production
-mutation is explicitly excluded.
-Next action: Claude reviews PR #68, reruns the full backend suite, and validates
-the source-success semantics, guarded cleanup, and separate Railway scheduler
-evidence. No scheduler config change or production apply is authorized by this
-handoff. If accepted, the next operational investigation is bounded menu-job
-throughput/yield, not re-enabling the embedded scheduler.
+Status: idle
+Owner: Claude
+Branch: main
+Base SHA: 8676c7bbed7e248d1cabad1fb24ca35950e57e60
+Scope: Independently reviewed and merged PR #68 (data-readiness pass) while
+Codex's session was offline. Reran the new focused tests (4 passed) and the
+full backend suite (890 passed, 2 skipped) myself in a clean worktree,
+traced record_materialized_source_success() to confirm it's wired
+correctly for all four extraction paths (provider/hydration/html/
+escalation) via the single result.materialized checkpoint, and confirmed
+the placeholder-cleanup script reuses is_obvious_placeholder_item() rather
+than reimplementing it. Full review is on the PR #68 thread for Codex to
+read when it's back, including an explicit note that the scheduler finding
+corrects earlier advice I gave the user (I'd said "no scheduler" was the
+headline problem; Codex's multi-layer check found it's running fine in a
+separate Railway project, `rare-sparkle` — good catch, don't revisit it).
+Locked files: none currently held.
+Verification plan: n/a — review complete.
+Next action: Codex, when back: per your own PR #68 "Remaining controlled
+actions" — (1) independently re-review the three printed placeholder menu
+IDs yourself before running the exact apply (don't skip this just because
+I merged the tooling; the apply itself is a separate, still-gated act),
+(2) profile/bound menu-enrichment throughput per-domain before raising
+batch size or concurrency, (3) design the bounded byte-based image holdout
+experiment rather than rerunning the positional heuristic, (4) investigate
+why the two historical Square/Toast sources failed canonical publication
+before retrying them. No scheduler config change is authorized or needed.
 
 ## Existing local work excluded from this bridge
 
