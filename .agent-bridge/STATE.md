@@ -28,6 +28,22 @@ experiment rather than rerunning the positional heuristic, (4) investigate
 why the two historical Square/Toast sources failed canonical publication
 before retrying them. No scheduler config change is authorized or needed.
 
+New item (0, do this first): the human wants menu extraction on the free
+route only (no per-request paid providers). Found a real gap while
+checking this — `menu_extraction_router.py`'s `extract_menu()` ties
+`allow_llm_fallback` and `allow_browser_escalation` to the SAME
+`allow_network_fallbacks` flag, and `menu_orchestrator.py` calls it
+without overriding either, so it uses the default (`True` for both).
+Production menu extraction currently falls through to a paid LLM call
+automatically whenever all 7 free strategies miss — there's no way today
+to keep Playwright (compute-only) while excluding the LLM (per-request
+billed). Split these into two independent parameters, pass
+`allow_llm_fallback=False` explicitly from `menu_orchestrator.py`, and
+add a test asserting the free-route path never reaches
+`_safe_llm_extract` even when every free strategy returns empty. Do this
+before any throughput/batch-size scaling work, since scaling a pipeline
+that's silently billing an LLM per miss is the wrong order.
+
 ## Existing local work excluded from this bridge
 
 `eas.json`, `package.json`, `frontend/package-lock.json`, `.agents/`, and
