@@ -23,6 +23,7 @@ from app.services.menu.providers.popmenu_extractor import extract_popmenu_menu
 from app.services.menu.providers.clover_extractor import extract_clover_menu
 from app.services.menu.providers.chownow_extractor import extract_chownow_menu
 from app.services.menu.providers.olo_extractor import extract_olo_menu
+from app.services.menu.providers.bentobox_extractor import extract_bentobox_menu
 
 
 logger = logging.getLogger(__name__)
@@ -65,6 +66,9 @@ _PROVIDER_REGISTRY: Dict[str, List[ProviderExtractor]] = {
     ],
     "olo": [
         extract_olo_menu,
+    ],
+    "bentobox": [
+        extract_bentobox_menu,
     ],
 }
 
