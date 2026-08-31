@@ -24,6 +24,8 @@ from sqlalchemy import or_
 from app.db.session import SessionLocal
 from app.db.models.place import Place
 from app.db.models.city import City
+from app.db.models.menu_item import MenuItem
+from app.db.models.menu_source import MenuSource
 from app.services.workers.menu_worker import _not_in_backoff_clause
 
 
@@ -73,22 +75,23 @@ def main():
         eligible_now = []
         never_attempted = []
 
-        for p in has_source:
-            if p.menu_extraction_attempted_at is None:
-                never_attempted.append(p)
-                eligible_now.append(p)
-                continue
-            # Reuse the exact clause the worker itself queries with, so
-            # this report can never drift from what the worker actually does.
-            row = (
+        never_attempted = [
+            p for p in has_source if p.menu_extraction_attempted_at is None
+        ]
+        # One set-based query, not one round trip per place. The old report
+        # issued ~13k production queries and could time out before printing
+        # anything useful.
+        source_ids = [p.id for p in has_source]
+        eligible_ids = {
+            row[0]
+            for row in (
                 db.query(Place.id)
-                .filter(Place.id == p.id, _not_in_backoff_clause(now))
-                .one_or_none()
+                .filter(Place.id.in_(source_ids), _not_in_backoff_clause(now))
+                .all()
             )
-            if row:
-                eligible_now.append(p)
-            else:
-                in_backoff.append(p)
+        } if source_ids else set()
+        eligible_now = [p for p in has_source if p.id in eligible_ids]
+        in_backoff = [p for p in has_source if p.id not in eligible_ids]
 
         stuck = [p for p in has_source if (p.menu_extraction_failure_count or 0) >= 4]
 
@@ -122,6 +125,31 @@ def main():
             print(f"{len(no_source_at_all)} active places have NO website, Grubhub URL, or menu "
                   f"source URL at all — the menu worker cannot even attempt these. This is a "
                   f"data-enrichment gap (need a website-discovery pass), not an extraction-quality one.")
+
+        source_provider_counts = Counter(
+            provider or "<missing>"
+            for (provider,) in db.query(MenuSource.provider).filter(
+                MenuSource.is_active.is_(True)
+            ).all()
+        )
+        item_provider_counts = Counter(
+            provider or "<missing>"
+            for (provider,) in db.query(MenuItem.provider).filter(
+                MenuItem.is_active.is_(True)
+            ).all()
+        )
+        print("\nActive discovered menu sources by provider:")
+        for provider, count in source_provider_counts.most_common():
+            print(f"  {provider:20s} {count}")
+        print("Active materialized menu items by provider:")
+        for provider, count in item_provider_counts.most_common():
+            print(f"  {provider:20s} {count}")
+        missing_lineage = item_provider_counts.get("<missing>", 0)
+        total_items = sum(item_provider_counts.values())
+        print(
+            f"Provider lineage missing on materialized items: {missing_lineage} "
+            f"({_pct(missing_lineage, total_items)})"
+        )
 
     finally:
         db.close()
