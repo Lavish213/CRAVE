@@ -171,11 +171,20 @@ def detect_hydration_state(html: str) -> Dict[str, Any]:
 
     # pick best payload
     best_payload = max(payloads, key=_score_payload)
+    best_score = _score_payload(best_payload)
+
+    # Generic application/json blobs often contain only page/business
+    # metadata (for example {"name": "Itani Ramen"}). Passing a zero-signal
+    # payload to the permissive recursive adapter turns that metadata into a
+    # fake menu item. Hydration is useful only when the payload itself carries
+    # at least one menu-shaped key.
+    if best_score <= 0:
+        return {}
 
     logger.info(
         "hydration_detected payloads=%s best_score=%s",
         len(payloads),
-        _score_payload(best_payload),
+        best_score,
     )
 
     return {
