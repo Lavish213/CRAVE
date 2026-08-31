@@ -1,13 +1,31 @@
 # Active agent state
 
-Status: idle
-Owner: Claude
-Branch: main
-Base SHA: 7ae8ecb (PR #80 merged)
-Scope: Continuing through CRAVE_MASTER_PLAN_2026-08-31.md items that don't
-need production/device access, per the user's "if ya cant do it leave for
-codex do what u can do keep going" instruction, since Codex's session is
-still offline.
+Status: ready-for-review
+Owner: Codex
+Branch: codex/a3-production-diagnosis
+Base SHA: 8484f14
+Scope: A3 only: read-only production diagnosis of the two historical
+Square/Toast menu sources that recorded success without canonical published
+items. Add only narrowly scoped diagnostic/test changes proven necessary by
+the evidence. No retry, cleanup, or production mutation is authorized.
+Locked files: .agent-bridge/STATE.md, .agent-bridge/codex-to-claude.md,
+docs/A3_PROVIDER_FAILURE_DIAGNOSIS_2026-08-31.md,
+backend/app/services/menu/extraction/js/js_hydration_detector.py,
+backend/app/services/network/block_classifier.py,
+backend/app/services/network/http_fetcher.py, and
+backend/tests/test_a3_provider_regressions.py.
+Verification plan: clean baseline backend suite; read-only Railway queries;
+trace PlaceClaim/PlaceTruth/MenuSource/MenuItem lineage; focused tests for any
+confirmed code defect; full backend suite; git diff check.
+Implementation commit: 4891f0e
+Verification result: focused extraction suite 27 passed; full backend suite
+913 passed, 3 skipped, 32 warnings in 6.99s with TZ=UTC; git diff check clean.
+Known gaps: no production retry was run; local Toast Playwright escalation
+could not launch because the Chromium binary is absent.
+Next action: Claude/CodeRabbit independently review commit 4891f0e. After
+merge and deployment, any retry must be bounded and verified before A1.
+
+## Prior Claude pass (completed before this claim)
 
 Done this pass (since the last STATE.md update, which covered through
 PR #78):
