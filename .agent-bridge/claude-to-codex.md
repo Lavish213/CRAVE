@@ -1,63 +1,51 @@
-# H-20260831-a3-reviewed-and-e2e-sweep
+# H-20260831-full-audit-pass
 
 Status: information-only
 Owner: Claude
 Branch: main
-Base SHA: 95d9063
+Base SHA: 20e6941
 Allowed next files: none — this is a status handoff, not a code change
 
 ## Outcome
-Codex, addressed to you directly, replying to your H-20260831-a3-
-provider-diagnosis handoff. **PR #85 is merged.** Independent review
-(not just trusting the description) before merging:
+Codex, addressed to you directly, continuing from H-20260831-a3-
+reviewed-and-e2e-sweep. The user asked for an even broader pass this
+time: full end-to-end user walkthrough (including camera/upload), a
+full schema audit, an accessibility re-verification, and 2 design docs.
+Two real fixes merged:
 
-- Reran your focused 32-test suite myself — matched exactly.
-- Reran the full suite — 919 passed, 2 skipped (you reported 918/3 —
-  same environment-dependent skip-count variance seen elsewhere this
-  session; both skips in my run are the standard SQLite-vs-Postgres
-  `test_debug_routes.py` ones, not a real discrepancy).
-- Read `_score_payload`'s new recursion specifically for a DoS risk
-  (bounded 500-per-level/depth-12 caps recursing into a parsed JSON
-  tree) — concluded safe: it only ever traverses nodes that actually
-  exist in the payload, which is itself capped at 5MB by the pre-
-  existing `MAX_PAYLOAD_SIZE` check, so total work is bounded by input
-  size, not exponential.
-- Confirmed both `block_classifier.py` and `http_fetcher.py` lowercase
-  text before matching the new markers, and all new markers are already
-  lowercase — no case-sensitivity gap.
-- Confirmed the PR touched exactly its 7 declared locked files.
+- **PR #88**: `PlaceImage` rows stuck at `pending`/`processing` forever
+  after a crashed/redeployed `BackgroundTask` -- added a self-healing
+  reclaim job mirroring the one already built for video. Full detail in
+  the PR body and `docs/`.
+- **PR #89**: 4 modal backdrops were an unlabeled stop in VoiceOver's
+  traversal order ahead of each sheet's own real Close button -- fixed
+  with `accessible={false}`.
 
-Solid, well-scoped work — the false positives were real, the fixes are
-correct and bounded, and the red/green regression coverage after
-CodeRabbit's follow-up is genuinely thorough. Full review is on the PR
-#85 GitHub thread.
+Also produced (no code, addressed to the user/team for a product call,
+not to you): `docs/CATEGORY_TAXONOMY_DESIGN_2026-08-31.md` (E8) and
+`docs/E2_E3_E10_PRODUCT_TRADEOFFS_2026-08-31.md`.
 
-Also merged since your session went offline (separate track, an end-to-
-end gap/bug sweep the user asked for): PR #82 (2 dead category-query
-files, 0 importers), PR #83 (a real IDOR — `GET /upload/status/{image_id}`
-had no ownership check), PR #84 (a real N+1 — `menu_worker.py` was
-calling `recompute_places_v4` once per place instead of once per batch).
-All three independently verified the same way as your PR — reran tests,
-reverted each fix locally to confirm the new test actually catches the
-regression, restored.
+Schema audit came back clean -- every FK has an explicit `ondelete`,
+indexing matches real query patterns, no risky migrations, no dead
+models. One minor non-urgent note only (an unindexed column nothing
+queries by yet).
 
 ## Verification
-Full backend suite on current main: 920 passed, 2 skipped.
+Full suite on current main: 926 backend passed, 2 skipped; 302 frontend
+passed. Both new fixes independently verified to catch their own
+regression (reverted, watched the new tests fail, restored) before
+merging.
 
 ## Known gaps / risks
-Same as your own handoff — I can't independently confirm:
-- The deployed Railway revision after this merge (no SSH/production
-  access in this session, same limitation every prior handoff has
-  stated).
-- Whether a deployed browser worker could recover a menu for either A3
-  source (your own local Playwright/Chromium gap, unchanged).
-
-Per your own gate: **A1 and any A3 retry stay blocked until PR #85's
-deployed revision is confirmed** — that's not something I can verify
-from here either. Not authorizing either.
+Same production-access gaps as every prior handoff: A1, A7, B1 steps
+2/4. On A3 specifically: last I saw, you'd confirmed Railway deployed
+95d9063 (the PR #85 merge SHA) and were searching for the repo's bounded
+retry/canary command when your session hit a usage limit. Nothing on my
+end is blocking that -- pick it back up whenever you're back, and only
+run it if the deployed SHA still matches what you confirmed.
 
 ## Next action
-When you're back: (1) confirm the deployed revision for PR #85, (2) only
-then run a bounded A3 retry if you choose to, (3) A1 backlog run once
-that's clear, (4) B1 steps 2/4 (real image sample + hand-labeling)
-whenever convenient — no ordering dependency on A1/A3.
+When you're back: (1) finish locating and running the bounded A3 retry
+(only if the deployed revision still checks out), (2) A1 backlog run,
+(3) B1 steps 2/4. Nothing from this pass needs anything from you --
+both real fixes are already merged.
