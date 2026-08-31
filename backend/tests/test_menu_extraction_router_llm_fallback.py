@@ -82,6 +82,49 @@ def test_llm_fallback_returns_final_fallback_when_llm_also_finds_nothing():
     assert result == []
 
 
+def test_llm_fallback_never_fires_when_explicitly_disabled():
+    """Free-route lock: allow_llm_fallback=False must hold even when every
+    free strategy finds nothing and browser escalation succeeds and retries
+    the whole pass -- neither the direct call nor the post-escalation retry
+    may reach extract_llm_menu."""
+    patches = _patch_all_heuristics_empty()
+    with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5], patches[6], patches[7], \
+         patch("app.services.menu.menu_extraction_router.extract_llm_menu") as mock_llm, \
+         patch("app.services.menu.menu_extraction_router.should_browser_escalate", return_value=False):
+        result = extract_menu(
+            SAMPLE_HTML,
+            url="https://fishgutscalifornia.com",
+            place_id=None,
+            allow_llm_fallback=False,
+        )
+
+    assert result == []
+    mock_llm.assert_not_called()
+
+
+def test_llm_fallback_disabled_survives_a_successful_browser_escalation_retry():
+    """The post-escalation retry path previously hardcoded
+    allow_llm_fallback=True regardless of the caller's setting -- confirming
+    that regression can't come back."""
+    patches = _patch_all_heuristics_empty()
+    with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5], patches[6], patches[7], \
+         patch("app.services.menu.menu_extraction_router.extract_llm_menu") as mock_llm, \
+         patch("app.services.menu.menu_extraction_router.should_browser_escalate", return_value=True), \
+         patch(
+             "app.services.menu.menu_extraction_router.fetch_with_browser",
+             return_value="<html>different rendered content</html>",
+         ):
+        result = extract_menu(
+            SAMPLE_HTML,
+            url="https://fishgutscalifornia.com",
+            place_id=None,
+            allow_llm_fallback=False,
+        )
+
+    assert result == []
+    mock_llm.assert_not_called()
+
+
 def test_llm_fallback_exception_does_not_crash_extraction():
     patches = _patch_all_heuristics_empty()
     with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5], patches[6], patches[7], \

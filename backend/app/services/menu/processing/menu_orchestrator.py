@@ -427,6 +427,11 @@ class MenuOrchestrator:
                     html=_html or "",
                     url=_probe_url,
                     place_id=place_id,
+                    # Free-route only: browser escalation is Railway compute,
+                    # not a per-request bill, so it stays on. The LLM fallback
+                    # is a paid provider call and must never fire from the
+                    # scheduled/bulk enrichment path.
+                    allow_llm_fallback=False,
                 ) or []
                 escalated_items = validate_extracted_items(escalated_items)
 

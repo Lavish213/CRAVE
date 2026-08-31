@@ -28,6 +28,7 @@ def run_replay_manifest(manifest_path: str | Path) -> dict[str, Any]:
             url=case.get("url"),
             place_id=None,
             allow_network_fallbacks=False,
+            allow_llm_fallback=False,
         )
         names = {item.name for item in items if item.name}
         expected_names = set(case.get("expected_names") or [])

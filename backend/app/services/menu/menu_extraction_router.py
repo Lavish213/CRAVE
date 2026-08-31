@@ -446,7 +446,7 @@ def _run_extraction_pass(
                 place_id=place_id,
                 provider=provider,
                 allow_browser_escalation=False,
-                allow_llm_fallback=True,
+                allow_llm_fallback=allow_llm_fallback,
                 allow_network_fallbacks=allow_network_fallbacks,
             )
 
@@ -459,6 +459,7 @@ def extract_menu(
     place_id: Optional[str] = None,
     *,
     allow_network_fallbacks: bool = True,
+    allow_llm_fallback: bool = True,
 ) -> List[ExtractedMenuItem]:
     if not html and not url:
         return []
@@ -482,6 +483,7 @@ def extract_menu(
                     place_id=place_id,
                     provider=provider,
                     allow_browser_escalation=False,
+                    allow_llm_fallback=allow_llm_fallback,
                     allow_network_fallbacks=allow_network_fallbacks,
                 )
 
@@ -493,6 +495,6 @@ def extract_menu(
         place_id=place_id,
         provider=provider,
         allow_browser_escalation=allow_network_fallbacks,
-        allow_llm_fallback=allow_network_fallbacks,
+        allow_llm_fallback=allow_llm_fallback,
         allow_network_fallbacks=allow_network_fallbacks,
     )
