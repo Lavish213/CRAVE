@@ -17,6 +17,20 @@ from apscheduler.schedulers.background import BackgroundScheduler
 
 logger = logging.getLogger(__name__)
 
+SCHEDULER_JOB_IDS = (
+    "discovery",
+    "osm_ingest",
+    "overture_ingest",
+    "video_processing",
+    "menu_enrichment",
+    "score_recompute",
+    "ranking_update",
+    "share_parser",
+    "image_ingestion",
+    "image_processing_recovery",
+    "moderation_queue_health_check",
+)
+
 # ---------------------------------------------------------------------------
 # Job implementations
 # ---------------------------------------------------------------------------
@@ -371,7 +385,7 @@ def _job_share_parser() -> None:
 # Scheduler factory
 # ---------------------------------------------------------------------------
 
-def create_scheduler() -> BackgroundScheduler:
+def create_scheduler(job_allowlist: set[str] | None = None) -> BackgroundScheduler:
     """
     Build and return a configured BackgroundScheduler.
 
@@ -492,5 +506,10 @@ def create_scheduler() -> BackgroundScheduler:
         id="moderation_queue_health_check",
         name="CRAVE moderation queue health check",
     )
+
+    if job_allowlist is not None:
+        for job in list(scheduler.get_jobs()):
+            if job.id not in job_allowlist:
+                scheduler.remove_job(job.id)
 
     return scheduler

@@ -1,9 +1,31 @@
 # Active agent state
 
-Status: idle
-Owner: Claude
-Branch: main
-Base SHA: 20e6941 (PR #91 merged)
+Status: ready-for-review
+Owner: Codex
+Branch: codex/scheduler-safe-rollout
+Base SHA: 924ce41 (PR #93 merged)
+Scope: Add a default-off standalone scheduler-worker rollout gate and an
+explicit job allowlist so a Railway worker service can be provisioned without
+immediately executing every accumulated production backlog. Preserve existing
+embedded/local scheduler behavior. Do not provision or enable the production
+worker until this change is independently reviewed, merged, and deployed.
+Locked files: .agent-bridge/STATE.md, .agent-bridge/codex-to-claude.md,
+backend/app/config/settings.py, backend/app/scheduler.py,
+backend/app/scheduler_worker.py, backend/tests/test_scheduler_worker_rollout.py,
+and docs/SCHEDULER_WORKER_ROLLOUT.md.
+Verification plan: red/green focused tests for default-off behavior and exact
+allowlisting; existing scheduler-adjacent tests; full backend suite; CI/CodeQL;
+independent Claude review before any production service creation.
+Verification result: focused scheduler/recovery suite 16 passed; full backend
+suite 939 passed, 2 skipped, 33 warnings in 9.92s with TZ=UTC.
+Known gaps: no Railway scheduler service was created and no production job was
+enabled. Provisioning is blocked on independent review, merge, deployment, and
+disabled-service log verification.
+Next action: Claude independently reviews the branch and PR. If accepted and
+deployed, Codex may provision the worker default-off per the rollout document.
+
+## Prior Claude pass
+
 Scope: A large end-to-end audit pass per the user's request to "search
 project end to end for all gaps and bugs... check everything... pretend
 to be user... fix or log" — covering a user walkthrough (incl. camera/
