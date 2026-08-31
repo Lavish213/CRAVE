@@ -60,6 +60,13 @@ class Settings(BaseSettings):
     # (Google Places/Vision) and double-writing data.
     run_embedded_scheduler: bool = True
 
+    # Standalone scheduler workers are deliberately inert until both this
+    # switch and an explicit job allowlist are configured on that service.
+    # This lets production provision and health-check the worker without
+    # immediately releasing every accumulated enrichment backlog.
+    scheduler_worker_enabled: bool = False
+    scheduler_job_allowlist: str = ""
+
     # --------------------------------------------------
     # DATABASE
     # --------------------------------------------------

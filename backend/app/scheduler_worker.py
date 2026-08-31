@@ -19,6 +19,11 @@ Deploy this as its own Railway service:
     its own process, so no DB migration step is needed here since the web
     service's startCommand already runs `alembic upgrade head`.)
 
+The standalone process is default-off even after deployment. Set
+SCHEDULER_WORKER_ENABLED=true together with an explicit comma-separated
+SCHEDULER_JOB_ALLOWLIST. An enabled worker with an empty/unknown allowlist
+fails closed. See docs/SCHEDULER_WORKER_ROLLOUT.md for the phased rollout.
+
 Then set RUN_EMBEDDED_SCHEDULER=false on the WEB service specifically, so it
 stops running these jobs itself — otherwise both processes run every
 scheduled job on every cycle, double-billing paid APIs (Google Places/
@@ -35,8 +40,10 @@ import time
 from types import FrameType
 from typing import Optional
 
+from apscheduler.schedulers.background import BackgroundScheduler
+
 from app.config.settings import settings
-from app.scheduler import create_scheduler
+from app.scheduler import SCHEDULER_JOB_IDS, create_scheduler
 
 # Same as app/main.py: this process runs the identical scheduled jobs (see
 # that module's own Sentry block for the full reasoning), including
@@ -66,6 +73,33 @@ logger = logging.getLogger("lavish.scheduler_worker")
 _shutdown_requested = False
 
 
+def configured_job_allowlist(raw: str) -> set[str]:
+    return {item.strip() for item in raw.split(",") if item.strip()}
+
+
+def create_worker_scheduler() -> BackgroundScheduler | None:
+    """Return the guarded standalone scheduler, or None while disabled.
+
+    Enabling the process without naming jobs is an error rather than an
+    implicit "run everything" fallback. A typo is also fatal so operators do
+    not mistake an inert worker for a successful partial rollout.
+    """
+    if not settings.scheduler_worker_enabled:
+        return None
+
+    allowlist = configured_job_allowlist(settings.scheduler_job_allowlist)
+    if not allowlist:
+        raise RuntimeError(
+            "scheduler job allowlist is empty while SCHEDULER_WORKER_ENABLED=true"
+        )
+
+    unknown = sorted(allowlist - set(SCHEDULER_JOB_IDS))
+    if unknown:
+        raise RuntimeError(f"Unknown scheduler job IDs: {', '.join(unknown)}")
+
+    return create_scheduler(job_allowlist=allowlist)
+
+
 def _handle_shutdown_signal(signum: int, frame: Optional[FrameType]) -> None:
     global _shutdown_requested
     logger.info("scheduler_worker_shutdown_signal signum=%s", signum)
@@ -92,7 +126,14 @@ def run_scheduler_worker() -> None:
         logger.info("scheduler_worker_shutdown_before_start")
         return
 
-    scheduler = create_scheduler()
+    scheduler = create_worker_scheduler()
+
+    if scheduler is None:
+        logger.warning("scheduler_worker_disabled no_jobs_will_run")
+        while not _shutdown_requested:
+            time.sleep(1)
+        logger.info("scheduler_worker_stopped")
+        return
 
     if _shutdown_requested:
         logger.info("scheduler_worker_shutdown_before_start")

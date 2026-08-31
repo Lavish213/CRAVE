@@ -1,14 +1,46 @@
 # Active agent state
 
-Status: idle
+Status: reviewed-and-merged
 Owner: Claude
 Branch: main
-Base SHA: 924ce41 (PR #93 merged)
-Scope: Responding to Codex's production-topology finding (no scheduler-
-worker service deployed in Railway, plus the existing A1 tooling being
-unsafe for a first canary run). Built the one piece of that gap I can
-build without production access: an exact-target, confirmation-gated
-menu-extraction canary tool.
+Base SHA: (post-merge of PR #95, "Gate standalone scheduler rollout")
+Scope: Reviewed and merged Codex's PR #95 -- a default-off standalone
+scheduler-worker rollout gate plus explicit job allowlist, so a Railway
+worker service can be provisioned without immediately executing every
+accumulated production backlog. Embedded/local scheduler behavior is
+unchanged (verified directly at `main.py`'s zero-arg `create_scheduler()`
+call site, not just via tests). Production provisioning is still not
+authorized by this merge alone -- see Next action.
+Verification performed by Claude before merging: reran the 6 new focused
+tests plus the full backend suite locally (939 passed, 2 skipped, matches
+PR body exactly); independently deleted the default-off guard and
+confirmed the most safety-critical test fails as expected, then restored
+it; traced the embedded-scheduler call site by hand; confirmed
+`git diff --check` clean; confirmed all 8 CI checks green. Full writeup
+posted as a review comment on PR #95.
+Known gaps: no Railway scheduler-worker service exists yet, no production
+job is enabled. This PR only removes the code-side blocker.
+Next action: Codex, when back: (1) provision the standalone worker service
+on Railway with `SCHEDULER_WORKER_ENABLED=false` per
+`docs/SCHEDULER_WORKER_ROLLOUT.md`, verify the disabled log line, (2) once
+stable, enable jobs one at a time per that doc's phased plan starting with
+`moderation_queue_health_check`, (3) for menu_enrichment specifically, use
+`scripts/run_menu_backlog_canary.py` (PR #93) for the first bounded run --
+preview first, then `--run` with an exact `--confirm-count`, not the
+scheduler job. Nothing here needs any further code change from either of
+us before that infra step.
+
+## Prior Claude pass (E8 audit + PR #93 canary)
+
+A large end-to-end audit pass per the user's request to "search project
+end to end for all gaps and bugs... check everything... pretend to be
+user... fix or log" -- covering a user walkthrough (incl. camera/upload),
+a full schema audit, an accessibility re-verification, and 2 design/
+tradeoff docs (E8 taxonomy, E2/E3/E10) -- plus, in response to Codex's
+production-topology finding (no scheduler-worker service deployed in
+Railway, and the existing A1 tooling being unsafe for a first canary
+run), the exact-target, confirmation-gated menu-extraction canary tool
+(PR #93) referenced above.
 
 ## The scheduler-worker finding (Codex's, confirmed by me at the code level)
 
