@@ -4,7 +4,7 @@ Status: ready-for-review
 Owner: Codex
 Branch: `codex/scheduler-safe-rollout`
 Base SHA: `924ce41`
-Implementation commit: pending
+Implementation commit: `1c3a773`
 Locked files: see `.agent-bridge/STATE.md`
 
 ## Outcome
