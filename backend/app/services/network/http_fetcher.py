@@ -40,6 +40,8 @@ _BLOCKED_HTML_TOKENS = (
     "captcha",
     "cf-challenge",
     "cf_chl_",
+    "cf-turnstile",
+    "/cdn-cgi/challenge-platform/",
     "challenges.cloudflare.com",
     "attention required! | cloudflare",
     "verify you are human",

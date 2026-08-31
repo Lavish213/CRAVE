@@ -83,6 +83,8 @@ def classify_response(
     cloudflare_challenge_markers = (
         "cf-challenge",
         "cf_chl_",
+        "cf-turnstile",
+        "/cdn-cgi/challenge-platform/",
         "challenges.cloudflare.com",
         "attention required! | cloudflare",
     )

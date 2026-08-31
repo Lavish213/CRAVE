@@ -1,4 +1,5 @@
 import httpx
+import pytest
 
 from app.services.menu.extraction.js.js_hydration_detector import (
     detect_hydration_state,
@@ -11,6 +12,21 @@ def test_zero_signal_json_payload_is_not_menu_hydration():
     html = '<script type="application/json">{"name":"Itani Ramen"}</script>'
 
     assert detect_hydration_state(html) == {}
+
+
+def test_nested_next_data_menu_is_valid_hydration():
+    html = """
+    <script id="__NEXT_DATA__" type="application/json">
+      {"props":{"pageProps":{"menu":{"items":[{"name":"Shoyu Ramen"}]}}}}
+    </script>
+    """
+
+    result = detect_hydration_state(html)
+
+    assert result["type"] == "hydration"
+    assert result["raw"]["props"]["pageProps"]["menu"]["items"][0]["name"] == (
+        "Shoyu Ramen"
+    )
 
 
 def test_benign_cloudflare_feature_flag_is_not_a_bot_challenge():
@@ -35,6 +51,23 @@ def test_benign_cloudflare_feature_flag_is_not_a_bot_challenge():
 
 def test_real_cloudflare_challenge_marker_remains_blocked():
     html = "<html><body><form id='cf-challenge'>Verify you are human</form></body></html>"
+
+    result = classify_response(
+        status_code=200,
+        text=html,
+        final_url="https://example.com/",
+    )
+
+    assert result.is_blocked is True
+    assert result.reason == "cloudflare_challenge"
+
+
+@pytest.mark.parametrize(
+    "marker",
+    ("<div class='cf-turnstile'></div>", "/cdn-cgi/challenge-platform/scripts/jsd/main.js"),
+)
+def test_current_cloudflare_challenge_variants_remain_blocked(marker: str):
+    html = f"<html><body>{marker}</body></html>"
 
     result = classify_response(
         status_code=200,
@@ -83,3 +116,24 @@ def test_http_fetcher_still_rejects_real_cloudflare_challenge():
         assert str(exc) == "blocked_html"
     else:
         raise AssertionError("real Cloudflare challenge should remain blocked")
+
+
+@pytest.mark.parametrize(
+    "marker",
+    ("<div class='cf-turnstile'></div>", "/cdn-cgi/challenge-platform/scripts/jsd/main.js"),
+)
+def test_http_fetcher_rejects_current_cloudflare_challenge_variants(marker: str):
+    html = (
+        "<html><body><main>Browser verification is required.</main>"
+        "<p>This page is intentionally long enough to pass the empty-page guard. "
+        "The challenge-specific marker must be what causes rejection here.</p>"
+        f"{marker}</body></html>"
+    )
+    response = httpx.Response(
+        200,
+        headers={"content-type": "text/html"},
+        text=html,
+    )
+
+    with pytest.raises(RuntimeError, match="^blocked_html$"):
+        _validate_html_body(response)

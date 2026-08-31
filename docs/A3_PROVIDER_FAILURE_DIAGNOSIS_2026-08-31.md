@@ -67,12 +67,17 @@ No credentials or full environment output were printed or recorded.
 
 1. `detect_hydration_state()` accepted the highest-scoring JSON payload even
    when every candidate scored zero menu signals. It now returns no hydration
-   state unless the selected payload has a positive menu-shape score.
+   state unless the selected payload has a positive menu-shape score, including
+   a bounded recursive check for legitimate nested Next.js/Apollo-style state.
 2. `block_classifier.py` classified any HTML containing the word
    `cloudflare` as blocked. It now requires a challenge-specific marker.
 3. `http_fetcher.py` independently repeated the same generic Cloudflare token
    check. It now uses the same challenge-specific signal class while retaining
    CAPTCHA, access-denied, and real Cloudflare challenge detection.
+
+The challenge-specific signals include current Turnstile and managed-challenge
+paths (`cf-turnstile` and `/cdn-cgi/challenge-platform/`) as well as the older
+markers observed in the live Toast response.
 
 Regression coverage proves benign Square feature flags pass both validation
 layers, real Cloudflare challenge pages remain blocked, and zero-signal JSON
@@ -102,6 +107,6 @@ TZ=UTC PYTHONPATH=$PWD pytest -q \
   tests/test_menu_extraction_heuristics.py
 ```
 
-Result: `27 passed`.
+Result after CodeRabbit follow-up coverage: `32 passed`.
 
-The full backend result is recorded in the handoff after completion.
+Full backend result: `918 passed, 3 skipped, 32 warnings in 8.89s`.
