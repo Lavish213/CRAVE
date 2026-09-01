@@ -14,6 +14,7 @@ possible caller identity.
 from __future__ import annotations
 
 import uuid
+from datetime import datetime, timezone
 
 import pytest
 from fastapi.testclient import TestClient
@@ -265,6 +266,76 @@ def test_completed_ranking_does_not_create_a_save(city, db):
     resp = client.post("/api/v1/rankings", json={"place_id": place.id, "tier": "liked"})
     assert resp.status_code == 201
     assert db.query(HitlistSave).filter(HitlistSave.user_id == user_id).count() == 0
+
+
+def test_completed_ranking_does_not_mark_a_discovery_intake_row_visited(city, db):
+    """
+    A user can have a discovery-intake row (dedup_key based on a shared
+    url/name, not "save:{user}:{place}") for the same place_id they later
+    rank -- e.g. they shared a TikTok of the place before ever tapping
+    Save on it directly. mark_existing_save_visited's dedup_key filter is
+    specifically what keeps that row untouched; nothing previously
+    exercised this exact case (confirmed: removing the dedup_key filter
+    from mark_existing_save_visited entirely, keeping only user_id/
+    place_id, left the full backend suite green -- this is the test that
+    closes that gap).
+    """
+    place = Place(name=f"Discovery Rank Place {uuid.uuid4().hex[:6]}", city_id=city.id)
+    db.add(place)
+    db.commit()
+    user_id = f"route-test-discovery-{uuid.uuid4().hex[:8]}"
+
+    db.add(HitlistSave(
+        user_id=user_id, place_name=place.name, place_id=place.id,
+        resolution_status="resolved",
+        dedup_key=f"tiktok:{uuid.uuid4().hex[:10]}",
+    ))
+    db.commit()
+
+    _as_user(user_id)
+    resp = client.post("/api/v1/rankings", json={"place_id": place.id, "tier": "liked"})
+    assert resp.status_code == 201
+    db.expire_all()
+
+    discovery_row = db.query(HitlistSave).filter(HitlistSave.user_id == user_id).one()
+    assert discovery_row.visited is False
+    assert discovery_row.visited_at is None
+    # And no direct save was created either -- ranking must not create one.
+    assert db.query(HitlistSave).filter(HitlistSave.user_id == user_id).count() == 1
+
+
+def test_completed_ranking_preserves_an_earlier_visited_at(city, db):
+    """
+    mark_existing_save_visited only stamps visited_at when it's still
+    None (see its own `if save.visited_at is None:` guard) -- a save the
+    user had already manually marked visited earlier must keep that
+    original timestamp, not get silently re-stamped to "now" just
+    because it's later ranked too.
+    """
+    place = Place(name=f"Already Visited Rank Place {uuid.uuid4().hex[:6]}", city_id=city.id)
+    db.add(place)
+    db.commit()
+    user_id = f"route-test-prevorted-{uuid.uuid4().hex[:8]}"
+
+    save = HitlistSave(
+        user_id=user_id, place_name=place.name, place_id=place.id,
+        resolution_status="resolved", dedup_key=f"save:{user_id}:{place.id}",
+        visited=True,
+        visited_at=datetime(2020, 1, 1, tzinfo=timezone.utc),
+    )
+    db.add(save)
+    db.commit()
+
+    _as_user(user_id)
+    resp = client.post("/api/v1/rankings", json={"place_id": place.id, "tier": "liked"})
+    assert resp.status_code == 201
+    db.expire_all()
+
+    reloaded = db.query(HitlistSave).filter(HitlistSave.user_id == user_id).one()
+    assert reloaded.visited is True
+    # SQLite has no tz-aware datetime type -- compare naive, the value
+    # itself (not the tzinfo) is what proves it wasn't re-stamped.
+    assert reloaded.visited_at.replace(tzinfo=timezone.utc) == datetime(2020, 1, 1, tzinfo=timezone.utc)
 
 
 def test_comparison_completion_marks_existing_save_visited(city, db):
