@@ -2,15 +2,29 @@
 
 Date: 2026-08-31
 
-## Verified production gap
+## Verified production gap (original finding, 2026-08-31)
 
-Railway currently has one `CRAVE` web service and Postgres. The web service has
-`RUN_EMBEDDED_SCHEDULER=false`, no Railway cron is configured, and no separate
-scheduler service exists. Consequently, no APScheduler job is running.
+Railway had one `CRAVE` web service and Postgres. The web service had
+`RUN_EMBEDDED_SCHEDULER=false`, no Railway cron was configured, and no separate
+scheduler service existed. Consequently, no APScheduler job was running.
 
-The standalone worker implementation already exists at
-`app.scheduler_worker`. This change adds the missing rollout brake; it does not
+The standalone worker implementation already existed at
+`app.scheduler_worker`. This change added the missing rollout brake; it did not
 enable production jobs by itself.
+
+## Current state (2026-09-01)
+
+The gap above is now split into two independent facts — do not conflate them:
+
+- **Service exists**: `CRAVE-scheduler` is provisioned on Railway, connected
+  to `Lavish213/CRAVE` on `main`, deployed successfully (first deploy at SHA
+  `93bfeac`).
+- **No job runs**: `SCHEDULER_WORKER_ENABLED=false` and no
+  `SCHEDULER_JOB_ALLOWLIST` are set on that service, so it stays alive and
+  idle — confirmed via the deployed runtime log
+  (`scheduler_worker_disabled no_jobs_will_run`) and a zero-row post-start
+  production job-run check. Still zero APScheduler jobs running anywhere.
+  Phase 1 below is done; phase 2 has not started.
 
 ## Required worker configuration
 
@@ -30,8 +44,8 @@ runs no jobs.
 
 ## Phased release
 
-1. Provision the service disabled. Verify the disabled log line, stable memory,
-   and zero new job-run rows.
+1. **Done (2026-09-01).** Provisioned the service disabled. Verified the
+   disabled log line and zero new job-run rows.
 2. Set `SCHEDULER_WORKER_ENABLED=true` with
    `SCHEDULER_JOB_ALLOWLIST=moderation_queue_health_check`. This is one bounded
    `COUNT` query every six hours and proves scheduler execution without

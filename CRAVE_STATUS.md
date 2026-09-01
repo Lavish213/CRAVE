@@ -70,7 +70,7 @@ administrator bypass retained for the agreed small-fix lane.
 
 - **Standalone production scheduler is provisioned safely, default-off.**
   Railway service `CRAVE-scheduler` deploys `main` using
-  `python -m app.scheduler_worker`, but `SCHEDULER_WORKER_ENABLED=false` and
+  `cd backend && python -m app.scheduler_worker`, but `SCHEDULER_WORKER_ENABLED=false` and
   no job allowlist keep it fail-closed. Its first deployment succeeded at
   SHA `93bfeac`; runtime logs say `scheduler_worker_disabled
   no_jobs_will_run`, and a read-only post-start database check found zero job
