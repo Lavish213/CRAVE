@@ -28,7 +28,7 @@ CATEGORIES: list[tuple[str, str, CategoryType]] = [
     ("breakfast", "Breakfast", CategoryType.cuisine),
     ("coffee", "Coffee", CategoryType.cuisine),
     ("desserts", "Desserts", CategoryType.cuisine),
-    ("other", "Other", CategoryType.specialty),
+    ("other", "Other", CategoryType.cuisine),
 
     # ---------------- VENUE ----------------
     ("restaurant", "Restaurant", CategoryType.venue),
@@ -37,18 +37,24 @@ CATEGORIES: list[tuple[str, str, CategoryType]] = [
     ("fine_dining", "Fine Dining", CategoryType.venue),
     ("fast_casual", "Fast Casual", CategoryType.venue),
 
-    # ---------------- SPECIALTY ----------------
-    ("halal", "Halal", CategoryType.specialty),
-    ("vegan", "Vegan", CategoryType.specialty),
-    ("gluten_free", "Gluten Free", CategoryType.specialty),
-    ("local_favorite", "Local Favorite", CategoryType.specialty),
-    ("family_owned", "Family Owned", CategoryType.specialty),
-    ("black_owned", "Black Owned", CategoryType.specialty),
-    ("woman_owned", "Woman Owned", CategoryType.specialty),
-    ("michelin_rated", "Michelin Rated", CategoryType.specialty),
-    ("late_night", "Late Night", CategoryType.specialty),
-    ("romantic", "Romantic", CategoryType.specialty),
-    ("kid_friendly", "Kid Friendly", CategoryType.specialty),
+    # ---------------- DIETARY ----------------
+    ("halal", "Halal", CategoryType.dietary),
+    ("vegan", "Vegan", CategoryType.dietary),
+    ("gluten_free", "Gluten Free", CategoryType.dietary),
+
+    # ---------------- OWNERSHIP ----------------
+    ("family_owned", "Family Owned", CategoryType.ownership),
+    ("black_owned", "Black Owned", CategoryType.ownership),
+    ("woman_owned", "Woman Owned", CategoryType.ownership),
+
+    # ---------------- OCCASION ----------------
+    ("local_favorite", "Local Favorite", CategoryType.occasion),
+    ("late_night", "Late Night", CategoryType.occasion),
+    ("romantic", "Romantic", CategoryType.occasion),
+    ("kid_friendly", "Kid Friendly", CategoryType.occasion),
+
+    # ---------------- RECOGNITION ----------------
+    ("michelin_rated", "Michelin Rated", CategoryType.recognition),
 ]
 
 

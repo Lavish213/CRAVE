@@ -34,7 +34,16 @@ def category_uuid(slug: str) -> str:
 class CategoryType(str, Enum):
     cuisine = "cuisine"
     venue = "venue"
-    specialty = "specialty"
+    dietary = "dietary"
+    ownership = "ownership"
+    occasion = "occasion"
+    # A place doesn't choose this the way it chooses `vegan` or `late_night`
+    # -- it's an external recognition/award, closer to a badge than a
+    # filterable identity tag. Kept as its own type (currently just
+    # `michelin_rated`) rather than folded into `occasion` so a future
+    # addition here doesn't get read as something the venue opted into.
+    # See docs/CATEGORY_TAXONOMY_DESIGN_2026-08-31.md.
+    recognition = "recognition"
 
 
 # ---------------------------------------------------------
