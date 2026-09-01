@@ -4,7 +4,7 @@ Status: ready-for-review
 Owner: Codex
 Branch: codex/free-pipeline-canaries
 Base SHA: bb33cd0620442473766a8f8cf3b96f8b79512dcd
-Commit SHA: pending
+Commit SHA: 8cb3a02
 Allowed next files: documentation/bridge review only
 
 ## Outcome
@@ -53,7 +53,7 @@ discovery/population, score recompute, and ranking remain disabled.
   public images 15,313 (40.55%); primary images 13,802 (36.55%); websites
   14,133 (37.43%). Website/no-menu candidates=13,128;
   website/no-public-image candidates=7,816.
-- `git diff --check` -> pending final commit.
+- `git diff --check` -> clean before commit `8cb3a02`.
 
 ## Known gaps / risks
 

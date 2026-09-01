@@ -28,8 +28,10 @@ still needs a seeded device E2E pass. Empty input queues do not increase
 catalog coverage. The next useful population path is a tiny reviewed website
 menu canary—not another scheduler allowlist expansion.
 
-Next action: independently inspect the docs-only diff and production evidence.
-Do not enable another job. Review/commit SHA will be added after final checks.
+Commit: `8cb3a02` (docs-only rollout evidence).
+
+Next action: independently inspect commit `8cb3a02` and the production
+evidence. Do not enable another job.
 
 ## Existing local work excluded from this bridge
 
