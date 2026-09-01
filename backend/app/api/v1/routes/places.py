@@ -18,6 +18,7 @@ from app.services.feed.feed_cursor_snapshot import (
     read_snapshot,
 )
 from app.services.query.place_image_visibility_query import get_primary_image_urls_bulk
+from app.services.query.place_video_visibility_query import get_has_video_bulk
 from app.services.query.rank_percentile_query import get_rank_percentiles
 from app.api.v1.schemas.places import PlacesResponse, PlaceOut
 from app.db.models.menu_item import MenuItem
@@ -49,11 +50,13 @@ def _hydrate_place_outputs(db: Session, place_ids: list[str]) -> list[PlaceOut]:
     place_map = {place.id: place for place in places}
     ordered = [place_map[place_id] for place_id in place_ids if place_id in place_map]
     image_urls = get_primary_image_urls_bulk(db, place_ids=place_ids)
+    video_flags = get_has_video_bulk(db, place_ids=place_ids)
     rank_percentiles = get_rank_percentiles(db, place_ids=place_ids)
     items: list[PlaceOut] = []
     for place in ordered:
         try:
             place.primary_image_url = image_urls.get(place.id)
+            place.has_video = video_flags.get(place.id, False)
             place.rank_percentile = rank_percentiles.get(place.id)
             items.append(PlaceOut.model_validate(place, from_attributes=True))
         except Exception as exc:
@@ -266,12 +269,14 @@ def get_places(
     # ── Attach images and serialize ───────────────────────────────────────────
     place_ids = [p.id for p in ranked]
     image_urls = get_primary_image_urls_bulk(db, place_ids=place_ids)
+    video_flags = get_has_video_bulk(db, place_ids=place_ids)
     rank_percentiles = get_rank_percentiles(db, place_ids=place_ids)
 
     items = []
     for p in ranked:
         try:
             p.primary_image_url = image_urls.get(p.id)
+            p.has_video = video_flags.get(p.id, False)
             p.rank_percentile = rank_percentiles.get(p.id)
             items.append(PlaceOut.model_validate(p, from_attributes=True))
         except Exception as exc:

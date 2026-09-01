@@ -82,6 +82,7 @@ class GeoJSONProperties(BaseModel):
     primary_image_url: Optional[str] = None
     category: Optional[str] = None
     has_menu: bool = False
+    has_video: bool = False
 
 
 class GeoJSONGeometry(BaseModel):

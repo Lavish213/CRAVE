@@ -19,6 +19,7 @@ from app.services.cache.cache_ttl import search_ttl
 from app.api.v1.schemas.search import SearchResponse
 from app.api.v1.schemas.place_card import PlaceCardOut
 from app.services.query.place_image_visibility_query import get_primary_image_urls_bulk
+from app.services.query.place_video_visibility_query import get_has_video_bulk
 from app.services.query.rank_percentile_query import get_rank_percentiles
 
 
@@ -146,6 +147,7 @@ def search(
     # Bulk image lookup — one query for the entire result set
     place_ids = [getattr(p, "id", None) for p in results if getattr(p, "id", None)]
     image_urls = get_primary_image_urls_bulk(db, place_ids=place_ids)
+    video_flags = get_has_video_bulk(db, place_ids=place_ids)
     rank_percentiles = get_rank_percentiles(db, place_ids=place_ids)
 
     items: List[PlaceCardOut] = []
@@ -156,6 +158,7 @@ def search(
             img = image_urls.get(pid)
             p.primary_image_url = img
             p.primary_image = img
+            p.has_video = video_flags.get(pid, False)
             p.rank_percentile = rank_percentiles.get(pid)
             items.append(
                 PlaceCardOut.model_validate(p, from_attributes=True)

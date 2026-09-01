@@ -9,6 +9,7 @@ from app.db.models.place import Place
 from app.db.models.place_categories import place_categories
 from app.services.geo.bounding_box import bounding_box
 from app.services.query.place_image_visibility_query import get_primary_image_urls_bulk
+from app.services.query.place_video_visibility_query import get_has_video_bulk
 from app.services.query.place_category_query import get_categories_for_places_bulk
 from app.services.query.rank_percentile_query import get_rank_percentiles
 
@@ -168,6 +169,17 @@ def fetch_places_for_map(
         image_map = {}
 
     # ---------------------------------------------------------
+    # Video presence (bulk, single query — same reasoning as images/
+    # categories above). See docs/E2_E3_E10_PRODUCT_TRADEOFFS_2026-08-31.md
+    # (E3): drives the card badge only, not a playback surface here.
+    # ---------------------------------------------------------
+
+    try:
+        video_map = get_has_video_bulk(db, place_ids=[r.id for r in rows])
+    except Exception:
+        video_map = {}
+
+    # ---------------------------------------------------------
     # Mapping (safe casting)
     # ---------------------------------------------------------
 
@@ -190,6 +202,7 @@ def fetch_places_for_map(
                     "primary_image_url": image_map.get(r.id),
                     "category": category,
                     "has_menu": bool(r.has_menu),
+                    "has_video": video_map.get(r.id, False),
                 }
             )
         except Exception:
@@ -296,6 +309,7 @@ def fetch_places_for_map_geojson(
                 "primary_image_url": p.get("primary_image_url"),
                 "category": p.get("category"),
                 "has_menu": bool(p.get("has_menu", False)),
+                "has_video": bool(p.get("has_video", False)),
             },
         })
 
