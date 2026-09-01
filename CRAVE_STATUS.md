@@ -41,7 +41,7 @@ Auth: Supabase (JWKS, ES256).
 
 ## Test status
 
-Backend: **986 passed, 2 skipped** (`cd backend && python -m pytest -q`).
+Backend: **987 passed, 2 skipped** (`cd backend && python -m pytest -q`).
 Frontend: **331 passed**, 34 suites (`cd frontend && npx jest`), `tsc
 --noEmit` clean. An E2E Playwright smoke suite also exists (`frontend/e2e/`,
 3 journeys) — not part of the Jest count above, run separately via
@@ -292,19 +292,37 @@ Two independent tracks, no overlap between them. Either can be picked up
 cold from this doc alone.
 
 **Production (needs Railway/Supabase access — Codex's lane):**
-1. ~~Enable and prove `moderation_queue_health_check`~~ — done. The exact
-   allowlist is live, the authorized one-shot completed successfully with an
-   empty queue, and web health remained nominal. Keep the kill switch ready;
-   see `docs/SCHEDULER_WORKER_ROLLOUT.md` for evidence and rollback steps.
-2. Before enabling another recurring job, measure its live queue depth and
-   document a reviewed cap. Add only one at a time in this order:
-   `share_parser`, `video_processing`, then `image_processing_recovery`.
-   Menu enrichment remains canary-only; score/ranking/discovery/ingestion
-   remain disabled.
-3. Run `backend/scripts/run_menu_backlog_canary.py` (preview first, then
-   `--run --confirm-count N`) against real place IDs — the A1 backlog
-   tool exists and is tested but has never actually been run.
-4. A7 (broader source discovery), B1 steps 2/4 (real image fetch +
+1. ~~Enable and prove `moderation_queue_health_check`, `share_parser`,
+   `image_processing_recovery`, `video_processing`~~ — done (PRs #113,
+   #114). All four are live on the exact allowlist, each passed a
+   bounded zero-queue canary, and share/video have since fired
+   naturally and succeeded. Web health and worker CPU/memory stayed
+   nominal throughout. Menu enrichment, Google image ingestion,
+   discovery/population, score recompute, and ranking remain disabled.
+   Keep the kill switch ready; see `docs/SCHEDULER_WORKER_ROLLOUT.md`
+   for full evidence and rollback steps.
+2. A real synthetic test of `image_processing_recovery`'s actual reclaim
+   behavior is queued and ready to run (see
+   `.agent-bridge/claude-to-codex.md`) — every production run so far hit
+   an empty queue, so only the job's execution was proven, not the
+   reclaim logic itself. PR #115 (merged) proves that logic locally
+   first; the production run still needs Codex's DB access.
+3. The video canary also only ever saw an empty batch — real R2
+   transfer/ffmpeg encoding/classifier quality on genuine uploaded media
+   still needs a seeded device E2E pass, not another allowlist change.
+4. Run `backend/scripts/run_menu_backlog_canary.py` (preview first, then
+   `--run --confirm-count N`) against a small reviewed batch from the
+   13,128 website/no-menu candidates — the one real attempt so far
+   (Itani) surfaced duplicate/contaminated rows and was reversibly
+   quarantined, not promoted; see the agent-bridge history for that
+   finding before trying again.
+5. Free image acquisition for the 7,816 website/no-public-image
+   candidates needs its own source-specific canary (the existing image
+   worker isn't safe as a first canary — it can fall back to paid Google
+   and publishes candidates immediately); a first attempt found zero
+   free candidates via static extraction on two sites, confirming low
+   recall as the real blocker, not bad data.
+6. A7 (broader source discovery), B1 steps 2/4 (real image fetch +
    hand-labeling) — untouched, need production access.
 
 **Product (buildable without production access — Claude's lane):**
