@@ -3,62 +3,44 @@
 Status: idle
 Owner: Claude
 Branch: main
-Base SHA: 5e70a18 (PR #109 merged)
-Scope: Reviewed and merged Codex's PR #109 (gap closure after The Pass:
-accurate has_video on Decision Session/Recommendations/Saves/Trending/
-saved-map, plus the ranking-to-existing-save visited hook). Verified the
-transaction-atomicity and no-implicit-save claims directly at the code
-level, not just from the PR summary, and closed two claims that were
-true but untested.
+Base SHA: d6aca1b (PR #111 merged)
+Scope: Closed the one minor gap flagged during my own review of PR #109
+(codex/the-pass-gap-closure) -- recommendations.py and trending.py's
+has_video wiring had no dedicated end-to-end test through those two
+specific routes. Not urgent, not blocking, but closed it rather than
+letting a flagged-but-unaddressed item linger.
 
-## What I independently verified
+## What changed (PR #111)
 
-- `_create_ranking()` calls `mark_existing_save_visited()` (flush-only)
-  *before* the caller's `db.commit()` in both `start_ranking()` and
-  `submit_comparison()` -- confirmed a rollback (the replay-tolerant
-  `IntegrityError` path) reverts both writes together, and that a
-  replayed submission can't double-process (the `IntegrityError` fires
-  on the ranking's own flush, before the visited-marking call is ever
-  reached).
-- `has_video` wiring into decision_session.py/recommendations.py/
-  saves.py/trending.py/saved_places_map_query.py all follow the exact
-  pattern already proven safe in PR #102. `recommendations.py`/
-  `trending.py` specifically have no dedicated test exercising
-  `has_video` end-to-end -- flagged as low-risk (identical, already-
-  tested pattern) rather than blocking.
+- `tests/trending/test_trending.py`: new
+  `test_trending_reports_approved_visible_video`, using its own fresh
+  city/place (this file's other tests rely on ambient DB state via
+  `_get_a_city_with_places()`, which a video-presence test can't safely
+  do) -- a unique city_id also sidesteps the 5-minute response cache.
+- `tests/test_recommendations_route.py` (new file): no prior test
+  exercised `GET /recommendations` through the real HTTP route at all.
+  A fresh test user has no `PlaceRanking` rows, so
+  `get_recommendations()` short-circuits to the cold-start path (any
+  active place) -- no ranking history needed. Two tests: has_video true
+  and false.
 
-## Two claims I found untested and closed myself (commit 616439e)
-
-1. "Cannot affect discovery-intake rows" -- removing the `dedup_key`
-   filter from `mark_existing_save_visited` (keeping only user_id/
-   place_id) left the full 981-test suite green, meaning nothing
-   actually proved this. Added
-   `test_completed_ranking_does_not_mark_a_discovery_intake_row_visited`
-   (a user with a discovery-intake HitlistSave row for the same place
-   they later rank) -- verified it fails against the broken filter,
-   restored, passes now.
-2. "Preserves an existing visit timestamp" -- the
-   `if save.visited_at is None:` guard had no dedicated test. Added
-   `test_completed_ranking_preserves_an_earlier_visited_at` -- same
-   revert/confirm-fails/restore cycle.
+Both regression-checked: removed `p.has_video = ...` from each route,
+confirmed the corresponding new test fails, restored.
 
 ## Verification
 
-Full backend suite on final integrated main: 983 passed, 2 skipped
-(981 baseline + 2 new). `git diff --check` clean.
+Full backend suite on final integrated main: 986 passed, 2 skipped
+(983 baseline + 3 new, exact match).
 
 ## Known gaps / risks
 
-None from this pass that need Codex's attention -- PR #109 is merged
-and green, both my additions are already part of it. Same standing gaps
-as before: the `moderation_queue_health_check` production step, and the
-minor recommendations.py/trending.py has_video test-coverage gap noted
-above (not urgent).
+None remaining from The Pass or its gap-closure pass. Everything flagged
+during review has now either been fixed or has a test proving it's fine.
 
 ## Next action
 
 Nothing needed from Codex on this pass. Standing by for the next
-production update or whatever's next.
+production update (`moderation_queue_health_check`) or whatever's next.
 
 ## Existing local work excluded from this bridge
 
