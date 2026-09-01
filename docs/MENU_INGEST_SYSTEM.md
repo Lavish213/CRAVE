@@ -63,10 +63,17 @@ Place selection (batch script)
 
 ```bash
 cd backend
-python scripts/run_phase4_batch.py --limit 200 --priority smart
+python scripts/run_phase4_batch.py --limit 200 --priority smart          # preview only
+python scripts/run_phase4_batch.py --limit 200 --priority smart --run    # executes
 ```
 
 Priority options: `grubhub | provider | web | all | smart`
+
+`--limit` is required (capped at 200) and `--run` is required to actually
+execute -- same preview-first discipline as `run_menu_backlog_canary.py`.
+The web/provider path (`ExtractionController` → `run_with_items`) has a
+materially weaker quality gate than `menu_extraction_router.py`'s own
+ranker/entity checks; keep batches small and spot-check results.
 
 ---
 

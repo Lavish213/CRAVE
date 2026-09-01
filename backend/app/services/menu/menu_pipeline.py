@@ -148,6 +148,7 @@ def process_extracted_menu(
 
 def _is_low_quality(rows: list[_NormalizedRow]) -> bool:
     names = set()
+    name_count = 0
     priced = 0
 
     for row in rows:
@@ -160,6 +161,7 @@ def _is_low_quality(rows: list[_NormalizedRow]) -> bool:
             continue
 
         names.add(name)
+        name_count += 1
 
         if row.price_cents and row.price_cents > 0:
             priced += 1
@@ -168,6 +170,20 @@ def _is_low_quality(rows: list[_NormalizedRow]) -> bool:
         return True
 
     if len(rows) >= 4 and priced == 0:
+        return True
+
+    # A confirmed production incident materialized 112 items with only ~57
+    # distinct names -- two vendors' menus merged via a shared iframe/API
+    # widget, each contributing its own section so fingerprint-based
+    # pre-dedup (name+section+currency, above) never collapsed them. This
+    # is the ONE quality gate common to every menu-writing path
+    # (MenuOrchestrator.run_for_place AND run_with_items, so it covers
+    # ExtractionController-sourced items too, unlike the router-level
+    # ranker gate in extraction_result_ranker.py, which only guards the
+    # router's own iframe tier). A single restaurant's own menu essentially
+    # never repeats half its names; two vendors concatenated together
+    # routinely do, on common dish names.
+    if name_count and (len(names) / name_count) < 0.75:
         return True
 
     return False
