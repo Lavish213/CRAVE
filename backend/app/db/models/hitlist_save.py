@@ -2,7 +2,7 @@
 from __future__ import annotations
 import uuid
 from datetime import datetime
-from sqlalchemy import DateTime, Float, ForeignKey, Index, String, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Index, String, Text, UniqueConstraint, text
 from sqlalchemy.orm import Mapped, mapped_column
 from app.db.models.base import Base, TimestampMixin
 
@@ -35,3 +35,19 @@ class HitlistSave(Base, TimestampMixin):
     resolved_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+
+    # --------------------------------------------------
+    # MEMORY (E2) -- whether/when the user actually visited a saved
+    # place, plus a free-text note. Only meaningful for app-created
+    # saves (dedup_key starting "save:") -- craves-discovery rows never
+    # surface these. `visited_at` is cleared alongside `visited=False`,
+    # not left stale, so it never reports a visit that got un-marked.
+    # See docs/E2_E3_E10_PRODUCT_TRADEOFFS_2026-08-31.md.
+    # --------------------------------------------------
+    visited: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("false")
+    )
+    visited_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
