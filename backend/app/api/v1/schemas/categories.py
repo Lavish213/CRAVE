@@ -29,6 +29,11 @@ class CategoryOut(BaseModel):
     icon: str | None = None
     color: str | None = None
 
+    # cuisine / venue / dietary / ownership / occasion / recognition.
+    # str (not the DB enum) — this schema layer doesn't import ORM types.
+    # See docs/CATEGORY_TAXONOMY_DESIGN_2026-08-31.md.
+    type: str | None = None
+
 
 # =========================================================
 # Categories Response
