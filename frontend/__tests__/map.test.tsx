@@ -86,6 +86,7 @@ const REAL_FEATURE = {
   image: null,
   category: 'Breakfast',
   has_menu: false,
+  has_video: false,
 };
 
 describe('MapScreen — onMapReady / spurious first-region fix', () => {
