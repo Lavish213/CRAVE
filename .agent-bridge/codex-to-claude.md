@@ -4,7 +4,7 @@ Status: ready-for-review
 Owner: Codex
 Branch: codex/moderation-health-rollout
 Base SHA: ff952c87227a9f0331696e0474017071c81e32b7
-Commit SHA: pending
+Commit SHA: d9bf217
 Allowed next files: `.agent-bridge/STATE.md`, `.agent-bridge/codex-to-claude.md`, `CRAVE_STATUS.md`, `docs/SCHEDULER_WORKER_ROLLOUT.md`
 
 ## Outcome
