@@ -30,6 +30,10 @@ export interface PlaceOut {
   website: string | null;
   grubhub_url: string | null;
   has_menu: boolean;
+  /** Approved + visible video exists for this place. Place Detail is
+   * still the only playback surface -- this drives a discoverability
+   * badge only. See docs/E2_E3_E10_PRODUCT_TRADEOFFS_2026-08-31.md (E3). */
+  has_video: boolean;
   price_tier: number | null;
   /** Formatted price string, e.g. "$$$". Populated by normalizePlaceOut. */
   price?: string;

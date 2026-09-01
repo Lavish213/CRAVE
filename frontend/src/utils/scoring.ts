@@ -185,13 +185,13 @@ export interface Badge {
 }
 
 /**
- * Returns 0-1 contextual emoji chips for a place card -- menu/order
- * access, or its absence. Used to badge a quality tier here too, via
- * getTierForPlace() -- but every real call site (PlaceCard,
- * PlaceCardCompact) already renders <TierBadge> for that, so a second
- * "⭐ CRAVE Pick" chip in the body was pure duplication of the badge
- * already sitting on the same card's image. Removed rather than kept
- * "for safety" -- found during the Feed forensic inventory, same
+ * Returns 0-2 contextual emoji chips for a place card -- menu/order
+ * access (or its absence), plus video presence. Used to badge a quality
+ * tier here too, via getTierForPlace() -- but every real call site
+ * (PlaceCard, PlaceCardCompact) already renders <TierBadge> for that, so
+ * a second "⭐ CRAVE Pick" chip in the body was pure duplication of the
+ * badge already sitting on the same card's image. Removed rather than
+ * kept "for safety" -- found during the Feed forensic inventory, same
  * duplication class as Place Detail's badge-chip row.
  */
 export function getBadges(place: PlaceOut): Badge[] {
@@ -203,6 +203,14 @@ export function getBadges(place: PlaceOut): Badge[] {
     badges.push({ emoji: '📋', label: 'Menu' });
   } else if (!place.grubhub_url && !place.website) {
     badges.push({ emoji: '🗺️', label: 'Off the grid' });
+  }
+
+  // Discoverability signal only -- Place Detail is still the only
+  // playback surface (E3, see docs/E2_E3_E10_PRODUCT_TRADEOFFS_2026-08-31.md).
+  // Independent of the menu/delivery badge above, not mutually exclusive
+  // with it -- a place can have both a menu and a video.
+  if (place.has_video) {
+    badges.push({ emoji: '🎥', label: 'Video' });
   }
 
   return badges;

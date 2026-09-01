@@ -10,6 +10,12 @@ describe('normalizePlaceOut', () => {
     expect(result.categories).toEqual([]);
     expect(result.images).toEqual([]);
     expect(result.has_menu).toBe(false);
+    expect(result.has_video).toBe(false);
+  });
+
+  it('carries has_video through from the raw response', () => {
+    expect(normalizePlaceOut({ has_video: true }).has_video).toBe(true);
+    expect(normalizePlaceOut({ has_video: false }).has_video).toBe(false);
   });
 
   it('handles null/undefined input without throwing', () => {
@@ -164,5 +170,20 @@ describe('normalizeMapFeatures', () => {
   it('returns an empty array for a non-array, non-FeatureCollection input', () => {
     expect(normalizeMapFeatures(null)).toEqual([]);
     expect(normalizeMapFeatures({})).toEqual([]);
+  });
+
+  it('carries has_video through from feature properties', () => {
+    const result = normalizeMapFeatures([
+      {
+        geometry: { coordinates: [-122.27, 37.8] },
+        properties: { id: 'p1', has_video: true },
+      },
+    ]);
+    expect(result[0].has_video).toBe(true);
+  });
+
+  it('defaults has_video to false when absent', () => {
+    const result = normalizeMapFeatures([validFeature]);
+    expect(result[0].has_video).toBe(false);
   });
 });

@@ -49,16 +49,16 @@ const SF_CITY = { id: 'city-sf', name: 'San Francisco', slug: 'san-francisco', l
 
 const SOLO_FEATURE = {
   id: 'place-solo', name: 'Boudin Sourdough', coordinate: { lat: 37.7871, lng: -122.4075 },
-  tier: 'solid' as const, rank_score: 0.32, price_tier: null, image: null, category: 'Breakfast', has_menu: false,
+  tier: 'solid' as const, rank_score: 0.32, price_tier: null, image: null, category: 'Breakfast', has_menu: false, has_video: false,
 };
 
 // Three features close enough together (well within one grid cell at the
 // initial region's zoom, and clearly mid-cell rather than straddling a
 // grid-line boundary) to merge into a single cluster point.
 const CLUSTERED_FEATURES = [
-  { id: 'place-c1', name: 'A', coordinate: { lat: 37.70131, lng: -122.30131 }, tier: 'trusted' as const, rank_score: 0.4, price_tier: null, image: null, category: null, has_menu: false },
-  { id: 'place-c2', name: 'B', coordinate: { lat: 37.70132, lng: -122.30132 }, tier: 'trusted' as const, rank_score: 0.4, price_tier: null, image: null, category: null, has_menu: false },
-  { id: 'place-c3', name: 'C', coordinate: { lat: 37.70133, lng: -122.30133 }, tier: 'trusted' as const, rank_score: 0.4, price_tier: null, image: null, category: null, has_menu: false },
+  { id: 'place-c1', name: 'A', coordinate: { lat: 37.70131, lng: -122.30131 }, tier: 'trusted' as const, rank_score: 0.4, price_tier: null, image: null, category: null, has_menu: false, has_video: false },
+  { id: 'place-c2', name: 'B', coordinate: { lat: 37.70132, lng: -122.30132 }, tier: 'trusted' as const, rank_score: 0.4, price_tier: null, image: null, category: null, has_menu: false, has_video: false },
+  { id: 'place-c3', name: 'C', coordinate: { lat: 37.70133, lng: -122.30133 }, tier: 'trusted' as const, rank_score: 0.4, price_tier: null, image: null, category: null, has_menu: false, has_video: false },
 ];
 
 describe('MapScreen — Recommendation Ledger instrumentation', () => {
@@ -137,7 +137,7 @@ describe('MapScreen — Recommendation Ledger instrumentation', () => {
   it('filters out a marker by category, keeps a matching one, and a filtered-in click still uses its real impression position', async () => {
     const OTHER = {
       id: 'place-other', name: 'Cafe Bistro', coordinate: { lat: 37.9, lng: -122.1 },
-      tier: 'solid' as const, rank_score: 0.3, price_tier: null, image: null, category: 'Lunch', has_menu: false,
+      tier: 'solid' as const, rank_score: 0.3, price_tier: null, image: null, category: 'Lunch', has_menu: false, has_video: false,
     };
     mockedFetch.mockResolvedValue([SOLO_FEATURE, OTHER]);
     const { getByTestId, getByLabelText, queryByTestId } = render(<MapScreen />);

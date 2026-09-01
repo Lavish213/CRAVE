@@ -16,6 +16,7 @@ export interface NormalizedMapFeature {
   image: string | null;
   category: string | null;
   has_menu: boolean;
+  has_video: boolean;
 }
 
 const API_BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:8000';
@@ -96,6 +97,7 @@ export function normalizePlaceOut(raw: unknown): PlaceOut {
     website: typeof p.website === 'string' ? p.website : null,
     grubhub_url: typeof p.grubhub_url === 'string' ? p.grubhub_url : null,
     has_menu: Boolean(p.has_menu),
+    has_video: Boolean(p.has_video),
     price_tier: typeof p.price_tier === 'number' ? p.price_tier : null,
     price: undefined as string | undefined,
   };
@@ -178,6 +180,7 @@ export function normalizeMapFeatures(raw: unknown): NormalizedMapFeature[] {
         ? props.category
         : null,
       has_menu: Boolean(props.has_menu),
+      has_video: Boolean(props.has_video),
     });
   }
   return result;

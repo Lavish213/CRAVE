@@ -21,6 +21,7 @@ function makePlace(overrides: Partial<PlaceOut> = {}): PlaceOut {
     website: null,
     grubhub_url: null,
     has_menu: false,
+    has_video: false,
     price_tier: null,
     ...overrides,
   };
@@ -181,11 +182,31 @@ describe('getBadges', () => {
     expect(badges.some((b) => b.label === 'Off the grid')).toBe(true);
   });
 
-  it('never returns more than one badge -- the three cases are mutually exclusive', () => {
+  it('never returns more than one menu/delivery/off-the-grid badge -- those three are mutually exclusive', () => {
     const badges = getBadges(
       makePlace({ rank_score: 0.5, has_menu: true, grubhub_url: 'https://grubhub.com/x' }),
     );
-    expect(badges.length).toBeLessThanOrEqual(1);
+    expect(badges.filter((b) => ['Delivery', 'Menu', 'Off the grid'].includes(b.label)).length)
+      .toBeLessThanOrEqual(1);
+  });
+
+  it('shows Video when the place has an approved video', () => {
+    const badges = getBadges(makePlace({ has_video: true }));
+    expect(badges.some((b) => b.label === 'Video')).toBe(true);
+  });
+
+  it('does not show Video when the place has no video', () => {
+    const badges = getBadges(makePlace({ has_video: false }));
+    expect(badges.some((b) => b.label === 'Video')).toBe(false);
+  });
+
+  it('shows both Menu and Video together -- video is additive, not mutually exclusive with menu/delivery', () => {
+    const badges = getBadges(
+      makePlace({ has_menu: true, grubhub_url: null, has_video: true }),
+    );
+    expect(badges.some((b) => b.label === 'Menu')).toBe(true);
+    expect(badges.some((b) => b.label === 'Video')).toBe(true);
+    expect(badges.length).toBe(2);
   });
 });
 
