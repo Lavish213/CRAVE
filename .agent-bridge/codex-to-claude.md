@@ -1,46 +1,73 @@
-# H-20260901-moderation-health-forced-run
+# H-20260901-free-pipeline-canaries
 
 Status: ready-for-review
 Owner: Codex
-Branch: codex/moderation-health-forced-run-evidence
-Base SHA: 99352ef
-Commit SHA: 9904bc7
+Branch: codex/free-pipeline-canaries
+Base SHA: bb33cd0620442473766a8f8cf3b96f8b79512dcd
+Commit SHA: pending
 Allowed next files: documentation/bridge review only
 
 ## Outcome
 
-At the user's explicit request, forced exactly one production execution of
-`_job_moderation_queue_health_check()` using the scheduler service's current
-production variables and the exact deployed `main` commit. No allowlist,
-service configuration, deployment, paid-provider credential, or other job was
-changed.
+With explicit user authorization, expanded the production scheduler one job
+at a time from the health check to three free/local paths: share parsing,
+stale-image recovery, and video processing. Measured queues before every
+mutation, ran separate bounded no-op canaries, fixed missing scheduler R2
+configuration using Railway reference variables (never reading/copying secret
+values), and installed ffmpeg through Railpack before admitting video.
 
-The job completed successfully and found the moderation queue empty. Updated
-the canonical status and rollout docs, which still incorrectly said the
-scheduler was default-off with zero jobs.
+Final exact allowlist:
+`moderation_queue_health_check,share_parser,image_processing_recovery,
+video_processing`. Paid Google image ingestion, bulk menu enrichment,
+discovery/population, score recompute, and ranking remain disabled.
 
 ## Verification
 
-- Railway production environment: Postgres, CRAVE, and CRAVE-scheduler all
-  `SUCCESS`; scheduler deployment `141f26f5-d449-4f80-b32f-06d2108c5b9e`
-  runs commit `99352ef`.
-- Sanitized scheduler configuration: enabled=true, embedded=false, allowlist
-  exactly `moderation_queue_health_check`, admin IDs configured.
-- Production `job_runs` row `238fa4af-91ce-4ac7-8854-59bf8a5c580c` -> started
-  `2026-09-01T14:32:09.952741Z`, finished
-  `2026-09-01T14:32:11.132023Z`, success=true, summary=`empty`, error=false.
+- Production aggregate queue snapshot -> actionable shares=0, videos=0,
+  stale image uploads=0; all 81,638 image rows were `ready`.
+- Share canary -> job run `6bdbd816-950d-4a18-b8ed-b66b22a9c602`, success,
+  `no_pending_items`, no error.
+- Image-recovery canary -> job run
+  `cf368fdf-a7bf-478c-a05c-686255d2b4bd`, success, `reclaimed=0`, no error.
+- Video canary (with queue-drift assertion) -> job run
+  `d5d5853b-28ca-47e4-84e2-d480c79eb744`, success, batch=0,
+  approved/rejected/failed=0.
+- Natural recurring share run -> job run
+  `17b5193c-744a-41e0-997f-0d3679522bad`, success,
+  `no_pending_items`.
+- Natural recurring video run -> job run
+  `3c0260b9-bdef-4631-a2c4-aca7e1d550f1`, success, batch=0,
+  approved/rejected/failed=0, no error; started at
+  `2026-09-01T19:50:21.060170Z` after the final deployment.
+- Railway deployment `38b0556b-e1e9-4395-afea-3c128300b327` at source SHA
+  `bb33cd0` -> SUCCESS; logs show exactly four added jobs, all other jobs
+  removed, `scheduler_worker_started jobs=4`.
+- Railpack build -> `ffmpeg 7.1.5` installed; pip build ->
+  `ai-edge-litert 2.2.0` installed; sanitized environment checks -> all five
+  R2 variables resolve on the scheduler through references.
 - `curl -fsS https://crave-production.up.railway.app/health` ->
   `status=ok`, `db=ok`, `cache=ok`, `worker=ok`.
+- Worker telemetry after rollout -> CPU current 0, observed max 0.0281;
+  memory current 0.1263 GB, observed max 0.1540 GB.
+- Production coverage snapshot -> 37,761 active places; menus 1,005 (2.66%);
+  public images 15,313 (40.55%); primary images 13,802 (36.55%); websites
+  14,133 (37.43%). Website/no-menu candidates=13,128;
+  website/no-public-image candidates=7,816.
+- `git diff --check` -> pending final commit.
 
 ## Known gaps / risks
 
-- The normal six-hour recurring execution has not fired yet; the forced run
-  proves the same job body and production database path, while the existing
-  runtime logs independently prove APScheduler registered exactly that job.
-- No next job is authorized by this handoff.
+- The video canary had no queued media, so it proves scheduling, database,
+  configuration, and zero-queue behavior—not real R2 transfer, ffmpeg output,
+  or classifier quality. A seeded real upload/device journey is still needed.
+- The processors cannot fill an empty input queue. Large catalog gains require
+  separate reviewed website-menu and free-image acquisition canaries.
+- Menu enrichment and Google-backed image ingestion intentionally remain off.
 
 ## Next action
 
-Independently inspect this docs-only diff and the sanitized evidence. Keep the
-current one-job allowlist unchanged. Before any next job, measure its queue,
-freeze a cap/rollback trigger, and obtain separate authorization.
+Independently inspect the docs-only diff and production evidence. Do not add
+another recurring job. Next population work should select a tiny reviewed set
+from the 13,128 website/no-menu candidates and use
+`backend/scripts/run_menu_backlog_canary.py`; free image acquisition needs its
+own source-specific canary before touching the 7,816 eligible places.
