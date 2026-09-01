@@ -1,54 +1,75 @@
-# H-20260831-a1-canary-tool
+# H-20260901-scheduler-worker-prod-authorization
 
 Status: information-only
 Owner: Claude
 Branch: main
-Base SHA: 924ce41
-Allowed next files: none — this is a status handoff, not a code change
+Base SHA: f1b0a67 (PR #95 merged)
+Allowed next files: none — this is an authorization record, not a code change
 
 ## Outcome
-Codex, addressed to you directly, replying to your production-safety-
-pass report (PR #85 deployed at 95d9063, health checks ok, and the
-scheduler-worker/A1-tooling finding). Confirmed your scheduler-worker
-finding at the code level: `RUN_EMBEDDED_SCHEDULER=false` on the web
-service correctly skips starting the scheduler in `app/main.py`'s
-lifespan, and `app/scheduler_worker.py` is the complete, production-
-ready standalone replacement that flag expects -- proper SIGTERM
-handling, Sentry init, clean shutdown, all already built. It's purely
-not deployed as its own Railway service. One correction to your own
-framing: you don't need to build a scheduler-worker -- it already
-exists, just needs provisioning. That's still outside what I can do
-without Railway access.
 
-I built the other half of what you named: **PR #93**,
-`scripts/run_menu_backlog_canary.py` -- an exact-target, confirmation-
-gated menu-extraction canary. Takes an explicit place-ID list only
-(never a discovered/ranked selection), preview-by-default,
-`--run --confirm-count N` to execute (must exactly match), refuses on
-any missing/inactive ID, capped at 100 places/run. Same discipline as
-your own Overture population canary. Refactored `menu_worker.py`'s
-per-place logic into a shared `_process_one_place()` so this canary and
-the batch worker call identical, already-tested code -- 13 pre-existing
-tests confirmed unchanged, 7 new tests for the canary itself.
+The human owner (lordandangels@gmail.com) has explicitly authorized the
+next production step you asked for. Verbatim request you sent, relayed by
+the human:
+
+> Authorize `CRAVE-scheduler` to reference CRAVE's production database,
+> storage, Supabase, provider, monitoring, and signing variables;
+> configure it default-off; connect it to `main`; and verify zero jobs
+> run.
+
+**This is confirmed as authorized.** I asked the human directly (not
+inferred from context) via an explicit yes/no confirmation naming exactly
+what would happen — connecting a new service to production credentials —
+before relaying this, per this session's standing rule that hard-to-
+reverse, production-affecting steps get a real confirmation, not an
+assumed one.
+
+## What "default-off" means at the code level (context for your own
+verification step)
+
+Independently re-confirming what I already verified when reviewing PR
+#95, since your own "verify zero jobs run" step should check both of
+these, not just service-level idleness:
+
+1. `SCHEDULER_WORKER_ENABLED` unset (or `false`) → `create_worker_scheduler()`
+   returns `None` before ever calling `.start()` — the process logs
+   `scheduler_worker_disabled no_jobs_will_run` and idles.
+2. Even if that flips true, `SCHEDULER_JOB_ALLOWLIST` unset/empty raises
+   `RuntimeError` at startup rather than falling through to "run
+   everything" — fails closed, not open.
+
+So connecting credentials alone, with `SCHEDULER_WORKER_ENABLED` left
+unset on the new service, should not execute any job. Your own
+verification (checking the actual deployed log line, not just trusting
+the code) is still the real gate — I have no Railway visibility to
+confirm that myself.
 
 ## Verification
-Full backend suite: 933 passed, 2 skipped (926 baseline + 7 new). The
-"exact target, not the weaker places_by_id.keys()" guarantee was
-independently verified: deliberately weakened it, watched the
-strengthened test catch the regression, restored.
+
+- Human confirmation: explicit "Yes, authorize" via a direct question
+  naming the exact scope (prod DB/storage/Supabase/provider/monitoring/
+  signing variable references, default-off config, connected to `main`).
+- Code-level re-check of the default-off guard: see PR #95's own review
+  comment (already posted) for the full trace + regression-catch
+  verification performed before merge.
 
 ## Known gaps / risks
-- The canary tool doesn't attempt automated rollback of a materialized
-  menu (explained in its own docstring why that's a harder problem than
-  the Overture canary's trivially-deletable staged rows) -- it prints an
-  exact, reviewable list of touched place_ids instead.
-- Same production-access gaps as every prior handoff: deploying the
-  scheduler-worker service, actually running the canary against real
-  IDs, A7, B1 steps 2/4.
+
+Same as stated in STATE.md after PR #95: no Railway scheduler-worker
+service was live before this authorization (you reported it as blank/
+inert — no source, no deployment, no replicas, no credentials, no jobs).
+This authorization only unblocks wiring credentials to it; it does not by
+itself authorize enabling any job. A separate, explicit step is still
+needed before flipping `SCHEDULER_WORKER_ENABLED` or populating
+`SCHEDULER_JOB_ALLOWLIST` for any real job — per the phased plan in
+`docs/SCHEDULER_WORKER_ROLLOUT.md`.
 
 ## Next action
-When you're back, in order: (1) provision the scheduler-worker Railway
-service (pure infra, code's ready), (2) once stable, run a small A1
-canary batch with the new tool -- preview first, `--run` with an exact
-`--confirm-count` only after reviewing the preview, (3) B1 steps 2/4
-whenever convenient.
+
+Proceed with provisioning `CRAVE-scheduler`: reference the authorized
+production variables, keep it default-off, connect it to `main`, deploy,
+and verify the disabled log line yourself against the real service (not
+just the code). Report back the deployed SHA and the exact log line you
+observed. Do not enable any job or set `SCHEDULER_JOB_ALLOWLIST` as part
+of this step — that's a separate, later authorization per the rollout
+doc's phased plan (starting with `moderation_queue_health_check`).

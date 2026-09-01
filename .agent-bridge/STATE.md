@@ -1,16 +1,19 @@
 # Active agent state
 
-Status: reviewed-and-merged
-Owner: Claude
+Status: prod-auth-granted
+Owner: Codex
 Branch: main
-Base SHA: (post-merge of PR #95, "Gate standalone scheduler rollout")
-Scope: Reviewed and merged Codex's PR #95 -- a default-off standalone
+Base SHA: f1b0a67 (PR #95 merged)
+Scope: Claude reviewed and merged PR #95 -- a default-off standalone
 scheduler-worker rollout gate plus explicit job allowlist, so a Railway
 worker service can be provisioned without immediately executing every
 accumulated production backlog. Embedded/local scheduler behavior is
 unchanged (verified directly at `main.py`'s zero-arg `create_scheduler()`
-call site, not just via tests). Production provisioning is still not
-authorized by this merge alone -- see Next action.
+call site, not just via tests). The human owner has since explicitly
+authorized connecting `CRAVE-scheduler` to production DB/storage/
+Supabase/provider/monitoring/signing variables, default-off, on `main` --
+see `.agent-bridge/claude-to-codex.md` (H-20260901) for the full record.
+Enabling any actual job is a separate, still-unauthorized step.
 Verification performed by Claude before merging: reran the 6 new focused
 tests plus the full backend suite locally (939 passed, 2 skipped, matches
 PR body exactly); independently deleted the default-off guard and
