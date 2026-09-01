@@ -16,14 +16,19 @@ task expected to finish in well under a minute, not staged/resumable
 work like video's ffmpeg encoding.
 
 process_image_upload itself is fully covered elsewhere
-(test_image_processing_worker.py) -- these tests only cover the
+(test_image_processing_worker.py) -- most tests here only cover the
 selection/reclaim logic, with process_image_upload mocked at the call
-site.
+site. One test (test_reclaim_end_to_end_terminates_a_stale_row_on_real_r2_failure
+below) deliberately does not mock it, to prove the two functions actually
+compose: a row selected by the reclaim sweep really does reach a
+terminal status through process_image_upload's own real error handling,
+not just "each piece works in isolation."
 """
 from __future__ import annotations
 
 import uuid
 from datetime import datetime, timedelta, timezone
+from unittest.mock import patch
 
 import pytest
 
@@ -169,6 +174,30 @@ def test_a_single_reclaim_failure_does_not_block_the_rest_of_the_batch(db, place
     # not per-row success.
     assert reclaimed == 2
     assert calls == [image_a.id, image_b.id]
+
+
+def test_reclaim_end_to_end_terminates_a_stale_row_on_real_r2_failure(db, place):
+    """
+    The one test in this file that does NOT mock process_image_upload --
+    proves the full production shape of a stuck row: reclaim selects it,
+    invokes the real process_image_upload, which hits a real R2 failure
+    (missing/unreachable object, the exact scenario for an upload whose
+    client crashed before the PUT finished) and reaches process_image_upload's
+    own outer except, landing status='failed' rather than staying stuck
+    forever. This is the same "empty queue never proved the reclaim
+    actually works" gap flagged for the production canary -- this test
+    proves the logic locally without needing production access.
+    """
+    stale_at = datetime.now(timezone.utc) - timedelta(hours=2)
+    image = _make_image(db, place, status="pending", created_at=stale_at)
+
+    with patch.object(worker_module, "_get_s3_client", side_effect=RuntimeError("R2 unreachable")):
+        reclaimed = reclaim_stale_image_uploads()
+
+    assert reclaimed == 1
+    db.refresh(image)
+    assert image.status == "failed"
+    assert image.is_primary is False
 
 
 def test_respects_the_limit_argument(db, place, monkeypatch):
