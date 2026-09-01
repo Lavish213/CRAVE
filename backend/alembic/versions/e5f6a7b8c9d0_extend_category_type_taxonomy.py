@@ -63,6 +63,16 @@ _categories = sa.table(
 
 def upgrade() -> None:
     with op.batch_alter_table("categories") as batch_op:
+        # `type` was VARCHAR(9), sized for "specialty" (9 chars) --
+        # "recognition" is 11. Widen before anything writes a longer
+        # value into it, or Postgres rejects the UPDATE below outright
+        # (confirmed: SQLite doesn't enforce VARCHAR length at all, so
+        # this only surfaced against real Postgres in CI, not locally).
+        batch_op.alter_column(
+            "type",
+            existing_type=sa.String(9),
+            type_=sa.String(11),
+        )
         batch_op.drop_constraint("category_type_enum", type_="check")
 
     for slug, new_type in _RETYPES:
@@ -94,4 +104,11 @@ def downgrade() -> None:
         batch_op.create_check_constraint(
             "category_type_enum",
             sa.column("type").in_(_OLD_VALUES),
+        )
+        # Safe now: every value has already been reverted to <=9 chars
+        # above, before the column shrinks back to its original size.
+        batch_op.alter_column(
+            "type",
+            existing_type=sa.String(11),
+            type_=sa.String(9),
         )
