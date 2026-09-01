@@ -5,6 +5,9 @@ export interface CategoryOut {
   name: string;
   icon: string | null;
   color: string | null;
+  /** cuisine / venue / dietary / ownership / occasion / recognition.
+   * See docs/CATEGORY_TAXONOMY_DESIGN_2026-08-31.md (E8). */
+  type: string | null;
 }
 
 export interface CategoriesResponse {

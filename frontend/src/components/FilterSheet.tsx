@@ -1,20 +1,36 @@
 // src/components/FilterSheet.tsx
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
   Modal, Pressable, ScrollView, StyleSheet, Text, TouchableOpacity, View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { Colors, Spacing, Radius } from '../constants/colors';
+import { useCategoryTypes } from '../hooks/useCategoryTypes';
 
-const GENERIC_FILTER_CATS = new Set([
-  'restaurant', 'restaurants', 'bar', 'bars',
-  'other', 'others', 'fast casual',
-  'black owned', 'family owned', 'woman owned',
-  'kid friendly', 'gluten free', 'halal',
-  'local favorite', 'late night', 'romantic', 'michelin rated',
-  '',
-]);
+// Truly meaningless as a filter chip regardless of type -- not what E8
+// is about (that's a real taxonomy question), just genuinely empty
+// signal. "Restaurant"/"Bar"/"Fast Casual" describe almost every place
+// in the catalog and would match everything, same reasoning the
+// backend's own _VOID_CATEGORIES/_GENERIC_CATEGORIES apply to `other`.
+const VOID_FILTER_CATS = new Set(['restaurant', 'restaurants', 'bar', 'bars', 'other', 'others', 'fast casual', '']);
+
+// Display order + label for each type section. `null`/unrecognized types
+// (a category the frontend's cache hasn't caught up on, or a genuine
+// lookup miss) fall into a final untitled bucket rather than being
+// silently dropped -- see _sectionFor below.
+const TYPE_SECTIONS: Array<{ type: string; label: string }> = [
+  { type: 'cuisine', label: 'CUISINE' },
+  { type: 'venue', label: 'VENUE' },
+  { type: 'dietary', label: 'DIETARY' },
+  // Factual header, not "Values" -- these three are business-ownership
+  // attributes, not this filter's place to editorialize on. See
+  // docs/CATEGORY_TAXONOMY_DESIGN_2026-08-31.md's "Needs a human call"
+  // section for the fuller reasoning.
+  { type: 'ownership', label: 'OWNERSHIP' },
+  { type: 'occasion', label: 'OCCASION' },
+  { type: 'recognition', label: 'RECOGNITION' },
+];
 
 export interface FilterState {
   priceTiers: number[]; // empty = all, [1] = $, [1,2] = $ and $$, etc.
@@ -42,6 +58,39 @@ const PRICE_OPTIONS = [
 ];
 
 export function FilterSheet({ visible, onClose, filters, onChange, availableCategories }: Props) {
+  // Name -> type lookup, fetched once and cached module-wide across every
+  // FilterSheet instance (Feed, Search, Map each render their own). This
+  // is purely for classification; *which* chips actually render still
+  // comes from availableCategories below (city/load-scoped -- see its own
+  // comment at each call site for why a global category list was
+  // deliberately rejected as the source of chips themselves).
+  const typeByName = useCategoryTypes();
+
+  // Groups availableCategories (already city/load-scoped) by type,
+  // preserving TYPE_SECTIONS's display order. A name with no match in
+  // typeByName (cache not yet loaded, or a genuine lookup miss) lands in
+  // the untitled fallback bucket rather than vanishing -- every real
+  // category the caller passed in still shows up somewhere.
+  const sections = useMemo(() => {
+    const visible = availableCategories.filter((c) => !VOID_FILTER_CATS.has(c.toLowerCase()));
+    const byType = new Map<string, string[]>();
+    const unclassified: string[] = [];
+    for (const cat of visible) {
+      const type = typeByName.get(cat.toLowerCase());
+      if (!type) {
+        unclassified.push(cat);
+        continue;
+      }
+      if (!byType.has(type)) byType.set(type, []);
+      byType.get(type)!.push(cat);
+    }
+    const result = TYPE_SECTIONS
+      .map(({ type, label }) => ({ label, cats: byType.get(type) ?? [] }))
+      .filter((s) => s.cats.length > 0);
+    if (unclassified.length > 0) result.push({ label: 'MORE', cats: unclassified });
+    return result;
+  }, [availableCategories, typeByName]);
+
   const togglePrice = (v: number) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     const current = filters.priceTiers;
@@ -121,12 +170,16 @@ export function FilterSheet({ visible, onClose, filters, onChange, availableCate
             })}
           </View>
 
-          {/* Categories */}
-          {availableCategories.length > 0 && (
-            <>
-              <Text style={[styles.sectionLabel, styles.sectionLabelSpaced]}>CUISINE</Text>
+          {/* Categories -- grouped by type (E8) instead of one flat
+              "CUISINE" list that used to also silently hide every
+              dietary/ownership/occasion/recognition category behind a
+              blacklist. See docs/CATEGORY_TAXONOMY_DESIGN_2026-08-31.md,
+              Option A. */}
+          {sections.map(({ label, cats }) => (
+            <React.Fragment key={label}>
+              <Text style={[styles.sectionLabel, styles.sectionLabelSpaced]}>{label}</Text>
               <View style={styles.chipRow}>
-                {availableCategories.filter(c => !GENERIC_FILTER_CATS.has(c.toLowerCase())).map((cat) => {
+                {cats.map((cat) => {
                   const active = filters.categories.includes(cat);
                   return (
                     <TouchableOpacity
@@ -142,8 +195,8 @@ export function FilterSheet({ visible, onClose, filters, onChange, availableCate
                   );
                 })}
               </View>
-            </>
-          )}
+            </React.Fragment>
+          ))}
         </ScrollView>
       </View>
     </Modal>
