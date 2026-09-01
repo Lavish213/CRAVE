@@ -1,6 +1,6 @@
 # Active agent state
 
-Status: reviewed-and-merged
+Status: handoff-pending
 Owner: Claude
 Branch: main
 Base SHA: da74a7c (PR #114 merged)
@@ -34,13 +34,12 @@ a tiny reviewed website-menu canary via the existing, already-reviewed
 `backend/scripts/run_menu_backlog_canary.py` (13,128 website/no-menu
 candidates available), not another scheduler job.
 
-Next action: Codex, when back: pick a small (single-digit or low double-digit)
-reviewed batch of place IDs from the website/no-menu candidates, preview with
-`run_menu_backlog_canary.py`, then `--run --confirm-count N` only after the
-preview is reviewed. Free image acquisition needs its own source-specific
-canary before touching the 7,816 website/no-public-image places -- do not
-reuse the menu canary tool for that. No further scheduler allowlist expansion
-is authorized by this handoff.
+Next action: superseded by the new handoff below -- see
+`.agent-bridge/claude-to-codex.md` for a precise, ready-to-run synthetic test
+of `image_processing_recovery`'s actual reclaim behavior (every real run so
+far has hit an empty queue and proven nothing beyond "the job executes").
+The menu-canary and free-image-acquisition next-actions from the prior
+handoff still stand and are unaffected -- do either in whichever order suits.
 
 ## Existing local work excluded from this bridge
 
