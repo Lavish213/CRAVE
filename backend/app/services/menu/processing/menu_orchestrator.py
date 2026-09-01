@@ -432,6 +432,11 @@ class MenuOrchestrator:
                     # is a paid provider call and must never fire from the
                     # scheduled/bulk enrichment path.
                     allow_llm_fallback=False,
+                    # Lets iframe extraction (the tier most exposed to a
+                    # shared third-party ordering widget) reject content
+                    # that declares itself as a different business --
+                    # see entity_match.py's own docstring for the incident.
+                    place_name=getattr(place, "name", None),
                 ) or []
                 escalated_items = validate_extracted_items(escalated_items)
 

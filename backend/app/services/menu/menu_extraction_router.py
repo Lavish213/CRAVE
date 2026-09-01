@@ -8,6 +8,10 @@ from app.pipeline.snapshot_writer import MenuSnapshotWriter
 from app.services.menu.contracts import ExtractedMenuItem
 from app.services.menu.extraction.api_endpoint_discovery import discover_api_endpoints
 from app.services.menu.extraction.api_menu_extractor import extract_api_menu
+from app.services.menu.extraction.entity_match import (
+    extract_declared_entity_names,
+    names_plausibly_match,
+)
 from app.services.menu.extraction.extraction_result_ranker import (
     is_plausible_extraction_result,
     rank_extraction_results,
@@ -181,7 +185,9 @@ def _safe_api_extract(html: str, url: Optional[str]) -> List[ExtractedMenuItem]:
     return items[:MAX_ITEMS]
 
 
-def _safe_iframe_extract(html: str, url: Optional[str]) -> List[ExtractedMenuItem]:
+def _safe_iframe_extract(
+    html: str, url: Optional[str], place_name: Optional[str] = None,
+) -> List[ExtractedMenuItem]:
     items: List[ExtractedMenuItem] = []
 
     if not html or not url:
@@ -204,6 +210,22 @@ def _safe_iframe_extract(html: str, url: Optional[str]) -> List[ExtractedMenuIte
 
                 iframe_html = response.text or ""
                 if not iframe_html:
+                    continue
+
+                # An iframe can embed a completely different business's
+                # ordering widget (confirmed production incident: an
+                # unrelated vendor's menu items materialized as this
+                # place's own menu). If the iframe declares its own
+                # identity and it doesn't plausibly match the target
+                # place, skip it rather than trust it blindly -- absence
+                # of a declared name is not itself a red flag.
+                if place_name and not names_plausibly_match(
+                    extract_declared_entity_names(iframe_html), place_name,
+                ):
+                    logger.info(
+                        "iframe_entity_mismatch_skipped iframe_url=%s parent_url=%s",
+                        iframe_url, url,
+                    )
                     continue
 
                 extracted = extract_html_menu(iframe_html, iframe_url)
@@ -363,6 +385,7 @@ def _run_extraction_pass(
     allow_browser_escalation: bool,
     allow_llm_fallback: bool = True,
     allow_network_fallbacks: bool = True,
+    place_name: Optional[str] = None,
 ) -> List[ExtractedMenuItem]:
     provider_items = _safe_provider_extract(provider, html, url)
     if (
@@ -398,7 +421,9 @@ def _run_extraction_pass(
     ):
         return _return(place_id, url, "html", html_items)
 
-    iframe_items = _safe_iframe_extract(html, url) if allow_network_fallbacks else []
+    iframe_items = (
+        _safe_iframe_extract(html, url, place_name) if allow_network_fallbacks else []
+    )
 
     results = [
         {"extractor": "provider", "items": _dedupe(provider_items)},
@@ -477,6 +502,7 @@ def _run_extraction_pass(
                 allow_browser_escalation=False,
                 allow_llm_fallback=allow_llm_fallback,
                 allow_network_fallbacks=allow_network_fallbacks,
+                place_name=place_name,
             )
 
     return final
@@ -489,6 +515,7 @@ def extract_menu(
     *,
     allow_network_fallbacks: bool = True,
     allow_llm_fallback: bool = True,
+    place_name: Optional[str] = None,
 ) -> List[ExtractedMenuItem]:
     if not html and not url:
         return []
@@ -514,6 +541,7 @@ def extract_menu(
                     allow_browser_escalation=False,
                     allow_llm_fallback=allow_llm_fallback,
                     allow_network_fallbacks=allow_network_fallbacks,
+                    place_name=place_name,
                 )
 
         return []
@@ -526,4 +554,5 @@ def extract_menu(
         allow_browser_escalation=allow_network_fallbacks,
         allow_llm_fallback=allow_llm_fallback,
         allow_network_fallbacks=allow_network_fallbacks,
+        place_name=place_name,
     )

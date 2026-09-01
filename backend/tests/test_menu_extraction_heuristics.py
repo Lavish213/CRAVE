@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
 
 from app.services.menu.contracts import ExtractedMenuItem
 from app.services.menu.extraction.extraction_result_ranker import (
+    is_plausible_extraction_result,
     rank_extraction_results,
 )
 from app.services.menu.extraction.heuristics import dedupe_items as dedupe_heuristic_items
@@ -114,6 +116,102 @@ def test_provider_normalizer_uses_the_active_contract_and_preserves_cents():
             source_url="https://restaurant.test/menu",
         )
     ]
+
+
+def test_two_vendor_merge_shaped_result_is_rejected():
+    """
+    Reproduces the shape of a real production contamination incident: two
+    vendors' menus concatenated into one 112-item result via a shared
+    iframe/API widget, where common dish names (fries, salad, burger) each
+    appear once per vendor -- 56 distinct names across 112 items is a 0.5
+    unique ratio, which cleared the old >= 0.5 floor and got materialized
+    as a single restaurant's menu. A genuine single-vendor menu essentially
+    never repeats half its names; this must now be rejected.
+    """
+    common_dish_names = [f"Dish {i}" for i in range(55)] + ["Fries"]
+    two_vendor_merge = [
+        ExtractedMenuItem(name=name, section="Vendor A", price_cents=1000)
+        for name in common_dish_names
+    ] + [
+        ExtractedMenuItem(name=name, section="Vendor B", price_cents=1100)
+        for name in common_dish_names
+    ]
+    assert len(two_vendor_merge) == 112
+
+    assert is_plausible_extraction_result(two_vendor_merge) is False
+
+
+def test_a_real_menus_incidental_repeats_still_pass():
+    """A real single-vendor menu can legitimately repeat a handful of names
+    (e.g. a side dish offered under multiple sections) without approaching
+    the two-vendor-merge signature above -- this must still pass."""
+    mostly_unique = _items("Dish", priced=True, count=40)
+    a_few_repeats = [
+        ExtractedMenuItem(name="Fries", section="Sides", price_cents=400),
+        ExtractedMenuItem(name="Fries", section="Kids Menu", price_cents=300),
+    ]
+    menu = mostly_unique + a_few_repeats
+
+    assert is_plausible_extraction_result(menu) is True
+
+
+def _iframe_scenario(*, iframe_title: str, place_name: str | None):
+    """
+    Drives extract_menu() all the way down to iframe extraction (every
+    cheaper tier finds nothing), with one iframe whose page declares
+    `iframe_title` as its own identity. Returns whatever items survive.
+    """
+    iframe_html = f"<html><head><title>{iframe_title}</title></head></html>"
+    contaminating_items = _items("Contaminating Item", priced=True, count=5)
+    fake_response = SimpleNamespace(status_code=200, text=iframe_html)
+
+    def _html_extract_side_effect(html, url=None, source_url=None):
+        if html == iframe_html:
+            return contaminating_items
+        return []
+
+    with (
+        patch("app.services.menu.menu_extraction_router.detect_provider", return_value=None),
+        patch("app.services.menu.menu_extraction_router.extract_hydration_menu", return_value=[]),
+        patch("app.services.menu.menu_extraction_router.extract_jsonld_menu", return_value=[]),
+        patch("app.services.menu.menu_extraction_router.extract_menu_from_js", return_value=[]),
+        patch("app.services.menu.menu_extraction_router.discover_api_endpoints", return_value=[]),
+        patch(
+            "app.services.menu.menu_extraction_router.extract_html_menu",
+            side_effect=_html_extract_side_effect,
+        ),
+        patch(
+            "app.services.menu.menu_extraction_router.detect_menu_iframes",
+            return_value=["https://widget.test/iframe"],
+        ),
+        patch("app.services.menu.menu_extraction_router.fetch", return_value=fake_response),
+        patch("app.services.menu.menu_extraction_router.fetch_with_browser", return_value=None),
+    ):
+        return extract_menu(
+            "<html>menu</html>",
+            url="https://itani.test",
+            place_name=place_name,
+            allow_llm_fallback=False,
+        )
+
+
+def test_iframe_from_an_unrelated_business_is_dropped():
+    """
+    The actual production incident's mechanism: a restaurant's own page
+    embeds an iframe (an ordering widget) that turns out to declare a
+    completely different business's identity. Without place_name to check
+    against, this content used to get scraped and materialized as if it
+    were the target restaurant's own menu.
+    """
+    result = _iframe_scenario(iframe_title="Hopscotch Kitchen", place_name="Itani Deli & Cafe")
+    assert result == []
+
+
+def test_iframe_from_the_same_business_is_still_used():
+    """The guard must not reject legitimate same-business iframe content --
+    this proves it's a targeted check, not a blanket iframe block."""
+    result = _iframe_scenario(iframe_title="Itani Deli & Cafe", place_name="Itani Deli & Cafe")
+    assert len(result) == 5
 
 
 def test_navigation_heavy_html_does_not_bypass_the_quality_ladder():
