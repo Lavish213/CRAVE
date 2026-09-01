@@ -104,14 +104,16 @@ administrator bypass retained for the agreed small-fix lane.
   existing visit timestamp") that were true but had zero test coverage
   until independent review added it.
 
-- **Standalone production scheduler is provisioned safely, default-off.**
+- **Standalone production scheduler is live with one safe health job.**
   Railway service `CRAVE-scheduler` deploys `main` using
-  `cd backend && python -m app.scheduler_worker`, but `SCHEDULER_WORKER_ENABLED=false` and
-  no job allowlist keep it fail-closed. Its first deployment succeeded at
-  SHA `93bfeac`; runtime logs say `scheduler_worker_disabled
-  no_jobs_will_run`, and a read-only post-start database check found zero job
-  runs. No paid provider/storage credentials or scheduler job were enabled.
-  Enabling the first allowlisted job remains a separate production gate.
+  `cd backend && python -m app.scheduler_worker`. It now runs with
+  `SCHEDULER_WORKER_ENABLED=true` and an exact one-job allowlist containing
+  only `moderation_queue_health_check`; runtime logs confirm every other job
+  was removed and `scheduler_worker_started jobs=1`. An explicitly-authorized
+  one-shot on 2026-09-01 created production `job_runs` row
+  `238fa4af-91ce-4ac7-8854-59bf8a5c580c`: success, summary `empty`, no error.
+  Post-run web health stayed fully nominal (`db/cache/worker=ok`). No paid
+  provider, enrichment, ingestion, or recovery job was enabled.
 
 - **Oakland population canary applied and closed out.** All 10 staged
   Overture candidates were individually reviewed (existing-match/alias/
@@ -274,15 +276,15 @@ Two independent tracks, no overlap between them. Either can be picked up
 cold from this doc alone.
 
 **Production (needs Railway/Supabase access — Codex's lane):**
-1. Enable `SCHEDULER_JOB_ALLOWLIST=moderation_queue_health_check` on the
-   `CRAVE-scheduler` Railway service (currently provisioned, default-off
-   — see "What's solid right now"), observe one completed `job_runs` row
-   and nominal web health, keep the kill switch ready. See
-   `docs/SCHEDULER_WORKER_ROLLOUT.md` for the full phased plan and
-   rollback steps.
-2. Once that's stable, add the remaining jobs one at a time per that same
-   doc's plan: image-processing recovery, video processing, menu
-   enrichment, score recompute.
+1. ~~Enable and prove `moderation_queue_health_check`~~ — done. The exact
+   allowlist is live, the authorized one-shot completed successfully with an
+   empty queue, and web health remained nominal. Keep the kill switch ready;
+   see `docs/SCHEDULER_WORKER_ROLLOUT.md` for evidence and rollback steps.
+2. Before enabling another recurring job, measure its live queue depth and
+   document a reviewed cap. Add only one at a time in this order:
+   `share_parser`, `video_processing`, then `image_processing_recovery`.
+   Menu enrichment remains canary-only; score/ranking/discovery/ingestion
+   remain disabled.
 3. Run `backend/scripts/run_menu_backlog_canary.py` (preview first, then
    `--run --confirm-count N`) against real place IDs — the A1 backlog
    tool exists and is tested but has never actually been run.
