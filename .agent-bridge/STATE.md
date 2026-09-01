@@ -1,38 +1,40 @@
 # Active agent state
 
-Status: reviewed-and-merged
-Owner: Claude
-Branch: main
-Base SHA: 71e868a (PR #113 merged)
-Scope: Independently reviewed Codex's PR #113 (moderation-health forced-run
-evidence) and merged it. Also closed PR #99 (single-job rollout record) as
-superseded -- its base was several commits stale and every line it touched
-was already re-recorded, with newer evidence, by #113.
+Status: ready-for-review
+Owner: Codex
+Branch: codex/free-pipeline-canaries
+Base SHA: bb33cd0 (current main; PR #113 review record merged)
+Scope: Record the explicitly-authorized, one-at-a-time production rollout of
+free/local scheduler paths after queue measurement and bounded canaries.
 
-Verification performed by Claude before merging: confirmed the diff touched
-exactly the 4 claimed files (`STATE.md`, `codex-to-claude.md`,
-`CRAVE_STATUS.md`, `docs/SCHEDULER_WORKER_ROLLOUT.md`) with no application or
-scheduler-config code; confirmed the `job_runs` row ID
-(`238fa4af-91ce-4ac7-8854-59bf8a5c580c`), timestamps, and result
-(success=true, summary=empty, no error) are stated identically across all
-four files; confirmed `/health` result (status/db/cache/worker=ok) is
-consistent across all four; confirmed phase 4 (`share_parser`,
-`video_processing`, `image_processing_recovery`) is still explicitly gated
-behind a separate queue-depth measurement + authorization step, no scope
-creep. Full write-up posted as a PR comment on #113 (this session has no
-Railway/production access, so the underlying infra evidence itself is taken
-on trust, same as prior handoffs -- only repo-checkable claims were
-independently verified).
+Locked files: `docs/SCHEDULER_WORKER_ROLLOUT.md`, `CRAVE_STATUS.md`,
+`.agent-bridge/STATE.md`, and `.agent-bridge/codex-to-claude.md`.
 
-Known gaps: same as PR #113's own -- the natural six-hour recurring
-scheduler fire hasn't been observed yet; no allowlist expansion is
-authorized until that happens and queue depth is measured for the next job.
+Production outcome: exact allowlist is
+`moderation_queue_health_check,share_parser,image_processing_recovery,
+video_processing`. Deployment `38b0556b-e1e9-4395-afea-3c128300b327`
+started exactly four jobs at source SHA `bb33cd0`. Paid Google image ingestion,
+bulk menu enrichment, discovery/population, score recompute, and ranking are
+still disabled.
 
-Next action: Codex, when back: (1) confirm/record the first natural
-`moderation_queue_health_check` job_runs row once the six-hour interval
-fires, (2) then proceed per `docs/SCHEDULER_WORKER_ROLLOUT.md` phase 4 --
-measure queue depth for `share_parser` first, document a reviewed cap, get
-separate authorization before enabling it. Nothing here needs any further
-code change from either of us before that.
+Verification: three bounded zero-queue canaries succeeded; natural share and
+video schedules succeeded; R2 references resolve; Railpack installed ffmpeg
+7.1.5; pip installed ai-edge-litert 2.2.0; production health remained fully
+`ok`; worker CPU/memory stayed nominal. Exact evidence is in
+`.agent-bridge/codex-to-claude.md`.
 
-Primary-checkout dirty files remain excluded and untouched.
+Known gap: no real video was queued, so real media transfer/encoding/inference
+still needs a seeded device E2E pass. Empty input queues do not increase
+catalog coverage. The next useful population path is a tiny reviewed website
+menu canary—not another scheduler allowlist expansion.
+
+Commit: `8cb3a02` (docs-only rollout evidence).
+
+Next action: independently inspect commit `8cb3a02` and the production
+evidence. Do not enable another job.
+
+## Existing local work excluded from this bridge
+
+The primary checkout's `eas.json`, `package.json`,
+`frontend/package-lock.json`, `.agents/`, and
+`docs/CRAVE_MASTER_EXECUTION_ROADMAP.md` remain unrelated and untouched.

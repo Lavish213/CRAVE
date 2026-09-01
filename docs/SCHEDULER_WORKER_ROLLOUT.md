@@ -19,16 +19,32 @@ The gap above is now split into two independent facts — do not conflate them:
 - **Service exists**: `CRAVE-scheduler` is provisioned on Railway, connected
   to `Lavish213/CRAVE` on `main`, deployed successfully (first deploy at SHA
   `93bfeac`).
-- **One bounded health job is live**: `SCHEDULER_WORKER_ENABLED=true` and
-  `SCHEDULER_JOB_ALLOWLIST=moderation_queue_health_check`. Runtime logs from
-  deployment `141f26f5-d449-4f80-b32f-06d2108c5b9e` show every other job
-  removed and `scheduler_worker_started jobs=1`. An explicitly-authorized
-  one-shot created `job_runs` row
-  `238fa4af-91ce-4ac7-8854-59bf8a5c580c` (started
-  `2026-09-01T14:32:09.952741Z`, finished
-  `2026-09-01T14:32:11.132023Z`, success, summary `empty`, no error).
-  Post-run `/health` remained `status/db/cache/worker=ok`. No enrichment,
-  ingestion, recovery, score, or ranking job is enabled.
+- **Four bounded free/local jobs are live**: `SCHEDULER_WORKER_ENABLED=true`
+  with the exact allowlist `moderation_queue_health_check,share_parser,
+  image_processing_recovery,video_processing`. Deployment
+  `38b0556b-e1e9-4395-afea-3c128300b327` (source SHA `bb33cd0`) logged those
+  four jobs added, every other job removed, and
+  `scheduler_worker_started jobs=4`. The scheduler receives its five R2
+  settings through Railway reference variables to the web service; values
+  were never copied or printed. Railpack installs `ffmpeg 7.1.5`, the build
+  installed `ai-edge-litert 2.2.0`, and the classifier model is present in
+  the repository. Menu enrichment, Google image ingestion, discovery,
+  OSM/Overture population, score recompute, and ranking remain disabled.
+
+- **Canary evidence**: before expansion, production had zero actionable
+  shares, videos, or stale image uploads. One-shots created successful
+  `job_runs` rows for share parsing (`6bdbd816-950d-4a18-b8ed-b66b22a9c602`,
+  `no_pending_items`), image recovery
+  (`cf368fdf-a7bf-478c-a05c-686255d2b4bd`, `reclaimed=0`), and video
+  processing (`d5d5853b-28ca-47e4-84e2-d480c79eb744`, batch size zero and
+  no failures). The recurring share parser then fired naturally at
+  `2026-09-01T19:44:45.694154Z` and succeeded. Recurring video processing
+  fired naturally after the final deployment at
+  `2026-09-01T19:50:21.060170Z` (job run
+  `3c0260b9-bdef-4631-a2c4-aca7e1d550f1`) and completed successfully with an
+  empty batch and no error. Post-rollout web health remained
+  `status/db/cache/worker=ok`; worker CPU stayed nominal and memory remained
+  below 0.16 GB during the observed window.
 
 ## Required worker configuration
 
@@ -57,9 +73,10 @@ runs no jobs.
 3. **Done (2026-09-01).** Observed the successful one-shot `job_runs` row and
    nominal web health described above. The recurring six-hour schedule stays
    enabled for ongoing observation.
-4. Add latency-sensitive recovery jobs one at a time only after their current
-   queue depth is measured: `share_parser`, `video_processing`, then
-   `image_processing_recovery`.
+4. **Done (2026-09-01).** Measured zero actionable rows, ran separate bounded
+   one-shots, and enabled `share_parser`, `image_processing_recovery`, then
+   `video_processing`. Storage references, ffmpeg, and the ML runtime were
+   fixed/verified before video was admitted to the allowlist.
 5. Keep `menu_enrichment`, `image_ingestion`, `discovery`, `osm_ingest`,
    `overture_ingest`, `score_recompute`, and `ranking_update` disabled until
    each backlog has its own reviewed batch cap and canary evidence.

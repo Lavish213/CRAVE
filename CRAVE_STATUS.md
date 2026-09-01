@@ -104,16 +104,29 @@ administrator bypass retained for the agreed small-fix lane.
   existing visit timestamp") that were true but had zero test coverage
   until independent review added it.
 
-- **Standalone production scheduler is live with one safe health job.**
+- **Standalone production scheduler is live with four safe free/local jobs.**
   Railway service `CRAVE-scheduler` deploys `main` using
   `cd backend && python -m app.scheduler_worker`. It now runs with
-  `SCHEDULER_WORKER_ENABLED=true` and an exact one-job allowlist containing
-  only `moderation_queue_health_check`; runtime logs confirm every other job
-  was removed and `scheduler_worker_started jobs=1`. An explicitly-authorized
-  one-shot on 2026-09-01 created production `job_runs` row
-  `238fa4af-91ce-4ac7-8854-59bf8a5c580c`: success, summary `empty`, no error.
-  Post-run web health stayed fully nominal (`db/cache/worker=ok`). No paid
-  provider, enrichment, ingestion, or recovery job was enabled.
+  `SCHEDULER_WORKER_ENABLED=true` and an exact allowlist containing only
+  `moderation_queue_health_check`, `share_parser`,
+  `image_processing_recovery`, and `video_processing`; deployment
+  `38b0556b-e1e9-4395-afea-3c128300b327` logged every other job removed and
+  `scheduler_worker_started jobs=4`. All three new jobs had zero actionable
+  rows and passed separate no-op canaries. Share parsing and video processing
+  subsequently fired naturally and succeeded; the natural video run
+  (`3c0260b9-bdef-4631-a2c4-aca7e1d550f1`) completed with an empty batch and
+  no error. R2 is wired through Railway references, Railpack installs ffmpeg
+  7.1.5, and the build installs ai-edge-litert 2.2.0. Web health stayed fully
+  nominal (`db/cache/worker=ok`). Paid Google image ingestion, bulk menu
+  enrichment, discovery/population, scoring, and ranking remain disabled.
+
+- **Live population baseline is now measured.** Production has 37,761 active
+  places. Coverage is 2.66% for menus (1,005 places), 40.55% for any public
+  image (15,313), 36.55% for a primary image (13,802), and 37.43% for a known
+  website (14,133). The biggest free-source opportunity is the 13,128 active
+  places with a website but no menu; 7,816 website-backed places have no
+  public image. These are eligibility counts, not authorization to scrape or
+  promote them without reviewed per-source canaries.
 
 - **Oakland population canary applied and closed out.** All 10 staged
   Overture candidates were individually reviewed (existing-match/alias/
@@ -252,8 +265,11 @@ scoped entity review, not a copy-paste of this one. ~~Record-video
 discoverability~~ — decided (E3, "The Pass"): Place Detail stays the
 only playback surface, a has_video badge on Feed/Search/Craves cards
 drives discovery instead; see "Design invariants — don't relitigate these" below.
-Confirm the food-classifier model is actually installed in prod vs.
-degrading to its fallback path. Physical-device smoke pass (Auth/Feed/
+~~Confirm the food-classifier runtime is installed in prod~~ — build logs
+confirm `ai-edge-litert 2.2.0`; the 12 MB model is in deployed source and
+ffmpeg 7.1.5 is installed in the scheduler image. A real uploaded-video
+end-to-end pass is still required to validate inference quality, not merely
+dependency presence. Physical-device smoke pass (Auth/Feed/
 Search/Place Detail/Save/Map/Upload/Offline/Push/**Decision Session**).
 ~~Build the Decision-Session auto-visited hook~~ — done (PR #109).
 
