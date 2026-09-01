@@ -78,6 +78,13 @@ class PlaceOut(BaseModel):
     grubhub_url: Optional[str] = None
     has_menu: bool = False
 
+    # Approved + visible videos only -- see
+    # app.services.query.place_video_visibility_query.get_has_video_bulk().
+    # Drives the E3 "has video" card badge (Place Detail stays the only
+    # playback surface for now); see
+    # docs/E2_E3_E10_PRODUCT_TRADEOFFS_2026-08-31.md.
+    has_video: bool = False
+
     @model_validator(mode="before")
     @classmethod
     def _inject_category(cls, data):
@@ -148,6 +155,7 @@ class PlaceOut(BaseModel):
                 "website": getattr(data, "website", None),
                 "grubhub_url": getattr(data, "grubhub_url", None),
                 "has_menu": getattr(data, "has_menu", False),
+                "has_video": getattr(data, "has_video", False),
             }
         return data
 

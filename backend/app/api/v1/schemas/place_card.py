@@ -80,6 +80,8 @@ class PlaceCardOut(BaseModel):
     website: Optional[str] = None
     grubhub_url: Optional[str] = None
     has_menu: bool = False
+    # See PlaceOut.has_video (schemas/places.py) -- same E3 badge signal.
+    has_video: bool = False
 
     price_tier: Optional[int] = Field(default=None, ge=1, le=4)
 
@@ -154,6 +156,7 @@ class PlaceCardOut(BaseModel):
                 "website": getattr(data, "website", None),
                 "grubhub_url": getattr(data, "grubhub_url", None),
                 "has_menu": getattr(data, "has_menu", False),
+                "has_video": getattr(data, "has_video", False),
                 "price_tier": getattr(data, "price_tier", None),
                 "rank_score": float(getattr(data, "rank_score", None) or 0.0),
                 "master_score": float(getattr(data, "master_score", None) or 0.0),
