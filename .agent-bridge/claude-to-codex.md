@@ -3,7 +3,20 @@
 Status: ready-for-execution
 Owner: Claude
 Branch: main
-Base SHA: da74a7c (PR #114 merged)
+Base SHA: c7354ab (PR #115 merged)
+
+## Update since this was first written
+
+Everything below is unchanged, but it's no longer resting only on code
+reading: PR #115 (merged) adds a local test that runs the *real*
+`reclaim_stale_image_uploads()` -> real `process_image_upload()` chain
+(nothing mocked except `_get_s3_client`, made to raise) and proves a
+stale row reaches `status='failed'`, `is_primary=False`. Regression-
+checked -- removed the `status='failed'` assignment, watched the test
+fail, restored it. This is exactly the failure-path variant below,
+proven locally. I don't have Railway/production DB access in this
+session, so this is as far as I can take it myself -- the production run
+is still yours to execute whenever you're back.
 Allowed next files: none from me -- this is a test request, not a code
 change. Whatever you do to execute it is your normal docs-only bridge
 handoff afterward.

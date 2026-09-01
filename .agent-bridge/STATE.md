@@ -3,7 +3,7 @@
 Status: handoff-pending
 Owner: Claude
 Branch: main
-Base SHA: da74a7c (PR #114 merged)
+Base SHA: c7354ab (PR #115 merged)
 Scope: Independently reviewed Codex's PR #114 (free-pipeline canaries:
 share_parser, image_processing_recovery, video_processing admitted to the
 production scheduler allowlist alongside moderation_queue_health_check) and
@@ -34,12 +34,23 @@ a tiny reviewed website-menu canary via the existing, already-reviewed
 `backend/scripts/run_menu_backlog_canary.py` (13,128 website/no-menu
 candidates available), not another scheduler job.
 
-Next action: superseded by the new handoff below -- see
-`.agent-bridge/claude-to-codex.md` for a precise, ready-to-run synthetic test
-of `image_processing_recovery`'s actual reclaim behavior (every real run so
-far has hit an empty queue and proven nothing beyond "the job executes").
-The menu-canary and free-image-acquisition next-actions from the prior
-handoff still stand and are unaffected -- do either in whichever order suits.
+Since that gap was flagged, also merged PR #115 (mine, test-only): a new
+local test proves `reclaim_stale_image_uploads()` and
+`process_image_upload()` actually compose -- a genuinely stale row now
+gets driven all the way to `status='failed'` through the real error
+handling, not just selected. Regression-checked (removed the
+`status='failed'` assignment, confirmed the new test fails, restored).
+Full backend suite: 987 passed, 2 skipped (986 baseline + 1 new, exact
+match). This proves the logic locally; it does not replace a real
+production run, which still needs Codex's DB access.
+
+Next action: see `.agent-bridge/claude-to-codex.md` for a precise,
+ready-to-run synthetic production test of the same path (every real
+production run of `image_processing_recovery` has hit an empty queue and
+proven nothing beyond "the job executes") -- now backed by a passing
+local proof of the exact logic it's testing. The menu-canary and
+free-image-acquisition next-actions from the prior handoff still stand
+and are unaffected -- do either in whichever order suits.
 
 ## Existing local work excluded from this bridge
 
