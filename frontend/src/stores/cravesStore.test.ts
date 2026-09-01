@@ -14,7 +14,7 @@
 //    onFinishHydration, which never fires if the AsyncStorage read itself
 //    rejects — a storage failure left any pending loadSaves() call waiting
 //    forever.
-import type { PlaceOut } from '../api/places';
+import type { SavedPlace } from '../api/saves';
 
 let resolveGetItem: ((value: string | null) => void) | null = null;
 let rejectGetItem: ((err: unknown) => void) | null = null;
@@ -38,6 +38,7 @@ jest.mock('../api/saves', () => ({
   fetchSaves: jest.fn(),
   createSave: jest.fn(),
   deleteSave: jest.fn(),
+  updateSaveMemory: jest.fn(),
 }));
 
 // Real recommendationEventQueue.ts -> recommendationEvents.ts -> client.ts
@@ -49,8 +50,8 @@ jest.mock('../utils/recommendationEventQueue', () => ({
   logRecommendationEvent: jest.fn(),
 }));
 
-function makePlace(id: string): PlaceOut {
-  return { id, name: id } as unknown as PlaceOut;
+function makePlace(id: string): SavedPlace {
+  return { id, name: id, visited: false, visited_at: null, notes: null } as unknown as SavedPlace;
 }
 
 // Several .then() hops separate our mock's resolve/reject call from the
@@ -76,6 +77,7 @@ describe('cravesStore', () => {
     (savesApi.fetchSaves as jest.Mock).mockReset();
     (savesApi.createSave as jest.Mock).mockReset();
     (savesApi.deleteSave as jest.Mock).mockReset();
+    (savesApi.updateSaveMemory as jest.Mock).mockReset();
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     eventQueue = require('../utils/recommendationEventQueue');
     (eventQueue.logRecommendationEvent as jest.Mock).mockReset();
@@ -533,6 +535,65 @@ describe('cravesStore', () => {
         expect.objectContaining({ event_type: 'save', place_id: 'p1', client_event_id: queuedEventId }),
       );
       expect(useCravesStore.getState().pendingSyncActions).toEqual({});
+    });
+  });
+
+  describe('setSaveMemory', () => {
+    it('applies the server-confirmed visited_at rather than the optimistic guess', async () => {
+      await hydrateWith(null);
+      useCravesStore.setState({ saves: [makePlace('p1')], savesUserId: 'userA' });
+      (savesApi.updateSaveMemory as jest.Mock).mockResolvedValue({
+        visited: true, visited_at: '2026-09-01T12:00:00Z', notes: null,
+      });
+
+      const err = await useCravesStore.getState().setSaveMemory('p1', { visited: true });
+
+      expect(err).toBeNull();
+      const saved = useCravesStore.getState().saves.find((s) => s.id === 'p1');
+      expect(saved?.visited).toBe(true);
+      expect(saved?.visited_at).toBe('2026-09-01T12:00:00Z');
+    });
+
+    it('rolls back to the pre-mutation entry on failure', async () => {
+      await hydrateWith(null);
+      const original = makePlace('p1');
+      useCravesStore.setState({ saves: [original], savesUserId: 'userA' });
+      (savesApi.updateSaveMemory as jest.Mock).mockRejectedValue({
+        response: { status: 500 },
+      });
+
+      const err = await useCravesStore.getState().setSaveMemory('p1', { visited: true });
+
+      expect(err).not.toBeNull();
+      expect(useCravesStore.getState().saves.find((s) => s.id === 'p1')).toEqual(original);
+    });
+
+    it('is a no-op when the place is not currently saved', async () => {
+      await hydrateWith(null);
+      useCravesStore.setState({ saves: [], savesUserId: 'userA' });
+
+      const err = await useCravesStore.getState().setSaveMemory('p1', { visited: true });
+
+      expect(err).toBeNull();
+      expect(savesApi.updateSaveMemory).not.toHaveBeenCalled();
+    });
+
+    it('clears notes when explicitly set to null, leaves visited untouched', async () => {
+      await hydrateWith(null);
+      useCravesStore.setState({
+        saves: [{ ...makePlace('p1'), notes: 'old note', visited: true }],
+        savesUserId: 'userA',
+      });
+      (savesApi.updateSaveMemory as jest.Mock).mockResolvedValue({
+        visited: true, visited_at: null, notes: null,
+      });
+
+      await useCravesStore.getState().setSaveMemory('p1', { notes: null });
+
+      expect(savesApi.updateSaveMemory).toHaveBeenCalledWith('p1', { notes: null });
+      const saved = useCravesStore.getState().saves.find((s) => s.id === 'p1');
+      expect(saved?.notes).toBeNull();
+      expect(saved?.visited).toBe(true);
     });
   });
 });

@@ -8,7 +8,7 @@
 // moderation branching -- neither was touched by this pass, and both
 // already have their own established behavior from prior sessions.
 import React from 'react';
-import { render, waitFor } from '@testing-library/react-native';
+import { render, waitFor, fireEvent } from '@testing-library/react-native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import PlaceDetailScreen from '../app/place/[id]';
 import { fetchPlaceDetail } from '../src/api/places';
@@ -47,7 +47,13 @@ jest.mock('../src/hooks/useImageStatusPoll', () => ({
 }));
 jest.mock('../src/stores/authStore', () => ({ useAuthStore: jest.fn() }));
 jest.mock('../src/stores/cravesStore', () => {
-  const state = { addSave: jest.fn(), removeSave: jest.fn(), isSaved: jest.fn(() => false) };
+  const state = {
+    addSave: jest.fn(),
+    removeSave: jest.fn(),
+    isSaved: jest.fn(() => false),
+    saves: [] as any[],
+    setSaveMemory: jest.fn(),
+  };
   const hook: any = () => state;
   hook.getState = () => state;
   return { useCravesStore: hook, __state: state };
@@ -110,6 +116,7 @@ describe('PlaceDetailScreen — visual-pass regression coverage', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     cravesStoreState.isSaved.mockReturnValue(false);
+    cravesStoreState.saves = [];
     mockedUseAuthStore.mockImplementation((selector: (s: { user: unknown }) => unknown) =>
       selector({ user: mockAuthUser }),
     );
@@ -175,5 +182,90 @@ describe('PlaceDetailScreen — visual-pass regression coverage', () => {
     const { findByText } = renderScreen();
 
     expect(await findByText("Couldn't load this place")).toBeTruthy();
+  });
+});
+
+describe('PlaceDetailScreen — visited/notes memory (E2)', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    cravesStoreState.isSaved.mockReturnValue(false);
+    cravesStoreState.saves = [];
+    mockedUseAuthStore.mockImplementation((selector: (s: { user: unknown }) => unknown) =>
+      selector({ user: mockAuthUser }),
+    );
+    mockedGetCravesForPlace.mockResolvedValue([]);
+    mockedGetPlaceMenu.mockResolvedValue({ items: [], lastVerifiedAt: null } as any);
+  });
+
+  it('does not render the visited/notes section for a place that is not saved', async () => {
+    mockedFetchPlaceDetail.mockResolvedValue(basePlace());
+    const { findByText, queryByLabelText } = renderScreen();
+
+    await findByText('Nari');
+    expect(queryByLabelText('Notes about this place')).toBeNull();
+    expect(queryByLabelText(/I've been here|You've been here/)).toBeNull();
+  });
+
+  it('shows "I\'ve been here" for a saved, not-yet-visited place', async () => {
+    mockedFetchPlaceDetail.mockResolvedValue(basePlace());
+    cravesStoreState.saves = [{ ...basePlace(), visited: false, visited_at: null, notes: null }];
+    const { findByLabelText } = renderScreen();
+
+    expect(await findByLabelText('Mark as visited')).toBeTruthy();
+  });
+
+  it('shows "You\'ve been here" once visited, and toggling calls setSaveMemory with the flipped value', async () => {
+    mockedFetchPlaceDetail.mockResolvedValue(basePlace());
+    cravesStoreState.saves = [{ ...basePlace(), visited: true, visited_at: '2026-09-01T00:00:00Z', notes: null }];
+    cravesStoreState.setSaveMemory.mockResolvedValue(null);
+    const { findByLabelText } = renderScreen();
+
+    const toggle = await findByLabelText('Mark as not visited');
+    fireEvent.press(toggle);
+    await waitFor(() =>
+      expect(cravesStoreState.setSaveMemory).toHaveBeenCalledWith('place-1', { visited: false }),
+    );
+  });
+
+  it('prefills the notes field from the saved entry and only shows Save note once the draft actually changes', async () => {
+    mockedFetchPlaceDetail.mockResolvedValue(basePlace());
+    cravesStoreState.saves = [{ ...basePlace(), visited: false, visited_at: null, notes: 'great patio' }];
+    const { findByDisplayValue, queryByLabelText, getByLabelText } = renderScreen();
+
+    const input = await findByDisplayValue('great patio');
+    expect(queryByLabelText('Save note')).toBeNull();
+
+    fireEvent.changeText(input, 'great patio, ask for the corner table');
+    expect(getByLabelText('Save note')).toBeTruthy();
+  });
+
+  it('saves an edited note by calling setSaveMemory with the trimmed text', async () => {
+    mockedFetchPlaceDetail.mockResolvedValue(basePlace());
+    cravesStoreState.saves = [{ ...basePlace(), visited: false, visited_at: null, notes: '' }];
+    cravesStoreState.setSaveMemory.mockResolvedValue(null);
+    const { findByLabelText, getByLabelText } = renderScreen();
+
+    const input = await findByLabelText('Notes about this place');
+    fireEvent.changeText(input, '  ask for the corner table  ');
+    fireEvent.press(getByLabelText('Save note'));
+    await waitFor(() =>
+      expect(cravesStoreState.setSaveMemory).toHaveBeenCalledWith('place-1', {
+        notes: 'ask for the corner table',
+      }),
+    );
+  });
+
+  it('clears notes (sends null, not empty string) when the field is emptied', async () => {
+    mockedFetchPlaceDetail.mockResolvedValue(basePlace());
+    cravesStoreState.saves = [{ ...basePlace(), visited: false, visited_at: null, notes: 'old note' }];
+    cravesStoreState.setSaveMemory.mockResolvedValue(null);
+    const { findByDisplayValue, getByLabelText } = renderScreen();
+
+    const input = await findByDisplayValue('old note');
+    fireEvent.changeText(input, '');
+    fireEvent.press(getByLabelText('Save note'));
+    await waitFor(() =>
+      expect(cravesStoreState.setSaveMemory).toHaveBeenCalledWith('place-1', { notes: null }),
+    );
   });
 });

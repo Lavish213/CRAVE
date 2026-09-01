@@ -1,6 +1,7 @@
 import React from 'react';
 import { StyleSheet, Text, TouchableOpacity, View, ViewStyle } from 'react-native';
 import { Image } from 'expo-image';
+import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { PlaceOut } from '../api/places';
 import { getTierForPlace, formatPrice, getBadges, percentileCaption, formatDistance } from '../utils/scoring';
@@ -15,9 +16,16 @@ interface Props {
   onPressIn?: () => void;
   rightAction?: React.ReactNode;
   style?: ViewStyle;
+  /** Per-save memory (E2) -- only meaningful for a Craves list row, so
+   * both are optional and undefined elsewhere (Feed/Search/Trending
+   * don't have a save's memory to show). Notes content itself is
+   * deliberately never shown inline here, only its presence -- see
+   * docs/E2_E3_E10_PRODUCT_TRADEOFFS_2026-08-31.md. */
+  visited?: boolean;
+  hasNotes?: boolean;
 }
 
-function PlaceCardCompactImpl({ place, onPress, onPressIn, rightAction, style }: Props) {
+function PlaceCardCompactImpl({ place, onPress, onPressIn, rightAction, style, visited, hasNotes }: Props) {
   const tier = getTierForPlace(place);
   const price = place.price ?? formatPrice(place);
   const badges = getBadges(place);
@@ -52,7 +60,25 @@ function PlaceCardCompactImpl({ place, onPress, onPressIn, rightAction, style }:
         </View>
       )}
       <View style={styles.info}>
-        <TierBadge tier={tier} style={styles.badgeTier} />
+        <View style={styles.topRow}>
+          <TierBadge tier={tier} style={styles.badgeTier} />
+          {visited ? (
+            <Ionicons
+              name="checkmark-circle"
+              size={14}
+              color={Colors.success}
+              accessibilityLabel="Visited"
+            />
+          ) : null}
+          {hasNotes ? (
+            <Ionicons
+              name="document-text-outline"
+              size={13}
+              color={Colors.textSecondary}
+              accessibilityLabel="Has a note"
+            />
+          ) : null}
+        </View>
         <Text style={styles.name} numberOfLines={1}>{place.name}</Text>
         {percentileLabel ? (
           <Text style={[styles.percentile, { color: tier.color }]}>{percentileLabel}</Text>
@@ -114,10 +140,11 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
   },
   info: { flex: 1, gap: 3 },
+  topRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   name: { color: Colors.text, fontSize: 15, fontWeight: '600' },
   percentile: { fontSize: 11, fontWeight: '700' },
   sub: { color: Colors.textSecondary, fontSize: 13 },
-  badgeTier: { marginBottom: 2 },
+  badgeTier: { marginBottom: 0 },
   badgeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginTop: 2 },
   chip: {
     paddingHorizontal: 7,

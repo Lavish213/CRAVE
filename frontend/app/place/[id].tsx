@@ -7,6 +7,7 @@ import {
   Share,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -80,7 +81,7 @@ export default function PlaceDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const navigation = useNavigation();
   const router = useRouter();
-  const { addSave, removeSave, isSaved } = useCravesStore();
+  const { addSave, removeSave, isSaved, saves, setSaveMemory } = useCravesStore();
   const user = useAuthStore((s) => s.user);
   const toast = useToast((s) => s.show);
   const { pick } = useImagePicker();
@@ -108,6 +109,23 @@ export default function PlaceDetailScreen() {
 
   const [reportImageId, setReportImageId] = useState<string | null>(null);
   const [menuSubmitVisible, setMenuSubmitVisible] = useState(false);
+
+  // Visited/notes memory (E2) -- only meaningful once this place is
+  // actually saved, since it lives on the HitlistSave row backend-side.
+  // See docs/E2_E3_E10_PRODUCT_TRADEOFFS_2026-08-31.md.
+  const savedEntry = saves.find((s) => s.id === id);
+  const [notesDraft, setNotesDraft] = useState('');
+  const [savingVisited, setSavingVisited] = useState(false);
+  const [savingNotes, setSavingNotes] = useState(false);
+  // Reset the draft to whatever the store actually holds whenever this
+  // place's save changes underneath it (initial load, or a different
+  // place navigated to while this component instance persists) -- not a
+  // controlled sync on every render, which would stomp on in-progress
+  // typing every time an unrelated store update (e.g. an offline-queue
+  // flush for a different place) re-renders this screen.
+  useEffect(() => {
+    setNotesDraft(savedEntry?.notes ?? '');
+  }, [id, savedEntry?.notes]);
 
   const [isAddingPhoto, setIsAddingPhoto] = useState(false);
   const [pendingImageId, setPendingImageId] = useState<string | undefined>();
@@ -332,6 +350,35 @@ export default function PlaceDetailScreen() {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         toast('Saved');
       }
+    }
+  };
+
+  const handleToggleVisited = async () => {
+    if (!savedEntry || savingVisited) return;
+    setSavingVisited(true);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    const nextVisited = !savedEntry.visited;
+    const err = await setSaveMemory(place.id, { visited: nextVisited });
+    setSavingVisited(false);
+    if (err) {
+      toast(err);
+    } else {
+      toast(nextVisited ? "Marked as visited" : "Unmarked as visited");
+    }
+  };
+
+  const handleSaveNotes = async () => {
+    if (!savedEntry || savingNotes) return;
+    setSavingNotes(true);
+    // Empty text clears notes (sends null, not an empty string) --
+    // matches the backend PATCH route treating null as "clear."
+    const err = await setSaveMemory(place.id, { notes: notesDraft.trim() || null });
+    setSavingNotes(false);
+    if (err) {
+      toast(err);
+    } else {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      toast('Note saved');
     }
   };
 
@@ -632,6 +679,62 @@ export default function PlaceDetailScreen() {
         ) : null}
       </View>
 
+      {/* Visited/notes memory (E2) -- only shown once saved, since
+          memory lives on the save itself, not the place. Notes are
+          detail-view-only by design: the Craves list row only shows a
+          "has notes" dot, never the content, so this is the one place
+          it's actually readable/editable. */}
+      {savedEntry ? (
+        <View style={styles.memorySection}>
+          <TouchableOpacity
+            style={styles.visitedRow}
+            onPress={handleToggleVisited}
+            disabled={savingVisited}
+            accessibilityRole="button"
+            accessibilityLabel={savedEntry.visited ? 'Mark as not visited' : 'Mark as visited'}
+          >
+            {savingVisited ? (
+              <ActivityIndicator size="small" color={Colors.textSecondary} />
+            ) : (
+              <Ionicons
+                name={savedEntry.visited ? 'checkmark-circle' : 'checkmark-circle-outline'}
+                size={20}
+                color={savedEntry.visited ? Colors.success : Colors.textSecondary}
+              />
+            )}
+            <Text style={[styles.visitedLabel, savedEntry.visited && { color: Colors.success }]}>
+              {savedEntry.visited ? "You've been here" : "I've been here"}
+            </Text>
+          </TouchableOpacity>
+
+          <TextInput
+            style={styles.notesInput}
+            value={notesDraft}
+            onChangeText={setNotesDraft}
+            placeholder="Add a note — what to order, how it was…"
+            placeholderTextColor={Colors.textSecondary}
+            multiline
+            maxLength={2000}
+            accessibilityLabel="Notes about this place"
+          />
+          {notesDraft.trim() !== (savedEntry.notes ?? '') ? (
+            <TouchableOpacity
+              style={styles.saveNoteBtn}
+              onPress={handleSaveNotes}
+              disabled={savingNotes}
+              accessibilityRole="button"
+              accessibilityLabel="Save note"
+            >
+              {savingNotes ? (
+                <ActivityIndicator size="small" color={Colors.background} />
+              ) : (
+                <Text style={styles.saveNoteBtnText}>Save note</Text>
+              )}
+            </TouchableOpacity>
+          ) : null}
+        </View>
+      ) : null}
+
       {/* What to get — promoted from a collapsible list near the bottom to
           a visually prominent section (CRAVE_PLACE_DETAIL_SPEC.md §3.5).
           Same data/logic as before; no dish-level "recommended for you"
@@ -886,6 +989,42 @@ const styles = StyleSheet.create({
   actionBtnSaved: { borderColor: Colors.primary, backgroundColor: Colors.primary + '22' },
   actionLabel: { color: Colors.textSecondary, fontSize: 13, fontWeight: '600' },
   actionLabelSaved: { color: Colors.primary },
+  memorySection: {
+    paddingHorizontal: 16,
+    paddingVertical: 4,
+    gap: 8,
+  },
+  visitedRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 8,
+    minHeight: 44,
+  },
+  visitedLabel: { color: Colors.textSecondary, fontSize: 14, fontWeight: '600' },
+  notesInput: {
+    minHeight: 60,
+    maxHeight: 140,
+    borderRadius: Radius.md,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    backgroundColor: Colors.surface,
+    color: Colors.text,
+    fontSize: 14,
+    padding: 12,
+    textAlignVertical: 'top',
+  },
+  saveNoteBtn: {
+    alignSelf: 'flex-start',
+    backgroundColor: Colors.primary,
+    borderRadius: Radius.pill,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    minHeight: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  saveNoteBtnText: { color: Colors.background, fontSize: 13, fontWeight: '700' },
   menuSection: { paddingHorizontal: 16, paddingTop: 8 },
   menuTitleRow: {
     flexDirection: 'row',

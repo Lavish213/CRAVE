@@ -7,7 +7,7 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { PlaceOut } from '../api/places';
-import { fetchSaves, createSave, deleteSave } from '../api/saves';
+import { fetchSaves, createSave, deleteSave, updateSaveMemory, SavedPlace, SaveMemoryUpdate } from '../api/saves';
 import { logRecommendationEvent } from '../utils/recommendationEventQueue';
 import { RecommendationSurface } from '../api/recommendationEvents';
 
@@ -71,7 +71,7 @@ export interface PendingSyncAction {
 }
 
 interface CravesStore {
-  saves: PlaceOut[];
+  saves: SavedPlace[];
   loading: boolean;
   error: string | null;
 
@@ -118,6 +118,18 @@ interface CravesStore {
   clearSaves: () => void;
 
   isSaved: (placeId: string) => boolean;
+
+  // Optimistic visited/notes update (E2) -- PATCHes
+  // /saves/{placeId}/memory and applies the confirmed server response
+  // (not just the local optimistic guess) into `saves` on success, so
+  // e.g. visited_at reflects the server-stamped timestamp rather than a
+  // client-side approximation. Rolls back to the pre-mutation entry on
+  // failure. No-op (returns null) if the place isn't currently saved --
+  // memory only exists on a save. Unlike addSave/removeSave, does not
+  // queue on a network-level failure -- this is a lower-stakes edit than
+  // a save/unsave, and the offline-queue machinery's account-generation
+  // and mutation-token bookkeeping isn't worth duplicating for it.
+  setSaveMemory: (placeId: string, updates: SaveMemoryUpdate) => Promise<string | null>;
 
   // Attempts every queued action belonging to `userId`, in order, stopping
   // at the first one that still fails with a network-level error (no point
@@ -416,8 +428,14 @@ export const useCravesStore = create<CravesStore>()(
         // of logging a second event for the same confirmed outcome.
         const eventId = _makeEventId();
         _pendingSaves.add(place.id);
-        // Optimistic: add immediately
-        set({ saves: [place, ...prev] });
+        // Optimistic: add immediately. A freshly-saved place has no
+        // memory yet -- the real values (if any existed from a prior
+        // save/unsave/re-save cycle, which the backend's idempotent
+        // "already_saved" path would actually preserve) arrive on the
+        // next loadSaves(), same as any other server-side truth this
+        // optimistic insert can't know yet.
+        const optimisticEntry: SavedPlace = { ...place, visited: false, visited_at: null, notes: null };
+        set({ saves: [optimisticEntry, ...prev] });
         try {
           await createSave(userId, place.id);
           if (__DEV__) console.log('[CRAVES_STORE] addSave_ok', place.id);
@@ -529,6 +547,41 @@ export const useCravesStore = create<CravesStore>()(
       },
 
       isSaved: (placeId: string) => get().saves.some((s) => s.id === placeId),
+
+      setSaveMemory: async (placeId: string, updates: SaveMemoryUpdate): Promise<string | null> => {
+        const prev = get().saves;
+        const existing = prev.find((s) => s.id === placeId);
+        if (!existing) return null;
+
+        const myGeneration = _accountGeneration;
+        const optimistic: SavedPlace = {
+          ...existing,
+          ...('visited' in updates ? { visited: !!updates.visited, visited_at: updates.visited ? new Date().toISOString() : null } : {}),
+          ...('notes' in updates ? { notes: updates.notes ?? null } : {}),
+        };
+        set({ saves: prev.map((s) => (s.id === placeId ? optimistic : s)) });
+
+        try {
+          const result = await updateSaveMemory(placeId, updates);
+          if (myGeneration !== _accountGeneration) return null;
+          // Reconcile with the server-confirmed values (e.g. the real
+          // stamped visited_at) rather than trusting the optimistic guess.
+          set({
+            saves: get().saves.map((s) =>
+              s.id === placeId ? { ...s, ...result } : s,
+            ),
+          });
+          if (__DEV__) console.log('[CRAVES_STORE] setSaveMemory_ok', placeId, result);
+          return null;
+        } catch (err: any) {
+          if (myGeneration === _accountGeneration) {
+            set({ saves: get().saves.map((s) => (s.id === placeId ? existing : s)) });
+          }
+          const msg = _classifyError(err, "Couldn't save. Try again.");
+          if (__DEV__) console.log('[CRAVES_STORE] setSaveMemory_error', err?.response?.status, err?.message);
+          return msg;
+        }
+      },
 
       flushPendingActions: async (userId: string) => {
         // Cheap re-entrancy guard: loadSaves() and the AppState foreground

@@ -305,6 +305,8 @@ export default function CravesScreen() {
           <View style={styles.rowSpacer}>
             <PlaceCardCompact
               place={item}
+              visited={item.visited}
+              hasNotes={!!item.notes}
               onPress={() => {
                 logRecommendationEvent({
                   surface: 'craves',
