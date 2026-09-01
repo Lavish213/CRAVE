@@ -3,10 +3,38 @@
 Status: handoff-pending
 Owner: Claude
 Branch: main
-Base SHA: 76513cf (PR #118 merged)
+Base SHA: eb7119e (PR #120 merged)
 Scope: Root-caused and fixed both acquisition-pipeline failures from the
 recent canary attempts (menu contamination on Itani, zero free image
 candidates on two sites), rather than leaving them as open blockers.
+Also triaged the ~26 open dependabot PRs (PRs #119, #120).
+
+## Dependabot triage (PRs #119, #120)
+
+Merged 5 GitHub Actions bumps directly (zero runtime risk), then
+applied 8 backend + 3 frontend dependency bumps as two combined
+commits (several touched adjacent lines in the same file, so
+merging dependabot's PRs one at a time via GitHub kept hitting
+conflicts) -- verified against the actually-installed upgraded
+packages, not just edited version ranges: full backend suite 1014
+passed unchanged, full frontend jest suite 331 passed unchanged,
+`tsc --noEmit` clean. Closed the now-redundant dependabot PRs.
+
+Closed PR #5 (starlette) without applying -- `requirements.txt`
+already carries a deliberate uncapped `>=1.3.1` (see its own comment)
+that PR #5 would have re-capped at `<2.0.0`, undoing a considered
+prior decision.
+
+Left 5 PRs open, each with a comment explaining why: #25 (react-dom)
+and #27 (jest-expo) peer-require a newer `react` than the pinned
+`19.1.0` -- real peer-dependency mismatches, not just version-range
+nits, and #27 is also version-aligned to a newer Expo SDK than this
+app's current `~54.0.33`. #28 (expo-location), #23
+(react-native-worklets), #18 (react-native-maps), #8 (async-storage)
+are native modules needing real device/simulator validation this
+session doesn't have. #20 (react itself) should move together with
+#25/#27 as one coordinated upgrade, not piecemeal. PR #49 (unrelated
+feature, not a dependency bump) untouched.
 
 ## PR #117 (merged) -- what changed and why
 
