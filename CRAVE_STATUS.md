@@ -18,7 +18,7 @@ starting a new status file.
 - `CRAVE_FRONTEND_GUIDE_FOR_AI_EDITORS.md` — **local-only, gitignored,
   never commit.** House rules for AI editors working in this frontend.
 
-Last updated: 2026-09-01.
+Last updated: 2026-09-01 (The Pass merged).
 
 ---
 
@@ -32,7 +32,7 @@ Auth: Supabase (JWKS, ES256).
 
 ## Test status
 
-Backend: **939 passed, 2 skipped** (`cd backend && python -m pytest -q`).
+Backend: **976 passed, 2 skipped** (`cd backend && python -m pytest -q`).
 Frontend: **302 passed**, 32 suites (`cd frontend && npx jest`), `tsc
 --noEmit` clean. An E2E Playwright smoke suite also exists (`frontend/e2e/`,
 3 journeys) — not part of the Jest count above, run separately via
@@ -67,6 +67,19 @@ administrator bypass retained for the agreed small-fix lane.
   urgent (app keeps running, Feed still loads) but the warning won't clear
   without the upgrade.
 ## What's solid right now
+
+- **"The Pass" shipped — all four E8/E2/E3/E10 open product decisions
+  resolved, 3 PRs (#100-#102).** Category taxonomy extended to
+  cuisine/venue/dietary/ownership/occasion/recognition, `specialty`
+  retired at the DB level. `HitlistSave` gains `visited`/`visited_at`/
+  `notes` plus `PATCH /saves/{place_id}/memory`. A bulk `has_video`
+  signal now surfaces on Feed/Search/Map cards (Place Detail stays the
+  only playback surface — badge only). E10 group compatibility stayed
+  correctly un-built, held pending Decision Session proving itself solo
+  at real volume. See `.agent-bridge/STATE.md` for the full per-PR
+  breakdown, including a real bug caught by CI's real-Postgres job (a
+  VARCHAR(9) column too narrow for a new value — SQLite never would
+  have caught it).
 
 - **Standalone production scheduler is provisioned safely, default-off.**
   Railway service `CRAVE-scheduler` deploys `main` using
