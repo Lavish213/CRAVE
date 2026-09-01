@@ -15,6 +15,15 @@ starting a new status file.
   architecture, Product Intelligence Bible).
 - `backend/docs/DEBUG_ENDPOINTS.md`, `frontend/docs/*` — feature-specific
   reference docs.
+- `docs/CATEGORY_TAXONOMY_DESIGN_2026-08-31.md`,
+  `docs/E2_E3_E10_PRODUCT_TRADEOFFS_2026-08-31.md` — the full reasoning
+  behind "The Pass"'s decisions (E8/E2/E3/E10), including the options
+  *not* chosen and why.
+- `docs/SCHEDULER_WORKER_ROLLOUT.md` — the production scheduler's
+  current state and full phased-enable plan.
+- `.agent-bridge/STATE.md` — the most recent handoff between Claude and
+  Codex; usually the single fastest way to see exactly what just
+  happened and what's next, more granular than this doc.
 - `CRAVE_FRONTEND_GUIDE_FOR_AI_EDITORS.md` — **local-only, gitignored,
   never commit.** House rules for AI editors working in this frontend.
 
@@ -205,13 +214,21 @@ administrator bypass retained for the agreed small-fix lane.
   fits" headline reads right), not more code. See
   `CRAVE_REMAINING_WORK.md`'s 2026-08-26 "controlled visual-language
   pass" entry for the full category breakdown.
-- **Craves is a bookmark list**, not yet "resurface saved spots at the
-  right time." Video record has no discoverable entry point beyond a
-  small chip on Place Detail.
+- **Craves now remembers visited/notes** (E2, "The Pass"), but still
+  doesn't "resurface saved spots at the right time" — that's a ranking/
+  notification idea, not built. The auto-visited hook (marking a save
+  visited when you rank it in Decision Session) is also still not built
+  — deliberately deferred, see `.agent-bridge/STATE.md`. Video record
+  has no discoverable entry point beyond a small chip on Place Detail —
+  by design (E3), not an oversight; see "Design invariants — don't relitigate these"
+  below before proposing a Feed action or a video tab.
 - **Search is keyword matching**, no typo tolerance or intent parsing.
-- **32 flat categories** mix cuisine/meal-period/dietary/experience/
-  ownership in one list — fine today, will constrain filtering/
-  personalization eventually.
+- **Category taxonomy is now real** (cuisine/venue/dietary/ownership/
+  occasion/recognition, "The Pass" E8) and the Filter UI groups by it.
+  What's still open: Option B (each type as its own persistent filter
+  chip row, like price-tier already gets) is deferred until usage data
+  shows people want that — the current sectioned-single-sheet UI is the
+  deliberate v1, not a placeholder.
 
 ## Prioritized backlog
 
@@ -221,12 +238,15 @@ merged, confirmed on-device.
 
 **P1** — ~~Run the menu-population one-city canary~~ — done, fully
 applied (see "What's solid right now"). A second city needs its own
-scoped entity review, not a copy-paste of this one. Record-video
-discoverability (product decision:
-Feed action vs. Place Detail affordance vs. tab). Confirm the
-food-classifier model is actually installed in prod vs. degrading to its
-fallback path. Physical-device smoke pass (Auth/Feed/Search/Place
-Detail/Save/Map/Upload/Offline/Push/**Decision Session**).
+scoped entity review, not a copy-paste of this one. ~~Record-video
+discoverability~~ — decided (E3, "The Pass"): Place Detail stays the
+only playback surface, a has_video badge on Feed/Search/Craves cards
+drives discovery instead; see "Design invariants — don't relitigate these" below.
+Confirm the food-classifier model is actually installed in prod vs.
+degrading to its fallback path. Physical-device smoke pass (Auth/Feed/
+Search/Place Detail/Save/Map/Upload/Offline/Push/**Decision Session**).
+Build the Decision-Session auto-visited hook (E2's deferred half — see
+"What's next" below).
 
 **P2** — ~~Recommendation Ledger fast-follows~~ — done. App Store prep
 (hosted Privacy Policy URL, Apple Developer membership, screenshots —
@@ -241,6 +261,48 @@ the persisted-registration warning; see "Needs your action").
 **P3** — Taste modeling / learned ranking (after real usage data exists,
 not before). Splitting the flat category taxonomy into real dimensions.
 
+## What's next — pick a track
+
+Two independent tracks, no overlap between them. Either can be picked up
+cold from this doc alone.
+
+**Production (needs Railway/Supabase access — Codex's lane):**
+1. Enable `SCHEDULER_JOB_ALLOWLIST=moderation_queue_health_check` on the
+   `CRAVE-scheduler` Railway service (currently provisioned, default-off
+   — see "What's solid right now"), observe one completed `job_runs` row
+   and nominal web health, keep the kill switch ready. See
+   `docs/SCHEDULER_WORKER_ROLLOUT.md` for the full phased plan and
+   rollback steps.
+2. Once that's stable, add the remaining jobs one at a time per that same
+   doc's plan: image-processing recovery, video processing, menu
+   enrichment, score recompute.
+3. Run `backend/scripts/run_menu_backlog_canary.py` (preview first, then
+   `--run --confirm-count N`) against real place IDs — the A1 backlog
+   tool exists and is tested but has never actually been run.
+4. A7 (broader source discovery), B1 steps 2/4 (real image fetch +
+   hand-labeling) — untouched, need production access.
+
+**Product (buildable without production access — Claude's lane):**
+1. The Decision-Session auto-visited hook — when a saved place is ranked
+   in Decision Session, auto-set `HitlistSave.visited = true` server-side
+   (the manual "I've been here" toggle already exists; this is the
+   inferred half of E2's "both, B default" design). Small, contained:
+   likely a call from the rank-recording path into
+   `setSaveMemory`-equivalent backend logic.
+2. E10 group compatibility — do not start, including the simplest
+   option, until Decision Session has real proof it works solo. ~5
+   outcome events exist as of 2026-09-01; 500 is the proposed
+   reconsideration bar (a proposed number, not a hard fact — revisit if
+   real usage suggests otherwise). When it's time, build in order: A
+   (host proposes, group vetoes) → B (shared hard constraints) → C (full
+   group-utility scoring, doctrine's real long-term objective) — never
+   jump straight to C.
+3. Filter UI Option B (dietary/occasion as their own persistent chip
+   rows, not sheet contents) — only once usage data on the current
+   sectioned sheet (shipped in "The Pass") shows real demand for it.
+4. Physical-device smoke pass — see the P1 backlog item above; this one
+   needs a human with a device, not more code.
+
 ## Design invariants — don't relitigate these
 
 - City-percentile tier ≠ personal taste. Never conflate the two as
@@ -250,3 +312,16 @@ not before). Splitting the flat category taxonomy into real dimensions.
   mints a new one per attempt.
 - Make invalid states structurally impossible (`getTierForPlace()`,
   the two-key auth split) rather than documenting around them.
+- **Video stays a Place Detail affordance, not a Feed action or its own
+  tab** (E3, "The Pass") — the closest thing in this app's whole surface
+  to TikTok's actual lane; doctrine explicitly warns against becoming
+  "Yelp+TikTok+Beli+Maps+AI." Revisit only once real upload volume and
+  badge tap-through data exist, not on a hunch.
+- **Group mode must reduce voting work, not add a swiping ritual** (E10)
+  — doctrine's own words: "not turn dinner into Tinder for five people."
+  The easy build (everyone swipes, tally votes) is explicitly the wrong
+  v1 by that standard.
+- **`michelin_rated` is a recognition/badge, not a chosen identity tag**
+  — kept in its own `CategoryType.recognition` bucket (E8) precisely so
+  it doesn't get grouped with things a place opts into like `vegan` or
+  `late_night`.
