@@ -1,37 +1,46 @@
 # Active agent state
 
-Status: ready-for-review
-Owner: Codex
-Branch: codex/free-pipeline-canaries
-Base SHA: bb33cd0 (current main; PR #113 review record merged)
-Scope: Record the explicitly-authorized, one-at-a-time production rollout of
-free/local scheduler paths after queue measurement and bounded canaries.
+Status: reviewed-and-merged
+Owner: Claude
+Branch: main
+Base SHA: da74a7c (PR #114 merged)
+Scope: Independently reviewed Codex's PR #114 (free-pipeline canaries:
+share_parser, image_processing_recovery, video_processing admitted to the
+production scheduler allowlist alongside moderation_queue_health_check) and
+merged it.
 
-Locked files: `docs/SCHEDULER_WORKER_ROLLOUT.md`, `CRAVE_STATUS.md`,
-`.agent-bridge/STATE.md`, and `.agent-bridge/codex-to-claude.md`.
+Verification performed by Claude before merging: confirmed the diff touched
+exactly the 4 claimed docs/bridge files with no application or
+scheduler-config code; confirmed the final allowlist, deployment ID
+(`38b0556b-e1e9-4395-afea-3c128300b327` at source SHA `bb33cd0`), and all six
+job-run IDs (3 bounded canaries + 2 natural recurring runs) are stated
+identically everywhere they appear; independently recomputed the coverage
+percentages (menus 2.66%, public images 40.55%, primary images 36.55%,
+websites 37.43% of 37,761 active places) and they match; confirmed paid
+Google image ingestion, bulk menu enrichment, discovery/population, score
+recompute, and ranking remain explicitly disabled (matches the user's
+"free ways only" instruction, no scope creep); confirmed no secrets/
+credentials/raw user data in the diff. Full write-up posted as a PR comment
+on #114. Same limitation as the #113 review: this session has no Railway/
+production access, so the underlying infra evidence itself is taken on
+trust -- only repo-checkable claims were independently verified.
 
-Production outcome: exact allowlist is
-`moderation_queue_health_check,share_parser,image_processing_recovery,
-video_processing`. Deployment `38b0556b-e1e9-4395-afea-3c128300b327`
-started exactly four jobs at source SHA `bb33cd0`. Paid Google image ingestion,
-bulk menu enrichment, discovery/population, score recompute, and ranking are
-still disabled.
+Known gap (carried forward from #114): no real video was queued during the
+canary, so real R2 transfer/ffmpeg encoding/classifier quality is still
+unverified -- needs a seeded device E2E pass, not another allowlist change.
+Empty input queues also mean these four jobs alone won't grow catalog
+coverage (menus 2.66%, images 40.55%) -- the next useful population step is
+a tiny reviewed website-menu canary via the existing, already-reviewed
+`backend/scripts/run_menu_backlog_canary.py` (13,128 website/no-menu
+candidates available), not another scheduler job.
 
-Verification: three bounded zero-queue canaries succeeded; natural share and
-video schedules succeeded; R2 references resolve; Railpack installed ffmpeg
-7.1.5; pip installed ai-edge-litert 2.2.0; production health remained fully
-`ok`; worker CPU/memory stayed nominal. Exact evidence is in
-`.agent-bridge/codex-to-claude.md`.
-
-Known gap: no real video was queued, so real media transfer/encoding/inference
-still needs a seeded device E2E pass. Empty input queues do not increase
-catalog coverage. The next useful population path is a tiny reviewed website
-menu canary—not another scheduler allowlist expansion.
-
-Commit: `8cb3a02` (docs-only rollout evidence).
-
-Next action: independently inspect commit `8cb3a02` and the production
-evidence. Do not enable another job.
+Next action: Codex, when back: pick a small (single-digit or low double-digit)
+reviewed batch of place IDs from the website/no-menu candidates, preview with
+`run_menu_backlog_canary.py`, then `--run --confirm-count N` only after the
+preview is reviewed. Free image acquisition needs its own source-specific
+canary before touching the 7,816 website/no-public-image places -- do not
+reuse the menu canary tool for that. No further scheduler allowlist expansion
+is authorized by this handoff.
 
 ## Existing local work excluded from this bridge
 
