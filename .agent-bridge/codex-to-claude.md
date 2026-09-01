@@ -1,54 +1,49 @@
-# H-20260901-scheduler-worker-provisioned-default-off
+# H-20260901-the-pass-gap-closure
 
 Status: ready-for-review
 Owner: Codex
-Branch: codex/scheduler-provisioning-handoff
-Base SHA: 93bfeace87b3887185b48a292fb66a5084be154f
-Commit SHA: 8bd63fe
-Allowed next files: `.agent-bridge/STATE.md`, `.agent-bridge/codex-to-claude.md`, `CRAVE_STATUS.md`
+Branch: codex/the-pass-gap-closure
+Base SHA: d4bb22d
+Commit SHA: 624e09f
+Allowed next files: none until independent review
 
 ## Outcome
 
-Provisioned the standalone Railway service `CRAVE-scheduler` in production,
-connected it to `Lavish213/CRAVE` on `main`, and deployed commit
-`93bfeace87b3887185b48a292fb66a5084be154f` with the explicit start command
-`cd backend && python -m app.scheduler_worker`.
+Audited the merged PRs #100-#106 from current `main` instead of duplicating
+them, then closed two verified integration gaps:
 
-The service is fail-closed and currently runs zero jobs:
+1. `has_video` now uses the existing two-gate approved/visible query on
+   Craves, saved-map, Decision Session, Trending, and Recommendations. Those
+   surfaces previously defaulted to false even when the place had a visible
+   approved video.
+2. Completing a ranking now marks an existing direct save visited in the same
+   database transaction as the ranking. It is exact-user/exact-place scoped,
+   never creates a save, never touches discovery-intake rows, preserves an
+   existing visit timestamp, and covers both immediate and comparison flows.
 
-- `SCHEDULER_WORKER_ENABLED=false`
-- `RUN_EMBEDDED_SCHEDULER=false`
-- no `SCHEDULER_JOB_ALLOWLIST`
-- no paid provider, storage, or Supabase signing credentials were granted
-
-Only the minimum variables needed to boot safely were referenced from the
-existing `CRAVE` service: `ADMIN_USER_IDS`, `APP_ENV`, `DATABASE_URL`, and
-`SENTRY_DSN`. Database pool limits were set to 2 + 2 overflow.
+No frontend, scheduler, production configuration, or product-decision change.
 
 ## Verification
 
-- Railway deployment `3f151a42-eafe-46b1-9184-f46af7023cc2` → `SUCCESS`,
-  commit `93bfeace87b3887185b48a292fb66a5084be154f`.
-- `railway logs --service 69b849d3-d255-4ab5-bb74-0b8fb94fea16 --latest --lines 100`
-  → `scheduler_worker_disabled no_jobs_will_run`; no job-start or error line.
-- Read-only production DB query after the worker started →
-  `{'job_runs_since_worker_start': 0, 'jobs': []}`.
-- `curl -fsS https://crave-production.up.railway.app/health` →
-  `{"status":"ok","db":"ok","cache":"ok","worker":"ok"}`.
+- `/Users/angelowashington/CRAVE/venv/bin/pytest -q backend/tests/test_ranking_service.py backend/tests/test_social_routes_integration.py backend/tests/test_saves_memory.py backend/tests/test_saved_places_map_query.py backend/tests/test_decision_session_route.py backend/tests/test_place_video_presence.py` -> `61 passed, 24 warnings`
+- `/Users/angelowashington/CRAVE/venv/bin/pytest -q backend/tests` -> `981 passed, 2 skipped, 34 warnings`
+- `git diff --check` -> clean
+- fetched `origin/main`; branch base and remote main both resolved to `d4bb22d` before commit
+
+Warnings are existing Pillow deprecation and short development JWT-key
+warnings; no new test failure or skip was introduced.
 
 ## Known gaps / risks
 
-- No scheduler job has been enabled or exercised in production.
-- Railway reports that root Config as Code is deprecated and continues to
-  work only until 2026-12-01. The worker's start command was therefore set
-  explicitly and verified in deployment metadata; migration to Railway IaC
-  remains future infrastructure maintenance.
-- The next phase can create production work and is not authorized by this
-  handoff.
+- Trending's five-minute response cache can retain an older false default
+  until its normal TTL expires after deployment; no cache schema migration is
+  necessary.
+- This was code/test verification only. Nothing was deployed or mutated in
+  production, and no device behavior is claimed.
 
 ## Next action
 
-Independently inspect this bridge-only diff and the Railway evidence. Do not
-enable a job yet. The next separately gated phase is one explicit allowlisted
-job, beginning with `moderation_queue_health_check` per
-`docs/SCHEDULER_WORKER_ROLLOUT.md`.
+Inspect `git show 624e09f` and independently verify the transaction placement,
+cross-account isolation, no-implicit-save behavior, approved-video gates, and
+full backend result. Request CodeRabbit on the PR and resolve every actionable
+finding before merge.
