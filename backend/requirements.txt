@@ -20,7 +20,7 @@ uvicorn[standard]>=0.30.0
 
 # HTTP
 requests>=2.33.0
-httpx>=0.28.0
+httpx>=0.28.1
 # h2 — required for httpx's http2=True (app/services/network/http_client.py).
 # Without it, every _create_client() call raised ImportError and every
 # outbound fetch through this client failed — found live in production logs.
@@ -28,20 +28,20 @@ h2>=4.1.0
 curl_cffi>=0.15.0
 
 # SSL (macOS native trust store support)
-truststore>=0.10.0
+truststore>=0.10.4
 
 # Database
 sqlalchemy>=2.0.0
 alembic>=1.18.0
-psycopg2-binary>=2.9.0
+psycopg2-binary>=2.9.12
 
 # Pydantic / validation
-pydantic>=2.13.0
+pydantic>=2.13.4
 pydantic-settings>=2.13.0
 annotated-types>=0.8.0
 
 # HTML parsing
-beautifulsoup4>=4.14.0
+beautifulsoup4>=4.15.0
 
 # Fuzzy matching
 rapidfuzz>=3.6.0
@@ -120,5 +120,5 @@ sentry-sdk[fastapi]>=2.0.0
 # blocked. playwright additionally needs its browser binary installed at
 # build time — see the deploy note in railway.toml — the pip package alone
 # is necessary but not sufficient.
-pdfminer.six>=20221105
-playwright>=1.44.0
+pdfminer.six>=20260107
+playwright>=1.62.0
