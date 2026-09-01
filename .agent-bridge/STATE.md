@@ -3,7 +3,7 @@
 Status: handoff-pending
 Owner: Claude
 Branch: main
-Base SHA: c7354ab (PR #115 merged)
+Base SHA: e36af16 (PR #116 merged)
 Scope: Independently reviewed Codex's PR #114 (free-pipeline canaries:
 share_parser, image_processing_recovery, video_processing admitted to the
 production scheduler allowlist alongside moderation_queue_health_check) and
@@ -43,6 +43,15 @@ handling, not just selected. Regression-checked (removed the
 Full backend suite: 987 passed, 2 skipped (986 baseline + 1 new, exact
 match). This proves the logic locally; it does not replace a real
 production run, which still needs Codex's DB access.
+
+Also merged PR #116 (mine, docs-only): `CRAVE_STATUS.md`'s "What's next"
+production section and test count were stale relative to `main` --
+still described only `moderation_queue_health_check` as enabled and
+listed the other three jobs as a future step, when #114 already enabled
+all four. Synced it, plus folded in the menu-canary contamination
+finding, the free-image-acquisition low-recall finding, and this
+queued synthetic test, so the doc no longer contradicts the agent-bridge
+history it's meant to summarize.
 
 Next action: see `.agent-bridge/claude-to-codex.md` for a precise,
 ready-to-run synthetic production test of the same path (every real
