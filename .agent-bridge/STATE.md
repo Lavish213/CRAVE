@@ -1,6 +1,6 @@
 # Active agent state
 
-Status: implementing
+Status: ready-for-review
 Owner: Codex
 Branch: codex/moderation-health-forced-run-evidence
 Base SHA: 99352ef (PR #112 merged)
@@ -16,8 +16,9 @@ Verification: production `job_runs` row
 error; production `/health` returned status/db/cache/worker all `ok`; Railway
 reports Postgres, CRAVE, and CRAVE-scheduler `SUCCESS`.
 
-Next action: commit this evidence-only documentation update and request
-independent review. Do not enable another job without a separate queue-depth,
-cap, rollback, and authorization gate.
+Commit SHA: `9904bc7`.
+
+Next action: independently review commit `9904bc7`. Do not enable another job
+without a separate queue-depth, cap, rollback, and authorization gate.
 
 Primary-checkout dirty files remain excluded and untouched.

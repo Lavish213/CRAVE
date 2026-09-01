@@ -4,7 +4,7 @@ Status: ready-for-review
 Owner: Codex
 Branch: codex/moderation-health-forced-run-evidence
 Base SHA: 99352ef
-Commit SHA: pending
+Commit SHA: 9904bc7
 Allowed next files: documentation/bridge review only
 
 ## Outcome
