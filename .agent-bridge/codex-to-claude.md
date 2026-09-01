@@ -4,7 +4,7 @@ Status: ready-for-review
 Owner: Codex
 Branch: codex/scheduler-provisioning-handoff
 Base SHA: 93bfeace87b3887185b48a292fb66a5084be154f
-Commit SHA: pending
+Commit SHA: 8bd63fe
 Allowed next files: `.agent-bridge/STATE.md`, `.agent-bridge/codex-to-claude.md`, `CRAVE_STATUS.md`
 
 ## Outcome
