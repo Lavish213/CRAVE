@@ -1,94 +1,65 @@
-# H-20260901-image-recovery-synthetic-test-request
+# H-20260901-menu-and-image-acquisition-fixes
 
 Status: ready-for-execution
 Owner: Claude
 Branch: main
-Base SHA: c7354ab (PR #115 merged)
-
-## Update since this was first written
-
-Everything below is unchanged, but it's no longer resting only on code
-reading: PR #115 (merged) adds a local test that runs the *real*
-`reclaim_stale_image_uploads()` -> real `process_image_upload()` chain
-(nothing mocked except `_get_s3_client`, made to raise) and proves a
-stale row reaches `status='failed'`, `is_primary=False`. Regression-
-checked -- removed the `status='failed'` assignment, watched the test
-fail, restored it. This is exactly the failure-path variant below,
-proven locally. I don't have Railway/production DB access in this
-session, so this is as far as I can take it myself -- the production run
-is still yours to execute whenever you're back.
-Allowed next files: none from me -- this is a test request, not a code
+Base SHA: deb83b5 (PR #117 merged)
+Allowed next files: none from me -- this is a fix handoff, not a code
 change. Whatever you do to execute it is your normal docs-only bridge
 handoff afterward.
 
-## Why
+## Outcome
 
-`image_processing_recovery` has run twice in production (one bounded
-canary, part of the natural schedule) and both times found zero stale
-rows, so `reclaimed=0` both times. That proves the job executes and
-queries cleanly -- it proves nothing about `reclaim_stale_image_uploads()`
-or `process_image_upload()` actually doing their job on a genuinely stuck
-row. Same class of gap as the video canary's "empty batch" finding, just
-for the image path. Per the user, this is the next synthetic test to run
-now, same discipline as your video test: real code path, synthetic/
-inert data, non-public blast radius, fully reversible.
+Codex, addressed to you directly. Read the actual code behind both of
+your canary findings instead of treating them as bad luck, and fixed
+what I found. Full detail in `.agent-bridge/STATE.md` and PR #117's
+body; short version:
 
-## What I read (backend/app/workers/image_processing_worker.py:319-375,
-backend/app/scheduler.py:280-303)
+- **Itani menu contamination** was a real, identifiable bug: the
+  extraction ranker's uniqueness floor was exactly `>= 0.5`, and your
+  112-item/~57-unique result cleared it by a hair. Raised to `0.75`, and
+  added an entity-name check (JSON-LD/title/og:site_name vs.
+  `place.name`) on the iframe extraction tier specifically -- that's the
+  most plausible vector for a shared third-party widget like "Hopscotch"
+  getting scraped as if it were Itani's own menu.
+- **Zero free image candidates** was also a real bug, not a data
+  problem: `WebsiteImageExtractor` never executed JS, so any
+  client-rendered site (lazy-loaded galleries, CSS background-images)
+  returned nothing. Added a browser-escalation fallback reusing the
+  menu pipeline's existing headless renderer, plus lazy-load attribute
+  support as a cheaper first line of defense.
 
-`reclaim_stale_image_uploads(limit=50)` selects `PlaceImage` rows with
-`status IN ('pending','processing')` and `created_at < now -
-photo_stale_processing_minutes` (30 min, `settings.py:193`), then calls
-`process_image_upload(image_id)` on each. That function re-fetches the
-row, sets `status='processing'`, does `s3.get_object(Bucket=R2_BUCKET,
-Key=image.orig_key)`, and on *any* exception (including a missing R2
-key) falls through to its outer `except` and sets `status='failed'`
-(`image_processing_worker.py:300-312`). On success it sets
-`status='ready'` and computes `is_primary`/`visibility_status` relative
-to any existing primary image on `image.place_id`
-(`image_processing_worker.py:197-263`).
+## Verification (mine, local)
 
-## Proposed test (failure-path variant -- recommend running this first)
+19 new tests across 3 files, each regression-checked individually
+(reverted the fix, confirmed the specific test fails, restored). Full
+backend suite: 1006 passed, 2 skipped (987 baseline + 19 new). Neither
+`menu_enrichment` nor `image_ingestion` is in the current scheduler
+allowlist, so none of this touched anything live.
 
-Exercises the exact gap (stuck-row detection + terminal-status
-transition) with the smallest possible blast radius: no real image
-content ever touches R2, so there's nothing to accidentally expose.
+## Known gaps / risks
 
-1. Create one dedicated, clearly-marked test place (`is_active=False`,
-   name like `"__synthetic_image_recovery_test__"`, fresh UUID city if
-   needed) -- same pattern as the backend test suite's own fixtures
-   (see `tests/test_place_video_presence.py` for the idiom), so it can
-   never surface on Feed/Search/Trending regardless of outcome.
-2. Insert one `PlaceImage` row directly (not through the upload API):
-   `place_id=<that test place>`, `uploaded_by=<synthetic test user id>`,
-   `orig_key='synthetic-recovery-test-<uuid>'` (deliberately does not
-   exist in R2), `status='pending'`, `created_at = now() - INTERVAL
-   '35 minutes'` (past the 30-minute cutoff with margin).
-3. Let the next natural `image_processing_recovery` fire (every 10 min)
-   pick it up, or force one bounded manual invocation of
-   `_job_image_processing_recovery()` exactly like the prior canary --
-   same job function, no new code path.
-4. Expected: job run reports `reclaimed=1` (not 0, for the first time);
-   the `PlaceImage` row transitions `pending` -> `processing` ->
-   `failed` (missing R2 object raises inside `get_object`, caught by
-   the outer except); no place, image, or Feed/Search surface changes.
-5. Clean up after: delete the synthetic `PlaceImage` row and the test
-   place (hard delete is fine here -- nothing else references either,
-   unlike the menu-canary rows).
-
-## Optional follow-up (success-path variant, only if the above is clean)
-
-Same setup, but first do a real presigned-URL R2 PUT of a small,
-controlled, non-sensitive test image (same upload flow as your video
-test) so `orig_key` resolves to real bytes, proving the `status='ready'`
-path and the dedup/hash/moderation pipeline too. Higher setup cost, only
-worth it if you want that path proven now rather than left as a known
-gap alongside the video classifier-quality one.
+- The entity-match guard only covers iframe extraction, not
+  API/provider/hydration -- lower-risk vectors for this exact
+  contamination shape, but not covered.
+- Code-level proof only. The real test is whether this actually resolves
+  your two specific failures against real production data.
 
 ## Next action
 
-Run the failure-path variant above (or tell me why not, if something in
-it looks wrong from where you sit with actual DB/Railway access). Record
-the evidence in your usual bridge handoff format when done -- job_runs
-row ID, before/after `PlaceImage.status`, confirmation the test place
-was never active/visible, and confirmation of cleanup.
+Two independent retries, whenever you're back:
+
+1. **Menu canary retry**: `backend/scripts/run_menu_backlog_canary.py`
+   against Itani again (does it now materialize a clean, single-vendor
+   menu, or correctly find nothing/low-confidence rather than
+   contaminated data?) plus a small new batch from the 13,128
+   website/no-menu candidates. Watch `materialized`/`no_menu`/`errors`
+   counts and spot-check a few items.
+2. **Image acquisition retry**: the free-image canary against the same
+   two sites that returned zero candidates before. Check logs for
+   `website_image_browser_escalation_success` to confirm the fallback
+   actually fired and found something.
+
+Independently, the `image_processing_recovery` synthetic test I queued
+before this pass is still open and unrelated -- do it in whichever order
+suits, or in parallel.

@@ -3,63 +3,76 @@
 Status: handoff-pending
 Owner: Claude
 Branch: main
-Base SHA: e36af16 (PR #116 merged)
-Scope: Independently reviewed Codex's PR #114 (free-pipeline canaries:
-share_parser, image_processing_recovery, video_processing admitted to the
-production scheduler allowlist alongside moderation_queue_health_check) and
-merged it.
+Base SHA: deb83b5 (PR #117 merged)
+Scope: Root-caused and fixed both acquisition-pipeline failures from the
+recent canary attempts (menu contamination on Itani, zero free image
+candidates on two sites), rather than leaving them as open blockers.
 
-Verification performed by Claude before merging: confirmed the diff touched
-exactly the 4 claimed docs/bridge files with no application or
-scheduler-config code; confirmed the final allowlist, deployment ID
-(`38b0556b-e1e9-4395-afea-3c128300b327` at source SHA `bb33cd0`), and all six
-job-run IDs (3 bounded canaries + 2 natural recurring runs) are stated
-identically everywhere they appear; independently recomputed the coverage
-percentages (menus 2.66%, public images 40.55%, primary images 36.55%,
-websites 37.43% of 37,761 active places) and they match; confirmed paid
-Google image ingestion, bulk menu enrichment, discovery/population, score
-recompute, and ranking remain explicitly disabled (matches the user's
-"free ways only" instruction, no scope creep); confirmed no secrets/
-credentials/raw user data in the diff. Full write-up posted as a PR comment
-on #114. Same limitation as the #113 review: this session has no Railway/
-production access, so the underlying infra evidence itself is taken on
-trust -- only repo-checkable claims were independently verified.
+## PR #117 (merged) -- what changed and why
 
-Known gap (carried forward from #114): no real video was queued during the
-canary, so real R2 transfer/ffmpeg encoding/classifier quality is still
-unverified -- needs a seeded device E2E pass, not another allowlist change.
-Empty input queues also mean these four jobs alone won't grow catalog
-coverage (menus 2.66%, images 40.55%) -- the next useful population step is
-a tiny reviewed website-menu canary via the existing, already-reviewed
-`backend/scripts/run_menu_backlog_canary.py` (13,128 website/no-menu
-candidates available), not another scheduler job.
+**Menu contamination:** the Itani canary materialized 112 items with
+only ~57 distinct names (~0.5 unique ratio) -- traced to
+`extraction_result_ranker.py`'s `is_plausible_extraction_result()`
+uniqueness floor being exactly `>= 0.5`, so a two-vendor merge cleared it
+by a hair. Raised to `0.75`. Separately, nothing anywhere in the pipeline
+verified scraped content actually declared itself as the target place --
+added `app/services/menu/extraction/entity_match.py` (JSON-LD Restaurant/
+LocalBusiness name, `<title>`, `og:site_name`, fuzzy-matched against
+`place.name`) and wired it into the router's iframe extraction tier
+specifically (the most plausible vector for a shared third-party
+ordering widget like the "Hopscotch" contamination).
 
-Since that gap was flagged, also merged PR #115 (mine, test-only): a new
-local test proves `reclaim_stale_image_uploads()` and
-`process_image_upload()` actually compose -- a genuinely stale row now
-gets driven all the way to `status='failed'` through the real error
-handling, not just selected. Regression-checked (removed the
-`status='failed'` assignment, confirmed the new test fails, restored).
-Full backend suite: 987 passed, 2 skipped (986 baseline + 1 new, exact
-match). This proves the logic locally; it does not replace a real
-production run, which still needs Codex's DB access.
+**Image acquisition:** `WebsiteImageExtractor` only ever did a plain
+`requests.get()` + static BeautifulSoup parse -- zero JS execution, so a
+site that renders photos client-side (lazy-loaded galleries, CSS
+background-images) yields nothing. Added a browser-escalation fallback
+reusing the menu pipeline's existing headless Playwright renderer
+(`browser_escalation.py`'s `fetch_with_browser`), plus lazy-load
+attribute support (`data-src`/`srcset`) as a cheaper first line of
+defense.
 
-Also merged PR #116 (mine, docs-only): `CRAVE_STATUS.md`'s "What's next"
-production section and test count were stale relative to `main` --
-still described only `moderation_queue_health_check` as enabled and
-listed the other three jobs as a future step, when #114 already enabled
-all four. Synced it, plus folded in the menu-canary contamination
-finding, the free-image-acquisition low-recall finding, and this
-queued synthetic test, so the doc no longer contradicts the agent-bridge
-history it's meant to summarize.
+Verification: 19 new tests (3 files), each regression-checked
+individually (reverted the specific fix, confirmed its test fails,
+restored). Full backend suite: 1006 passed, 2 skipped (987 baseline + 19
+new, exact match). Neither `menu_enrichment` nor `image_ingestion` is in
+the current production scheduler allowlist, so this carried no live
+blast radius.
 
-Next action: see `.agent-bridge/claude-to-codex.md` for a precise,
-ready-to-run synthetic production test of the same path (every real
-production run of `image_processing_recovery` has hit an empty queue and
-proven nothing beyond "the job executes") -- now backed by a passing
-local proof of the exact logic it's testing. The menu-canary and
-free-image-acquisition next-actions from the prior handoff still stand
-and are unaffected -- do either in whichever order suits.
+## Prior passes this session (summarized -- full detail in PR bodies)
+
+Reviewed and merged Codex's PR #113 (moderation-health forced-run
+evidence) and #114 (free-pipeline canaries -- share_parser,
+image_processing_recovery, video_processing added to the allowlist).
+Merged my own PR #115 (local proof that image-recovery reclaim logic
+actually terminates a stale row, not just selects it) and #116 (synced
+`CRAVE_STATUS.md`, which had gone stale relative to #114).
+
+## Known gaps / risks
+
+- The entity-match guard only covers the iframe tier, not API/provider/
+  hydration extraction -- lower-risk vectors for this specific
+  contamination shape, but a future incident there wouldn't be caught.
+- This is code-level proof. It still needs a real production retry to
+  confirm it actually resolves the two specific failures.
+- The image-recovery synthetic test spec from the prior handoff (see
+  `.agent-bridge/claude-to-codex.md`) is still open and unrelated to this
+  PR -- both can proceed independently.
+
+## Next action
+
+Codex, when back, two independent things ready for you:
+1. Retry the menu backlog canary (`run_menu_backlog_canary.py`) on Itani
+   plus a small new batch from the website/no-menu candidates, now that
+   the duplicate/entity gates are live -- watch for `reclaimed`/
+   `materialized` counts and spot-check a few items for plausibility.
+2. Retry the free-image-acquisition canary on the same two sites that
+   returned zero candidates -- the browser-escalation fallback should
+   now find their client-rendered photos; confirm via logs whether
+   `website_image_browser_escalation_success` actually fires.
+
+Plus the still-open image_processing_recovery synthetic test request
+from before this pass (`.agent-bridge/claude-to-codex.md`) -- unrelated,
+do in whichever order suits.
 
 ## Existing local work excluded from this bridge
 
