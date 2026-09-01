@@ -14,6 +14,7 @@ possible caller identity.
 from __future__ import annotations
 
 import uuid
+from datetime import datetime, timezone
 
 import pytest
 from fastapi.testclient import TestClient
@@ -29,6 +30,7 @@ from app.db.models.user_follow import UserFollow
 from app.db.models.place_ranking import PlaceRanking
 from app.db.models.activity_event import ActivityEvent
 from app.db.models.recommendation_event import RecommendationEvent
+from app.db.models.hitlist_save import HitlistSave
 
 client = TestClient(app)
 
@@ -77,6 +79,9 @@ def city(db):
     ).delete(synchronize_session=False)
     db.query(PlaceRanking).filter(
         PlaceRanking.place_id.in_(db.query(Place.id).filter(Place.city_id == c.id))
+    ).delete(synchronize_session=False)
+    db.query(HitlistSave).filter(
+        HitlistSave.place_id.in_(db.query(Place.id).filter(Place.city_id == c.id))
     ).delete(synchronize_session=False)
     db.query(Place).filter(Place.city_id == c.id).delete()
     db.query(City).filter(City.id == c.id).delete()
@@ -222,6 +227,149 @@ def test_start_ranking_logs_a_completed_rank_event_to_the_ledger(city, db):
     assert events[0].surface == "place_detail"
     assert events[0].city_id == city.id
     assert events[0].rank_percentile is None
+
+
+def test_completed_ranking_marks_only_existing_owned_save_visited(city, db):
+    place = Place(name=f"Saved Rank Place {uuid.uuid4().hex[:6]}", city_id=city.id)
+    db.add(place)
+    db.commit()
+
+    owner = f"route-test-owner-{uuid.uuid4().hex[:8]}"
+    other = f"route-test-other-{uuid.uuid4().hex[:8]}"
+    for user_id in (owner, other):
+        db.add(HitlistSave(
+            user_id=user_id, place_name=place.name, place_id=place.id,
+            resolution_status="resolved", dedup_key=f"save:{user_id}:{place.id}",
+        ))
+    db.commit()
+
+    _as_user(owner)
+    resp = client.post("/api/v1/rankings", json={"place_id": place.id, "tier": "liked"})
+    assert resp.status_code == 201
+    db.expire_all()
+
+    owner_save = db.query(HitlistSave).filter(HitlistSave.user_id == owner).one()
+    other_save = db.query(HitlistSave).filter(HitlistSave.user_id == other).one()
+    assert owner_save.visited is True
+    assert owner_save.visited_at is not None
+    assert other_save.visited is False
+    assert other_save.visited_at is None
+
+
+def test_completed_ranking_does_not_create_a_save(city, db):
+    place = Place(name=f"Unsaved Rank Place {uuid.uuid4().hex[:6]}", city_id=city.id)
+    db.add(place)
+    db.commit()
+    user_id = f"route-test-unsaved-{uuid.uuid4().hex[:8]}"
+
+    _as_user(user_id)
+    resp = client.post("/api/v1/rankings", json={"place_id": place.id, "tier": "liked"})
+    assert resp.status_code == 201
+    assert db.query(HitlistSave).filter(HitlistSave.user_id == user_id).count() == 0
+
+
+def test_completed_ranking_does_not_mark_a_discovery_intake_row_visited(city, db):
+    """
+    A user can have a discovery-intake row (dedup_key based on a shared
+    url/name, not "save:{user}:{place}") for the same place_id they later
+    rank -- e.g. they shared a TikTok of the place before ever tapping
+    Save on it directly. mark_existing_save_visited's dedup_key filter is
+    specifically what keeps that row untouched; nothing previously
+    exercised this exact case (confirmed: removing the dedup_key filter
+    from mark_existing_save_visited entirely, keeping only user_id/
+    place_id, left the full backend suite green -- this is the test that
+    closes that gap).
+    """
+    place = Place(name=f"Discovery Rank Place {uuid.uuid4().hex[:6]}", city_id=city.id)
+    db.add(place)
+    db.commit()
+    user_id = f"route-test-discovery-{uuid.uuid4().hex[:8]}"
+
+    db.add(HitlistSave(
+        user_id=user_id, place_name=place.name, place_id=place.id,
+        resolution_status="resolved",
+        dedup_key=f"tiktok:{uuid.uuid4().hex[:10]}",
+    ))
+    db.commit()
+
+    _as_user(user_id)
+    resp = client.post("/api/v1/rankings", json={"place_id": place.id, "tier": "liked"})
+    assert resp.status_code == 201
+    db.expire_all()
+
+    discovery_row = db.query(HitlistSave).filter(HitlistSave.user_id == user_id).one()
+    assert discovery_row.visited is False
+    assert discovery_row.visited_at is None
+    # And no direct save was created either -- ranking must not create one.
+    assert db.query(HitlistSave).filter(HitlistSave.user_id == user_id).count() == 1
+
+
+def test_completed_ranking_preserves_an_earlier_visited_at(city, db):
+    """
+    mark_existing_save_visited only stamps visited_at when it's still
+    None (see its own `if save.visited_at is None:` guard) -- a save the
+    user had already manually marked visited earlier must keep that
+    original timestamp, not get silently re-stamped to "now" just
+    because it's later ranked too.
+    """
+    place = Place(name=f"Already Visited Rank Place {uuid.uuid4().hex[:6]}", city_id=city.id)
+    db.add(place)
+    db.commit()
+    user_id = f"route-test-prevorted-{uuid.uuid4().hex[:8]}"
+
+    save = HitlistSave(
+        user_id=user_id, place_name=place.name, place_id=place.id,
+        resolution_status="resolved", dedup_key=f"save:{user_id}:{place.id}",
+        visited=True,
+        visited_at=datetime(2020, 1, 1, tzinfo=timezone.utc),
+    )
+    db.add(save)
+    db.commit()
+
+    _as_user(user_id)
+    resp = client.post("/api/v1/rankings", json={"place_id": place.id, "tier": "liked"})
+    assert resp.status_code == 201
+    db.expire_all()
+
+    reloaded = db.query(HitlistSave).filter(HitlistSave.user_id == user_id).one()
+    assert reloaded.visited is True
+    # SQLite has no tz-aware datetime type -- compare naive, the value
+    # itself (not the tzinfo) is what proves it wasn't re-stamped.
+    assert reloaded.visited_at.replace(tzinfo=timezone.utc) == datetime(2020, 1, 1, tzinfo=timezone.utc)
+
+
+def test_comparison_completion_marks_existing_save_visited(city, db):
+    existing = Place(name=f"Existing Rank {uuid.uuid4().hex[:6]}", city_id=city.id)
+    new = Place(name=f"Compared Save {uuid.uuid4().hex[:6]}", city_id=city.id)
+    db.add_all([existing, new])
+    db.commit()
+    user_id = f"route-test-compare-{uuid.uuid4().hex[:8]}"
+    db.add(PlaceRanking(
+        user_id=user_id, place_id=existing.id, tier="liked", rank_score=8.0,
+    ))
+    db.add(HitlistSave(
+        user_id=user_id, place_name=new.name, place_id=new.id,
+        resolution_status="resolved", dedup_key=f"save:{user_id}:{new.id}",
+    ))
+    db.commit()
+
+    _as_user(user_id)
+    result = client.post(
+        "/api/v1/rankings", json={"place_id": new.id, "tier": "liked"},
+    ).json()
+    assert result["status"] == "comparing"
+    while result["status"] == "comparing":
+        response = client.post(
+            "/api/v1/rankings/compare",
+            json={"comparison_token": result["comparison_token"], "winner": "new"},
+        )
+        assert response.status_code == 200
+        result = response.json()
+
+    db.expire_all()
+    save = db.query(HitlistSave).filter(HitlistSave.user_id == user_id).one()
+    assert save.visited is True
+    assert save.visited_at is not None
 
 
 def test_leaderboard_endpoint_reachable(users):

@@ -25,6 +25,7 @@ from app.api.v1.schemas.recommendation_event import (
     RecommendationEventBatchOut,
 )
 from app.services.query.place_image_visibility_query import get_primary_image_urls_bulk
+from app.services.query.place_video_visibility_query import get_has_video_bulk
 from app.services.recommendations.recommendation_event_service import (
     MAX_BATCH_SIZE,
     record_events,
@@ -51,11 +52,13 @@ def get_recommendations_route(
 
     place_ids = [p.id for p in places]
     image_urls = get_primary_image_urls_bulk(db, place_ids=place_ids)
+    video_flags = get_has_video_bulk(db, place_ids=place_ids)
 
     items = []
     for p in places:
         try:
             p.primary_image_url = image_urls.get(p.id)
+            p.has_video = video_flags.get(p.id, False)
             items.append(PlaceOut.model_validate(p, from_attributes=True))
         except Exception:
             # Was logger.debug -- invisible at the app's default INFO

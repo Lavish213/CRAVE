@@ -18,6 +18,7 @@ from app.db.session import SessionLocal
 from app.db.models.city import City
 from app.db.models.place import Place
 from app.db.models.category import Category
+from app.db.models.place_video import PlaceVideo, STATUS_APPROVED, MOD_APPROVED
 
 client = TestClient(app)
 
@@ -69,6 +70,12 @@ def test_decision_session_returns_cards_for_a_seeded_city(db):
         db.add(p)
     db.commit()
 
+    db.add(PlaceVideo(
+        place_id=place_ids[0], uploaded_by=f"user-{uuid.uuid4().hex[:8]}",
+        status=STATUS_APPROVED, moderation_status=MOD_APPROVED,
+    ))
+    db.commit()
+
     try:
         resp = client.get("/api/v1/decision-session", params={"city_id": city_id})
         assert resp.status_code == 200
@@ -83,7 +90,12 @@ def test_decision_session_returns_cards_for_a_seeded_city(db):
             assert isinstance(card["reason_codes"], list) and card["reason_codes"]
             assert card["place"]["id"] not in seen_ids
             seen_ids.add(card["place"]["id"])
+        video_card = next(card for card in cards if card["place"]["id"] == place_ids[0])
+        assert video_card["place"]["has_video"] is True
     finally:
+        db.query(PlaceVideo).filter(PlaceVideo.place_id.in_(place_ids)).delete(
+            synchronize_session=False
+        )
         db.query(Place).filter(Place.id.in_(place_ids)).delete(synchronize_session=False)
         db.query(City).filter(City.id == city_id).delete(synchronize_session=False)
         db.commit()
