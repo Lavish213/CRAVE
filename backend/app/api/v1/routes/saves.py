@@ -5,16 +5,20 @@ Piggybacks on hitlist_saves table using dedup_key = "save:{user_id}:{place_id}".
 This keeps saves separate from the craves-discovery flow (which uses url/place_name dedup keys).
 
 Routes:
-    POST   /saves              create save
-    DELETE /saves/{place_id}   remove save
-    GET    /saves              list saved places with full PlaceOut data
-    GET    /saves/map          saved places as GeoJSON, for the Map tab's
-                                "my places" layer
+    POST   /saves                  create save
+    DELETE /saves/{place_id}       remove save
+    GET    /saves                  list saved places with full PlaceOut data
+                                    plus per-save memory (visited/notes)
+    PATCH  /saves/{place_id}/memory  update visited/notes for one save
+    GET    /saves/map              saved places as GeoJSON, for the Map
+                                    tab's "my places" layer
 """
 from __future__ import annotations
 
 import logging
 import uuid
+from datetime import datetime, timezone
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
@@ -27,7 +31,7 @@ from app.core.rate_limit import rate_limit
 from app.db.session import get_db
 from app.db.models.hitlist_save import HitlistSave
 from app.db.models.place import Place
-from app.api.v1.schemas.places import PlaceOut, PlacesResponse
+from app.api.v1.schemas.places import PlaceOut
 from app.api.v1.schemas.map import GeoJSONFeatureCollection
 from app.services.query.place_image_visibility_query import get_primary_image_urls_bulk
 from app.services.query.saved_places_map_query import get_saved_places_geojson
@@ -53,6 +57,37 @@ class SaveRequest(BaseModel):
     # it from the request body was the app's core IDOR bug: any caller could
     # save/delete/list on behalf of any other user by passing their UUID.
     place_id: str = Field(..., min_length=1, max_length=36)
+
+
+class SaveMemoryRequest(BaseModel):
+    """
+    PATCH body for /saves/{place_id}/memory. Both fields optional and
+    independently settable — `exclude_unset` on read distinguishes "not
+    provided" from "explicitly cleared" (notes: null), matching normal
+    PATCH semantics. `visited_at` is never client-settable; it's derived
+    server-side from `visited`.
+    """
+    visited: Optional[bool] = None
+    notes: Optional[str] = Field(default=None, max_length=2000)
+
+
+class SavedPlaceOut(PlaceOut):
+    """
+    PlaceOut plus this user's per-save memory (E2). Only used by
+    GET /saves — every other PlaceOut consumer (Feed/Search/Map/
+    Trending/Decision Session) is untouched, so this stays additive to
+    /saves alone rather than widening the shared card contract.
+    """
+    visited: bool = False
+    visited_at: Optional[datetime] = None
+    notes: Optional[str] = None
+
+
+class SavedPlacesResponse(BaseModel):
+    total: int
+    page: int
+    page_size: int
+    items: list[SavedPlaceOut] = Field(default_factory=list)
 
 
 # -------------------------------------------------------
@@ -143,15 +178,16 @@ def delete_save(
 # GET /saves — list saved places
 # -------------------------------------------------------
 
-@router.get("", response_model=PlacesResponse, dependencies=[Depends(rate_limit)])
+@router.get("", response_model=SavedPlacesResponse, dependencies=[Depends(rate_limit)])
 def list_saves(
     limit: int = Query(200, ge=1, le=500),
     db: Session = Depends(get_db),
     user_id: str = Depends(get_current_user_id),
     _: None = Depends(require_api_key),
-) -> PlacesResponse:
+) -> SavedPlacesResponse:
     """
-    Return saved places for a user, ordered newest-first.
+    Return saved places for a user, ordered newest-first, each carrying
+    this user's visited/notes memory for that save (E2).
     Only returns app-created saves (dedup_key starts with 'save:').
     """
     saves = (
@@ -169,7 +205,7 @@ def list_saves(
     place_ids = [s.place_id for s in saves if s.place_id]
 
     if not place_ids:
-        return PlacesResponse(total=0, page=1, page_size=limit, items=[])
+        return SavedPlacesResponse(total=0, page=1, page_size=limit, items=[])
 
     # Preserve save order in the result
     place_map = {
@@ -191,7 +227,15 @@ def list_saves(
             continue
         try:
             p.primary_image_url = image_urls.get(p.id)
-            items.append(PlaceOut.model_validate(p, from_attributes=True))
+            base = PlaceOut.model_validate(p, from_attributes=True)
+            items.append(
+                SavedPlaceOut(
+                    **base.model_dump(),
+                    visited=save.visited,
+                    visited_at=save.visited_at,
+                    notes=save.notes,
+                )
+            )
         except Exception as exc:
             logger.debug("saves_serialize_failed place_id=%s error=%s", p.id, exc)
 
@@ -199,7 +243,56 @@ def list_saves(
         "API_RESPONSE endpoint=/saves user_id=%s count=%s",
         user_id, len(items),
     )
-    return PlacesResponse(total=len(items), page=1, page_size=limit, items=items)
+    return SavedPlacesResponse(total=len(items), page=1, page_size=limit, items=items)
+
+
+# -------------------------------------------------------
+# PATCH /saves/{place_id}/memory — set visited / notes (E2)
+# -------------------------------------------------------
+
+@router.patch("/{place_id}/memory", status_code=200, dependencies=[Depends(rate_limit)])
+def update_save_memory(
+    place_id: str,
+    payload: SaveMemoryRequest,
+    db: Session = Depends(get_db),
+    user_id: str = Depends(get_current_user_id),
+    _: None = Depends(require_api_key),
+) -> dict:
+    dedup = _dedup_key(user_id, place_id)
+
+    save = (
+        db.query(HitlistSave)
+        .filter(
+            HitlistSave.user_id == user_id,
+            HitlistSave.dedup_key == dedup,
+        )
+        .one_or_none()
+    )
+
+    if not save:
+        raise HTTPException(status_code=404, detail="Save not found")
+
+    fields = payload.model_dump(exclude_unset=True)
+
+    if "visited" in fields:
+        save.visited = bool(fields["visited"])
+        save.visited_at = datetime.now(timezone.utc) if save.visited else None
+
+    if "notes" in fields:
+        save.notes = fields["notes"]
+
+    db.commit()
+
+    logger.info(
+        "save_memory_updated user_id=%s place_id=%s visited=%s has_notes=%s",
+        user_id, place_id, save.visited, save.notes is not None,
+    )
+    return {
+        "status": "updated",
+        "visited": save.visited,
+        "visited_at": save.visited_at,
+        "notes": save.notes,
+    }
 
 
 # -------------------------------------------------------
