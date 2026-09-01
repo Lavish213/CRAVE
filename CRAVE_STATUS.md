@@ -41,7 +41,7 @@ Auth: Supabase (JWKS, ES256).
 
 ## Test status
 
-Backend: **983 passed, 2 skipped** (`cd backend && python -m pytest -q`).
+Backend: **986 passed, 2 skipped** (`cd backend && python -m pytest -q`).
 Frontend: **331 passed**, 34 suites (`cd frontend && npx jest`), `tsc
 --noEmit` clean. An E2E Playwright smoke suite also exists (`frontend/e2e/`,
 3 journeys) — not part of the Jest count above, run separately via
@@ -77,8 +77,9 @@ administrator bypass retained for the agreed small-fix lane.
   without the upgrade.
 ## What's solid right now
 
-- **"The Pass" shipped end-to-end, plus a gap-closure pass — 7 PRs
-  (#100-#102 backend, #104-#106 frontend, #109 gap closure).** Category
+- **"The Pass" shipped end-to-end, plus a gap-closure pass — 8 PRs
+  (#100-#102 backend, #104-#106 frontend, #109 gap closure, #111 test
+  coverage).** Category
   taxonomy extended to cuisine/venue/dietary/ownership/occasion/
   recognition, `specialty` retired at the DB level, and the Filter UI
   now actually groups by type instead of a flat list that silently hid
@@ -295,11 +296,9 @@ cold from this doc alone.
    save, never touches discovery-intake rows, preserves an existing
    visit timestamp. Both immediate and comparison-flow ranking paths
    covered.
-2. Minor, non-blocking: `recommendations.py` and `trending.py`'s
-   `has_video` wiring (also added in the gap-closure pass) has no
-   dedicated end-to-end test through those two specific routes — same
-   pattern already proven safe elsewhere, low risk, but worth closing if
-   back in that area.
+2. ~~Recommendations/trending `has_video` test coverage~~ — done (PR
+   #111): both routes now have a dedicated end-to-end test, each
+   regression-checked against a deliberately broken version first.
 3. E10 group compatibility — do not start, including the simplest
    option, until Decision Session has real proof it works solo. ~5
    outcome events exist as of 2026-09-01; 500 is the proposed
