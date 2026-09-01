@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.db.models.place import Place
 from app.db.models.place_image_fetch_log import PlaceImageFetchLog
+from app.services.network.browser_escalation import fetch_with_browser
 
 
 logger = logging.getLogger(__name__)
@@ -89,18 +90,26 @@ class WebsiteImageExtractor:
         try:
 
             html = self._fetch_html(website)
+            candidates: List[dict] = (
+                self._extract_from_html(html, website) if html else []
+            )
 
-            if not html:
-                return []
-
-            soup = BeautifulSoup(html, "html.parser")
-
-            candidates: List[dict] = []
-
-            candidates.extend(self._extract_meta_images(soup, website))
-            candidates.extend(self._extract_img_tags(soup, website))
-
-            candidates = self._filter_images(candidates)
+            # A modern site (Squarespace/Wix/React, lazy-loaded galleries,
+            # CSS background-images) commonly renders its photos client-side
+            # -- a plain GET + static parse then finds nothing, which reads
+            # as "no free images exist" when it's really "this site needs
+            # JS to render." Escalate to the same headless-browser renderer
+            # the menu pipeline already uses (browser_escalation.py) before
+            # ever falling back to a paid Google lookup.
+            if not candidates:
+                rendered_html = self._fetch_html_via_browser(website)
+                if rendered_html:
+                    candidates = self._extract_from_html(rendered_html, website)
+                    if candidates:
+                        logger.info(
+                            "website_image_browser_escalation_success place_id=%s",
+                            place_id,
+                        )
 
             if db is not None:
                 self._record_fetch(
@@ -194,6 +203,35 @@ class WebsiteImageExtractor:
         except Exception:
             return None
 
+    def _fetch_html_via_browser(
+        self,
+        website: str,
+    ) -> Optional[str]:
+
+        try:
+            return fetch_with_browser(website, referer=website)
+        except Exception as exc:
+            logger.debug(
+                "website_image_browser_fetch_failed website=%s error=%s",
+                website,
+                exc,
+            )
+            return None
+
+    def _extract_from_html(
+        self,
+        html: str,
+        base_url: str,
+    ) -> List[dict]:
+
+        soup = BeautifulSoup(html, "html.parser")
+
+        candidates: List[dict] = []
+        candidates.extend(self._extract_meta_images(soup, base_url))
+        candidates.extend(self._extract_img_tags(soup, base_url))
+
+        return self._filter_images(candidates)
+
     # ---------------------------------------------------------
     # Extractors
     # ---------------------------------------------------------
@@ -241,7 +279,23 @@ class WebsiteImageExtractor:
 
         for tag in tags:
 
-            src = tag.get("src")
+            # Real src first; a static-only fetch commonly finds a lazy-load
+            # gallery where the real image only lives in one of these
+            # attributes until JS swaps it in (src is a 1x1 placeholder).
+            src = (
+                tag.get("src")
+                or tag.get("data-src")
+                or tag.get("data-lazy-src")
+                or tag.get("data-original")
+            )
+
+            if not src:
+                srcset = tag.get("srcset") or tag.get("data-srcset")
+                if srcset:
+                    # First candidate is good enough here -- _filter_images
+                    # and the downstream scorer decide real quality, this
+                    # step only needs *a* usable URL.
+                    src = srcset.split(",")[0].strip().split(" ")[0].strip()
 
             if not src:
                 continue

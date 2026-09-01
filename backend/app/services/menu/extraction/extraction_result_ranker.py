@@ -234,13 +234,21 @@ def is_plausible_extraction_result(items: List[ExtractedMenuItem]) -> bool:
     Count alone is not evidence of a menu: navigation scrapes commonly return
     dozens of unique labels. This deliberately avoids requiring prices or
     sections because legitimate menus may omit either one.
+
+    The unique-name floor is 0.75, not a bare majority. A production
+    contamination incident (two vendors' menus merged into one result via a
+    shared iframe/API widget) materialized 112 items with only ~57 distinct
+    names -- close enough to a 0.5 unique ratio that it cleared the old
+    >= 0.5 bar. Two vendors' menus concatenated together routinely land in
+    that near-half range on common dish names (fries, salad, burger); a
+    single restaurant's own menu essentially never repeats half its names.
     """
 
     normalized = _normalize_items(items)
     if len(normalized) < MIN_REASONABLE_ITEMS:
         return False
 
-    if _unique_ratio(normalized) < 0.5:
+    if _unique_ratio(normalized) < 0.75:
         return False
 
     if _navigation_ratio(normalized) > 0.3:
