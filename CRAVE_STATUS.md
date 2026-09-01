@@ -27,7 +27,7 @@ starting a new status file.
 - `CRAVE_FRONTEND_GUIDE_FOR_AI_EDITORS.md` — **local-only, gitignored,
   never commit.** House rules for AI editors working in this frontend.
 
-Last updated: 2026-09-01 (The Pass, backend + frontend, fully merged).
+Last updated: 2026-09-01 (The Pass + gap-closure pass, fully merged).
 
 ---
 
@@ -41,7 +41,7 @@ Auth: Supabase (JWKS, ES256).
 
 ## Test status
 
-Backend: **981 passed, 2 skipped** (`cd backend && python -m pytest -q`).
+Backend: **983 passed, 2 skipped** (`cd backend && python -m pytest -q`).
 Frontend: **331 passed**, 34 suites (`cd frontend && npx jest`), `tsc
 --noEmit` clean. An E2E Playwright smoke suite also exists (`frontend/e2e/`,
 3 journeys) — not part of the Jest count above, run separately via
@@ -77,24 +77,31 @@ administrator bypass retained for the agreed small-fix lane.
   without the upgrade.
 ## What's solid right now
 
-- **"The Pass" shipped end-to-end — backend and frontend, 6 PRs
-  (#100-#102 backend, #104-#106 frontend).** Category taxonomy extended
-  to cuisine/venue/dietary/ownership/occasion/recognition, `specialty`
-  retired at the DB level, and the Filter UI now actually groups by
-  type instead of a flat list that silently hid every dietary/ownership/
-  occasion/recognition category behind a blacklist. `HitlistSave` gains
-  `visited`/`visited_at`/`notes` plus `PATCH /saves/{place_id}/memory`,
-  with a real "I've been here" toggle and notes field on Place Detail.
-  A bulk `has_video` signal surfaces as a card badge on Feed/Search/
-  Craves (Place Detail stays the only playback surface). E10 group
-  compatibility stayed correctly un-built, held pending Decision Session
-  proving itself solo at real volume. See `.agent-bridge/STATE.md` for
-  the full per-PR breakdown, including two real bugs caught only by
-  running tests: a VARCHAR(9) column too narrow for a new value (caught
-  by CI's real-Postgres job, SQLite never would have) and an unhandled
-  promise rejection plus a QueryClientProvider requirement that broke 5
-  existing Map tests (caught by actually running them, not just reading
-  the code).
+- **"The Pass" shipped end-to-end, plus a gap-closure pass — 7 PRs
+  (#100-#102 backend, #104-#106 frontend, #109 gap closure).** Category
+  taxonomy extended to cuisine/venue/dietary/ownership/occasion/
+  recognition, `specialty` retired at the DB level, and the Filter UI
+  now actually groups by type instead of a flat list that silently hid
+  every dietary/ownership/occasion/recognition category behind a
+  blacklist. `HitlistSave` gains `visited`/`visited_at`/`notes` plus
+  `PATCH /saves/{place_id}/memory`, with a real "I've been here" toggle
+  and notes field on Place Detail, plus (PR #109) completing a ranking
+  now atomically marks an existing direct save visited in the same
+  transaction — exact-user/exact-place scoped, never creates a save,
+  never touches discovery-intake rows, preserves an existing visit
+  timestamp. A bulk `has_video` signal surfaces as a card badge on
+  Feed/Search/Craves/Trending/Recommendations/Decision Session/saved-map
+  (PR #109 closed the surfaces PR #102 missed) — Place Detail stays the
+  only playback surface. E10 group compatibility stayed correctly
+  un-built, held pending Decision Session proving itself solo at real
+  volume. See `.agent-bridge/STATE.md` for the full per-PR breakdown,
+  including several real bugs caught only by running tests, not reading
+  the code: a VARCHAR(9) column too narrow for a new value (real-Postgres
+  CI only), an unhandled promise rejection plus a QueryClientProvider
+  requirement that broke 5 existing Map tests, and two claims in PR
+  #109's own body ("cannot affect discovery-intake rows," "preserves an
+  existing visit timestamp") that were true but had zero test coverage
+  until independent review added it.
 
 - **Standalone production scheduler is provisioned safely, default-off.**
   Railway service `CRAVE-scheduler` deploys `main` using
@@ -214,12 +221,12 @@ administrator bypass retained for the agreed small-fix lane.
   fits" headline reads right), not more code. See
   `CRAVE_REMAINING_WORK.md`'s 2026-08-26 "controlled visual-language
   pass" entry for the full category breakdown.
-- **Craves now remembers visited/notes** (E2, "The Pass"), but still
-  doesn't "resurface saved spots at the right time" — that's a ranking/
-  notification idea, not built. The auto-visited hook (marking a save
-  visited when you rank it in Decision Session) is also still not built
-  — deliberately deferred, see `.agent-bridge/STATE.md`. Video record
-  has no discoverable entry point beyond a small chip on Place Detail —
+- **Craves now remembers visited/notes** (E2, "The Pass"), including the
+  auto-visited hook (ranking a place atomically marks an existing direct
+  save visited — PR #109, gap-closure pass) — but still doesn't
+  "resurface saved spots at the right time," that's a separate ranking/
+  notification idea, not built. Video record has no discoverable entry
+  point beyond a small chip on Place Detail —
   by design (E3), not an oversight; see "Design invariants — don't relitigate these"
   below before proposing a Feed action or a video tab.
 - **Search is keyword matching**, no typo tolerance or intent parsing.
@@ -245,8 +252,7 @@ drives discovery instead; see "Design invariants — don't relitigate these" bel
 Confirm the food-classifier model is actually installed in prod vs.
 degrading to its fallback path. Physical-device smoke pass (Auth/Feed/
 Search/Place Detail/Save/Map/Upload/Offline/Push/**Decision Session**).
-Build the Decision-Session auto-visited hook (E2's deferred half — see
-"What's next" below).
+~~Build the Decision-Session auto-visited hook~~ — done (PR #109).
 
 **P2** — ~~Recommendation Ledger fast-follows~~ — done. App Store prep
 (hosted Privacy Policy URL, Apple Developer membership, screenshots —
@@ -283,13 +289,18 @@ cold from this doc alone.
    hand-labeling) — untouched, need production access.
 
 **Product (buildable without production access — Claude's lane):**
-1. The Decision-Session auto-visited hook — when a saved place is ranked
-   in Decision Session, auto-set `HitlistSave.visited = true` server-side
-   (the manual "I've been here" toggle already exists; this is the
-   inferred half of E2's "both, B default" design). Small, contained:
-   likely a call from the rank-recording path into
-   `setSaveMemory`-equivalent backend logic.
-2. E10 group compatibility — do not start, including the simplest
+1. ~~The Decision-Session auto-visited hook~~ — done (PR #109,
+   gap-closure pass): completing a ranking atomically marks an existing
+   direct save visited, exact-user/exact-place scoped, never creates a
+   save, never touches discovery-intake rows, preserves an existing
+   visit timestamp. Both immediate and comparison-flow ranking paths
+   covered.
+2. Minor, non-blocking: `recommendations.py` and `trending.py`'s
+   `has_video` wiring (also added in the gap-closure pass) has no
+   dedicated end-to-end test through those two specific routes — same
+   pattern already proven safe elsewhere, low risk, but worth closing if
+   back in that area.
+3. E10 group compatibility — do not start, including the simplest
    option, until Decision Session has real proof it works solo. ~5
    outcome events exist as of 2026-09-01; 500 is the proposed
    reconsideration bar (a proposed number, not a hard fact — revisit if
@@ -297,10 +308,10 @@ cold from this doc alone.
    (host proposes, group vetoes) → B (shared hard constraints) → C (full
    group-utility scoring, doctrine's real long-term objective) — never
    jump straight to C.
-3. Filter UI Option B (dietary/occasion as their own persistent chip
+4. Filter UI Option B (dietary/occasion as their own persistent chip
    rows, not sheet contents) — only once usage data on the current
    sectioned sheet (shipped in "The Pass") shows real demand for it.
-4. Physical-device smoke pass — see the P1 backlog item above; this one
+5. Physical-device smoke pass — see the P1 backlog item above; this one
    needs a human with a device, not more code.
 
 ## Design invariants — don't relitigate these

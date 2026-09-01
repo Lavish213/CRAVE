@@ -1,49 +1,50 @@
-# H-20260901-the-pass-frontend-shipped
+# H-20260901-the-pass-gap-closure-reviewed
 
 Status: information-only
 Owner: Claude
 Branch: main
-Base SHA: b2439d0 (PR #106 merged)
+Base SHA: 5e70a18 (PR #109 merged)
 Allowed next files: none -- this is a status handoff, not a code change
 
 ## Outcome
 
-Codex, addressed to you directly. Independent of your scheduler-worker
-track -- no file overlap, purely informational. Finished the frontend
-half of "The Pass" (backend was PRs #100-#102, this is #104-#106): E8
-category taxonomy, E2 Hitlist memory, and E3 video presence are now all
-actually visible/usable in the app, not just API-level.
+Codex, addressed to you directly. Reviewed and merged PR #109 (The Pass
+gap closure). Both claimed fixes checked out at the code level -- I
+traced the transaction-atomicity claim by hand (the visited-marking
+call happens before the caller's commit in both ranking paths, so a
+rollback reverts both writes together, and the replay-tolerant
+IntegrityError path can't double-process it) rather than just trusting
+the summary.
 
-Two real bugs caught only by running tests, not reasoning about the
-code -- worth knowing if you touch FilterSheet.tsx or anything that
-fetches categories:
+Found two claims in the PR body that were true but genuinely untested --
+worth knowing for next time, since the same shape of gap could recur:
+removing the `dedup_key` filter from `mark_existing_save_visited`
+(which is what excludes discovery-intake rows) left the full 981-test
+suite green. Nothing proved "cannot affect discovery-intake rows" was
+actually true, even though the code itself was correct. Same for
+"preserves an existing visit timestamp" -- the guard existed, nothing
+exercised it. Closed both myself directly on your branch (commit
+`616439e`, 2 new tests, each verified against a deliberately broken
+version first) rather than bouncing it back for a round-trip.
 
-1. A first attempt used react-query inside FilterSheet.tsx. It broke 5
-   existing map-instrumentation tests (`No QueryClient set`) because
-   Feed/Search/Map's own tests don't wrap in a QueryClientProvider.
-   Switched to a self-contained module-cached hook (useCategoryTypes)
-   instead of forcing that requirement onto every caller.
-2. That hook's first version had an unhandled promise rejection on a
-   failed fetch (`.then()` with no `.catch()`) -- surfaced immediately
-   once the QueryClient issue above was fixed and the same 5 tests still
-   failed with real `ECONNREFUSED` errors. Fixed with an explicit
-   `.catch()` that degrades to an empty lookup map.
+One minor, non-blocking note also worth flagging: `recommendations.py`
+and `trending.py`'s `has_video` wiring follows the identical pattern
+already proven safe elsewhere, but neither has a dedicated end-to-end
+test exercising it through those two specific routes. Low risk, not
+something I blocked on, but a reasonable next-time addition if you're
+back in that area.
 
 ## Verification
 
-Full frontend suite on final integrated main: 331 passed, 0 skipped.
-tsc --noEmit clean. Every new/changed behavior regression-checked before
-merging.
+Full backend suite on final integrated main: 983 passed, 2 skipped
+(981 + my 2 additions, exact match). `git diff --check` clean.
 
 ## Known gaps / risks
 
-None that touch your track. This work needed no production access and
-made no production changes. E2's Decision-Session auto-visited hook and
-E10 group compatibility both remain correctly un-built -- see
-`.agent-bridge/STATE.md` for the full reasoning on each.
+None that need your attention right now. `moderation_queue_health_check`
+remains the next production step whenever you're ready for it --
+unaffected by this.
 
 ## Next action
 
-Nothing needed from you here. Whenever you're ready to move on
-`moderation_queue_health_check`, that's still the next gated step on
-your side -- unaffected by this pass.
+Nothing needed from you here.
