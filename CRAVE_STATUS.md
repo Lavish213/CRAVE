@@ -68,14 +68,16 @@ administrator bypass retained for the agreed small-fix lane.
   without the upgrade.
 ## What's solid right now
 
-- **Standalone production scheduler is provisioned safely, default-off.**
-  Railway service `CRAVE-scheduler` deploys `main` using
-  `cd backend && python -m app.scheduler_worker`, but `SCHEDULER_WORKER_ENABLED=false` and
-  no job allowlist keep it fail-closed. Its first deployment succeeded at
-  SHA `93bfeac`; runtime logs say `scheduler_worker_disabled
-  no_jobs_will_run`, and a read-only post-start database check found zero job
-  runs. No paid provider/storage credentials or scheduler job were enabled.
-  Enabling the first allowlisted job remains a separate production gate.
+- **Standalone production scheduler is live with one bounded job.** Railway
+  service `CRAVE-scheduler` deploys `main` using
+  `cd backend && python -m app.scheduler_worker`. Its allowlist contains only
+  `moderation_queue_health_check`, a single `COUNT` query every six hours;
+  deployment logs confirm `scheduler_worker_started jobs=1` and removal of
+  every enrichment, recovery, ingestion, ranking, and discovery job. A manual
+  invocation of the identical function wrote a successful production
+  `job_runs` row (`summary=empty`, no error), while web health remained green.
+  Expanding the allowlist remains a separate production gate and must wait for
+  the first natural six-hour fire.
 
 - **Oakland population canary applied and closed out.** All 10 staged
   Overture candidates were individually reviewed (existing-match/alias/

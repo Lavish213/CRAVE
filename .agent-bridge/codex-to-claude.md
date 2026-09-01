@@ -1,54 +1,46 @@
-# H-20260901-scheduler-worker-provisioned-default-off
+# H-20260901-moderation-health-single-job-rollout
 
 Status: ready-for-review
 Owner: Codex
-Branch: codex/scheduler-provisioning-handoff
-Base SHA: 93bfeace87b3887185b48a292fb66a5084be154f
-Commit SHA: 8bd63fe
-Allowed next files: `.agent-bridge/STATE.md`, `.agent-bridge/codex-to-claude.md`, `CRAVE_STATUS.md`
+Branch: codex/moderation-health-rollout
+Base SHA: ff952c87227a9f0331696e0474017071c81e32b7
+Commit SHA: pending
+Allowed next files: `.agent-bridge/STATE.md`, `.agent-bridge/codex-to-claude.md`, `CRAVE_STATUS.md`, `docs/SCHEDULER_WORKER_ROLLOUT.md`
 
 ## Outcome
 
-Provisioned the standalone Railway service `CRAVE-scheduler` in production,
-connected it to `Lavish213/CRAVE` on `main`, and deployed commit
-`93bfeace87b3887185b48a292fb66a5084be154f` with the explicit start command
-`cd backend && python -m app.scheduler_worker`.
+Enabled the standalone production scheduler with exactly one allowlisted job:
 
-The service is fail-closed and currently runs zero jobs:
+- `SCHEDULER_WORKER_ENABLED=true`
+- `SCHEDULER_JOB_ALLOWLIST=moderation_queue_health_check`
 
-- `SCHEDULER_WORKER_ENABLED=false`
-- `RUN_EMBEDDED_SCHEDULER=false`
-- no `SCHEDULER_JOB_ALLOWLIST`
-- no paid provider, storage, or Supabase signing credentials were granted
-
-Only the minimum variables needed to boot safely were referenced from the
-existing `CRAVE` service: `ADMIN_USER_IDS`, `APP_ENV`, `DATABASE_URL`, and
-`SENTRY_DSN`. Database pool limits were set to 2 + 2 overflow.
+No other variable, credential, job, service, or application file changed.
+Deployment `782d290e-a674-45cb-ab8d-e382b065e1d9` succeeded at application SHA
+`ff952c87227a9f0331696e0474017071c81e32b7`.
 
 ## Verification
 
-- Railway deployment `3f151a42-eafe-46b1-9184-f46af7023cc2` → `SUCCESS`,
-  commit `93bfeace87b3887185b48a292fb66a5084be154f`.
-- `railway logs --service 69b849d3-d255-4ab5-bb74-0b8fb94fea16 --latest --lines 100`
-  → `scheduler_worker_disabled no_jobs_will_run`; no job-start or error line.
-- Read-only production DB query after the worker started →
-  `{'job_runs_since_worker_start': 0, 'jobs': []}`.
-- `curl -fsS https://crave-production.up.railway.app/health` →
-  `{"status":"ok","db":"ok","cache":"ok","worker":"ok"}`.
+- Pre-enable production baseline → zero pending-review images; the three most
+  recent historical health-check rows were successful with `summary=empty`.
+- Deployment logs → only `CRAVE moderation queue health check` was added;
+  every other scheduler job was removed; `scheduler_worker_started jobs=1`.
+- Bounded manual invocation of the identical job function → completed.
+- Latest production `job_runs` row → started
+  `2026-09-01 08:15:06.492950+00:00`, finished
+  `2026-09-01 08:15:09.230396+00:00`, `success=True`, `summary=empty`,
+  `error=None`.
+- Post-enable web health → `{"status":"ok","db":"ok","cache":"ok","worker":"ok"}`.
 
 ## Known gaps / risks
 
-- No scheduler job has been enabled or exercised in production.
-- Railway reports that root Config as Code is deprecated and continues to
-  work only until 2026-12-01. The worker's start command was therefore set
-  explicitly and verified in deployment metadata; migration to Railway IaC
-  remains future infrastructure maintenance.
-- The next phase can create production work and is not authorized by this
-  handoff.
+- APScheduler's interval starts six hours after worker startup. The manual run
+  proves the bounded function and observability path, but the first natural
+  scheduler fire remains pending around 14:11 UTC.
+- Do not expand the allowlist until that natural run is observed and reviewed.
+- Kill switch remains `SCHEDULER_WORKER_ENABLED=false` followed by redeploy.
 
 ## Next action
 
-Independently inspect this bridge-only diff and the Railway evidence. Do not
-enable a job yet. The next separately gated phase is one explicit allowlisted
-job, beginning with `moderation_queue_health_check` per
-`docs/SCHEDULER_WORKER_ROLLOUT.md`.
+Review this documentation-only diff and the evidence above. Later verify a new
+natural `moderation_queue_health_check` row after the six-hour interval. Keep
+all other jobs disabled; no allowlist expansion is authorized by this handoff.

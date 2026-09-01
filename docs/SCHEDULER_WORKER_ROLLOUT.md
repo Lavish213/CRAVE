@@ -19,12 +19,15 @@ The gap above is now split into two independent facts — do not conflate them:
 - **Service exists**: `CRAVE-scheduler` is provisioned on Railway, connected
   to `Lavish213/CRAVE` on `main`, deployed successfully (first deploy at SHA
   `93bfeac`).
-- **No job runs**: `SCHEDULER_WORKER_ENABLED=false` and no
-  `SCHEDULER_JOB_ALLOWLIST` are set on that service, so it stays alive and
-  idle — confirmed via the deployed runtime log
-  (`scheduler_worker_disabled no_jobs_will_run`) and a zero-row post-start
-  production job-run check. Still zero APScheduler jobs running anywhere.
-  Phase 1 below is done; phase 2 has not started.
+- **One bounded job is enabled**: as of 2026-09-01,
+  `SCHEDULER_WORKER_ENABLED=true` and
+  `SCHEDULER_JOB_ALLOWLIST=moderation_queue_health_check`. Deployment
+  `782d290e-a674-45cb-ab8d-e382b065e1d9` registered exactly one job and
+  logged `scheduler_worker_started jobs=1`; all enrichment, recovery,
+  ingestion, ranking, and discovery jobs remain removed. A bounded manual
+  invocation produced a successful `job_runs` row with `summary=empty`, and
+  web health remained nominal. The first natural six-hour scheduler fire is
+  still pending.
 
 ## Required worker configuration
 
@@ -46,11 +49,14 @@ runs no jobs.
 
 1. **Done (2026-09-01).** Provisioned the service disabled. Verified the
    disabled log line and zero new job-run rows.
-2. Set `SCHEDULER_WORKER_ENABLED=true` with
+2. **Done (2026-09-01).** Set `SCHEDULER_WORKER_ENABLED=true` with
    `SCHEDULER_JOB_ALLOWLIST=moderation_queue_health_check`. This is one bounded
    `COUNT` query every six hours and proves scheduler execution without
    releasing an enrichment backlog.
-3. Observe a completed `job_runs` row and nominal web health/error rate.
+3. **Partially verified (2026-09-01).** A manual invocation of the identical
+   job function produced a successful `job_runs` row (`summary=empty`, no
+   error), and web health remained fully green. Confirm the first natural
+   six-hour fire before expanding the allowlist.
 4. Add latency-sensitive recovery jobs one at a time only after their current
    queue depth is measured: `share_parser`, `video_processing`, then
    `image_processing_recovery`.
