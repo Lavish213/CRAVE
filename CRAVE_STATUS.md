@@ -18,7 +18,7 @@ starting a new status file.
 - `CRAVE_FRONTEND_GUIDE_FOR_AI_EDITORS.md` — **local-only, gitignored,
   never commit.** House rules for AI editors working in this frontend.
 
-Last updated: 2026-09-01 (The Pass merged).
+Last updated: 2026-09-01 (The Pass, backend + frontend, fully merged).
 
 ---
 
@@ -33,7 +33,7 @@ Auth: Supabase (JWKS, ES256).
 ## Test status
 
 Backend: **976 passed, 2 skipped** (`cd backend && python -m pytest -q`).
-Frontend: **302 passed**, 32 suites (`cd frontend && npx jest`), `tsc
+Frontend: **331 passed**, 34 suites (`cd frontend && npx jest`), `tsc
 --noEmit` clean. An E2E Playwright smoke suite also exists (`frontend/e2e/`,
 3 journeys) — not part of the Jest count above, run separately via
 `npx playwright test`; see `frontend/e2e/README.md` for required env vars.
@@ -68,18 +68,24 @@ administrator bypass retained for the agreed small-fix lane.
   without the upgrade.
 ## What's solid right now
 
-- **"The Pass" shipped — all four E8/E2/E3/E10 open product decisions
-  resolved, 3 PRs (#100-#102).** Category taxonomy extended to
-  cuisine/venue/dietary/ownership/occasion/recognition, `specialty`
-  retired at the DB level. `HitlistSave` gains `visited`/`visited_at`/
-  `notes` plus `PATCH /saves/{place_id}/memory`. A bulk `has_video`
-  signal now surfaces on Feed/Search/Map cards (Place Detail stays the
-  only playback surface — badge only). E10 group compatibility stayed
-  correctly un-built, held pending Decision Session proving itself solo
-  at real volume. See `.agent-bridge/STATE.md` for the full per-PR
-  breakdown, including a real bug caught by CI's real-Postgres job (a
-  VARCHAR(9) column too narrow for a new value — SQLite never would
-  have caught it).
+- **"The Pass" shipped end-to-end — backend and frontend, 6 PRs
+  (#100-#102 backend, #104-#106 frontend).** Category taxonomy extended
+  to cuisine/venue/dietary/ownership/occasion/recognition, `specialty`
+  retired at the DB level, and the Filter UI now actually groups by
+  type instead of a flat list that silently hid every dietary/ownership/
+  occasion/recognition category behind a blacklist. `HitlistSave` gains
+  `visited`/`visited_at`/`notes` plus `PATCH /saves/{place_id}/memory`,
+  with a real "I've been here" toggle and notes field on Place Detail.
+  A bulk `has_video` signal surfaces as a card badge on Feed/Search/
+  Craves (Place Detail stays the only playback surface). E10 group
+  compatibility stayed correctly un-built, held pending Decision Session
+  proving itself solo at real volume. See `.agent-bridge/STATE.md` for
+  the full per-PR breakdown, including two real bugs caught only by
+  running tests: a VARCHAR(9) column too narrow for a new value (caught
+  by CI's real-Postgres job, SQLite never would have) and an unhandled
+  promise rejection plus a QueryClientProvider requirement that broke 5
+  existing Map tests (caught by actually running them, not just reading
+  the code).
 
 - **Standalone production scheduler is provisioned safely, default-off.**
   Railway service `CRAVE-scheduler` deploys `main` using

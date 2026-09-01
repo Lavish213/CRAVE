@@ -1,45 +1,46 @@
-# H-20260901-the-pass-shipped
+# H-20260901-the-pass-frontend-shipped
 
 Status: information-only
 Owner: Claude
 Branch: main
-Base SHA: de6f825 (PR #102 merged)
+Base SHA: b2439d0 (PR #106 merged)
 Allowed next files: none -- this is a status handoff, not a code change
 
 ## Outcome
 
-Codex, addressed to you directly. Independent of the scheduler-worker
-track you're driving -- no file overlap, purely informational. The user
-asked me to build out "The Pass": the design plan resolving CRAVE's four
-open product decisions (E8 category taxonomy, E2 Hitlist memory, E3
-video placement, E10 group compatibility) that a prior session had
-scoped but never pushed anywhere before hitting a usage limit -- verified
-first that nothing from that session existed as a branch, PR, or
-uncommitted file anywhere in this checkout, then built it fresh.
+Codex, addressed to you directly. Independent of your scheduler-worker
+track -- no file overlap, purely informational. Finished the frontend
+half of "The Pass" (backend was PRs #100-#102, this is #104-#106): E8
+category taxonomy, E2 Hitlist memory, and E3 video presence are now all
+actually visible/usable in the app, not just API-level.
 
-Shipped as 3 merged PRs (#100, #101, #102) -- category taxonomy retype,
-Hitlist visited/notes memory, and a has_video badge signal across
-Feed/Search/Map. Full detail in each PR body and in `.agent-bridge/
-STATE.md`'s per-PR sections. E10 (group compatibility) stayed explicitly
-un-built -- the design plan's own call was to hold it until Decision
-Session proves itself solo at real volume, not a code task yet.
+Two real bugs caught only by running tests, not reasoning about the
+code -- worth knowing if you touch FilterSheet.tsx or anything that
+fetches categories:
 
-One thing worth knowing if you touch `categories` or its migration chain:
-PR #100's migration widens `categories.type` from VARCHAR(9) to
-VARCHAR(11) -- caught by real-Postgres CI, not local SQLite testing,
-since SQLite doesn't enforce VARCHAR length at all. Worth remembering if
-another VARCHAR-backed enum-style column ever needs a longer value added.
+1. A first attempt used react-query inside FilterSheet.tsx. It broke 5
+   existing map-instrumentation tests (`No QueryClient set`) because
+   Feed/Search/Map's own tests don't wrap in a QueryClientProvider.
+   Switched to a self-contained module-cached hook (useCategoryTypes)
+   instead of forcing that requirement onto every caller.
+2. That hook's first version had an unhandled promise rejection on a
+   failed fetch (`.then()` with no `.catch()`) -- surfaced immediately
+   once the QueryClient issue above was fixed and the same 5 tests still
+   failed with real `ECONNREFUSED` errors. Fixed with an explicit
+   `.catch()` that degrades to an empty lookup map.
 
 ## Verification
 
-Full backend suite on final integrated main: 976 passed, 2 skipped.
-Every migration tested both directions; every new/changed behavior
-regression-checked before merging (same discipline as always).
+Full frontend suite on final integrated main: 331 passed, 0 skipped.
+tsc --noEmit clean. Every new/changed behavior regression-checked before
+merging.
 
 ## Known gaps / risks
 
 None that touch your track. This work needed no production access and
-made no production changes.
+made no production changes. E2's Decision-Session auto-visited hook and
+E10 group compatibility both remain correctly un-built -- see
+`.agent-bridge/STATE.md` for the full reasoning on each.
 
 ## Next action
 
