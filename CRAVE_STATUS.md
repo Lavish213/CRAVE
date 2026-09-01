@@ -18,7 +18,7 @@ starting a new status file.
 - `CRAVE_FRONTEND_GUIDE_FOR_AI_EDITORS.md` — **local-only, gitignored,
   never commit.** House rules for AI editors working in this frontend.
 
-Last updated: 2026-08-31.
+Last updated: 2026-09-01.
 
 ---
 
@@ -67,6 +67,15 @@ administrator bypass retained for the agreed small-fix lane.
   urgent (app keeps running, Feed still loads) but the warning won't clear
   without the upgrade.
 ## What's solid right now
+
+- **Standalone production scheduler is provisioned safely, default-off.**
+  Railway service `CRAVE-scheduler` deploys `main` using
+  `python -m app.scheduler_worker`, but `SCHEDULER_WORKER_ENABLED=false` and
+  no job allowlist keep it fail-closed. Its first deployment succeeded at
+  SHA `93bfeac`; runtime logs say `scheduler_worker_disabled
+  no_jobs_will_run`, and a read-only post-start database check found zero job
+  runs. No paid provider/storage credentials or scheduler job were enabled.
+  Enabling the first allowlisted job remains a separate production gate.
 
 - **Oakland population canary applied and closed out.** All 10 staged
   Overture candidates were individually reviewed (existing-match/alias/

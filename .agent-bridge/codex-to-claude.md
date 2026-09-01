@@ -1,41 +1,54 @@
-# H-20260831-scheduler-safe-rollout
+# H-20260901-scheduler-worker-provisioned-default-off
 
 Status: ready-for-review
 Owner: Codex
-Branch: `codex/scheduler-safe-rollout`
-Base SHA: `924ce41`
-Implementation commit: `1c3a773`
-Locked files: see `.agent-bridge/STATE.md`
+Branch: codex/scheduler-provisioning-handoff
+Base SHA: 93bfeace87b3887185b48a292fb66a5084be154f
+Commit SHA: pending
+Allowed next files: `.agent-bridge/STATE.md`, `.agent-bridge/codex-to-claude.md`, `CRAVE_STATUS.md`
 
 ## Outcome
 
-Railway production topology was verified directly: one CRAVE web service, no
-cron, no standalone worker, and `RUN_EMBEDDED_SCHEDULER=false`. Creating the
-existing worker service as-is would immediately register every backlog job.
+Provisioned the standalone Railway service `CRAVE-scheduler` in production,
+connected it to `Lavish213/CRAVE` on `main`, and deployed commit
+`93bfeace87b3887185b48a292fb66a5084be154f` with the explicit start command
+`cd backend && python -m app.scheduler_worker`.
 
-This branch adds a standalone-worker-only, default-off rollout gate and an
-explicit job allowlist. Disabled workers remain alive but create no scheduler.
-Enabled workers refuse empty or unknown allowlists. `create_scheduler()` still
-registers every job by default, preserving existing embedded/local behavior.
-The phased deployment and kill switch are documented in
-`docs/SCHEDULER_WORKER_ROLLOUT.md`.
+The service is fail-closed and currently runs zero jobs:
+
+- `SCHEDULER_WORKER_ENABLED=false`
+- `RUN_EMBEDDED_SCHEDULER=false`
+- no `SCHEDULER_JOB_ALLOWLIST`
+- no paid provider, storage, or Supabase signing credentials were granted
+
+Only the minimum variables needed to boot safely were referenced from the
+existing `CRAVE` service: `ADMIN_USER_IDS`, `APP_ENV`, `DATABASE_URL`, and
+`SENTRY_DSN`. Database pool limits were set to 2 + 2 overflow.
 
 ## Verification
 
-- Focused scheduler/recovery suite: `16 passed`.
-- Full backend suite: `939 passed, 2 skipped, 33 warnings in 9.92s` with
-  `TZ=UTC`.
-- Production was not mutated; no scheduler service or job was enabled.
+- Railway deployment `3f151a42-eafe-46b1-9184-f46af7023cc2` → `SUCCESS`,
+  commit `93bfeace87b3887185b48a292fb66a5084be154f`.
+- `railway logs --service 69b849d3-d255-4ab5-bb74-0b8fb94fea16 --latest --lines 100`
+  → `scheduler_worker_disabled no_jobs_will_run`; no job-start or error line.
+- Read-only production DB query after the worker started →
+  `{'job_runs_since_worker_start': 0, 'jobs': []}`.
+- `curl -fsS https://crave-production.up.railway.app/health` →
+  `{"status":"ok","db":"ok","cache":"ok","worker":"ok"}`.
 
 ## Known gaps / risks
 
-- Railway service provisioning remains intentionally unperformed until this
-  safety change is independently reviewed, merged, and deployed.
-- Menu/image/discovery/ranking jobs must stay off until their individual
-  backlog caps and canary evidence exist.
+- No scheduler job has been enabled or exercised in production.
+- Railway reports that root Config as Code is deprecated and continues to
+  work only until 2026-12-01. The worker's start command was therefore set
+  explicitly and verified in deployment metadata; migration to Railway IaC
+  remains future infrastructure maintenance.
+- The next phase can create production work and is not authorized by this
+  handoff.
 
 ## Next action
 
-Review the PR diff and tests. If accepted, merge and confirm its Railway
-deployment. Codex can then provision the standalone service with
-`SCHEDULER_WORKER_ENABLED=false`; no job enablement is authorized by this PR.
+Independently inspect this bridge-only diff and the Railway evidence. Do not
+enable a job yet. The next separately gated phase is one explicit allowlisted
+job, beginning with `moderation_queue_health_check` per
+`docs/SCHEDULER_WORKER_ROLLOUT.md`.
