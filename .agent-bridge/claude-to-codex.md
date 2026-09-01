@@ -1,65 +1,68 @@
-# H-20260901-menu-and-image-acquisition-fixes
+# H-20260901-menu-pipeline-fixes-complete
 
 Status: ready-for-execution
 Owner: Claude
 Branch: main
-Base SHA: deb83b5 (PR #117 merged)
+Base SHA: 76513cf (PR #118 merged)
 Allowed next files: none from me -- this is a fix handoff, not a code
 change. Whatever you do to execute it is your normal docs-only bridge
 handoff afterward.
 
 ## Outcome
 
-Codex, addressed to you directly. Read the actual code behind both of
-your canary findings instead of treating them as bad luck, and fixed
-what I found. Full detail in `.agent-bridge/STATE.md` and PR #117's
-body; short version:
+Codex, addressed to you directly. Two PRs closing out the menu/image
+acquisition contamination and recall bugs, including one you'd want to
+know about even if you never touch it: `run_phase4_batch.py` had zero
+confirmation gate before this.
 
-- **Itani menu contamination** was a real, identifiable bug: the
-  extraction ranker's uniqueness floor was exactly `>= 0.5`, and your
-  112-item/~57-unique result cleared it by a hair. Raised to `0.75`, and
-  added an entity-name check (JSON-LD/title/og:site_name vs.
-  `place.name`) on the iframe extraction tier specifically -- that's the
-  most plausible vector for a shared third-party widget like "Hopscotch"
-  getting scraped as if it were Itani's own menu.
-- **Zero free image candidates** was also a real bug, not a data
-  problem: `WebsiteImageExtractor` never executed JS, so any
-  client-rendered site (lazy-loaded galleries, CSS background-images)
-  returned nothing. Added a browser-escalation fallback reusing the
-  menu pipeline's existing headless renderer, plus lazy-load attribute
-  support as a cheaper first line of defense.
+**PR #117:** fixed the two things you found -- the extraction ranker's
+uniqueness floor (raised 0.5 -> 0.75) and a new entity-match guard on
+the router's iframe tier (catches a shared third-party widget like
+"Hopscotch" masquerading as the target place). Also fixed
+`WebsiteImageExtractor`'s total lack of JS rendering with a
+browser-escalation fallback.
+
+**PR #118:** you asked me (via the user) to triple-check before
+extending #117's fix elsewhere. Good thing -- tracing the actual call
+graph found `MasterDataOrchestrator.ensure_place()` routes any
+non-Grubhub place (the majority) through `ExtractionController` +
+`MenuOrchestrator.run_with_items()`, which shares zero code with
+`menu_extraction_router.py`. #117 never protected this path, and this
+is the exact system `docs/PHASE_PLAN.md` prescribes as the current
+Phase-4 tool (confirmed still actively maintained via your own PR #61,
+merged 2 days before this session). Fixed it at the actual shared choke
+point (`menu_pipeline.py`'s `_is_low_quality`, called by both
+`run_for_place` and `run_with_items`) instead of duplicating checks into
+`ExtractionController`. Also added a confirmation gate to
+`run_phase4_batch.py` itself -- it previously had no preview mode, no
+`--run` flag, and an optional/unbounded `--limit`.
 
 ## Verification (mine, local)
 
-19 new tests across 3 files, each regression-checked individually
-(reverted the fix, confirmed the specific test fails, restored). Full
-backend suite: 1006 passed, 2 skipped (987 baseline + 19 new). Neither
-`menu_enrichment` nor `image_ingestion` is in the current scheduler
-allowlist, so none of this touched anything live.
+27 new tests total across both PRs, each regression-checked individually.
+Full backend suite: 1014 passed, 2 skipped (987 baseline + 27 new).
+Neither `menu_enrichment` nor `image_ingestion` is in the current
+scheduler allowlist, and `run_phase4_batch.py` isn't scheduled at all --
+none of this touched anything live.
 
 ## Known gaps / risks
 
-- The entity-match guard only covers iframe extraction, not
-  API/provider/hydration -- lower-risk vectors for this exact
-  contamination shape, but not covered.
-- Code-level proof only. The real test is whether this actually resolves
-  your two specific failures against real production data.
+- Entity-match (JSON-LD/title vs. place name) still isn't wired into
+  `ExtractionController`'s path specifically -- it doesn't retain fetched
+  HTML in its result. The duplicate-ratio gate added in #118 is the more
+  broadly-protective fix and covers the confirmed incident's shape
+  either way, but a future *different* contamination shape (not
+  duplicate-heavy) on that path wouldn't be caught by name-matching.
+- Code-level proof only, same as always -- production retry is the real
+  test.
 
 ## Next action
 
-Two independent retries, whenever you're back:
+Three independent things, whenever you're back:
+1. Menu canary retry on Itani + a new small batch.
+2. Image acquisition canary retry on the two zero-candidate sites.
+3. If you ever run `run_phase4_batch.py` per the Phase 4 plan, it now
+   needs `--limit N` (max 200) and `--run` -- preview first.
 
-1. **Menu canary retry**: `backend/scripts/run_menu_backlog_canary.py`
-   against Itani again (does it now materialize a clean, single-vendor
-   menu, or correctly find nothing/low-confidence rather than
-   contaminated data?) plus a small new batch from the 13,128
-   website/no-menu candidates. Watch `materialized`/`no_menu`/`errors`
-   counts and spot-check a few items.
-2. **Image acquisition retry**: the free-image canary against the same
-   two sites that returned zero candidates before. Check logs for
-   `website_image_browser_escalation_success` to confirm the fallback
-   actually fired and found something.
-
-Independently, the `image_processing_recovery` synthetic test I queued
-before this pass is still open and unrelated -- do it in whichever order
-suits, or in parallel.
+Plus the still-open `image_processing_recovery` synthetic test request
+from before -- unrelated, any order.

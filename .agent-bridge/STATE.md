@@ -3,7 +3,7 @@
 Status: handoff-pending
 Owner: Claude
 Branch: main
-Base SHA: deb83b5 (PR #117 merged)
+Base SHA: 76513cf (PR #118 merged)
 Scope: Root-caused and fixed both acquisition-pipeline failures from the
 recent canary attempts (menu contamination on Itani, zero free image
 candidates on two sites), rather than leaving them as open blockers.
@@ -38,6 +38,40 @@ new, exact match). Neither `menu_enrichment` nor `image_ingestion` is in
 the current production scheduler allowlist, so this carried no live
 blast radius.
 
+## PR #118 (merged) -- following up after the user asked to triple-check
+
+Before extending #117's fix into `ExtractionController`, verified the
+actual call graph first: `MasterDataOrchestrator.ensure_place()` routes
+any non-Grubhub place (the majority) through `ExtractionController` +
+`MenuOrchestrator.run_with_items()`, which shares zero code with
+`menu_extraction_router.py` -- #117 never touched this path. Confirmed
+via GitHub (PR #61, merged 2 days before this session) that this
+"Phase 4" system is actively maintained, not legacy, and via
+`docs/PHASE_PLAN.md`/`docs/MENU_INGEST_SYSTEM.md` that
+`scripts/run_phase4_batch.py` is the officially documented tool for this
+exact work.
+
+Instead of duplicating #117's checks into `ExtractionController`, found
+the better fix: `menu_pipeline.py`'s `process_extracted_menu()` is the
+ONE quality gate both `run_for_place()` and `run_with_items()` call
+before emitting claims. Added the same duplicate-name-ratio check there
+-- covers every menu-writing path including `ExtractionController`'s,
+from one place. Separately, `run_phase4_batch.py` had zero confirmation
+gate (no preview, no `--run`, `--limit` optional/unbounded) -- added
+`--run` (default preview-only) and a required, capped `--limit` (200),
+matching `run_menu_backlog_canary.py`'s discipline. Updated both stale
+docs' example commands to match.
+
+Verification: 8 new tests, each regression-checked individually. Full
+backend suite: 1014 passed, 2 skipped (1006 baseline + 8 new, exact
+match).
+
+Known gap: entity-match (JSON-LD/title vs. place name) still isn't wired
+into `ExtractionController`'s path -- it doesn't retain fetched HTML in
+its result, so that would need a moderate plumbing change. The
+duplicate-ratio gate is the more broadly-protective fix and covers the
+confirmed incident's shape regardless.
+
 ## Prior passes this session (summarized -- full detail in PR bodies)
 
 Reviewed and merged Codex's PR #113 (moderation-health forced-run
@@ -60,7 +94,7 @@ actually terminates a stale row, not just selects it) and #116 (synced
 
 ## Next action
 
-Codex, when back, two independent things ready for you:
+Codex, when back, three independent things ready for you:
 1. Retry the menu backlog canary (`run_menu_backlog_canary.py`) on Itani
    plus a small new batch from the website/no-menu candidates, now that
    the duplicate/entity gates are live -- watch for `reclaimed`/
@@ -69,6 +103,11 @@ Codex, when back, two independent things ready for you:
    returned zero candidates -- the browser-escalation fallback should
    now find their client-rendered photos; confirm via logs whether
    `website_image_browser_escalation_success` actually fires.
+3. If/when `scripts/run_phase4_batch.py` is ever run (per
+   `docs/PHASE_PLAN.md`'s Phase 4 plan), it now requires `--limit` (max
+   200) and `--run` to execute -- preview first, review the sample, then
+   `--run`. This path's quality gate is now protected by #118, but still
+   weaker than the router's, so keep batches small.
 
 Plus the still-open image_processing_recovery synthetic test request
 from before this pass (`.agent-bridge/claude-to-codex.md`) -- unrelated,
