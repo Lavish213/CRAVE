@@ -15,15 +15,20 @@ Smart mode (--priority smart):
 Per-place logging: extractor used, items created, fallback used, errors.
 Aggregate stats: success rate, failure rate, fallback rate, avg items.
 
+--limit is required (max 200) and, without --run, this only previews the
+target count and a sample of place IDs/names -- it does not execute.
+This path (ExtractionController) has a materially weaker quality gate
+than menu_extraction_router.py's, so keep batches small and spot-check
+results between runs.
+
 Run:
     cd backend
-    python scripts/run_phase4_batch.py [--limit N] [--priority grubhub|provider|web|all|smart]
+    python scripts/run_phase4_batch.py --limit N --priority grubhub|provider|web|all|smart [--run]
 
 Examples:
-    python scripts/run_phase4_batch.py --limit 50 --priority smart
-    python scripts/run_phase4_batch.py --limit 50 --priority grubhub
-    python scripts/run_phase4_batch.py --limit 200 --priority all
-    python scripts/run_phase4_batch.py  # no limit, all priorities
+    python scripts/run_phase4_batch.py --limit 50 --priority smart          # preview
+    python scripts/run_phase4_batch.py --limit 50 --priority smart --run    # execute
+    python scripts/run_phase4_batch.py --limit 50 --priority grubhub --run
 """
 from __future__ import annotations
 
@@ -50,6 +55,14 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s %(name)s %(message)s",
 )
 logger = logging.getLogger("run_phase4_batch")
+
+# This script's places go through ExtractionController + MenuOrchestrator.
+# run_with_items() -- a materially less-guarded path than
+# menu_extraction_router.py's own ranker/entity checks (see PR #117 and
+# menu_pipeline.py's _is_low_quality for the shared quality floor both
+# paths do go through). No preview/confirmation existed here before;
+# --run + this cap now match run_menu_backlog_canary.py's discipline.
+MAX_BATCH_SIZE = 200
 
 
 # =========================================================
@@ -258,7 +271,7 @@ class BatchStats:
 # MAIN
 # =========================================================
 
-def main():
+def main(argv: Optional[List[str]] = None):
     parser = argparse.ArgumentParser(description="Phase 4 batch extractor")
     parser.add_argument("--limit", type=int, default=None, help="Max places to process")
     parser.add_argument(
@@ -267,7 +280,28 @@ def main():
         default="all",
         help="Which source bucket to target (smart = score-ranked, skips blocked)",
     )
-    args = parser.parse_args()
+    parser.add_argument(
+        "--run",
+        action="store_true",
+        help=(
+            "Actually execute. Without this, prints the target count and a "
+            "sample of place IDs/names and exits -- same discipline as "
+            "run_menu_backlog_canary.py, so a batch run is never the first "
+            "thing that happens by accident."
+        ),
+    )
+    args = parser.parse_args(argv)
+
+    if args.limit is None or args.limit > MAX_BATCH_SIZE:
+        print(
+            f"Refused: --limit is required and must be <= {MAX_BATCH_SIZE} "
+            f"(got {args.limit!r}). This script writes menu_items through a "
+            f"less-guarded extraction path (ExtractionController, not "
+            f"menu_extraction_router.py's ranker/entity checks) -- run it in "
+            f"smaller batches and spot-check results between runs.",
+            file=sys.stderr,
+        )
+        return 2
 
     db = SessionLocal()
 
@@ -282,6 +316,17 @@ def main():
             return
 
         print(f"Targets: {total}  priority={args.priority}  limit={args.limit or 'none'}", flush=True)
+
+        if not args.run:
+            print("Preview only (pass --run to execute). Sample targets:", flush=True)
+            for pid in place_ids[:10]:
+                place = db.query(Place).filter(Place.id == pid).first()
+                name = getattr(place, "name", None) or "?"
+                print(f"  {pid}  {name}", flush=True)
+            if total > 10:
+                print(f"  ... and {total - 10} more", flush=True)
+            return
+
         print("=" * 70, flush=True)
 
         orchestrator = MasterDataOrchestrator()

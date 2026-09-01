@@ -42,8 +42,13 @@ Populate `menu_items` table. Currently: 0 rows.
 ### Phase 4 Batch Command
 ```bash
 cd backend
-python scripts/run_phase4_batch.py --limit 200 --priority smart
+python scripts/run_phase4_batch.py --limit 200 --priority smart          # preview only
+python scripts/run_phase4_batch.py --limit 200 --priority smart --run    # executes
 ```
+`--limit` is required (max 200) and, without `--run`, this only previews
+the target count and a sample of place IDs/names -- added after a
+contamination incident on the web/provider extraction path this script
+drives (see `.agent-bridge/STATE.md` for the incident and fix).
 
 ### Phase 4 Success Criteria
 - [ ] menu_items > 0
