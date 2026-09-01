@@ -28,6 +28,7 @@ from app.db.session import SessionLocal
 from app.db.models.city import City
 from app.db.models.place import Place
 from app.db.models.hitlist_save import HitlistSave
+from app.db.models.place_video import PlaceVideo, STATUS_APPROVED, MOD_APPROVED
 
 client = TestClient(app)
 
@@ -75,6 +76,9 @@ def city_and_place(db):
     db.add(place)
     db.commit()
     yield city_id, place
+    db.query(PlaceVideo).filter(PlaceVideo.place_id == place.id).delete(
+        synchronize_session=False
+    )
     db.query(HitlistSave).filter(HitlistSave.place_id == place.id).delete(
         synchronize_session=False
     )
@@ -95,6 +99,20 @@ def test_get_saves_defaults_to_unvisited_with_no_notes(city_and_place, db):
     assert items[0]["visited"] is False
     assert items[0]["visited_at"] is None
     assert items[0]["notes"] is None
+
+
+def test_get_saves_reports_only_approved_visible_video(city_and_place, db):
+    _city_id, place = city_and_place
+    user_id = f"user-{uuid.uuid4().hex[:8]}"
+    _save_place(db, place, user_id)
+    db.add(PlaceVideo(
+        place_id=place.id, uploaded_by=user_id,
+        status=STATUS_APPROVED, moderation_status=MOD_APPROVED,
+    ))
+    db.commit()
+
+    item = client.get("/api/v1/saves").json()["items"][0]
+    assert item["has_video"] is True
 
 
 def test_marking_visited_sets_visited_at(city_and_place, db):

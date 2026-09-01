@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 
 from app.db.models.hitlist_save import HitlistSave
 from app.db.models.place import Place
+from app.services.query.place_video_visibility_query import get_has_video_bulk
 
 _DEDUP_PREFIX = "save"
 
@@ -51,6 +52,7 @@ def get_saved_places_geojson(db: Session, *, user_id: str) -> Dict[str, Any]:
             Place.lng.isnot(None),
         )
     ).scalars().all()
+    video_flags = get_has_video_bulk(db, place_ids=[p.id for p in places])
 
     features: List[Dict[str, Any]] = [
         {
@@ -66,6 +68,7 @@ def get_saved_places_geojson(db: Session, *, user_id: str) -> Dict[str, Any]:
                 "primary_image_url": None,
                 "category": None,
                 "has_menu": bool(p.has_menu),
+                "has_video": video_flags.get(p.id, False),
             },
         }
         for p in places

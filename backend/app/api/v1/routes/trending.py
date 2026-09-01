@@ -23,6 +23,7 @@ from app.db.models.hitlist_save import HitlistSave
 from app.api.v1.schemas.places import PlaceOut, PlacesResponse
 from app.services.cache.response_cache import response_cache
 from app.services.query.place_image_visibility_query import get_primary_image_urls_bulk
+from app.services.query.place_video_visibility_query import get_has_video_bulk
 from app.core.rate_limit import rate_limit
 
 logger = logging.getLogger(__name__)
@@ -137,11 +138,13 @@ def get_trending(
         # Bulk image lookup
         place_ids = [p.id for p in top_places]
         image_urls = get_primary_image_urls_bulk(db, place_ids=place_ids)
+        video_flags = get_has_video_bulk(db, place_ids=place_ids)
 
         items = []
         for p in top_places:
             try:
                 p.primary_image_url = image_urls.get(p.id)
+                p.has_video = video_flags.get(p.id, False)
                 items.append(PlaceOut.model_validate(p, from_attributes=True))
             except Exception as exc:
                 logger.debug("trending_serialize_failed place_id=%s error=%s", p.id, exc)

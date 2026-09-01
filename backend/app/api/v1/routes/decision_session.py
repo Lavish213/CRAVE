@@ -20,6 +20,7 @@ from app.services.query.places_query import list_places as query_list_places
 from app.services.query.proximity_query import list_places_near
 from app.services.feed.feed_bucket_manager import get_feed_places
 from app.services.query.place_image_visibility_query import get_primary_image_urls_bulk
+from app.services.query.place_video_visibility_query import get_has_video_bulk
 from app.services.query.rank_percentile_query import get_rank_percentiles
 from app.services.decision_session.decision_session_builder import build_decision_session
 from app.api.v1.schemas.decision_session import DecisionSessionCardOut, DecisionSessionOut
@@ -82,11 +83,13 @@ def get_decision_session(
     built_cards = build_decision_session(candidates, rank_percentiles=rank_percentiles, lat=lat, lng=lng)
 
     image_urls = get_primary_image_urls_bulk(db, place_ids=[c.place.id for c in built_cards])
+    video_flags = get_has_video_bulk(db, place_ids=[c.place.id for c in built_cards])
 
     cards = []
     for c in built_cards:
         try:
             c.place.primary_image_url = image_urls.get(c.place.id)
+            c.place.has_video = video_flags.get(c.place.id, False)
             c.place.rank_percentile = rank_percentiles.get(c.place.id)
             cards.append(
                 DecisionSessionCardOut(

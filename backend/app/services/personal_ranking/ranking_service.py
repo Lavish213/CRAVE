@@ -54,6 +54,7 @@ from app.db.models.place_ranking import (
     VALID_TIERS,
     PlaceRanking,
 )
+from app.services.hitlist.save_memory import mark_existing_save_visited
 
 _TOKEN_ALGORITHM = "HS256"
 _TOKEN_TTL_SECONDS = 15 * 60
@@ -128,6 +129,13 @@ def _create_ranking(
     )
     db.add(ranking)
     db.flush()
+    # Ranking is the confirmed outcome that the user ate here. Keep an
+    # existing Craves-memory row in the same transaction as the ranking so
+    # a lost response cannot commit one fact without the other. This helper
+    # never creates a save and is scoped to this exact user/place pair.
+    mark_existing_save_visited(
+        db, user_id=user_id, place_id=place_id, visited_at=visited_at,
+    )
     return ranking
 
 

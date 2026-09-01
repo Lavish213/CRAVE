@@ -19,6 +19,7 @@ from app.db.session import SessionLocal
 from app.db.models.city import City
 from app.db.models.place import Place
 from app.db.models.hitlist_save import HitlistSave
+from app.db.models.place_video import PlaceVideo, STATUS_APPROVED, MOD_APPROVED
 from app.services.query.saved_places_map_query import get_saved_places_geojson
 
 
@@ -31,6 +32,9 @@ def db():
     finally:
         session.rollback()
         if created["place_ids"]:
+            session.query(PlaceVideo).filter(
+                PlaceVideo.place_id.in_(created["place_ids"])
+            ).delete(synchronize_session=False)
             session.query(HitlistSave).filter(
                 HitlistSave.place_id.in_(created["place_ids"])
             ).delete(synchronize_session=False)
@@ -86,6 +90,22 @@ def test_returns_geojson_features_for_saved_places(db):
     feature = next(f for f in result["features"] if f["properties"]["id"] == place.id)
     assert feature["geometry"]["coordinates"] == [place.lng, place.lat]
     assert feature["properties"]["tier"] == "default"
+
+
+def test_saved_map_reports_approved_visible_video(db):
+    session, created = db
+    user_id = f"user-{uuid.uuid4().hex[:8]}"
+    place = _make_place(session, created, name="Saved Video Spot", lat=37.8, lng=-122.27)
+    _save(session, user_id=user_id, place=place)
+    session.add(PlaceVideo(
+        place_id=place.id, uploaded_by=user_id,
+        status=STATUS_APPROVED, moderation_status=MOD_APPROVED,
+    ))
+    session.commit()
+
+    result = get_saved_places_geojson(session, user_id=user_id)
+    feature = next(f for f in result["features"] if f["properties"]["id"] == place.id)
+    assert feature["properties"]["has_video"] is True
 
 
 def test_excludes_other_users_saves(db):

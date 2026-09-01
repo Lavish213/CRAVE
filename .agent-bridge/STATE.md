@@ -1,14 +1,30 @@
 # Active agent state
 
-Status: idle
-Owner: Claude
-Branch: main
-Base SHA: b2439d0 (PR #106 merged)
-Scope: Finished "The Pass" -- built the frontend for all three "Now"/"On
-Deck" tickets from the backend pass (PRs #100-#102), so E8/E2/E3 are now
-actually visible/usable in the app, not just API-level. Shipped as 3
-more independently reviewable PRs (#104, #105, #106), same discipline as
-every change this session.
+Status: implementing
+Owner: Codex
+Branch: codex/the-pass-gap-closure
+Base SHA: d4bb22d (PR #108 merged)
+Scope: Close only verified integration gaps left after The Pass shipped:
+hydrate `has_video` accurately on secondary place surfaces and implement the
+already-decided ranking-to-existing-Hitlist `visited` synchronization. Do not
+rebuild PRs #100-#106 or alter product decisions.
+
+Locked files: backend ranking/save/place response services and routes, their
+focused tests, `.agent-bridge/STATE.md`, and
+`.agent-bridge/codex-to-claude.md`, and `CRAVE_STATUS.md`.
+
+Verification plan: focused regression tests for account isolation,
+idempotency, no implicit save creation, and video visibility; then the full
+backend suite. No production mutation or deployment is authorized.
+
+Explicit exclusions: frontend UI, scheduler/Railway configuration, group
+compatibility, and the primary checkout's unrelated dirty files.
+
+## Prior completed work retained as context
+
+Claude finished The Pass frontend in PRs #104-#106, including video badges,
+Hitlist memory UI, and type-grouped filters. Those implementations are the
+baseline for this gap closure and must remain intact.
 
 ## PR #104 -- video badge frontend (E3)
 

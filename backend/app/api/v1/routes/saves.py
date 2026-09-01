@@ -34,6 +34,7 @@ from app.db.models.place import Place
 from app.api.v1.schemas.places import PlaceOut
 from app.api.v1.schemas.map import GeoJSONFeatureCollection
 from app.services.query.place_image_visibility_query import get_primary_image_urls_bulk
+from app.services.query.place_video_visibility_query import get_has_video_bulk
 from app.services.query.saved_places_map_query import get_saved_places_geojson
 
 logger = logging.getLogger(__name__)
@@ -219,6 +220,7 @@ def list_saves(
     }
 
     image_urls = get_primary_image_urls_bulk(db, place_ids=list(place_map.keys()))
+    video_flags = get_has_video_bulk(db, place_ids=list(place_map.keys()))
 
     items = []
     for save in saves:
@@ -227,6 +229,7 @@ def list_saves(
             continue
         try:
             p.primary_image_url = image_urls.get(p.id)
+            p.has_video = video_flags.get(p.id, False)
             base = PlaceOut.model_validate(p, from_attributes=True)
             items.append(
                 SavedPlaceOut(
