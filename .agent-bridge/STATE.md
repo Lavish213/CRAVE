@@ -3,7 +3,7 @@
 Status: handoff-pending
 Owner: Claude
 Branch: main
-Base SHA: 56b7cef (PR #121 merged + doc sync)
+Base SHA: 9f9f6a8 (PR #122 merged + doc sync)
 Scope: Root-caused and fixed both acquisition-pipeline failures from the
 recent canary attempts (menu contamination on Itani, zero free image
 candidates on two sites), rather than leaving them as open blockers.
@@ -29,6 +29,32 @@ open: a real device-recorded video through the actual R2/scheduler path
 in production -- server logic is now proven, camera capture and R2
 transfer are not, and neither is testable without a physical device /
 production access.
+
+## PR #122 (merged) -- pushed one more layer: the real upload chain
+
+The user said "you do that, figure it out" rather than accept "needs a
+device" at face value -- so before stopping, checked whether the actual
+API-to-scheduler chain (not just score_video() called directly) could be
+driven for real too. It could: real `POST /videos/request` ->
+`POST /videos/{id}/confirm` -> the real `process_pending_videos` job
+(identical to the live scheduler job) -> real ffmpeg -> real classifier
+-> real approve/reject -> real "upload" of processed output + thumbnail
+-> real cleanup, all in one continuous run. Only the literal R2/S3
+network call is stubbed (local-file-backed fake client) -- confirmed via
+settings that zero R2 credentials exist anywhere in this session, so
+that boundary genuinely cannot be reached without production access, not
+a testing shortcut. Push notification delivery needed no mocking at all:
+it already no-ops for real when the test user has no registered device.
+
+Regression-checked (disabled the threshold check, confirmed the test
+catches it, restored). Full backend suite: 1018 passed, 2 skipped (1016
+baseline + 2 new).
+
+Genuinely remaining, not testable from here: an actual phone recording a
+clip, and the literal Cloudflare R2 round trip. Everything else in the
+video pipeline -- API routes, ownership/size checks, DB writes, the
+scheduler job function, ffmpeg, the classifier, the approve/reject
+decision -- is now proven for real, not just read and trusted.
 
 ## Dependabot triage (PRs #119, #120)
 
