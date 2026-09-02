@@ -6,7 +6,7 @@ Branch: claude/project-grade-systems-review-4ot7d0 (PR #123 open against
 main, branch restarted from main since the old branch of this name
 carried no unique commits)
 Base SHA: bf0b08c367250b696d54817dcaeca44fd165e1ea
-Commit SHA: (latest on branch as of this update)
+Commit SHA: 720f59e6b2d39e9260db10c8a70f1d8fe3d6fdd6
 Scope: Two independent, code-only Product-lane passes (no Railway/
 Supabase access used) -- finished the two hostable legal docs
 (privacy-policy.md, terms-of-service.md), the Expo SDK 54->55 upgrade,
