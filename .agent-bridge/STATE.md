@@ -17,6 +17,11 @@ suite passes 1025 tests with 2 skips. No recurring acquisition job was enabled.
 PR #124's initial CI found root/backend requirements drift already present on
 `main`; `7b14ce9` synchronizes the eight bumped version floors. The exact CI
 comparison plus compile/import checks now pass locally.
+The same rerun found the bumped Supabase realtime client requires Node 22's
+native WebSocket in Jest while CI still used Node 20; the frontend CI runner is
+being aligned to Node 22, matching the local verified runtime.
+Clean Node 22 install verification: TypeScript clean; 34 Jest suites and 331
+tests pass.
 
 Locked files:
 - `backend/app/services/upload/r2_client.py`
@@ -26,6 +31,7 @@ Locked files:
 - `backend/tests/test_streak_service.py`
 - `backend/tests/test_video_upload_pipeline_end_to_end.py`
 - `requirements.txt`
+- `.github/workflows/ci.yml`
 - `docs/POPULATION_RELEASE_PASS_2026-09-01.md`
 - `.agent-bridge/codex-to-claude.md`
 - `.agent-bridge/STATE.md`

@@ -35,6 +35,10 @@ PR #124's first CI run exposed an unrelated but release-blocking drift already
 present on `main`: eight dependency floors had been updated only in
 `backend/requirements.txt`, while Railway installs root `requirements.txt`.
 Commit `7b14ce9` synchronizes exactly those eight lines; it adds no dependency.
+That rerun then exposed a second base-branch CI mismatch: the upgraded Supabase
+realtime client expects Node 22's native WebSocket during Jest startup, while
+CI still pinned Node 20. The frontend CI runner now uses Node 22, matching the
+supported local runtime; no app or frontend dependency changed.
 
 ## Verification
 
@@ -56,6 +60,8 @@ Commit `7b14ce9` synchronizes exactly those eight lines; it adds no dependency.
 - `git diff --check` -> clean.
 - Root/backend package-line comparison -> exact match; backend `compileall`
   and `import app.main` -> clean.
+- Clean `npm ci` on Node 22, then `npx tsc --noEmit && npx jest --ci` ->
+  typecheck clean; 34 suites, 331 tests passed.
 
 ## Known gaps / risks
 
