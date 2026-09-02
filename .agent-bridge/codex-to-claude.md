@@ -1,73 +1,82 @@
-# H-20260901-free-pipeline-canaries
+# H-20260901-population-release-revalidated
 
 Status: ready-for-review
 Owner: Codex
-Branch: codex/free-pipeline-canaries
-Base SHA: bb33cd0620442473766a8f8cf3b96f8b79512dcd
-Commit SHA: 8cb3a02
-Allowed next files: documentation/bridge review only
+Branch: codex/population-release-pass
+Base SHA: bf0b08c
+Commit SHA: 7b14ce9 (latest implementation commit; review full `bf0b08c..HEAD`)
+Allowed next files: review/comments only; do not run production jobs from this handoff
 
 ## Outcome
 
-With explicit user authorization, expanded the production scheduler one job
-at a time from the health check to three free/local paths: share parsing,
-stale-image recovery, and video processing. Measured queues before every
-mutation, ran separate bounded no-op canaries, fixed missing scheduler R2
-configuration using Railway reference variables (never reading/copying secret
-values), and installed ffmpeg through Railpack before admitting video.
+The branch was not based on current `main`: its old merge base was `685c57c`.
+I rebased it onto `bf0b08c`, preserving PRs #117/#118/#121/#122 and dropping
+the obsolete pre-rebase claim/handoff plus the stale frontend dependency
+downgrade.
 
-Final exact allowlist:
-`moderation_queue_health_check,share_parser,image_processing_recovery,
-video_processing`. Paid Google image ingestion, bulk menu enrichment,
-discovery/population, score recompute, and ranking remain disabled.
+I reran both requested exact-target production canaries after the rebase:
+
+- Menu: the same three reviewed places produced attempted=3,
+  materialized=0, no_menu=3, errors=0. Itani's formerly contaminated result
+  now logged `menu_pipeline_rejected reason=low_quality`, so the new gates
+  prevented republication. Pizzaiolo still hit a CAPTCHA. Coverage gain: zero.
+- Free images: the first post-rebase retry was invalidated by the canary's own
+  24-hour fetch cache. After adding a regression-tested canary-only bypass, the
+  corrected exact retry produced attempted=2, staged=1,
+  publicly_visible=0. Cantina yielded one hidden/non-primary image; Las Ranas
+  yielded none. Google was structurally unreachable.
+
+The rebased R2 signed-HTTP fix initially broke PR #122's local R2 test double;
+I updated that boundary to exercise the signed-HTTP stream. Both real
+ffmpeg/classifier upload-pipeline tests pass again. No production video was
+retried and no recurring job was enabled.
+
+PR #124's first CI run exposed an unrelated but release-blocking drift already
+present on `main`: eight dependency floors had been updated only in
+`backend/requirements.txt`, while Railway installs root `requirements.txt`.
+Commit `7b14ce9` synchronizes exactly those eight lines; it adds no dependency.
+That rerun then exposed a second base-branch CI mismatch: the upgraded Supabase
+realtime client expects Node 22's native WebSocket during Jest startup, while
+CI still pinned Node 20. The frontend CI runner now uses Node 22, matching the
+supported local runtime; no app or frontend dependency changed.
 
 ## Verification
 
-- Production aggregate queue snapshot -> actionable shares=0, videos=0,
-  stale image uploads=0; all 81,638 image rows were `ready`.
-- Share canary -> job run `6bdbd816-950d-4a18-b8ed-b66b22a9c602`, success,
-  `no_pending_items`, no error.
-- Image-recovery canary -> job run
-  `cf368fdf-a7bf-478c-a05c-686255d2b4bd`, success, `reclaimed=0`, no error.
-- Video canary (with queue-drift assertion) -> job run
-  `d5d5853b-28ca-47e4-84e2-d480c79eb744`, success, batch=0,
-  approved/rejected/failed=0.
-- Natural recurring share run -> job run
-  `17b5193c-744a-41e0-997f-0d3679522bad`, success,
-  `no_pending_items`.
-- Natural recurring video run -> job run
-  `3c0260b9-bdef-4631-a2c4-aca7e1d550f1`, success, batch=0,
-  approved/rejected/failed=0, no error; started at
-  `2026-09-01T19:50:21.060170Z` after the final deployment.
-- Railway deployment `38b0556b-e1e9-4395-afea-3c128300b327` at source SHA
-  `bb33cd0` -> SUCCESS; logs show exactly four added jobs, all other jobs
-  removed, `scheduler_worker_started jobs=4`.
-- Railpack build -> `ffmpeg 7.1.5` installed; pip build ->
-  `ai-edge-litert 2.2.0` installed; sanitized environment checks -> all five
-  R2 variables resolve on the scheduler through references.
-- `curl -fsS https://crave-production.up.railway.app/health` ->
-  `status=ok`, `db=ok`, `cache=ok`, `worker=ok`.
-- Worker telemetry after rollout -> CPU current 0, observed max 0.0281;
-  memory current 0.1263 GB, observed max 0.1540 GB.
-- Production coverage snapshot -> 37,761 active places; menus 1,005 (2.66%);
-  public images 15,313 (40.55%); primary images 13,802 (36.55%); websites
-  14,133 (37.43%). Website/no-menu candidates=13,128;
-  website/no-public-image candidates=7,816.
-- `git diff --check` -> clean before commit `8cb3a02`.
+- `git merge-base --is-ancestor origin/main HEAD` before rebase -> exit 1;
+  old merge base `685c57c`.
+- `git rebase origin/main` -> completed; branch now starts at `bf0b08c`.
+- `/Users/angelowashington/CRAVE/venv/bin/python -m pytest -q backend/tests/test_menu_backlog_canary_script.py backend/tests/test_free_image_canary_script.py backend/tests/test_r2_client.py backend/tests/test_streak_service.py backend/tests/test_menu_entity_match.py backend/tests/test_website_image_extractor.py backend/tests/test_menu_pipeline_quality_gate.py` -> 44 passed.
+- `/Users/angelowashington/CRAVE/venv/bin/python -m pytest -q backend/tests/test_r2_client.py backend/tests/test_video_upload_pipeline_end_to_end.py` -> 7 passed.
+- `/Users/angelowashington/CRAVE/venv/bin/python -m pytest -q backend/tests` -> 1025 passed, 2 skipped.
+- Production menu preview -> found=3, missing=0, inactive=0.
+- Production menu run with exact `--confirm-count 3` -> attempted=3,
+  materialized=0, no_menu=3, errors=0.
+- Production image preview -> found=2, existing image blockers=0.
+- Corrected production image run with exact `--confirm-count 2` -> attempted=2,
+  staged=1, publicly_visible=0.
+- Post-canary production audit -> all three menu targets `has_menu=false`,
+  active menu items=0; one exact image row, hidden/non-primary; scheduler
+  allowlist unchanged at the four reviewed free/local jobs.
+- `git diff --check` -> clean.
+- Root/backend package-line comparison -> exact match; backend `compileall`
+  and `import app.main` -> clean.
+- Clean `npm ci` on Node 22, then `npx tsc --noEmit && npx jest --ci` ->
+  typecheck clean; 34 suites, 331 tests passed.
 
 ## Known gaps / risks
 
-- The video canary had no queued media, so it proves scheduling, database,
-  configuration, and zero-queue behavior—not real R2 transfer, ffmpeg output,
-  or classifier quality. A seeded real upload/device journey is still needed.
-- The processors cannot fill an empty input queue. Large catalog gains require
-  separate reviewed website-menu and free-image acquisition canaries.
-- Menu enrichment and Google-backed image ingestion intentionally remain off.
+- The menu quality fix is demonstrated as a safety improvement, not a recall
+  improvement. Recurring menu enrichment should remain disabled.
+- Cantina's official site says temporarily closed/reopening; do not promote its
+  staged image without entity-status review. Las Ranas currently redirects to
+  an image-less lander, so its stored website needs freshness review.
+- The R2 production recursion fix is code/test verified only; it still needs
+  independent review, deployment, and a one-object quarantined retry.
+- Exact production IDs remain in the dated evidence doc. Do not publish/push
+  this branch unless the human explicitly approves that repository disclosure.
 
 ## Next action
 
-Independently inspect the docs-only diff and production evidence. Do not add
-another recurring job. Next population work should select a tiny reviewed set
-from the 13,128 website/no-menu candidates and use
-`backend/scripts/run_menu_backlog_canary.py`; free image acquisition needs its
-own source-specific canary before touching the 7,816 eligible places.
+Review `bf0b08c..HEAD`, especially the R2 signed-HTTP change and the updated
+PR #122 test boundary. Do not call either acquisition pipeline "coverage
+verified": menu recall stayed 0/3 and the one image candidate remains hidden.

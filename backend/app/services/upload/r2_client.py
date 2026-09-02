@@ -4,6 +4,7 @@ import os
 from typing import Tuple
 
 import boto3
+import requests
 from botocore.client import Config
 
 
@@ -122,14 +123,23 @@ def download_to_file(key: str, dest_path: str) -> None:
     above is sized for.
     """
     client = _get_s3_client()
-    obj = client.get_object(Bucket=R2_BUCKET, Key=key)
-    body = obj["Body"]
-    try:
+    # Do not stream through botocore's ``StreamingBody.iter_chunks`` here.
+    # The standalone Railway scheduler reproduced a recursion failure in that
+    # path twice for a real uploaded video, even though the same exact object
+    # could be fetched from a one-shot process.  A short-lived signed GET keeps
+    # authorization server-side while letting requests perform the bounded,
+    # boring HTTP stream independently of botocore's response wrapper.
+    url = client.generate_presigned_url(
+        ClientMethod="get_object",
+        Params={"Bucket": R2_BUCKET, "Key": key},
+        ExpiresIn=300,
+    )
+    with requests.get(url, stream=True, timeout=(10, 120)) as response:
+        response.raise_for_status()
         with open(dest_path, "wb") as f:
-            for chunk in body.iter_chunks(chunk_size=1024 * 1024):
-                f.write(chunk)
-    finally:
-        body.close()
+            for chunk in response.iter_content(chunk_size=1024 * 1024):
+                if chunk:
+                    f.write(chunk)
 
 
 def upload_file(
