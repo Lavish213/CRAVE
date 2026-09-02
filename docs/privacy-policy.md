@@ -1,9 +1,10 @@
 # CRAVE Privacy Policy
 
-**Last updated: [DATE]**
+**Last updated: August 25, 2026**
 
-> **Before publishing**: this draft reflects CRAVE's actual features and
-> data flows as of this writing, but it is not legal advice. Have an
+> **Before publishing**: this reflects CRAVE's actual features and data
+> flows as of this writing (kept in sync with the in-app copy at
+> `frontend/app/legal/privacy.tsx`), but it is not legal advice. Have an
 > actual lawyer review it before it goes live at a public URL — App Store
 > review and real users will both rely on it being accurate.
 
@@ -38,6 +39,10 @@ activity feed).
 **Social graph.** Who you follow and who follows you, and who you've
 blocked. Blocking is private — the person you block is not notified.
 
+**Push notification token.** If you allow notifications, a device token
+used only to tell you about your own uploads (e.g. a video was
+approved).
+
 **Device and usage data.** Basic technical information (app version, OS
 version, crash reports) collected automatically to keep the app working
 and to diagnose problems.
@@ -59,13 +64,17 @@ We do not sell your personal information.
 CRAVE relies on the following third parties to operate:
 
 - **Supabase** — authentication and account credentials.
-- **Cloudflare R2** — storage for photos you or CRAVE upload.
+- **Cloudflare R2** — storage for the photos and videos you upload.
+- **Railway** — hosts our backend and database.
 - **Google Places API** — restaurant location, hours, and photo data
-  used to populate CRAVE's catalog.
+  used to populate CRAVE's catalog; we send place queries, not your
+  personal account data.
 - **DeepSeek** — used server-side to help extract menu information from
   restaurant websites. It does not receive your personal information;
   it only processes public webpage text to identify menu items.
 - **Sentry** — crash and error monitoring, so we can detect and fix bugs.
+- **Expo's push notification service** — delivers the notifications
+  described above.
 
 Each of these providers processes data under their own privacy policies
 and only for the specific purpose CRAVE uses them for.
@@ -80,13 +89,20 @@ directly in the app.
 ## Your Choices and Rights
 
 - **Access/update**: edit your profile at any time in Settings.
-- **Delete your account**: Settings → Delete Account permanently
-  deletes your profile, social graph (follows/blocks), and your login
-  credentials. This is irreversible. Some public contributions (e.g. a
-  restaurant photo) may remain associated with the restaurant rather
-  than a reachable profile, similar to how most social apps handle
-  deleted accounts — [confirm this matches your actual retention
-  decision before publishing].
+- **Delete your account**: Settings → Delete Account permanently deletes
+  your profile and your social graph (follows/blocks) immediately, and
+  asks Supabase to delete the underlying auth identity itself, not just
+  the app profile. That request normally succeeds, but if it can't be
+  completed (a configuration, network, or upstream error on Supabase's
+  side) your app profile is still deleted while the login credential
+  itself may briefly remain active — we log this case for follow-up
+  rather than leaving it undetected, but it means credential deletion,
+  unlike profile deletion, isn't an absolute guarantee. This is
+  otherwise irreversible. Your past public contributions — restaurant
+  photos, menu submissions, rankings, moderation records — are not
+  swept as part of this and may remain associated with the place or
+  content itself rather than a reachable profile, the same way most
+  social apps handle deleted accounts.
 - **Location permission**: control via your device's system settings.
 - **Blocking**: block any user from their profile; this also removes
   any existing follow relationship between you.
@@ -110,4 +126,4 @@ reflected by updating the "Last updated" date above.
 
 ## Contact Us
 
-Questions about this policy: **[YOUR CONTACT EMAIL]**
+Questions about this policy: **hello@crave.app**

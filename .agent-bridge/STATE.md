@@ -1,52 +1,35 @@
 # Active agent state
 
 Status: ready-for-review
-Owner: Codex
-Branch: codex/population-release-pass
-Base SHA: bf0b08c
-Scope: Revalidate the bounded website-menu and free-image acquisition canaries
-against current `main` after PRs #117, #118, #121, and #122. Preserve newer
-merged work, run exact-target previews before any bounded production attempt,
-and refresh the evidence/handoff without claiming results from the old base.
+Owner: Claude
+Branch: claude/project-grade-systems-review-4ot7d0 (PR #123, merging
+`main` post-PR#124 to resolve this file's own merge conflict -- both
+PRs independently rewrote this section)
+Base SHA: c78abed2ffa1b06ff22fe0037ef8ac9156e18e21 (main, post-PR#124 merge)
+Commit SHA: a58cb52ac5c0e0ab1bb6df678e4310f851acf64d
+Scope: Two independent, code-only Product-lane passes (no Railway/
+Supabase access used) -- finished the two hostable legal docs
+(privacy-policy.md, terms-of-service.md), the Expo SDK 54->55 upgrade,
+and the two pre-existing CI regressions (root/backend requirements.txt
+drift, Node 20 vs. Node 22 Supabase-realtime WebSocket incompatibility)
+independently found and fixed the same way in both this branch and
+Codex's PR #124 (now merged -- see that PR's history for Codex's own
+population-release-pass work, which this entry no longer needs to
+restate).
 
-Implementation commits: `9aadfab`, `cff3107`, `0dd2db4`, `7b14ce9`.
-Result: current-main menu canary safely produced 0/3 menus. A cache flaw made
-the first image retry invalid; after a regression-tested canary-only bypass,
-the corrected retry staged 1/2 candidates hidden/non-primary. Full backend
-suite passes 1025 tests with 2 skips. No recurring acquisition job was enabled.
-PR #124's initial CI found root/backend requirements drift already present on
-`main`; `7b14ce9` synchronizes the eight bumped version floors. The exact CI
-comparison plus compile/import checks now pass locally.
-The same rerun found the bumped Supabase realtime client requires Node 22's
-native WebSocket in Jest while CI still used Node 20; the frontend CI runner is
-being aligned to Node 22, matching the local verified runtime.
-Clean Node 22 install verification: TypeScript clean; 34 Jest suites and 331
-tests pass.
+Locked files: none -- handoff complete, no further work planned on this
+branch pending review/merge.
 
-Locked files:
-- `backend/app/services/upload/r2_client.py`
-- `backend/scripts/run_free_image_canary.py`
-- `backend/tests/test_free_image_canary_script.py`
-- `backend/tests/test_r2_client.py`
-- `backend/tests/test_streak_service.py`
-- `backend/tests/test_video_upload_pipeline_end_to_end.py`
-- `requirements.txt`
-- `.github/workflows/ci.yml`
-- `docs/POPULATION_RELEASE_PASS_2026-09-01.md`
-- `.agent-bridge/codex-to-claude.md`
-- `.agent-bridge/STATE.md`
+Verification: `tsc --noEmit` clean; frontend Jest 331/331 (34 suites);
+`npx expo config --type public` resolves sdkVersion 55.0.0 cleanly;
+full CI green on commit a51d731 (pre-merge) -- all 7 required checks
+passed, including the requirements.txt drift check and Node 22 frontend
+job.
 
-Verification plan:
-1. Run focused tests for the retained changes and both canary tools.
-2. Run the complete backend suite.
-3. Preview exact production targets with paid/unbounded jobs still disabled.
-4. Run only canaries whose preview/drift gates remain clean, then inspect their
-   staged/non-public outcomes.
-5. Record exact commands/results and unresolved production risks for review.
+Known gaps: PR #123's Expo 55 upgrade is still unverified at the
+native/device level (no EAS build/prebuild anywhere, Linux container
+here has no Xcode/simulator). Neither legal doc has a hosted URL yet.
 
-Explicit exclusions:
-- No recurring scheduler allowlist expansion.
-- No paid Google/provider calls.
-- No bulk population or public promotion.
-- No frontend dependency changes; current `main` remains authoritative.
-- Primary-checkout dirty files remain untouched.
+Next action: merge PR #123 (this branch) into `main` -- it's
+independently green and no longer depends on #124's merge order now
+that both fixes are carried directly on this branch too.

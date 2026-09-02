@@ -27,7 +27,7 @@ starting a new status file.
 - `CRAVE_FRONTEND_GUIDE_FOR_AI_EDITORS.md` — **local-only, gitignored,
   never commit.** House rules for AI editors working in this frontend.
 
-Last updated: 2026-09-01 (The Pass + gap-closure pass, fully merged).
+Last updated: 2026-09-02 (Expo SDK 54→55 upgrade, code-level).
 
 ---
 
@@ -36,8 +36,8 @@ Last updated: 2026-09-01 (The Pass + gap-closure pass, fully merged).
 Backend: FastAPI + SQLAlchemy + Alembic + Postgres (prod)/SQLite (tests),
 Railway (GitHub-integration auto-deploy, `alembic upgrade head` on start),
 separate `scheduler_worker` service for APScheduler jobs. Frontend:
-Expo/React Native SDK 54, expo-router, Zustand, react-query, EAS builds.
-Auth: Supabase (JWKS, ES256).
+Expo/React Native SDK 55 (React 19.2, React Native 0.83), expo-router,
+Zustand, react-query, EAS builds. Auth: Supabase (JWKS, ES256).
 
 ## Test status
 
@@ -66,16 +66,52 @@ administrator bypass retained for the agreed small-fix lane.
   error-vs-empty distinction, `add-spot`'s real header title,
   record-video's now-hidden native header, the rank/comparison flow
   end-to-end, video record→upload→moderation→push pipeline, signed push
-  delivery to a locked physical device. (Map clustering and the
-  Notifications settings row/tap-routing/`UIBackgroundModes` fix are now
-  confirmed on a real iPhone 17 Pro Simulator against production data —
-  see "What's solid" below.)
-- [ ] **Expo SDK 54→55 upgrade** — `expo-notifications` 0.32.17 has a known
-  Keychain/persisted-registration read error, fixed upstream only in the
-  SDK 55 package line (`expo-notifications` 55.0.13, expo/expo#43829). Not
-  urgent (app keeps running, Feed still loads) but the warning won't clear
-  without the upgrade.
+  delivery to a locked physical device, and now the Expo SDK 55 upgrade
+  itself (an EAS build/prebuild has never run against it here — see
+  "What's solid" below for what's verified and what isn't). (Map
+  clustering and the Notifications settings row/tap-routing/
+  `UIBackgroundModes` fix are now confirmed on a real iPhone 17 Pro
+  Simulator against production data — see "What's solid" below.)
+
 ## What's solid right now
+
+- **Expo SDK 54→55 upgrade done at the code/dependency level.** Every
+  `expo-*` package, `react`/`react-dom` (19.1.0→19.2.0), `react-native`
+  (0.81.5→0.83.10), and their native-module siblings
+  (`react-native-reanimated`, `-screens`, `-gesture-handler`, `-maps`,
+  `-worklets`) now match the exact versions SDK 55 bundles (read
+  straight out of the installed `expo` package's own
+  `bundledNativeModules.json`, not guessed) — this is the fix intended
+  to resolve the `expo-notifications` Keychain/persisted-registration
+  read bug that was the whole reason for the upgrade, though that has
+  not been reproduced or disproven on a real device or EAS build (see
+  "Needs your action" above). Caught and fixed two
+  real hoisting/version issues a naive `npm install` would have masked:
+  `@expo/vector-icons`'s unbounded `expo-font` peer dependency was
+  auto-installing the newest published `expo-font` (SDK 57's line, not
+  55's) since nothing pinned it directly — now pinned explicitly, along
+  with `expo-asset`, so both hoist to one shared copy instead of a
+  broken split tree. Separately, wiping `package-lock.json` to let the
+  resolver recompute cleanly let `@shopify/flash-list` float from its
+  deliberately-locked `2.0.2` to `2.3.2`, an unrelated version that
+  ships ESM-only and broke Jest's transform — reverted to the exact
+  pinned `2.0.2`, which has fully permissive peer deps and was never
+  actually coupled to this SDK bump. `@testing-library/react-native`
+  needed a real bump too (12.9.0→13.3.3, not the newer 14.x line, which
+  replaces `react-test-renderer` with a new peer entirely) because
+  `expo-router@55` now peer-requires `>=13.2.0`.
+  Verified: full frontend suite still 331/331 passed across the same 34
+  suites, `tsc --noEmit` clean, `npx expo config` resolves
+  `sdkVersion: '55.0.0'` with no plugin/schema errors against the
+  existing `app.json` (already had `newArchEnabled`/`edgeToEdgeEnabled`
+  set, nothing else to migrate there), and `npm audit` still shows only
+  moderate, build-tooling-only findings (19, down from 26 — same class
+  as previously documented, nothing high/critical). **Not verified, and
+  can't be from here:** an actual EAS build/prebuild has never run
+  against these versions, and the Keychain bug this upgrade targets has
+  never been reproduced or disproven on a real device in this project —
+  that confirmation needs a physical device or EAS build, not more code
+  (see "Needs your action" above).
 
 - **"The Pass" shipped end-to-end, plus a gap-closure pass — 8 PRs
   (#100-#102 backend, #104-#106 frontend, #109 gap closure, #111 test
@@ -293,8 +329,10 @@ coverage~~ — started: `frontend/e2e/` has the 3 planned journeys
 (Feed→Detail, Search→Detail, Save→Craves→Detail). The public Feed and
 Search journeys passed against the production API; the authenticated
 Save journey remains honestly skipped until a dedicated seeded account is
-supplied (see `frontend/e2e/README.md`). Expo SDK 54→55 upgrade (clears
-the persisted-registration warning; see "Needs your action").
+supplied (see `frontend/e2e/README.md`). ~~Expo SDK 54→55 upgrade~~ —
+done at the code level (see "What's solid"); device/EAS-build
+confirmation that it actually clears the persisted-registration warning
+still needs a human (see "Needs your action").
 
 **P3** — Taste modeling / learned ranking (after real usage data exists,
 not before). Splitting the flat category taxonomy into real dimensions.

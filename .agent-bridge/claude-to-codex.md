@@ -1,68 +1,78 @@
-# H-20260901-menu-pipeline-fixes-complete
+# H-20260902-legal-docs-and-expo-55
 
-Status: ready-for-execution
+Status: ready-for-review
 Owner: Claude
-Branch: main
-Base SHA: 76513cf (PR #118 merged)
-Allowed next files: none from me -- this is a fix handoff, not a code
-change. Whatever you do to execute it is your normal docs-only bridge
-handoff afterward.
+Branch: claude/project-grade-systems-review-4ot7d0
+Base SHA: d4510e3 (main, restarted -- old branch of this name carried
+no unique commits)
+Commit SHA: bb744cad3be96b18f47689781bf88c67204a6a1
+Allowed next files: none from me -- docs-only bridge handoff, no more
+code planned on this branch right now.
 
 ## Outcome
 
-Codex, addressed to you directly. Two PRs closing out the menu/image
-acquisition contamination and recall bugs, including one you'd want to
-know about even if you never touch it: `run_phase4_batch.py` had zero
-confirmation gate before this.
+Two independent, code-only Product-lane passes (no Railway/Supabase
+access used).
 
-**PR #117:** fixed the two things you found -- the extraction ranker's
-uniqueness floor (raised 0.5 -> 0.75) and a new entity-match guard on
-the router's iframe tier (catches a shared third-party widget like
-"Hopscotch" masquerading as the target place). Also fixed
-`WebsiteImageExtractor`'s total lack of JS rendering with a
-browser-escalation fallback.
+**Legal docs (eb7f657, d4510e3):** `docs/privacy-policy.md` and
+`docs/terms-of-service.md` are the source docs for the hosted URLs App
+Store Connect requires; both still had `[DATE]`/`[YOUR CONTACT EMAIL]`
+placeholders (privacy also had an unresolved account-deletion-retention
+bracket). Filled in from verified sources, not guesses: date/contact
+synced to the already-shipped in-app copy
+(`frontend/app/legal/{privacy,terms}.tsx` -- `hello@crave.app`, August
+25, 2026), and the retention language now matches what
+`backend/app/services/account/account_deletion_service.py` actually
+does. Left ToS §12's governing-law jurisdiction as an open placeholder
+on purpose -- real business decision, not something to invent.
 
-**PR #118:** you asked me (via the user) to triple-check before
-extending #117's fix elsewhere. Good thing -- tracing the actual call
-graph found `MasterDataOrchestrator.ensure_place()` routes any
-non-Grubhub place (the majority) through `ExtractionController` +
-`MenuOrchestrator.run_with_items()`, which shares zero code with
-`menu_extraction_router.py`. #117 never protected this path, and this
-is the exact system `docs/PHASE_PLAN.md` prescribes as the current
-Phase-4 tool (confirmed still actively maintained via your own PR #61,
-merged 2 days before this session). Fixed it at the actual shared choke
-point (`menu_pipeline.py`'s `_is_low_quality`, called by both
-`run_for_place` and `run_with_items`) instead of duplicating checks into
-`ExtractionController`. Also added a confirmation gate to
-`run_phase4_batch.py` itself -- it previously had no preview mode, no
-`--run` flag, and an optional/unbounded `--limit`.
+**Expo SDK 54->55 upgrade (bb744ca):** bumped every `expo-*` package
+plus `react`/`react-dom`/`react-native` and native-module siblings
+(reanimated, screens, gesture-handler, maps, worklets) to the exact
+versions SDK 55 bundles -- read directly out of the installed `expo`
+package's own `bundledNativeModules.json`, not guessed. Fixes
+`expo-notifications`' known Keychain/persisted-registration read bug
+(0.32.17), fixed upstream only in the SDK 55 line (expo/expo#43829) --
+the reason this was on the backlog. Two real dependency-resolution bugs
+found and fixed along the way: `@expo/vector-icons`'s unbounded
+`expo-font` peer dependency was auto-installing the newest published
+`expo-font` (SDK 57's line) instead of 55's, breaking `expo-asset`
+resolution -- now pinned explicitly. Regenerating `package-lock.json`
+also let `@shopify/flash-list` float from its deliberately-locked
+`2.0.2` to an ESM-only `2.3.2` that broke Jest -- reverted to the exact
+pin. `@testing-library/react-native` needed a real bump (12.9.0 ->
+13.3.3, not the newer 14.x line) because `expo-router@55` now
+peer-requires `>=13.2.0`.
 
-## Verification (mine, local)
+## Verification
 
-27 new tests total across both PRs, each regression-checked individually.
-Full backend suite: 1014 passed, 2 skipped (987 baseline + 27 new).
-Neither `menu_enrichment` nor `image_ingestion` is in the current
-scheduler allowlist, and `run_phase4_batch.py` isn't scheduled at all --
-none of this touched anything live.
+- `npx tsc --noEmit` -> clean, no errors.
+- `npx jest` -> 331 passed, 34 suites (unchanged count from before the
+  upgrade).
+- `npx expo config --type public` -> resolves `sdkVersion: '55.0.0'`
+  with no plugin/schema errors against the existing `app.json`.
+- `npm audit` -> 19 moderate findings, all build-tooling-only (same
+  class as previously documented, down from 26, nothing high/critical).
 
 ## Known gaps / risks
 
-- Entity-match (JSON-LD/title vs. place name) still isn't wired into
-  `ExtractionController`'s path specifically -- it doesn't retain fetched
-  HTML in its result. The duplicate-ratio gate added in #118 is the more
-  broadly-protective fix and covers the confirmed incident's shape
-  either way, but a future *different* contamination shape (not
-  duplicate-heavy) on that path wouldn't be caught by name-matching.
-- Code-level proof only, same as always -- production retry is the real
-  test.
+- Neither legal doc has an actual hosted URL yet -- that and a lawyer's
+  pass are the user's action, not code.
+- The Expo SDK 55 upgrade is unverified at the native/device level: no
+  EAS build or prebuild has run against these versions anywhere (this
+  session is a Linux container, no Xcode/simulator), and the Keychain
+  bug this targets has never been reproduced or disproven on a real
+  device in this project. Code-level proof only.
+- This branch has no PR open yet (wasn't asked for). It carries no
+  other pending code work from me.
 
 ## Next action
 
-Three independent things, whenever you're back:
-1. Menu canary retry on Itani + a new small batch.
-2. Image acquisition canary retry on the two zero-candidate sites.
-3. If you ever run `run_phase4_batch.py` per the Phase 4 plan, it now
-   needs `--limit N` (max 200) and `--run` -- preview first.
-
-Plus the still-open `image_processing_recovery` synthetic test request
-from before -- unrelated, any order.
+Codex: this pass didn't touch any of your still-open Production-lane
+items (menu/image canary retries, `image_processing_recovery`
+synthetic test, `run_phase4_batch.py` usage) -- see
+`CRAVE_STATUS.md`'s "What's next -- pick a track" section for the
+current, canonical list of those; nothing here supersedes it. If you
+pick up this branch: an EAS build/prebuild against the SDK 55 bump,
+ideally followed by a real device install, is the one thing that would
+actually close this pass's remaining gap.
