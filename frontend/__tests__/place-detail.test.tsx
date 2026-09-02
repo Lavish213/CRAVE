@@ -60,6 +60,7 @@ jest.mock('../src/stores/cravesStore', () => {
 });
 jest.mock('../src/components/PlaceVideoGallery', () => ({ PlaceVideoGallery: () => null }));
 jest.mock('../src/components/ReportPhotoSheet', () => ({ ReportPhotoSheet: () => null }));
+jest.mock('../src/components/ReportPlaceSheet', () => ({ ReportPlaceSheet: () => null }));
 jest.mock('../src/components/MenuSubmissionSheet', () => ({ MenuSubmissionSheet: () => null }));
 
 import { useAuthStore } from '../src/stores/authStore';
