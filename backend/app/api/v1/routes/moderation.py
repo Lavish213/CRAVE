@@ -62,6 +62,11 @@ from app.db.models.place_video import (
     MOD_PENDING_REVIEW as VIDEO_MOD_PENDING_REVIEW,
     MOD_REJECTED as VIDEO_MOD_REJECTED,
 )
+from app.db.models.place import Place
+from app.db.models.place_report import (
+    VALID_REPORT_REASONS as VALID_PLACE_REPORT_REASONS,
+    PlaceReport,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -427,3 +432,130 @@ def review_video(
 
     db.commit()
     return {"status": video.moderation_status}
+
+
+# ---------------------------------------------------------------------------
+# Place reports -- wrong hours, closed, duplicate, wrong menu, wrong info.
+# No auto-hide/deactivate here (see place_report.py's own docstring): a
+# place isn't taken off the catalog on report volume alone, only ever by a
+# human acting on the queue below.
+# ---------------------------------------------------------------------------
+
+
+class PlaceReportRequest(BaseModel):
+    reason: str = Field(..., description="One of: " + ", ".join(sorted(VALID_PLACE_REPORT_REASONS)))
+    note: Optional[str] = Field(None, max_length=500)
+
+
+@router.post(
+    "/places/{place_id}/report",
+    status_code=201,
+    dependencies=[Depends(rate_limit), Depends(require_api_key)],
+)
+def report_place(
+    place_id: str,
+    payload: PlaceReportRequest = Body(...),
+    db: Session = Depends(get_db),
+    user_id: str = Depends(get_current_user_id),
+):
+    if payload.reason not in VALID_PLACE_REPORT_REASONS:
+        raise HTTPException(status_code=400, detail="invalid reason")
+
+    place = db.query(Place).filter(Place.id == place_id).one_or_none()
+    if not place:
+        raise HTTPException(status_code=404, detail="place not found")
+
+    report = PlaceReport(
+        place_id=place_id,
+        reporter_id=user_id,
+        reason=payload.reason,
+        note=(payload.note or "").strip() or None,
+    )
+    db.add(report)
+    try:
+        db.flush()
+    except IntegrityError:
+        # Already reported by this user -- idempotent, not an error worth
+        # showing them.
+        db.rollback()
+        return {"status": "already_reported"}
+
+    db.commit()
+    return {"status": "reported"}
+
+
+class PlaceReportQueueItem(BaseModel):
+    place_id: str
+    place_name: str
+    report_count: int
+    reasons: List[str]
+    latest_note: Optional[str]
+
+
+@router.get(
+    "/places/queue",
+    dependencies=[Depends(rate_limit), Depends(require_api_key)],
+)
+def place_report_queue(
+    db: Session = Depends(get_db),
+    _admin: str = Depends(require_admin),
+    limit: int = Query(50, ge=1, le=200),
+):
+    unresolved_place_ids = (
+        db.query(PlaceReport.place_id)
+        .filter(PlaceReport.resolved_at.is_(None))
+        .distinct()
+        .order_by(PlaceReport.place_id)
+        .limit(limit)
+        .all()
+    )
+    place_ids = [row[0] for row in unresolved_place_ids]
+    if not place_ids:
+        return {"queue": []}
+
+    reports = (
+        db.query(PlaceReport)
+        .filter(PlaceReport.place_id.in_(place_ids), PlaceReport.resolved_at.is_(None))
+        .order_by(PlaceReport.created_at.desc())
+        .all()
+    )
+    places_by_id = {
+        p.id: p.name
+        for p in db.query(Place).filter(Place.id.in_(place_ids)).all()
+    }
+
+    by_place: dict[str, list[PlaceReport]] = {}
+    for r in reports:
+        by_place.setdefault(r.place_id, []).append(r)
+
+    return {
+        "queue": [
+            PlaceReportQueueItem(
+                place_id=pid,
+                place_name=places_by_id.get(pid, "Unknown place"),
+                report_count=len(place_reports),
+                reasons=sorted({r.reason for r in place_reports}),
+                latest_note=next((r.note for r in place_reports if r.note), None),
+            )
+            for pid, place_reports in by_place.items()
+        ]
+    }
+
+
+@router.post(
+    "/places/reports/{report_id}/resolve",
+    dependencies=[Depends(rate_limit), Depends(require_api_key)],
+)
+def resolve_place_report(
+    report_id: str,
+    db: Session = Depends(get_db),
+    admin_id: str = Depends(require_admin),
+):
+    report = db.query(PlaceReport).filter(PlaceReport.id == report_id).one_or_none()
+    if not report:
+        raise HTTPException(status_code=404, detail="report not found")
+
+    report.resolved_at = datetime.now(timezone.utc)
+    report.resolved_by = admin_id
+    db.commit()
+    return {"status": "resolved"}

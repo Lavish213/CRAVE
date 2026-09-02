@@ -36,6 +36,7 @@ import { withImageWidth, AVATAR_IMAGE_WIDTH } from '../../src/utils/imageUrl';
 import { ImageGallery } from '../../src/components/ImageGallery';
 import { PlaceVideoGallery } from '../../src/components/PlaceVideoGallery';
 import { ReportPhotoSheet } from '../../src/components/ReportPhotoSheet';
+import { ReportPlaceSheet } from '../../src/components/ReportPlaceSheet';
 import { MenuSubmissionSheet } from '../../src/components/MenuSubmissionSheet';
 import { TierBadge } from '../../src/components/TierBadge';
 import { ErrorState } from '../../src/components/ErrorState';
@@ -108,6 +109,7 @@ export default function PlaceDetailScreen() {
   const myRanking = myRankings?.find((r) => r.place_id === id);
 
   const [reportImageId, setReportImageId] = useState<string | null>(null);
+  const [reportPlaceVisible, setReportPlaceVisible] = useState(false);
   const [menuSubmitVisible, setMenuSubmitVisible] = useState(false);
 
   // Visited/notes memory (E2) -- only meaningful once this place is
@@ -674,9 +676,30 @@ export default function PlaceDetailScreen() {
             accessibilityRole="button"
           >
             <Ionicons name="flag-outline" size={18} color={Colors.textSecondary} />
-            <Text style={[styles.actionLabel, { color: Colors.textSecondary }]}>Report</Text>
+            <Text style={[styles.actionLabel, { color: Colors.textSecondary }]}>Report photo</Text>
           </TouchableOpacity>
         ) : null}
+
+        {/* Distinct from the photo report above -- wrong hours, closed,
+            duplicate, wrong menu, or other place-level issues. Neither
+            report auto-changes anything; both land in a human review
+            queue (see app/api/v1/routes/moderation.py). */}
+        <TouchableOpacity
+          style={styles.actionBtn}
+          onPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            if (!user) {
+              toast('Sign in to report an issue');
+              return;
+            }
+            setReportPlaceVisible(true);
+          }}
+          accessibilityLabel="Report an issue with this place"
+          accessibilityRole="button"
+        >
+          <Ionicons name="alert-circle-outline" size={18} color={Colors.textSecondary} />
+          <Text style={[styles.actionLabel, { color: Colors.textSecondary }]}>Report issue</Text>
+        </TouchableOpacity>
       </View>
 
       {/* Visited/notes memory (E2) -- only shown once saved, since
@@ -874,6 +897,13 @@ export default function PlaceDetailScreen() {
         visible={reportImageId !== null}
         imageId={reportImageId}
         onClose={() => setReportImageId(null)}
+        onReported={() => toast('Thanks — we’ll take a look')}
+      />
+
+      <ReportPlaceSheet
+        visible={reportPlaceVisible}
+        placeId={place.id}
+        onClose={() => setReportPlaceVisible(false)}
         onReported={() => toast('Thanks — we’ll take a look')}
       />
 

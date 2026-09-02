@@ -66,6 +66,7 @@ from .user_streak import UserStreak
 # ----- Moderation Layer -----
 from .image_report import ImageReport
 from .video_report import VideoReport
+from .place_report import PlaceReport
 
 # ----- Video Layer -----
 from .video_template import VideoTemplate
@@ -138,6 +139,7 @@ __all__ = [
     # Moderation
     "ImageReport",
     "VideoReport",
+    "PlaceReport",
 
     # Notifications
     "DevicePushToken",

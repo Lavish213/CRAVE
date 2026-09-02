@@ -348,3 +348,37 @@ export async function reportImage(
   });
   return data;
 }
+
+// Place-level reporting -- wrong hours, closed, duplicate, wrong menu,
+// wrong info. Distinct from reportImage above (that's specifically for
+// a bad/wrong photo); this is for something wrong about the place
+// itself. See app/api/v1/routes/moderation.py's place-report endpoints.
+export type PlaceReportReason =
+  | 'wrong_hours'
+  | 'closed'
+  | 'duplicate'
+  | 'wrong_menu'
+  | 'wrong_info'
+  | 'other';
+
+export const PLACE_REPORT_REASONS: { value: PlaceReportReason; label: string }[] = [
+  { value: 'wrong_hours', label: 'Hours are wrong' },
+  { value: 'closed', label: "This place has closed" },
+  { value: 'duplicate', label: 'Duplicate listing' },
+  { value: 'wrong_menu', label: 'Menu is wrong or outdated' },
+  { value: 'wrong_info', label: 'Other info is wrong' },
+  { value: 'other', label: 'Something else' },
+];
+
+/** Idempotent per user -- reporting twice returns 'already_reported'. */
+export async function reportPlace(
+  placeId: string,
+  reason: PlaceReportReason,
+  note?: string,
+): Promise<{ status: string }> {
+  const { data } = await client.post(`/api/v1/moderation/places/${placeId}/report`, {
+    reason,
+    note: note ?? null,
+  });
+  return data;
+}
