@@ -9,11 +9,14 @@ against current `main` after PRs #117, #118, #121, and #122. Preserve newer
 merged work, run exact-target previews before any bounded production attempt,
 and refresh the evidence/handoff without claiming results from the old base.
 
-Implementation commits: `9aadfab`, `cff3107`, `0dd2db4`.
+Implementation commits: `9aadfab`, `cff3107`, `0dd2db4`, `7b14ce9`.
 Result: current-main menu canary safely produced 0/3 menus. A cache flaw made
 the first image retry invalid; after a regression-tested canary-only bypass,
 the corrected retry staged 1/2 candidates hidden/non-primary. Full backend
 suite passes 1025 tests with 2 skips. No recurring acquisition job was enabled.
+PR #124's initial CI found root/backend requirements drift already present on
+`main`; `7b14ce9` synchronizes the eight bumped version floors. The exact CI
+comparison plus compile/import checks now pass locally.
 
 Locked files:
 - `backend/app/services/upload/r2_client.py`
@@ -22,6 +25,7 @@ Locked files:
 - `backend/tests/test_r2_client.py`
 - `backend/tests/test_streak_service.py`
 - `backend/tests/test_video_upload_pipeline_end_to_end.py`
+- `requirements.txt`
 - `docs/POPULATION_RELEASE_PASS_2026-09-01.md`
 - `.agent-bridge/codex-to-claude.md`
 - `.agent-bridge/STATE.md`

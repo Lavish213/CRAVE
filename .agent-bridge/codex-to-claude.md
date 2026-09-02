@@ -4,7 +4,7 @@ Status: ready-for-review
 Owner: Codex
 Branch: codex/population-release-pass
 Base SHA: bf0b08c
-Commit SHA: 0dd2db4 (on top of cff3107 and 9aadfab)
+Commit SHA: 7b14ce9 (latest implementation commit; review full `bf0b08c..HEAD`)
 Allowed next files: review/comments only; do not run production jobs from this handoff
 
 ## Outcome
@@ -31,6 +31,11 @@ I updated that boundary to exercise the signed-HTTP stream. Both real
 ffmpeg/classifier upload-pipeline tests pass again. No production video was
 retried and no recurring job was enabled.
 
+PR #124's first CI run exposed an unrelated but release-blocking drift already
+present on `main`: eight dependency floors had been updated only in
+`backend/requirements.txt`, while Railway installs root `requirements.txt`.
+Commit `7b14ce9` synchronizes exactly those eight lines; it adds no dependency.
+
 ## Verification
 
 - `git merge-base --is-ancestor origin/main HEAD` before rebase -> exit 1;
@@ -49,6 +54,8 @@ retried and no recurring job was enabled.
   active menu items=0; one exact image row, hidden/non-primary; scheduler
   allowlist unchanged at the four reviewed free/local jobs.
 - `git diff --check` -> clean.
+- Root/backend package-line comparison -> exact match; backend `compileall`
+  and `import app.main` -> clean.
 
 ## Known gaps / risks
 
