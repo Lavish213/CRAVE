@@ -141,12 +141,19 @@ describe('PlaceDetailScreen — visual-pass regression coverage', () => {
     expect(queryByText(/top \d+%/)).toBeNull();
   });
 
-  it('shows the accessible no-photos state instead of a stretched fallback image', async () => {
+  it('shows a compact no-photos state instead of a giant stretched fallback', async () => {
     mockedFetchPlaceDetail.mockResolvedValue(basePlace({ images: [], image: null }));
     const { findByText, getByLabelText } = renderScreen();
 
     await findByText('Nari');
-    expect(getByLabelText('No photos yet for Nari')).toBeTruthy();
+    const noPhotos = getByLabelText('No photos yet for Nari');
+    expect(noPhotos).toBeTruthy();
+    // Materially less than GALLERY_HEIGHT (280) -- an empty hero must not
+    // reserve the same vertical space a real photo would.
+    const style = Array.isArray(noPhotos.props.style)
+      ? Object.assign({}, ...noPhotos.props.style)
+      : noPhotos.props.style;
+    expect(style.height).toBeLessThan(150);
   });
 
   it('groups a menu item into one accessible element (name, description, price)', async () => {

@@ -282,12 +282,24 @@ export default function CravesScreen() {
     );
   }
 
+  // A matched crave/placeSave whose resolved place is already a direct
+  // save is a genuine content overlap, not a UI accident -- the same
+  // restaurant would otherwise render as a full row in three different
+  // sections on one screen. The underlying CraveItem/PlaceSaveItem
+  // records are never touched (their source/reason metadata -- which
+  // social post, which typed name -- stays intact for whenever the
+  // direct save is later removed); this only skips rendering an
+  // already-visible-above place a second/third time.
+  const savedPlaceIds = new Set(saves.map((s) => s.id));
+  const visibleCraves = craves.filter((c) => !c.matched_place_id || !savedPlaceIds.has(c.matched_place_id));
+  const visiblePlaceSaves = placeSaves.filter((p) => !p.place_id || !savedPlaceIds.has(p.place_id));
+
   // Position within each section's own impression batch above -- an
   // unmatched item was never in that batch (no place_id to log), so it's
   // excluded here too rather than given a position that would misalign
   // with what was actually logged as "shown."
-  const matchedCraveIds = craves.filter((c) => c.matched_place_id).map((c) => c.id);
-  const matchedPlaceSaveIds = placeSaves.filter((p) => p.place_id).map((p) => p.id);
+  const matchedCraveIds = visibleCraves.filter((c) => c.matched_place_id).map((c) => c.id);
+  const matchedPlaceSaveIds = visiblePlaceSaves.filter((p) => p.place_id).map((p) => p.id);
 
   return (
     <View style={styles.container}>
@@ -369,13 +381,13 @@ export default function CravesScreen() {
               <View style={styles.cravesSection}>
                 <Text style={styles.cravesSub}>Couldn't load Craves right now.</Text>
               </View>
-            ) : craves.length > 0 ? (
+            ) : visibleCraves.length > 0 ? (
               <View style={styles.cravesSection}>
                 <View style={styles.cravesHeader}>
                   <Text style={styles.cravesTitle}>Craves</Text>
                   <Text style={styles.cravesSub}>Places you've craved, tracked by CRAVE</Text>
                 </View>
-                {craves.map((item) => (
+                {visibleCraves.map((item) => (
                   <View key={item.id} style={styles.craveRow}>
                     {item.thumbnail_url ? (
                       <Image
@@ -417,13 +429,13 @@ export default function CravesScreen() {
               </View>
             ) : null}
 
-            {placeSaves.length > 0 ? (
+            {visiblePlaceSaves.length > 0 ? (
               <View style={styles.cravesSection}>
                 <View style={styles.cravesHeader}>
                   <Text style={styles.cravesTitle}>Added</Text>
                   <Text style={styles.cravesSub}>Places you typed in by name</Text>
                 </View>
-                {placeSaves.map((item) => (
+                {visiblePlaceSaves.map((item) => (
                   <View key={item.id} style={styles.craveRow}>
                     <View style={styles.craveMeta}>
                       <Text style={styles.craveName} numberOfLines={1}>

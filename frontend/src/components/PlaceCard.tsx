@@ -9,11 +9,15 @@ import { PlaceOut } from '../api/places';
 import { getTierForPlace, formatPrice, getBadges, percentileCaption, formatDistance } from '../utils/scoring';
 // formatPrice imported for fallback; normalized places already have place.price
 import { TierBadge } from './TierBadge';
+import { MissingMediaState } from './MissingMediaState';
 import { Colors, Spacing, Radius, Shadows } from '../constants/colors';
 import { DecisionRole } from '../api/decisionSession';
 
 const SAVE_HIT_SLOP = { top: 8, bottom: 8, left: 8, right: 8 } as const;
 const IMAGE_HEIGHT = 220;
+// Materially shorter than IMAGE_HEIGHT -- a no-photo card must not
+// reserve the same giant vertical space a real photo would.
+const NO_IMAGE_HEIGHT = 96;
 
 interface Props {
   place: PlaceOut;
@@ -78,25 +82,23 @@ function PlaceCardImpl({ place, onPress, onPressIn, onSave, saved, style, role, 
     >
       <View style={styles.imageContainer}>
         {place.image ? (
-          <Image
-            source={place.image}
-            style={styles.image}
-            contentFit="cover"
-            placeholder={{ blurhash: 'L6PZfSi_.AyE_3t7t7R**0o#DgR4' }}
-            transition={200}
-            cachePolicy="memory-disk"
-          />
+          <>
+            <Image
+              source={place.image}
+              style={styles.image}
+              contentFit="cover"
+              placeholder={{ blurhash: 'L6PZfSi_.AyE_3t7t7R**0o#DgR4' }}
+              transition={200}
+              cachePolicy="memory-disk"
+            />
+            <View style={styles.scrimBottom} />
+          </>
         ) : (
-          <View style={styles.imageFallback}>
-            <Text style={styles.imageFallbackInitial}>
-              {(place.name || '?')[0].toUpperCase()}
-            </Text>
-            {categoryLabel && (
-              <Text style={styles.imageFallbackCategory}>{categoryLabel}</Text>
-            )}
-          </View>
+          <MissingMediaState
+            height={NO_IMAGE_HEIGHT}
+            accessibilityLabel={`No photo yet for ${place.name}`}
+          />
         )}
-        <View style={styles.scrimBottom} />
         {role ? (
           <View style={styles.roleBadge}>
             <Text style={styles.roleBadgeText}>{ROLE_LABELS[role]}</Text>
@@ -208,25 +210,4 @@ const styles = StyleSheet.create({
     borderRadius: Radius.pill,
   },
   chipText: { fontSize: 12, color: Colors.textSecondary },
-  imageFallback: {
-    width: '100%',
-    height: IMAGE_HEIGHT,
-    backgroundColor: Colors.surfaceElevated,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-  },
-  imageFallbackInitial: {
-    fontSize: 64,
-    fontWeight: '800',
-    color: Colors.textSecondary,
-    lineHeight: 72,
-  },
-  imageFallbackCategory: {
-    fontSize: 13,
-    color: Colors.textSecondary,
-    fontWeight: '500',
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-  },
 });

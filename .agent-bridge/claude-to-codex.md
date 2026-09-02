@@ -1,78 +1,95 @@
-# H-20260902-legal-docs-and-expo-55
+# H-20260902-track1-feed-detail-craves
 
 Status: ready-for-review
 Owner: Claude
-Branch: claude/project-grade-systems-review-4ot7d0
-Base SHA: d4510e3 (main, restarted -- old branch of this name carried
-no unique commits)
-Commit SHA: bb744cad3be96b18f47689781bf88c67204a6a1
-Allowed next files: none from me -- docs-only bridge handoff, no more
-code planned on this branch right now.
+Branch: claude/track1-feed-detail-craves-journey
+Base SHA: 6e32ba4 (main, post-PR#125 brief merge)
+Commit SHA: 486689b
+Allowed next files: none from me -- handoff complete, no more code
+planned on this branch pending review.
 
 ## Outcome
 
-Two independent, code-only Product-lane passes (no Railway/Supabase
-access used).
+Track 1 of `docs/CLAUDE_EXECUTION_BRIEF_SCREEN_AND_COVERAGE_2026-09-02.md`
+(your brief, PR #125). Two real, confirmed bugs fixed; one item
+verified already solid; two items and one observation flagged as
+genuinely out of reach from here.
 
-**Legal docs (eb7f657, d4510e3):** `docs/privacy-policy.md` and
-`docs/terms-of-service.md` are the source docs for the hosted URLs App
-Store Connect requires; both still had `[DATE]`/`[YOUR CONTACT EMAIL]`
-placeholders (privacy also had an unresolved account-deletion-retention
-bracket). Filled in from verified sources, not guesses: date/contact
-synced to the already-shipped in-app copy
-(`frontend/app/legal/{privacy,terms}.tsx` -- `hello@crave.app`, August
-25, 2026), and the retention language now matches what
-`backend/app/services/account/account_deletion_service.py` actually
-does. Left ToS §12's governing-law jurisdiction as an open placeholder
-on purpose -- real business decision, not something to invent.
+**Item 2 -- missing-media compaction.** `PlaceCard`'s no-image fallback
+and `ImageGallery`'s empty Place Detail hero both reserved the *exact
+same* vertical space a real photo would (220px / 280px) -- a giant
+flat panel with a big initial letter, reading as a stretched/broken
+image. This is the concrete mechanism behind the device audit's "blank
+beige placeholders occupy most of each card" finding. Extracted a
+shared `MissingMediaState` component (camera-outline + "No photo yet",
+matching `ImageGallery`'s pre-existing empty-state language) sized
+materially smaller at both call sites (96px / 120px), dropped the
+now-pointless photo-readability scrim over a flat panel.
 
-**Expo SDK 54->55 upgrade (bb744ca):** bumped every `expo-*` package
-plus `react`/`react-dom`/`react-native` and native-module siblings
-(reanimated, screens, gesture-handler, maps, worklets) to the exact
-versions SDK 55 bundles -- read directly out of the installed `expo`
-package's own `bundledNativeModules.json`, not guessed. Fixes
-`expo-notifications`' known Keychain/persisted-registration read bug
-(0.32.17), fixed upstream only in the SDK 55 line (expo/expo#43829) --
-the reason this was on the backlog. Two real dependency-resolution bugs
-found and fixed along the way: `@expo/vector-icons`'s unbounded
-`expo-font` peer dependency was auto-installing the newest published
-`expo-font` (SDK 57's line) instead of 55's, breaking `expo-asset`
-resolution -- now pinned explicitly. Regenerating `package-lock.json`
-also let `@shopify/flash-list` float from its deliberately-locked
-`2.0.2` to an ESM-only `2.3.2` that broke Jest -- reverted to the exact
-pin. `@testing-library/react-native` needed a real bump (12.9.0 ->
-13.3.3, not the newer 14.x line) because `expo-router@55` now
-peer-requires `>=13.2.0`.
+**Item 5 -- Save/Craves overlap.** `CravesScreen` renders three
+independent lists (direct saves, share-parsed CraveItems, typed-name
+PlaceSaveItems) with zero cross-referencing. A place that's both
+directly saved and later matched via a shared link (or typed-name add)
+rendered as a full row in two or three sections at once -- the "saved
+places and typed/matched places appear as two overlapping lists"
+finding. Fixed at the render layer only: a matched crave/placeSave
+whose resolved place_id is already a direct save is filtered out of
+its own section. The underlying CraveItem/PlaceSaveItem records are
+untouched (per your explicit instruction not to collapse distinct
+domain records) -- their source/reason metadata stays intact for if
+the direct save is later removed.
+
+**Item 3 -- Feed decision-surface refinement.** Verified, not changed:
+Decision Session already renders via `ListHeaderComponent` (genuinely
+first/primary when data exists), each card carries a real explanation
+(`reasonCaption`) plus its role badge, error/empty states are already
+distinct with retry, and Feed is correctly browsable signed-out
+(gated only on the save action). One real observation left unfixed on
+purpose -- see Known gaps.
+
+**Items 1, 4, 6 -- not attempted.** Item 4 (Place Detail hierarchy) is
+left as-is; `CRAVE_STATUS.md` already records it matching the doctrine
+spec, not freshly re-verified here since nothing needed changing.
+Items 1 (fresh-build screenshots) and 6 (Dynamic Type/VoiceOver/
+reduced-motion device pass) categorically need a simulator/device this
+Linux container doesn't have.
 
 ## Verification
 
-- `npx tsc --noEmit` -> clean, no errors.
-- `npx jest` -> 331 passed, 34 suites (unchanged count from before the
-  upgrade).
-- `npx expo config --type public` -> resolves `sdkVersion: '55.0.0'`
-  with no plugin/schema errors against the existing `app.json`.
-- `npm audit` -> 19 moderate findings, all build-tooling-only (same
-  class as previously documented, down from 26, nothing high/critical).
+- `npx tsc --noEmit` -> clean.
+- `npx jest` -> 334 passed, 35 suites (up from 331/34 -- 3 new tests).
+- Each of the 2 behavioral fixes regression-checked individually:
+  reverted the height constant / re-enabled the unfiltered list,
+  confirmed the corresponding new test fails with the expected
+  message, restored, confirmed green again.
 
 ## Known gaps / risks
 
-- Neither legal doc has an actual hosted URL yet -- that and a lawyer's
-  pass are the user's action, not code.
-- The Expo SDK 55 upgrade is unverified at the native/device level: no
-  EAS build or prebuild has run against these versions anywhere (this
-  session is a Linux container, no Xcode/simulator), and the Keychain
-  bug this targets has never been reproduced or disproven on a real
-  device in this project. Code-level proof only.
-- This branch has no PR open yet (wasn't asked for). It carries no
-  other pending code work from me.
+- No simulator/EAS access anywhere in this session -- this is code +
+  test-level proof only. The brief's own acceptance criteria require
+  "fresh screenshots... before/after screenshots in the PR" -- that
+  step is genuinely missing and needs whoever has device access.
+- Track 2 (menu/photo coverage) not started at all -- confirmed this
+  session has zero production credentials (`DATABASE_URL`,
+  `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` all unset), so Phases
+  A/B/D/E/F are all unreachable from here, not just the write-risky
+  ones. Stays entirely with you.
+- Real, unfixed observation: Decision Session's 3 picks and the main
+  ranked Feed list are independent queries (`useDecisionSession()` vs.
+  `fetchPlaces()`/`useInfiniteQuery`) with no cross-filtering, so the
+  same place can appear once in "DECIDE NOW" and again in its normal
+  tier section further down. Not named in the device audit or your
+  brief's acceptance criteria, and a real fix means coordinating two
+  independently-paced queries -- more invasive than a bounded fix, and
+  arguably intentional (reinforcing a strong pick isn't obviously
+  wrong the way the three-blind-lists Craves bug was). Flagging rather
+  than freelancing.
 
 ## Next action
 
-Codex: this pass didn't touch any of your still-open Production-lane
-items (menu/image canary retries, `image_processing_recovery`
-synthetic test, `run_phase4_batch.py` usage) -- see
-`CRAVE_STATUS.md`'s "What's next -- pick a track" section for the
-current, canonical list of those; nothing here supersedes it. If you
-pick up this branch: an EAS build/prebuild against the SDK 55 bump,
-ideally followed by a real device install, is the one thing that would
-actually close this pass's remaining gap.
+Whoever has simulator/EAS access: rebuild against this branch, capture
+the Feed/Place Detail/Craves screenshots the brief's acceptance
+criteria require, confirm the two fixes actually look right on-device
+(no-photo cards genuinely compact, no duplicate saved-place rows), then
+review/merge. Track 2 is untouched and ready whenever you pick it up --
+nothing here conflicts with it.
