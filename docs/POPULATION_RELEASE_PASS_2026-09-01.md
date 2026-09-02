@@ -54,14 +54,36 @@ The exact two-place run targeted Cantina Frida and the Los Angeles Las Ranas
 Cafe row. Both had zero existing image rows; both produced zero free
 candidates; zero rows were staged and zero became public.
 
-After rebasing onto `bf0b08c` (including PR #117's lazy attributes and bounded
-browser escalation), the same exact two targets were previewed and rerun with
-`--confirm-count 2`. Result: attempted=2, staged=0, publicly_visible=0. The
-fallback therefore did not improve recall for this sample.
+After rebasing onto `bf0b08c`, the first retry incorrectly returned zero again:
+the original canary had written a 24-hour website-fetch cache row, so the retry
+never exercised PR #117's new browser path. A regression test now proves the
+exact canary bypasses only this cache while ordinary ingestion caching stays
+unchanged.
 
-**Conclusion:** the canary is fail-closed and free-only, but current website
-acquisition still has no demonstrated coverage gain on these targets. Do not
-enable recurring image ingestion on the strength of this result.
+The corrected exact retry (`--confirm-count 2`) produced attempted=2, staged=1,
+publicly_visible=0. Cantina Frida yielded one official-site image, stored
+hidden/non-primary as `df414329-b95e-4899-a061-6af6f751d038`. Las Ranas still
+yielded zero. Direct diagnostics explain both results: Cantina's official site
+says it is temporarily closed and reopening; Las Ranas currently serves a
+114-byte JavaScript redirect to `/lander`, whose rendered response contains no
+restaurant images. A search crawler's restaurant content was cached from the
+prior week, so that indexed page is not current extraction evidence.
+
+**Conclusion:** free website acquisition now has a real 1/2 recall signal, but
+the only staged result belongs to a temporarily closed venue and must stay
+hidden pending review. Las Ranas is a catalog/website-freshness problem, not
+evidence that the browser renderer failed. Recurring image ingestion remains
+disabled.
+
+## Post-canary production audit
+
+- All three menu targets remain `has_menu=false`; active menu items across the
+  exact set=0. Failure counts advanced once, as expected for the bounded run.
+- Exact image-target row count=1: the Cantina row above, hidden/non-primary.
+- Scheduler worker remains enabled with exactly
+  `moderation_queue_health_check,share_parser,image_processing_recovery,video_processing`.
+- Latest recorded runs for all four jobs are successful; paid/unbounded jobs
+  remain outside the allowlist.
 
 ## Real video pipeline canary
 

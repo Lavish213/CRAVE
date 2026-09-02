@@ -30,13 +30,24 @@ from app.db.models.place_image import PlaceImage, VISIBILITY_HIDDEN
 from app.db.session import SessionLocal
 from app.services.images.image_ingest_service import ImageIngestService
 from app.services.images.image_reader import ImageReader
+from app.services.images.website_image_extractor import WebsiteImageExtractor
 
 
 MAX_CANARY_PLACES = 10
 
 
+class CanaryWebsiteImageExtractor(WebsiteImageExtractor):
+    """Always re-fetch so a retry measures current extraction code."""
+
+    def _recently_fetched(self, *, db, place_id: str, source: str) -> bool:
+        return False
+
+
 class FreeOnlyImageReader(ImageReader):
     """ImageReader variant whose control flow contains no Google branch."""
+
+    def __init__(self) -> None:
+        super().__init__(website_extractor=CanaryWebsiteImageExtractor())
 
     def read(self, *, place: Place, db=None) -> list[dict]:
         candidates = []

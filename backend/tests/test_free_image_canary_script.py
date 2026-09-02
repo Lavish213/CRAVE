@@ -34,6 +34,31 @@ def test_free_reader_never_calls_google(monkeypatch):
     assert reader.read(place=SimpleNamespace(id="p1"), db=None) == []
 
 
+def test_free_reader_rechecks_website_even_when_a_recent_fetch_log_exists(db, city, monkeypatch):
+    """A canary retry must exercise the current extractor, not its old cache."""
+    from app.db.models.place_image_fetch_log import PlaceImageFetchLog
+
+    place = make_place(db, city, place_id=str(uuid.uuid4()))
+    db.add(PlaceImageFetchLog(place_id=place.id, source="website"))
+    db.commit()
+
+    reader = FreeOnlyImageReader()
+    monkeypatch.setattr(reader, "_read_provider", lambda place: [])
+    monkeypatch.setattr(
+        reader.website_extractor,
+        "_fetch_html",
+        lambda website: (
+            '<img src="https://cdn.example.com/restaurant/food-photo-long-enough.jpg">'
+        ),
+    )
+
+    images = reader.read(place=place, db=db)
+
+    assert [image["url"] for image in images] == [
+        "https://cdn.example.com/restaurant/food-photo-long-enough.jpg"
+    ]
+
+
 @pytest.fixture()
 def db():
     session = SessionLocal()
