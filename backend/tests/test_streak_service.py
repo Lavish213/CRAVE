@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import sys
 import uuid
-from datetime import date, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -45,7 +45,7 @@ def test_first_ever_ping_starts_a_streak_of_one(db):
 
     assert state.current_streak == 1
     assert state.longest_streak == 1
-    assert state.last_active_date == date.today()
+    assert state.last_active_date == datetime.now(timezone.utc).date()
 
 
 def test_pinging_again_the_same_day_is_a_no_op(db):
@@ -67,7 +67,7 @@ def test_consecutive_day_increments_the_streak(db):
 
     record_activity(session, user_id=user_id, client_timezone="UTC")
     streak = session.query(UserStreak).filter(UserStreak.user_id == user_id).one()
-    streak.last_active_date = date.today() - timedelta(days=1)
+    streak.last_active_date = datetime.now(timezone.utc).date() - timedelta(days=1)
     session.commit()
 
     state = record_activity(session, user_id=user_id, client_timezone="UTC")
@@ -85,7 +85,7 @@ def test_missed_day_resets_current_streak_but_keeps_longest(db):
     streak = session.query(UserStreak).filter(UserStreak.user_id == user_id).one()
     streak.current_streak = 5
     streak.longest_streak = 5
-    streak.last_active_date = date.today() - timedelta(days=3)
+    streak.last_active_date = datetime.now(timezone.utc).date() - timedelta(days=3)
     session.commit()
 
     state = record_activity(session, user_id=user_id, client_timezone="UTC")
@@ -105,7 +105,7 @@ def test_day_boundary_is_calendar_day_not_raw_hours_elapsed(db):
     # consecutive streak day, not a no-op or a reset.
     record_activity(session, user_id=user_id, client_timezone="UTC")
     streak = session.query(UserStreak).filter(UserStreak.user_id == user_id).one()
-    streak.last_active_date = date.today() - timedelta(days=1)
+    streak.last_active_date = datetime.now(timezone.utc).date() - timedelta(days=1)
     session.commit()
 
     state = record_activity(session, user_id=user_id, client_timezone="UTC")
@@ -119,7 +119,8 @@ def test_an_implausible_backward_timezone_jump_never_moves_the_streak_backward(d
 
     record_activity(session, user_id=user_id, client_timezone="UTC")
     streak = session.query(UserStreak).filter(UserStreak.user_id == user_id).one()
-    streak.last_active_date = date.today() + timedelta(days=1)
+    utc_tomorrow = datetime.now(timezone.utc).date() + timedelta(days=1)
+    streak.last_active_date = utc_tomorrow
     streak.current_streak = 3
     streak.longest_streak = 3
     session.commit()
@@ -127,7 +128,7 @@ def test_an_implausible_backward_timezone_jump_never_moves_the_streak_backward(d
     state = record_activity(session, user_id=user_id, client_timezone="UTC")
 
     assert state.current_streak == 3
-    assert state.last_active_date == date.today() + timedelta(days=1)
+    assert state.last_active_date == utc_tomorrow
 
 
 def test_an_unrecognized_timezone_name_falls_back_to_utc_instead_of_erroring(db):

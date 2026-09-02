@@ -17,6 +17,7 @@ module after monkeypatching — see the `reload_r2_client` fixture.
 from __future__ import annotations
 
 import importlib
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -76,3 +77,34 @@ def test_generate_public_url_never_uses_the_private_s3_api_host(monkeypatch, rel
     url = mod.generate_public_url("key.jpg")
 
     assert "r2.cloudflarestorage.com" not in url
+
+
+def test_download_to_file_uses_signed_http_stream_not_botocore_body(tmp_path):
+    """Regression guard for the Railway worker's StreamingBody recursion.
+
+    Keep botocore responsible only for signing.  The actual response body is
+    streamed by requests, so a deployed botocore response-wrapper regression
+    cannot strand every queued video before ffmpeg starts.
+    """
+    client = MagicMock()
+    client.generate_presigned_url.return_value = "https://signed.example/video"
+    response = MagicMock()
+    response.__enter__.return_value = response
+    response.iter_content.return_value = [b"first", b"", b"second"]
+    destination = tmp_path / "video.mp4"
+
+    with patch.object(r2_client_module, "_get_s3_client", return_value=client), patch.object(
+        r2_client_module.requests, "get", return_value=response
+    ) as get:
+        r2_client_module.download_to_file("places/p/videos/orig/v.mp4", str(destination))
+
+    client.generate_presigned_url.assert_called_once_with(
+        ClientMethod="get_object",
+        Params={"Bucket": r2_client_module.R2_BUCKET, "Key": "places/p/videos/orig/v.mp4"},
+        ExpiresIn=300,
+    )
+    get.assert_called_once_with(
+        "https://signed.example/video", stream=True, timeout=(10, 120)
+    )
+    response.raise_for_status.assert_called_once_with()
+    assert destination.read_bytes() == b"firstsecond"
