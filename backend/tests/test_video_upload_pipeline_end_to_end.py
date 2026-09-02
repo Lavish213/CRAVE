@@ -89,8 +89,10 @@ class FakeS3:
 
     def __init__(self):
         self.objects: dict[str, bytes] = {}
+        self.last_presigned_key: str | None = None
 
     def generate_presigned_url(self, **kwargs):
+        self.last_presigned_key = kwargs["Params"]["Key"]
         return "https://fake-r2.test/unused-presigned-url"
 
     def head_object(self, *, Bucket, Key):
@@ -174,6 +176,24 @@ def fake_s3(monkeypatch):
     # callers, no need to patch it in each importing module separately.
     fake = FakeS3()
     monkeypatch.setattr(r2_client, "_get_s3_client", lambda: fake)
+
+    class _Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, traceback):
+            return False
+
+        def raise_for_status(self):
+            return None
+
+        def iter_content(self, chunk_size=1024 * 1024):
+            assert fake.last_presigned_key is not None
+            data = fake.objects[fake.last_presigned_key]
+            for offset in range(0, len(data), chunk_size):
+                yield data[offset : offset + chunk_size]
+
+    monkeypatch.setattr(r2_client.requests, "get", lambda *args, **kwargs: _Response())
     return fake
 
 
