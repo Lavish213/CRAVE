@@ -1,11 +1,12 @@
 # CRAVE Terms of Service
 
-**Last updated: [DATE]**
+**Last updated: August 25, 2026**
 
-> **Before publishing**: this draft is not legal advice — have a lawyer
-> review it, and fill in the bracketed placeholders (governing law,
-> contact info, company name/entity if you've formed one) before this
-> goes live.
+> **Before publishing**: this is not legal advice — have a lawyer review
+> it. §12's governing-law jurisdiction is still a placeholder: it
+> depends on where you've formed (or plan to form) a company, which
+> isn't something to guess on your behalf — fill it in once that's
+> decided.
 
 These Terms of Service ("Terms") govern your use of the CRAVE mobile app
 ("CRAVE," "the app"). By creating an account or using CRAVE, you agree
@@ -102,4 +103,4 @@ regard to conflict-of-law principles.
 
 ## 13. Contact
 
-Questions about these Terms: **[YOUR CONTACT EMAIL]**
+Questions about these Terms: **hello@crave.app**
