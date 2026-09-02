@@ -291,11 +291,6 @@ administrator bypass retained for the agreed small-fix lane.
   exists end to end. Needs a real new surface (backend endpoint +
   moderation-queue wiring + frontend sheet), not a bounded fix —
   deliberately not improvised here without that spec.
-- **No reservation action exists on Place Detail at all.** Directions,
-  website, and Grubhub-order links all work (each has real fallback/
-  error handling), but "Reserve" isn't built — needs a provider
-  decision (OpenTable/Resy/direct) before it's buildable, a product
-  choice, not a code gap to close blind.
 - **Search is keyword matching**, no typo tolerance or intent parsing.
 - **Category taxonomy is now real** (cuisine/venue/dietary/ownership/
   occasion/recognition, "The Pass" E8) and the Filter UI groups by it.
