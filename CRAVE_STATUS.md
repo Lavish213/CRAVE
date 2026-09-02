@@ -41,7 +41,7 @@ Auth: Supabase (JWKS, ES256).
 
 ## Test status
 
-Backend: **987 passed, 2 skipped** (`cd backend && python -m pytest -q`).
+Backend: **1016 passed, 2 skipped** (`cd backend && python -m pytest -q`).
 Frontend: **331 passed**, 34 suites (`cd frontend && npx jest`), `tsc
 --noEmit` clean. An E2E Playwright smoke suite also exists (`frontend/e2e/`,
 3 journeys) — not part of the Jest count above, run separately via
@@ -267,9 +267,15 @@ only playback surface, a has_video badge on Feed/Search/Craves cards
 drives discovery instead; see "Design invariants — don't relitigate these" below.
 ~~Confirm the food-classifier runtime is installed in prod~~ — build logs
 confirm `ai-edge-litert 2.2.0`; the 12 MB model is in deployed source and
-ffmpeg 7.1.5 is installed in the scheduler image. A real uploaded-video
-end-to-end pass is still required to validate inference quality, not merely
-dependency presence. Physical-device smoke pass (Auth/Feed/
+ffmpeg 7.1.5 is installed in the scheduler image. ~~Prove the real ffmpeg+
+classifier pipeline end-to-end~~ — done (PR #121): real ffmpeg frame
+extraction from a genuine video container into the real TFLite model,
+not mocked ffmpeg or a single static image — a real food video scored
+0.972, a real non-food video scored 0.402 against the 0.8 threshold, both
+correct. What's still open is a real *device-recorded* video through the
+*production* R2/scheduler path (server logic is now proven; camera
+capture and R2 transfer are not) — that piece still needs a physical
+device, not more code. Physical-device smoke pass (Auth/Feed/
 Search/Place Detail/Save/Map/Upload/Offline/Push/**Decision Session**).
 ~~Build the Decision-Session auto-visited hook~~ — done (PR #109).
 
