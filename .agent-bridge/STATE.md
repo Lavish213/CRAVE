@@ -9,10 +9,11 @@ against current `main` after PRs #117, #118, #121, and #122. Preserve newer
 merged work, run exact-target previews before any bounded production attempt,
 and refresh the evidence/handoff without claiming results from the old base.
 
-Implementation commits: `9aadfab`, `cff3107`.
-Result: current-main menu canary safely produced 0/3 menus; current-main free
-image canary safely produced 0/2 image candidates. Full backend suite passes
-1024 tests with 2 skips. No recurring acquisition job was enabled.
+Implementation commits: `9aadfab`, `cff3107`, `0dd2db4`.
+Result: current-main menu canary safely produced 0/3 menus. A cache flaw made
+the first image retry invalid; after a regression-tested canary-only bypass,
+the corrected retry staged 1/2 candidates hidden/non-primary. Full backend
+suite passes 1025 tests with 2 skips. No recurring acquisition job was enabled.
 
 Locked files:
 - `backend/app/services/upload/r2_client.py`

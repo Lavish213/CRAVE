@@ -4,7 +4,7 @@ Status: ready-for-review
 Owner: Codex
 Branch: codex/population-release-pass
 Base SHA: bf0b08c
-Commit SHA: cff3107 (on top of 9aadfab)
+Commit SHA: 0dd2db4 (on top of cff3107 and 9aadfab)
 Allowed next files: review/comments only; do not run production jobs from this handoff
 
 ## Outcome
@@ -20,9 +20,11 @@ I reran both requested exact-target production canaries after the rebase:
   materialized=0, no_menu=3, errors=0. Itani's formerly contaminated result
   now logged `menu_pipeline_rejected reason=low_quality`, so the new gates
   prevented republication. Pizzaiolo still hit a CAPTCHA. Coverage gain: zero.
-- Free images: Cantina Frida plus the Los Angeles Las Ranas row produced
-  attempted=2, staged=0, publicly_visible=0 even with PR #117's browser
-  fallback. Coverage gain: zero. Google was structurally unreachable.
+- Free images: the first post-rebase retry was invalidated by the canary's own
+  24-hour fetch cache. After adding a regression-tested canary-only bypass, the
+  corrected exact retry produced attempted=2, staged=1,
+  publicly_visible=0. Cantina yielded one hidden/non-primary image; Las Ranas
+  yielded none. Google was structurally unreachable.
 
 The rebased R2 signed-HTTP fix initially broke PR #122's local R2 test double;
 I updated that boundary to exercise the signed-HTTP stream. Both real
@@ -36,21 +38,25 @@ retried and no recurring job was enabled.
 - `git rebase origin/main` -> completed; branch now starts at `bf0b08c`.
 - `/Users/angelowashington/CRAVE/venv/bin/python -m pytest -q backend/tests/test_menu_backlog_canary_script.py backend/tests/test_free_image_canary_script.py backend/tests/test_r2_client.py backend/tests/test_streak_service.py backend/tests/test_menu_entity_match.py backend/tests/test_website_image_extractor.py backend/tests/test_menu_pipeline_quality_gate.py` -> 44 passed.
 - `/Users/angelowashington/CRAVE/venv/bin/python -m pytest -q backend/tests/test_r2_client.py backend/tests/test_video_upload_pipeline_end_to_end.py` -> 7 passed.
-- `/Users/angelowashington/CRAVE/venv/bin/python -m pytest -q backend/tests` -> 1024 passed, 2 skipped.
+- `/Users/angelowashington/CRAVE/venv/bin/python -m pytest -q backend/tests` -> 1025 passed, 2 skipped.
 - Production menu preview -> found=3, missing=0, inactive=0.
 - Production menu run with exact `--confirm-count 3` -> attempted=3,
   materialized=0, no_menu=3, errors=0.
 - Production image preview -> found=2, existing image blockers=0.
-- Production image run with exact `--confirm-count 2` -> attempted=2,
-  staged=0, publicly_visible=0.
+- Corrected production image run with exact `--confirm-count 2` -> attempted=2,
+  staged=1, publicly_visible=0.
+- Post-canary production audit -> all three menu targets `has_menu=false`,
+  active menu items=0; one exact image row, hidden/non-primary; scheduler
+  allowlist unchanged at the four reviewed free/local jobs.
 - `git diff --check` -> clean.
 
 ## Known gaps / risks
 
 - The menu quality fix is demonstrated as a safety improvement, not a recall
   improvement. Recurring menu enrichment should remain disabled.
-- The image browser fallback did not find either target. Recurring image
-  ingestion should remain disabled.
+- Cantina's official site says temporarily closed/reopening; do not promote its
+  staged image without entity-status review. Las Ranas currently redirects to
+  an image-less lander, so its stored website needs freshness review.
 - The R2 production recursion fix is code/test verified only; it still needs
   independent review, deployment, and a one-object quarantined retry.
 - Exact production IDs remain in the dated evidence doc. Do not publish/push
@@ -58,6 +64,6 @@ retried and no recurring job was enabled.
 
 ## Next action
 
-Review `bf0b08c..cff3107`, especially the R2 signed-HTTP change and the updated
+Review `bf0b08c..HEAD`, especially the R2 signed-HTTP change and the updated
 PR #122 test boundary. Do not call either acquisition pipeline "coverage
-verified": both current-main canaries safely produced zero new content.
+verified": menu recall stayed 0/3 and the one image candidate remains hidden.
