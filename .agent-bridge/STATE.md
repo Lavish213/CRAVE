@@ -3,11 +3,32 @@
 Status: handoff-pending
 Owner: Claude
 Branch: main
-Base SHA: eb7119e (PR #120 merged)
+Base SHA: 56b7cef (PR #121 merged + doc sync)
 Scope: Root-caused and fixed both acquisition-pipeline failures from the
 recent canary attempts (menu contamination on Itani, zero free image
 candidates on two sites), rather than leaving them as open blockers.
-Also triaged the ~26 open dependabot PRs (PRs #119, #120).
+Also triaged the ~26 open dependabot PRs (PRs #119, #120), and closed
+the "real ffmpeg+classifier quality unverified" gap (PR #121).
+
+## PR #121 (merged) -- real video pipeline, proven for real
+
+The user asked whether the video food-classifier pipeline could be
+tested or patched. ffmpeg wasn't installed in this session -- installed
+it (apt, no application-code implication), then built real short videos
+from the existing real food/non-food test fixture images and ran them
+through the actual production functions (`check_duration_ms`,
+`compress_video`, `score_video` -- real ffmpeg frame extraction into the
+real TFLite model, nothing mocked). Food video scored 0.972, non-food
+scored 0.402, threshold is 0.8 -- both correct. Wrote this as a
+permanent, CI-skip-safe test (skips cleanly where ffmpeg is absent,
+same pattern as the existing TFLite-runtime skip). Regression-checked.
+Full backend suite: 1016 passed, 2 skipped (1014 baseline + 2 new).
+
+This closes the ffmpeg+classifier half of the flagged gap. What's still
+open: a real device-recorded video through the actual R2/scheduler path
+in production -- server logic is now proven, camera capture and R2
+transfer are not, and neither is testable without a physical device /
+production access.
 
 ## Dependabot triage (PRs #119, #120)
 
