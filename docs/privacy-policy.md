@@ -90,15 +90,19 @@ directly in the app.
 
 - **Access/update**: edit your profile at any time in Settings.
 - **Delete your account**: Settings → Delete Account permanently deletes
-  your profile, your social graph (follows/blocks), and your login
-  credentials (we ask Supabase to delete the underlying auth identity
-  itself, not just the app profile, so you can't log back in with the
-  same credentials afterward). This is irreversible and immediate. Your
-  past public contributions — restaurant photos, menu submissions,
-  rankings, moderation records — are not swept as part of this and may
-  remain associated with the place or content itself rather than a
-  reachable profile, the same way most social apps handle deleted
-  accounts.
+  your profile and your social graph (follows/blocks) immediately, and
+  asks Supabase to delete the underlying auth identity itself, not just
+  the app profile. That request normally succeeds, but if it can't be
+  completed (a configuration, network, or upstream error on Supabase's
+  side) your app profile is still deleted while the login credential
+  itself may briefly remain active — we log this case for follow-up
+  rather than leaving it undetected, but it means credential deletion,
+  unlike profile deletion, isn't an absolute guarantee. This is
+  otherwise irreversible. Your past public contributions — restaurant
+  photos, menu submissions, rankings, moderation records — are not
+  swept as part of this and may remain associated with the place or
+  content itself rather than a reachable profile, the same way most
+  social apps handle deleted accounts.
 - **Location permission**: control via your device's system settings.
 - **Blocking**: block any user from their profile; this also removes
   any existing follow relationship between you.

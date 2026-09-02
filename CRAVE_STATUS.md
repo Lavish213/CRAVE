@@ -72,6 +72,7 @@ administrator bypass retained for the agreed small-fix lane.
   clustering and the Notifications settings row/tap-routing/
   `UIBackgroundModes` fix are now confirmed on a real iPhone 17 Pro
   Simulator against production data — see "What's solid" below.)
+
 ## What's solid right now
 
 - **Expo SDK 54→55 upgrade done at the code/dependency level.** Every
@@ -80,9 +81,11 @@ administrator bypass retained for the agreed small-fix lane.
   (`react-native-reanimated`, `-screens`, `-gesture-handler`, `-maps`,
   `-worklets`) now match the exact versions SDK 55 bundles (read
   straight out of the installed `expo` package's own
-  `bundledNativeModules.json`, not guessed) — this is what actually
-  fixes the `expo-notifications` Keychain/persisted-registration read
-  bug that was the whole reason for the upgrade. Caught and fixed two
+  `bundledNativeModules.json`, not guessed) — this is the fix intended
+  to resolve the `expo-notifications` Keychain/persisted-registration
+  read bug that was the whole reason for the upgrade, though that has
+  not been reproduced or disproven on a real device or EAS build (see
+  "Needs your action" above). Caught and fixed two
   real hoisting/version issues a naive `npm install` would have masked:
   `@expo/vector-icons`'s unbounded `expo-font` peer dependency was
   auto-installing the newest published `expo-font` (SDK 57's line, not
