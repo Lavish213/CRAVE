@@ -142,4 +142,27 @@ describe('CravesScreen — Recommendation Ledger instrumentation', () => {
     );
     expect(mockPush).toHaveBeenCalledWith('/place/m1');
   });
+
+  it('does not render a matched Crave/Added row for a place already in the direct Saves list', async () => {
+    // p0 is already a direct save (SAVED_PLACES) -- a crave matched to
+    // the same place, and a typed-name save matched to the same place,
+    // must not also render as their own separate rows. This is the
+    // "same restaurant twice" bug from the device audit and
+    // docs/CLAUDE_EXECUTION_BRIEF_SCREEN_AND_COVERAGE_2026-09-02.md
+    // Track 1 item 5 -- fixed at the render layer, not by deleting the
+    // underlying CraveItem/PlaceSaveItem records.
+    mockedGetCraveItems.mockResolvedValue([
+      { id: 'c0', url: 'u0', source_type: 'tiktok', parsed_place_name: 'Already Saved', matched_place_id: 'p0', match_confidence: 0.9, status: 'matched', created_at: '', thumbnail_url: null, author_name: null },
+      { id: 'c1', url: 'u1', source_type: 'tiktok', parsed_place_name: 'Genuinely New', matched_place_id: 'm1', match_confidence: 0.9, status: 'matched', created_at: '', thumbnail_url: null, author_name: null },
+    ] as any);
+    mockedGetMyPlaceSaves.mockResolvedValue([
+      { id: 'ps0', place_name: 'Also Already Saved', place_id: 'p0', status: 'matched', created_at: '' },
+    ] as any);
+
+    const { findByText, queryByText } = renderScreen();
+
+    await findByText('Genuinely New');
+    expect(queryByText('Already Saved')).toBeNull();
+    expect(queryByText('Also Already Saved')).toBeNull();
+  });
 });

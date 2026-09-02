@@ -13,9 +13,13 @@ import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Radius, Spacing } from '../constants/colors';
 import { MAX_IMAGE_WIDTH, withImageWidth } from '../utils/imageUrl';
+import { MissingMediaState } from './MissingMediaState';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const GALLERY_HEIGHT = 280;
+// Materially shorter than GALLERY_HEIGHT -- an empty hero must not
+// reserve the same giant vertical space a real photo would.
+const NO_PHOTOS_HEIGHT = 120;
 
 interface Props {
   images: (string | null | undefined)[];
@@ -47,21 +51,16 @@ export function ImageGallery({ images, gpsVerified, placeName }: Props) {
     setActiveIndex(idx);
   };
 
-  // Honest empty state -- previously stretched the app's own icon
-  // full-bleed as a stand-in photo, which reads as a broken/wrong image
-  // rather than a designed "no photos yet" state. Mirrors PlaceCard's
-  // existing fallback (initial letter + category-style muted panel)
-  // instead of inventing a new visual language for the same situation.
+  // Honest, compact empty state -- previously reserved the exact same
+  // GALLERY_HEIGHT a real photo hero would, which wastes most of the
+  // screen's top on nothing. Shares MissingMediaState with PlaceCard's
+  // identical situation rather than each maintaining its own copy.
   if (!hasPhotos) {
     return (
-      <View
-        style={[styles.image, styles.noPhotos]}
-        accessible
+      <MissingMediaState
+        height={NO_PHOTOS_HEIGHT}
         accessibilityLabel={placeName ? `No photos yet for ${placeName}` : 'No photos yet'}
-      >
-        <Ionicons name="camera-outline" size={40} color={Colors.textSecondary} />
-        <Text style={styles.noPhotosText}>No photos yet</Text>
-      </View>
+      />
     );
   }
 
@@ -117,17 +116,6 @@ export function ImageGallery({ images, gpsVerified, placeName }: Props) {
 
 const styles = StyleSheet.create({
   image: { width: SCREEN_WIDTH, height: GALLERY_HEIGHT },
-  noPhotos: {
-    backgroundColor: Colors.surfaceElevated,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: Spacing.sm,
-  },
-  // textSecondary, not textMuted -- textMuted on this background computes
-  // to roughly 2:1 contrast, well under WCAG AA's 4.5:1 for normal text
-  // (a real, pre-existing, app-wide gap -- see CRAVE_REMAINING_WORK.md).
-  // Not introducing a new instance of it here.
-  noPhotosText: { color: Colors.textSecondary, fontSize: 13, fontWeight: '600' },
   verifiedBadge: {
     position: 'absolute',
     top: Spacing.md,
