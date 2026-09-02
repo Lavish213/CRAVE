@@ -41,7 +41,7 @@ Auth: Supabase (JWKS, ES256).
 
 ## Test status
 
-Backend: **1016 passed, 2 skipped** (`cd backend && python -m pytest -q`).
+Backend: **1018 passed, 2 skipped** (`cd backend && python -m pytest -q`).
 Frontend: **331 passed**, 34 suites (`cd frontend && npx jest`), `tsc
 --noEmit` clean. An E2E Playwright smoke suite also exists (`frontend/e2e/`,
 3 journeys) — not part of the Jest count above, run separately via
@@ -272,9 +272,16 @@ classifier pipeline end-to-end~~ — done (PR #121): real ffmpeg frame
 extraction from a genuine video container into the real TFLite model,
 not mocked ffmpeg or a single static image — a real food video scored
 0.972, a real non-food video scored 0.402 against the 0.8 threshold, both
-correct. What's still open is a real *device-recorded* video through the
-*production* R2/scheduler path (server logic is now proven; camera
-capture and R2 transfer are not) — that piece still needs a physical
+correct. ~~Prove the real upload API -> DB -> scheduler-job -> classifier
+chain end-to-end~~ — done (PR #122): `POST /videos/request` ->
+`POST /videos/{id}/confirm` -> the real `process_pending_videos` job ->
+real ffmpeg -> real classifier -> real approve/reject, all executing for
+real in one run, with only the literal R2 network call stubbed (no R2
+credentials exist in any dev/CI environment). What's still open is a
+real *device-recorded* video through the *production* R2 endpoint
+(server logic, up to and including the S3 API boundary, is now fully
+proven; only the actual Cloudflare round trip and camera capture are
+not) — that piece still needs a physical
 device, not more code. Physical-device smoke pass (Auth/Feed/
 Search/Place Detail/Save/Map/Upload/Offline/Push/**Decision Session**).
 ~~Build the Decision-Session auto-visited hook~~ — done (PR #109).
