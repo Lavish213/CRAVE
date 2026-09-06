@@ -4,14 +4,24 @@ from difflib import SequenceMatcher
 from typing import Optional, Tuple, List
 
 from sqlalchemy.orm import Session
-from sqlalchemy import case, select, func
+from sqlalchemy import case, exists, or_, select, func
 
+from app.db.models.category import Category
 from app.db.models.place import Place
 from app.db.models.place_categories import place_categories
 
 
 DEFAULT_LIMIT = 20
-MAX_LIMIT = 100
+MAX_LIMIT = 100  # public per-page cap -- the route's own page_size validation enforces this too
+
+# Separate, higher ceiling for execute_search()'s internal candidate-pool
+# fetch (search_engine.py) -- NOT the same thing as MAX_LIMIT above. Post-
+# query ranking there needs more raw-ordered candidates than one page's
+# worth so it has room to promote a result into the requested page; this
+# is the only caller allowed to ask for more than MAX_LIMIT, via the
+# max_limit= param below. Matches the fuzzy-fallback pool size already
+# used for the same bounded-candidate-pool reasoning.
+MAX_CANDIDATE_POOL = 500
 
 # Typo-tolerance fallback, only triggered when the exact ilike search
 # returns nothing. No pg_trgm/schema dependency -- this environment has no
@@ -32,12 +42,12 @@ _FUZZY_MIN_SIMILARITY = 0.6
 _NO_COORDS_DISTANCE_SQ = 1e18
 
 
-def _clamp_limit(limit: int) -> int:
+def _clamp_limit(limit: int, max_limit: int = MAX_LIMIT) -> int:
     try:
         n = int(limit)
     except Exception:
         return DEFAULT_LIMIT
-    return max(1, min(MAX_LIMIT, n))
+    return max(1, min(max_limit, n))
 
 
 def _clamp_offset(offset: int) -> int:
@@ -108,6 +118,27 @@ def _fuzzy_fallback_search(
     return matched, len(scored)
 
 
+def _category_name_match(search_term: str):
+    """Correlated EXISTS, not a join -- a place with several matching
+    categories must still contribute exactly one row to the outer query,
+    same as it would for a plain name match. Typing a cuisine/category
+    name (e.g. "Italian", "sushi") previously matched nothing here unless
+    a place's own *name* happened to contain that word -- the category
+    taxonomy (Category.name, joined via place_categories) was never
+    searched at all.
+    """
+    return exists(
+        select(1)
+        .select_from(place_categories)
+        .join(Category, Category.id == place_categories.c.category_id)
+        .where(
+            place_categories.c.place_id == Place.id,
+            Category.is_active.is_(True),
+            Category.name.ilike(search_term),
+        )
+    )
+
+
 def search_places(
     db: Session,
     *,
@@ -119,9 +150,10 @@ def search_places(
     lng: Optional[float] = None,
     limit: int = DEFAULT_LIMIT,
     offset: int = 0,
+    max_limit: int = MAX_LIMIT,
 ) -> Tuple[List[Place], int]:
 
-    limit = _clamp_limit(limit)
+    limit = _clamp_limit(limit, max_limit)
     offset = _clamp_offset(offset)
 
     query = (query or "").strip()
@@ -133,7 +165,7 @@ def search_places(
 
     stmt = select(Place).where(
         Place.is_active.is_(True),
-        Place.name.ilike(search_term),
+        or_(Place.name.ilike(search_term), _category_name_match(search_term)),
     )
 
     if city_id:

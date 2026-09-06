@@ -28,7 +28,7 @@ import { checkUsernameAvailable, setupProfile } from '../src/api/social';
 const USERNAME_RULES = /^[a-z0-9_]{3,20}$/;
 const DEBOUNCE_MS = 400;
 
-type Availability = 'idle' | 'checking' | 'available' | 'taken' | 'invalid';
+type Availability = 'idle' | 'checking' | 'available' | 'taken' | 'invalid' | 'error';
 
 export default function ProfileSetupScreen() {
   const router = useRouter();
@@ -43,6 +43,25 @@ export default function ProfileSetupScreen() {
   // Guards against an earlier, slower check resolving after a later one
   // and overwriting the newer answer.
   const latestQuery = useRef('');
+
+  // Extracted so a failed check has an actual retry path -- retyping the
+  // exact same text never reruns the effect below (its dependency is
+  // `username`, unchanged value means no re-render), so without this a
+  // failure had no way out except deleting and retyping a character.
+  const runCheck = (normalized: string) => {
+    checkUsernameAvailable(normalized)
+      .then((ok) => {
+        if (latestQuery.current !== normalized) return;
+        setAvailability(ok ? 'available' : 'taken');
+      })
+      .catch(() => {
+        if (latestQuery.current !== normalized) return;
+        // Previously collapsed to 'idle' here -- indistinguishable from
+        // "haven't typed a valid username yet," with no way to tell the
+        // user the check itself failed or to retry it.
+        setAvailability('error');
+      });
+  };
 
   useEffect(() => {
     const normalized = username.trim().toLowerCase();
@@ -60,22 +79,19 @@ export default function ProfileSetupScreen() {
     }
 
     setAvailability('checking');
-    timer.current = setTimeout(() => {
-      checkUsernameAvailable(normalized)
-        .then((ok) => {
-          if (latestQuery.current !== normalized) return;
-          setAvailability(ok ? 'available' : 'taken');
-        })
-        .catch(() => {
-          if (latestQuery.current !== normalized) return;
-          setAvailability('idle');
-        });
-    }, DEBOUNCE_MS);
+    timer.current = setTimeout(() => runCheck(normalized), DEBOUNCE_MS);
 
     return () => {
       if (timer.current) clearTimeout(timer.current);
     };
   }, [username]);
+
+  const handleRetryCheck = () => {
+    const normalized = username.trim().toLowerCase();
+    if (!normalized || availability !== 'error') return;
+    setAvailability('checking');
+    runCheck(normalized);
+  };
 
   const canSubmit = availability === 'available' && !submitting;
 
@@ -100,12 +116,13 @@ export default function ProfileSetupScreen() {
     checking: 'Checking…',
     available: 'Available',
     taken: 'Already taken',
+    error: "Couldn't check availability — tap to retry.",
   }[availability];
 
   const hintColor =
     availability === 'available'
       ? Colors.success
-      : availability === 'taken' || availability === 'invalid'
+      : availability === 'taken' || availability === 'invalid' || availability === 'error'
         ? Colors.error
         : Colors.textSecondary;
 
@@ -142,6 +159,15 @@ export default function ProfileSetupScreen() {
               <Ionicons name="checkmark-circle" size={20} color={Colors.success} />
             ) : availability === 'taken' || availability === 'invalid' ? (
               <Ionicons name="close-circle" size={20} color={Colors.error} />
+            ) : availability === 'error' ? (
+              <TouchableOpacity
+                onPress={handleRetryCheck}
+                style={styles.retryTarget}
+                accessibilityRole="button"
+                accessibilityLabel="Retry checking username availability"
+              >
+                <Ionicons name="refresh" size={20} color={Colors.error} />
+              </TouchableOpacity>
             ) : null}
           </View>
           <Text style={[styles.hint, { color: hintColor }]}>{hint}</Text>
@@ -201,6 +227,9 @@ const styles = StyleSheet.create({
     minHeight: 50,
   },
   at: { color: Colors.textSecondary, fontSize: 16, fontWeight: '700' },
+  // Explicit 44x44 minimum -- the 20px icon alone (even with hitSlop)
+  // fell short of this app's own touch-target convention everywhere else.
+  retryTarget: { minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
   input: { flex: 1, color: Colors.text, fontSize: 16, paddingVertical: 12 },
   hint: { fontSize: 12, marginTop: 2 },
   error: { color: Colors.error, fontSize: 13 },

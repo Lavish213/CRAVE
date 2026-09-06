@@ -2,124 +2,144 @@
 
 Status: ready-for-review
 Owner: Claude
-Branch: claude/phase1-identity-isolation (PR #129 open against main --
-CI green on head, all CodeRabbit findings fixed/resolved, cache-boundary
-test gap closed. Merge-ready; awaiting the human owner's merge decision.)
-Base SHA: 6e32ba4 (main)
-Commit SHA: c9bbae8
-Scope: Phase 1 of an 8-phase frontend production-hardening program (user-
-directed) -- identity isolation only. Independent of PR #126, #127, #128
-(all still open, no file overlap). Merge before starting Phase 2 (Search)
-per explicit user direction -- avoid stacking dependent PRs without a
-reason.
+Branch: claude/phase2-search-discovery (PR #130 open against main)
+Base SHA: 31f24d2 (main, post-Phase-1 merge)
+Commit SHA: 8d51fb8b2a2ace03ccb41c44bf9e2462d995dcd1
+Scope: Phase 2 of the user-directed multi-phase frontend hardening
+program -- Search as a proper discovery system, plus the two Craves/
+Profile Setup bugs Phase 1 diagnosed but deliberately deferred (small,
+independently-scoped, riding along only because already fully
+diagnosed).
 Locked files: none -- handoff complete.
 
 ## Outcome
 
-Confirmed and fixed (not assumed) three real cross-account data-leak
-paths and two real "stale identity still on screen with no loading
-indicator" gaps, plus rebuilt useLocation.ts's internal contract:
+All 10 items (8 confirmed-stack + 2 carried-over), each re-verified
+against current code before fixing:
 
-- `authStore.signOut()` never cleared React Query's cache at all.
-  `queryClient` moved out of `app/_layout.tsx` into `src/lib/queryClient.ts`
-  so `authStore` can import and clear it without a circular import.
-- `['myRankings']` (place/[id].tsx), `['friends-feed']` (friends-feed.tsx),
-  and `['leaderboard','friends']` (leaderboard.tsx) carried no user.id --
-  now `['myRankings', user?.id]` / `['friends-feed', user?.id]` /
-  `['leaderboard', scope, scope==='friends' ? user?.id : null]`.
-  `['leaderboard','global']` deliberately left unscoped -- not
-  viewer-dependent data, "you" is highlighted client-side against the
-  live authStore user, not the cached response.
-- `profile.tsx` and `user/[id].tsx`: `loading` only ever flipped back to
-  false from the *first* load's own `finally` -- a second `load()` fired
-  by a real account switch / id change (not a remount, both screens stay
-  mounted) never set it back to true, so the outgoing account's/person's
-  profile+rankings rendered with zero loading indicator until the new
-  fetch resolved. Both now reset (data + loading) immediately when
-  user.id/id differs from what was last loaded, before the fetch starts.
-- `taste-profile/[userId].tsx` and `useRecommendations.ts` were
-  re-verified against the same claim and are already correct (taste-
-  profile sets loading=true on every load(); useRecommendations clears
-  its state synchronously on user.id change) -- left untouched.
-- `useLocation.ts`: internal state was `UserLocation | null | undefined`
-  collapsed to `UserLocation | null` at the public boundary, so "still
-  resolving" was indistinguishable from "permission denied" was
-  indistinguishable from "granted but the GPS read itself failed."
-  Replaced with a real `useLocationStatus()`
-  (`resolving|granted|denied|unavailable` + `coords` + `updatedAt`).
-  `useLocation()` is now a thin, unchanged-signature wrapper over it --
-  deliberate: audited all 5 real call sites (search.tsx, index.tsx,
-  map.tsx, place/[id].tsx, ShareLinkSheet.tsx) and none branch on *why*
-  a location is unavailable today, so none needed migrating. Future
-  consumers that do (e.g. Phase 4's Add Spot permanent-denial -> Settings)
-  should use `useLocationStatus()` directly.
-
-Re-verified per explicit instruction, before touching anything --
-deliberately NOT fixed here (none of these three files are in this
-pass's locked scope):
-- Search Retry (`search.tsx`): `onRetry={() => setDebouncedQuery(query)}`
-  sets state to the value it already holds when the error fires --
-  a no-op. `refetchSearch` is already destructured and correctly wired
-  to pull-to-refresh two lines below; the retry button just isn't using
-  it.
-- Craves failure->empty (`craves.tsx`): `cravesError` is tracked and
-  correctly rendered inside the list footer, but the top-level "true
-  empty" gate (`saves.length===0 && craves.length===0 &&
-  placeSaves.length===0 && !cravesLoading`) never checks it -- a
-  craves-fetch failure with zero saves/placeSaves renders "Start your
-  food memory" instead of the error. `placeSaves` has no error state
-  tracked at all (separate, smaller gap, same class).
-- Profile Setup (`profile-setup.tsx`): the username-availability check's
-  `.catch()` collapses to `'idle'`, indistinguishable from "haven't
-  typed a valid username yet," with no retry path (the debounce effect
-  only reruns on text change).
+- **Debounce resurrection** (search.tsx): `handleClear()` reset
+  query/debouncedQuery but never cancelled the pending debounce timer
+  -- text typed just before a clear tap still fired 350ms later and
+  resurrected the cleared query. Now clears the timer too.
+- **Broken retry** (search.tsx): the error retry button called
+  `setDebouncedQuery(query)`, a no-op since they're already equal
+  whenever the error fires. Now calls the already-correct,
+  already-destructured `refetchSearch`.
+- **Cuisine/category search** (backend `search_query.py`): search only
+  ever matched `Place.name.ilike(...)` -- a cuisine/category name (e.g.
+  "Italian", "sushi") matched nothing unless a place's own name
+  happened to contain it. Added a correlated EXISTS match against
+  `Category.name` (via `place_categories`), OR'd with the existing name
+  match.
+- **Near Me/location integration** (search.tsx): migrated from
+  `useLocation()` to `useLocationStatus()` -- the screen's own "Searching
+  everywhere..." copy now distinguishes still-resolving from a terminal
+  denied/unavailable state, previously identical.
+- **Trending lifecycle/cache** (`useTrending.ts`): rewritten onto React
+  Query (staleTime mirrors backend `trending.py`'s own 5-min
+  response-cache TTL) -- was a hand-rolled module-level cache with no
+  TTL, the one list hook in the app not already on React Query like
+  every sibling screen. Public API unchanged; both real call sites
+  (search.tsx, index.tsx) needed no changes.
+- **Analytics exposure semantics** (search.tsx): impressions now log
+  from FlashList's `onViewableItemsChanged`, not the instant results are
+  retrieved -- "retrieved" and "exposed" were conflated. Deduped per
+  query via a Set, reset on a genuinely new query.
+- **Ranking-before-pagination** (backend `search_engine.py`):
+  `search_query.py`'s SQL fetch applies LIMIT/OFFSET using only
+  rank_score/distance, but `search_ranker.py`'s exact-match/menu/
+  proximity re-scoring runs *after* that -- a result that would win
+  post-enrichment could never surface if it didn't already make the
+  raw-ordered page window. Widened the candidate fetch (bounded like
+  `search_query.py`'s own fuzzy-fallback pool, same tradeoff for the
+  same reason -- 500-row cap, +100 padding over offset+limit) so
+  enrichment has room to promote a result into the visible page, then
+  slices the real page out of the ranked result.
+- **Cancellation** (`search.ts`/search.tsx): `searchPlaces()` never
+  forwarded React Query's per-query AbortSignal, so a query superseded
+  by the next keystroke's debounced fetch kept running its full HTTP
+  request to completion. Now threaded through from `queryFn`'s own
+  `signal` argument.
+- **Craves failure->empty** (craves.tsx): the top-level "true empty"
+  gate never checked `cravesError` (already tracked, already correctly
+  rendered in the FlashList's own footer) -- a craves-fetch failure with
+  zero saves/placeSaves rendered "Start your food memory" instead of
+  the error.
+- **Profile Setup availability handling** (profile-setup.tsx): the
+  username-check's failure path collapsed to `'idle'`, indistinguishable
+  from "haven't typed a valid username yet," with no retry (retyping
+  the same text never reruns the debounce effect). Added a distinct
+  `'error'` state with a working retry affordance.
 
 ## Verification
 
-- `npx tsc --noEmit` -> clean.
-- `npx jest` -> 338 passed, 34 suites (331 baseline + 7 new: sign-out
-  cache-clear, two account-switch/id-change immediate-reset regression
-  tests -- profile.tsx + user/[id].tsx -- and 4 useLocationStatus
-  lifecycle tests covering resolving->granted, denied, unavailable, and
-  denied->Settings->granted->foreground recovery).
-- Manual re-audit of every claimed bug against current code before
-  editing (see Outcome above) -- this is what turned up the two
-  already-correct screens (taste-profile, useRecommendations) that got
-  left alone, and the three genuinely-out-of-scope bugs recorded above
-  instead of opportunistically fixed.
+- Frontend: `npx tsc --noEmit` clean; `npx jest` 359 passed, 37 suites
+  (340 baseline + 19 new across two commits).
+- Backend: full suite 1028 passed, 2 skipped (baseline, unaffected) --
+  ran locally against SQLite; the category-name EXISTS join and the
+  widened-pool query are standard ANSI SQL with no known SQLite/Postgres
+  divergence, but CI's "Backend (same suite, against real Postgres)"
+  job is the actual proof for this branch (this exact file previously
+  caught a real SQLite-vs-Postgres-only bug -- see its DISTINCT/
+  ORDER BY comment -- so it's not assumed clean without that job).
 
 ## Known gaps / risks
 
-- `queryClient.clear()` is a blunt hard-reset -- every cached query
-  (including public catalog data like feed/search/place/trending) is
-  dropped on every sign-out, not just viewer-scoped ones. Correct per
-  the user's explicit design note ("queryClient.clear() alone is not
-  the solution... useful as a hard account-boundary cleanup" -- paired
-  with per-key scoping, not instead of it), but means a sign-out costs
-  a refetch of catalog data too. Not worth narrowing further without a
-  reason to.
-- Closed: `src/lib/queryClient.test.ts` now exercises the real (unmocked)
-  `queryClient` singleton together with the real `authStore.signOut()` --
-  populates `['myRankings','user-A']`, runs the actual sign-out path,
-  asserts it's gone, then proves account B's own key never reads back
-  A's payload. `friends-feed.test.tsx`/`leaderboard.test.tsx` each got one
-  added assertion confirming their actual cache key shape (user-scoped
-  for friends-feed and leaderboard's friends scope; deliberately
-  unscoped for leaderboard's global scope) rather than relying on the
-  myRankings case alone to stand in for all three.
-- PR #129 open against main (see header). CodeRabbit's review returned 5 actionable findings, all verified against current code and all valid -- fixed in a follow-up commit:
-  1. `STATE.md` itself had a stale "No PR opened yet" line contradicting the PR now recorded at the top -- fixed (this line).
-  2. `profile.tsx`'s account-switch reset ran inside `load()`'s effect, one render after `user` itself changes -- a genuine single-render gap where the outgoing account's data could still paint. Added a render-time-derived `isStaleForCurrentUser` check (reads `loadedForUserIdRef` directly) so the skeleton gate no longer depends on the effect having fired yet.
-  3. `friends-feed.tsx`/`leaderboard.tsx`: `enabled: !!user` (leaderboard: `scope !== 'friends' || !!user`) added to each query, **and** every focus/retry/refresh call site guarded too -- react-query's `refetch()` runs regardless of `enabled`, so the flag alone doesn't stop a manual trigger from firing a live request for a viewer-scoped surface while signed out.
-  4. `user/[id].tsx`: `load()`'s stale-guard only tracked the viewed profile's `id`, not the viewer (`me?.id`) -- if the viewer's account changed while `isSelf` happened to evaluate the same both times (neither old nor new viewer is the profile owner), `load()` never got a new reference and stale follow/block state from the *previous* viewer kept rendering. Now tracks both. Applied the same render-time gate as profile.tsx here too, which surfaced its own bug: the ref that unlocks the gate was only ever set on a *successful* fetch, so any error (a 404 included) left the gate permanently stuck on the skeleton -- fixed by marking the id/viewer pairing "attempted" before the fetch settles, not only after it succeeds.
-  5. `useLocation.ts`: a real bug in this PR's own rewrite, not a pre-existing one -- the foreground-recheck guard only special-cased `status === 'granted'`, dropping the old code's (incidental but load-bearing) protection against restarting a request that's still resolving. The permission dialog itself can trigger an AppState transition on some platforms while the very first request is in flight; without the fix, that would tear down and restart it. Fixed to also skip while `status` is still unresolved.
-  - Verified: `npx tsc --noEmit` clean; `npx jest` 340/340 (34 suites -- 338 baseline + 2 new: a friends-feed signed-out-never-fetches test, a useLocation in-flight-request-not-restarted test).
+- Fuzzy-fallback typo-tolerance (`_fuzzy_fallback_search` in
+  `search_query.py`) still only compares against `Place.name`, not
+  category names -- a genuinely misspelled cuisine (e.g. "italain")
+  that no place's name happens to contain won't match. The primary
+  confirmed bug (no category matching *at all*, even for exact/
+  substring matches) is fixed; typo-tolerance for cuisine names
+  specifically is a smaller, separate enhancement, deliberately left.
+- The widened ranking candidate pool (500 rows, capped) means very deep
+  pagination (beyond roughly page ~16 at a 30-item page size) can still
+  have a result that would win post-enrichment excluded if it didn't
+  make that pool -- an accepted, documented bound, not a realistic
+  search session.
+- PR #130 open against main. CodeRabbit's review returned 6 findings; 5
+  actionable, all verified and fixed:
+  1. **Real bug in this PR's own first draft** -- `search_places()`'s
+     own `_clamp_limit()` silently truncated `execute_search()`'s
+     widened `pool_limit` back down to the public `MAX_LIMIT` (100), so
+     any page at `offset >= 100` sliced into a shorter-than-expected
+     candidate list and returned an empty page while `total` still
+     reported real matches. Fixed by adding a `max_limit=` override
+     parameter to `search_places()`/`_clamp_limit()`, used only by
+     `execute_search()`'s internal pool fetch (`MAX_CANDIDATE_POOL`,
+     500) -- the public per-page cap (100) is untouched for any other
+     caller. Added a regression test at offset=105/limit=10 against 110
+     seeded places.
+  2. `profile-setup.test.tsx`: `not.toBe(false)` on
+     `accessibilityState.disabled` also passes when the value is
+     `undefined` -- tightened to `toBe(true)`.
+  3. `profile-setup.tsx`: the retry icon (20px + 8px hitSlop = 36x36
+     effective) fell short of this app's own 44x44 touch-target
+     convention used everywhere else -- added an explicit
+     `minWidth/minHeight: 44` wrapper style.
+  4. `useTrending.test.tsx`: the error-case test asserted on
+     `isRefetching` alone, which is already `false` during the *initial*
+     fetch (before the rejection settles) -- could pass prematurely.
+     Fixed to wait on `client.getQueryState(...)?.status === 'error'`
+     first.
+  5. `useTrending.ts`: `refresh()` didn't guard against no city
+     selected -- a manual refresh with `enabled: false` (react-query's
+     `refetch()` runs regardless of `enabled`) called
+     `fetchTrending(selectedCity!.id)` against a null city, throwing
+     into a real error state for what should be a no-op. Added the
+     guard, matching Phase 1's identical `friends-feed.tsx`/
+     `leaderboard.tsx` fix.
+  - The 6th finding (this repo's own `.agent-bridge/claude-to-codex.md`
+    inbox recording a stale, unrelated handoff instead of the current
+    branch) is a process-hygiene finding, not a code bug -- addressed
+    by replacing that file's content with a current Phase 1+2 summary.
+  - Verified: `npx tsc --noEmit` clean; frontend suite 360/360 (37
+    suites -- 359 + 1 new); backend suite 1029/1029 passed + 2 skipped
+    (1028 baseline + 1 new offset>100 regression test).
 
 ## Next action
 
-Review/merge this branch independently of #126/#127/#128. Then Phase 2
-(per the user's 8-phase plan) is open to claim on a fresh branch: Search
-as a proper discovery system, plus the three re-verified-but-unfixed
-bugs above (Search Retry, Craves failure->empty, Profile Setup
-availability handling) are natural first fixes there since they're
-already fully diagnosed.
+Verify CI (frontend + backend/Postgres both need to be green on the
+latest commit), confirm CodeRabbit's re-scan has nothing new, then hold
+this branch to the same gates Phase 1 used before merge -- no further
+scope creep beyond what's recorded here.

@@ -8,14 +8,14 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { FlashList } from '@shopify/flash-list';
+import { FlashList, ViewToken } from '@shopify/flash-list';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import { useCityStore } from '../../src/stores/cityStore';
 import { usePrefetchPlace } from '../../src/hooks/usePrefetchPlace';
 import { searchPlaces } from '../../src/api/search';
-import { useLocation } from '../../src/hooks/useLocation';
+import { useLocationStatus } from '../../src/hooks/useLocation';
 import { PlaceOut } from '../../src/api/places';
 import { useTrendingWithRefresh } from '../../src/hooks/useTrending';
 import { logRecommendationEvent, logRecommendationEvents } from '../../src/utils/recommendationEventQueue';
@@ -32,17 +32,21 @@ function _makeSearchSessionId(): string {
   return `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
 }
 
-// Bounds a single query's logged impressions to a reasonable "above the
-// fold plus a bit of scroll" window -- capping payload size per the
-// explicit instruction not to encode every result into one giant event
-// batch, not because more than this many results ever render at once.
-const MAX_LOGGED_SEARCH_RESULTS = 20;
+// Item must be at least half on-screen, for at least 250ms, to count as
+// actually seen -- a fling-scroll a card flashes through doesn't log an
+// impression just because it technically entered the viewport.
+const VIEWABILITY_CONFIG = { itemVisiblePercentThreshold: 50, minimumViewTime: 250 };
 
 export default function SearchScreen() {
   const router = useRouter();
   const prefetchPlace = usePrefetchPlace();
   const selectedCity = useCityStore((s) => s.selectedCity);
-  const userLocation = useLocation();
+  // useLocationStatus() (not the coords-or-null useLocation()) -- this
+  // screen distinguishes "still resolving" from "denied/unavailable" in
+  // its own copy below, which the collapsed coords-or-null contract
+  // can't express.
+  const locationState = useLocationStatus();
+  const userLocation = locationState.coords;
 
   const [trending, trendingRefreshing, refreshTrending] = useTrendingWithRefresh();
 
@@ -76,11 +80,15 @@ export default function SearchScreen() {
   // fully derivable from consecutive logged queries sharing this id --
   // no separate "reformulated" event needed.
   const searchSessionIdRef = useRef(_makeSearchSessionId());
-  // Which debouncedQuery we've already logged impressions for -- results
-  // re-rendering for the *same* query (a background refetch, an
-  // unrelated state change) must not re-log; only a genuinely new query
-  // actually producing results should.
-  const loggedSearchQueryRef = useRef<string | null>(null);
+  // Place ids already logged as exposed for the *current* query -- a
+  // viewability callback fires repeatedly as items scroll in and out, so
+  // this is what keeps each result logged exactly once. Reset whenever
+  // the query itself changes (a fresh query's results start unexposed
+  // again, even if some of the same places happen to reappear).
+  const exposedIdsRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    exposedIdsRef.current = new Set();
+  }, [debouncedQuery]);
 
   // Deliberately NOT scoped to selectedCity -- a search should find a
   // real match anywhere in the catalog, not just within whatever city
@@ -93,12 +101,12 @@ export default function SearchScreen() {
   // higher-rank_score places elsewhere) and in the final display order.
   const { data: searchData, isLoading: searchLoading, isError: searchError, refetch: refetchSearch, isRefetching: searchRefetching } = useQuery({
     queryKey: ['search', debouncedQuery, userLocation?.lat, userLocation?.lng],
-    queryFn: () => searchPlaces({
+    queryFn: ({ signal }) => searchPlaces({
       query: debouncedQuery,
       lat: userLocation?.lat,
       lng: userLocation?.lng,
       page_size: 30,
-    }),
+    }, signal),
     enabled: debouncedQuery.length >= 2,
     staleTime: 60 * 1000,  // 1 min
   });
@@ -106,29 +114,41 @@ export default function SearchScreen() {
   const results = searchData ?? [];
   const searched = debouncedQuery.length >= 2 && !searchLoading && searchData !== undefined;
 
-  // Recommendation Ledger: log one impression per result the first time
-  // a genuinely new query's results actually arrive. Keyed on
-  // debouncedQuery (not `results` itself, which is a fresh array
-  // reference every render) so a re-render that doesn't change the
-  // query -- e.g. the pull-to-refresh spinner toggling -- never re-logs.
-  useEffect(() => {
-    if (!searched || results.length === 0) return;
-    if (loggedSearchQueryRef.current === debouncedQuery) return;
-    loggedSearchQueryRef.current = debouncedQuery;
+  // Recommendation Ledger: log an impression only once a result is
+  // actually *exposed* (scrolled into view), not the instant the backend
+  // returns it ("retrieved" -- results the user may never scroll to
+  // would previously be logged as impressions the moment they arrived).
+  // Kept as a ref-stable wrapper since FlashList's onViewableItemsChanged
+  // identity must not change across renders, while the logic inside
+  // still needs each render's current results/debouncedQuery/selectedCity.
+  const handleViewableItemsChangedRef = useRef<(info: { viewableItems: ViewToken<PlaceOut>[] }) => void>(() => {});
+  handleViewableItemsChangedRef.current = (info) => {
+    const newlyExposed = info.viewableItems.filter(
+      (v) => v.isViewable && v.item && !exposedIdsRef.current.has(v.item.id),
+    );
+    if (newlyExposed.length === 0) return;
+    newlyExposed.forEach((v) => exposedIdsRef.current.add(v.item.id));
 
     logRecommendationEvents(
-      results.slice(0, MAX_LOGGED_SEARCH_RESULTS).map((p, position) => ({
+      newlyExposed.map((v) => ({
         surface: 'search',
         event_type: 'impression',
-        place_id: p.id,
-        position,
-        rank_percentile: p.rank_percentile,
+        place_id: v.item.id,
+        // Position within the full, unfiltered `results` -- same
+        // convention the click handler below already uses -- not
+        // FlashList's own index, which is local to whatever filtered
+        // view is currently rendered.
+        position: results.findIndex((r) => r.id === v.item.id),
+        rank_percentile: v.item.rank_percentile,
         query: debouncedQuery,
         city_id: selectedCity?.id ?? null,
         search_session_id: searchSessionIdRef.current,
       })),
     );
-  }, [searched, debouncedQuery, results, selectedCity?.id]);
+  };
+  const onViewableItemsChanged = useRef((info: { viewableItems: ViewToken<PlaceOut>[] }) =>
+    handleViewableItemsChangedRef.current(info)
+  ).current;
 
   if (__DEV__ && searchData) {
     console.log('[SEARCH] RENDER_INPUT', { query: debouncedQuery, count: results.length, sample: results[0] ? { id: results[0].id, category: results[0].category } : null });
@@ -173,6 +193,11 @@ export default function SearchScreen() {
   };
 
   const handleClear = () => {
+    // A pending debounce timer from text typed just before this tap would
+    // otherwise still fire 350ms later and resurrect the query this
+    // button just cleared -- setDebouncedQuery(stale text) overwriting
+    // the '' set right below it.
+    if (debounceRef.current) clearTimeout(debounceRef.current);
     setQuery('');
     setDebouncedQuery('');
   };
@@ -232,7 +257,18 @@ export default function SearchScreen() {
           )}
         </View>
         <Text style={styles.cityContext}>
-          {userLocation ? 'Searching everywhere, nearest first' : 'Searching everywhere'}
+          {locationState.status === 'granted'
+            ? 'Searching everywhere, nearest first'
+            : locationState.status === 'resolving'
+              // Previously identical to the denied/unavailable copy below
+              // -- falsely implied "no location" during what's usually a
+              // brief, self-resolving wait, rather than an honest pending
+              // state. The search itself still runs unaffected either
+              // way; only this line's wording depended on the collapsed
+              // coords-or-null contract not being able to tell "still
+              // resolving" apart from a terminal no-location state.
+              ? 'Searching everywhere — finding your location…'
+              : 'Searching everywhere'}
         </Text>
       </View>
 
@@ -248,7 +284,7 @@ export default function SearchScreen() {
 
       {/* Error */}
       {searchError && !searchLoading && (
-        <ErrorState message="Couldn't search right now." onRetry={() => setDebouncedQuery(query)} />
+        <ErrorState message="Couldn't search right now." onRetry={() => refetchSearch()} />
       )}
 
       {/* Trending empty state */}
@@ -333,6 +369,8 @@ export default function SearchScreen() {
         <FlashList
           data={filteredResults}
           keyExtractor={(p) => p.id}
+          viewabilityConfig={VIEWABILITY_CONFIG}
+          onViewableItemsChanged={onViewableItemsChanged}
           renderItem={({ item }) => (
             <View style={styles.rowSpacer}>
               <PlaceCardCompact

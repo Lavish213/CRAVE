@@ -26,6 +26,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from app.db.session import SessionLocal
 from app.db.models.city import City
 from app.db.models.place import Place
+from app.db.models.category import Category
+from app.db.models.place_categories import place_categories
 from app.services.query.search_query import search_places
 
 UNIQUE = uuid.uuid4().hex[:8]
@@ -34,19 +36,28 @@ SEARCH_TERM = f"Zzyx{UNIQUE}"
 
 @pytest.fixture
 def db():
-    created = {"place_ids": [], "city_ids": []}
+    created = {"place_ids": [], "city_ids": [], "category_ids": []}
     session = SessionLocal()
     try:
         yield session, created
     finally:
         session.rollback()
         if created["place_ids"]:
+            session.execute(
+                place_categories.delete().where(
+                    place_categories.c.place_id.in_(created["place_ids"])
+                )
+            )
             session.query(Place).filter(
                 Place.id.in_(created["place_ids"])
             ).delete(synchronize_session=False)
         if created["city_ids"]:
             session.query(City).filter(
                 City.id.in_(created["city_ids"])
+            ).delete(synchronize_session=False)
+        if created["category_ids"]:
+            session.query(Category).filter(
+                Category.id.in_(created["category_ids"])
             ).delete(synchronize_session=False)
         session.commit()
         session.close()
@@ -142,6 +153,37 @@ def test_a_place_with_no_coordinates_still_appears_sorted_last(db):
     assert total == 2
     result_ids = [p.id for p in results]
     assert result_ids.index(with_coords.id) < result_ids.index(no_coords.id)
+
+
+def _make_category(session, created, *, name: str) -> Category:
+    slug = f"{name.lower().replace(' ', '-')}-{uuid.uuid4().hex[:8]}"
+    category = Category(slug=slug, name=name)
+    session.add(category)
+    session.commit()
+    created["category_ids"].append(category.id)
+    return category
+
+
+def test_matches_by_cuisine_category_name_not_just_place_name(db):
+    # Confirmed real gap: searching a cuisine/category name previously
+    # matched nothing unless a place's own *name* happened to contain
+    # that word -- search_places() only ever did Place.name.ilike(...),
+    # never touching the category taxonomy at all.
+    session, created = db
+    city = _make_city(session, created)
+    cuisine = _make_category(session, created, name=f"{SEARCH_TERM}Cuisine")
+    matched = _make_place(session, created, city, name="Kai", rank_score=1.0)
+    session.execute(
+        place_categories.insert().values(place_id=matched.id, category_id=cuisine.id)
+    )
+    session.commit()
+    unrelated = _make_place(session, created, city, name="Some Other Place", rank_score=9.0)
+
+    results, total = search_places(session, query=f"{SEARCH_TERM}Cuisine")
+
+    assert total == 1
+    assert {p.id for p in results} == {matched.id}
+    assert unrelated.id not in {p.id for p in results}
 
 
 def test_explicit_city_id_still_filters_when_provided(db):
