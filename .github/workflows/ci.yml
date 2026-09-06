@@ -1,20 +1,53 @@
 name: CI
 
+# Smoke-test + real-test gate for both halves of the app.
+#
+# CORRECTION (this comment previously claimed "there are currently no
+# automated tests in either backend/ or frontend/" — that was wrong for the
+# backend. backend/tests/ has 20 real pytest files; they were just never
+# discovered during the audit that produced this file, and were never wired
+# into CI. Frontend genuinely has zero test files as of this writing.
+#
+# Backend: syntax/import checks run first (cheap, catch the broadest class
+# of breakage — a bad edit, a missing symbol, a circular import), then the
+# real test suite via pytest. See tests/conftest.py for why DATABASE_URL is
+# set explicitly here: nothing in the app calls Base.metadata.create_all(),
+# so a bare fresh SQLite file has no tables, and every DB-touching test
+# would otherwise fail immediately with "no such table".
+#
+# Frontend: TypeScript typecheck only — no test files exist yet.
+#
+# NOTE: this is the first time backend/tests/ has ever been run against the
+# current codebase (no shell access existed anywhere in this project until
+# now) — expect some of the 20 files to surface real, previously-invisible
+# failures on the first CI run. That's the point of turning this on, not a
+# sign it's broken.
+
 on:
   push:
     branches: [main]
   pull_request:
     branches: [main]
 
+# Default GITHUB_TOKEN to read-only — neither job here needs to write
+# anything (no PR comments, no releases, no pushes back to the repo).
 permissions:
   contents: read
 
 jobs:
   guard-no-conflict-markers:
     name: Guard (no unresolved merge conflict markers)
+    # Cheap, fast, deliberately independent of every other job here so it
+    # can't be skipped/short-circuited by an unrelated failure elsewhere.
+    # compileall/tsc would already catch a conflict marker sitting in real
+    # code (it's not valid Python or TypeScript), but not one landing
+    # inside a string, comment, or a non-code file (.md, .json, .yml) --
+    # a plain grep across the whole tree closes that gap regardless of
+    # file type or where in a file the marker ends up.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+
       - name: Scan for unresolved conflict markers
         run: |
           if grep -rlE '^(<<<<<<<|=======|>>>>>>>)( |$)' \
@@ -35,12 +68,27 @@ jobs:
         working-directory: backend
     steps:
       - uses: actions/checkout@v7
+
       - uses: actions/setup-python@v7
         with:
           python-version: "3.11"
           cache: "pip"
           cache-dependency-path: backend/requirements.txt
+
       - name: Root requirements.txt matches backend's (Railway's real build entry point)
+        # Root requirements.txt is deliberately self-contained (duplicates
+        # backend/requirements.txt) rather than `-r`-referencing it or
+        # living behind a custom railpack.json — both were tried, both
+        # caused real production build failures the same night (Railway's
+        # Railpack builder auto-detects Python and copies only the
+        # top-level requirements.txt before installing; a custom step's
+        # inputs default to nothing and rejecting a bare local-files-only
+        # input outright, respectively — see requirements.txt's own header
+        # for the full account). Zero-config Railpack only builds
+        # correctly when it can see a real, self-contained requirements.txt
+        # at the repo root, so that's what stays there — and this step is
+        # what actually keeps it in sync with backend/requirements.txt
+        # instead of a comment asking a human to remember to edit both.
         working-directory: ${{ github.workspace }}
         run: |
           python3 -c "
@@ -50,6 +98,7 @@ jobs:
                       line.strip() for line in f
                       if line.strip() and not line.strip().startswith('#')
                   )
+
           root = package_lines('requirements.txt')
           backend = package_lines('backend/requirements.txt')
           assert root == backend, (
@@ -60,20 +109,37 @@ jobs:
           "
           pip install --dry-run -r requirements.txt
           pip install --dry-run -r backend/requirements.txt
+
       - name: Install dependencies
+        # requirements-dev.txt pulls in requirements.txt plus pytest (and
+        # playwright/pdfminer, used by some extraction tests).
         run: pip install -r requirements-dev.txt
+
       - name: Syntax check (compile every .py file)
         run: python -m compileall -q app
+
       - name: Import sanity check
+        # No DATABASE_URL is set here, so this exercises the sqlite fallback
+        # path (see app/config/settings.py Settings.resolved_database_url) —
+        # this is intentionally NOT a full app boot, just confirms the
+        # import graph resolves (catches circular imports / missing symbols
+        # / typos in module paths introduced by an edit).
         env:
           APP_ENV: dev
         run: python -c "import app.main; print('import OK')"
+
       - name: Run tests
         env:
           APP_ENV: dev
           DATABASE_URL: "sqlite:///./test_crave.db"
         run: pytest -q
+
       - name: Migration chain has exactly one head
+        # Caught the hard way: a merge migration once left two heads
+        # sitting side by side for a while before anyone noticed, and
+        # `alembic upgrade head` is ambiguous (and fails) the moment that
+        # happens. `alembic heads` only inspects the versions/ directory —
+        # no live DB needed — so this is cheap enough to run on every push.
         env:
           APP_ENV: dev
           DATABASE_URL: "sqlite:///./test_crave.db"
@@ -84,13 +150,34 @@ jobs:
             python -m alembic heads
             exit 1
           fi
+
       - name: Dependency vulnerability scan
+        # Runs via `pipx run` — an isolated venv, NOT the job's main
+        # environment — because a first attempt at this step used a plain
+        # `pip install pip-audit` in-place, which silently upgraded a
+        # shared package and broke the import-check step that runs before
+        # it. Advisory only (continue-on-error) since this is the first
+        # time it's run and findings haven't been triaged yet; also placed
+        # after the real test steps so even a bad interaction here can't
+        # mask or block them.
         continue-on-error: true
         run: pipx run pip-audit -r requirements.txt
 
   backend-postgres:
     name: Backend (same suite, against real Postgres)
     runs-on: ubuntu-latest
+    # This job exists because of a real production outage: the SQLite path
+    # above is what CI has always run, and SQLite is far more lenient than
+    # Postgres about type matching — it silently accepts `server_default=
+    # sa.text("1")` on a Boolean column (and `WHERE is_active=1` in a raw
+    # query), which is not valid SQL against Postgres at all. That gap
+    # let a broken migration (add_user_profiles_table) and a broken test
+    # fixture (test_trending.py) both merge and pass CI clean, and the
+    # migration then failed for real the first time it ran against actual
+    # production Postgres data — discovered from a live Railway deploy
+    # log, not from anything in this pipeline. Running the exact same
+    # suite against a real Postgres service container is what would have
+    # caught both before they ever reached main.
     services:
       postgres:
         image: postgres:16
@@ -108,25 +195,40 @@ jobs:
         working-directory: backend
     steps:
       - uses: actions/checkout@v7
+
       - uses: actions/setup-python@v7
         with:
           python-version: "3.11"
           cache: "pip"
           cache-dependency-path: backend/requirements.txt
+
       - name: Install dependencies
         run: pip install -r requirements-dev.txt
+
       - name: Run full migration chain against real Postgres, from empty
         env:
           APP_ENV: dev
           DATABASE_URL: "postgresql://postgres@localhost:5432/postgres"
         run: alembic upgrade head
+
       - name: Newest migration downgrades and re-upgrades cleanly
+        # The "from empty" step above proves the whole chain applies to a
+        # fresh DB, but a fresh DB never exercises downgrade() at all --
+        # and it can't reproduce the actual production upgrade path, which
+        # is "already at the previous revision, now apply just the new
+        # one". This does exactly that for the newest migration: downgrade
+        # -1 goes back to the head's own down_revision (i.e. production's
+        # pre-deploy state), then upgrade head re-applies only that new
+        # migration. Catches a broken/unimplemented downgrade() and an
+        # upgrade() that isn't safe to re-run after it, neither of which
+        # "from empty" can see.
         env:
           APP_ENV: dev
           DATABASE_URL: "postgresql://postgres@localhost:5432/postgres"
         run: |
           python -m alembic downgrade -1
           python -m alembic upgrade head
+
       - name: Run tests against real Postgres
         env:
           APP_ENV: dev
@@ -141,26 +243,21 @@ jobs:
         working-directory: frontend
     steps:
       - uses: actions/checkout@v7
+
       - uses: actions/setup-node@v7
         with:
           node-version: "22"
           cache: "npm"
           cache-dependency-path: frontend/package-lock.json
+
       - name: Install dependencies
         run: npm ci
+
       - name: Typecheck
         run: npx tsc --noEmit
+
       - name: Run tests
-        shell: bash
-        run: |
-          set +e
-          npx jest --ci 2>&1 | tee jest-output.txt
-          status=${PIPESTATUS[0]}
-          exit $status
-      - name: Upload temporary Jest diagnostics
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: phase6-jest-diagnostics
-          path: frontend/jest-output.txt
-          if-no-files-found: error
+        # jest-expo preset; see src/**/*.test.ts. First real frontend test
+        # coverage — previously there were zero test files and no test
+        # runner configured at all.
+        run: npx jest --ci
