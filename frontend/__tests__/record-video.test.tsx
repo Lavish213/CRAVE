@@ -75,8 +75,8 @@ const mockRequestMicPermission = jest.fn().mockResolvedValue({ granted: true });
 const mockRecordVideo = jest.fn().mockResolvedValue(undefined);
 const mockRunSyncPass = jest.fn().mockResolvedValue(undefined);
 
-function setPermissions(granted: boolean | null) {
-  const state = granted === null ? null : { granted };
+function setPermissions(granted: boolean | null, canAskAgain = true) {
+  const state = granted === null ? null : { granted, canAskAgain };
   mockedUseCameraPermissions.mockReturnValue([state, mockRequestCameraPermission]);
   mockedUseMicrophonePermissions.mockReturnValue([state, mockRequestMicPermission]);
 }
@@ -93,6 +93,36 @@ describe('RecordVideoScreen', () => {
     );
     mockRecordVideo.mockResolvedValue(undefined);
     mockRunSyncPass.mockResolvedValue(undefined);
+  });
+
+  it('shows a sign-in prompt instead of the camera when signed out, and never records', () => {
+    mockedUseAuthStore.mockImplementation((selector: (s: unknown) => unknown) =>
+      selector({ user: null }),
+    );
+    const { getByText, queryByTestId } = render(<RecordVideoScreen />);
+
+    expect(getByText('Sign in to record a food video.')).toBeTruthy();
+    expect(queryByTestId('camera-view')).toBeNull();
+  });
+
+  it('shows a Settings-recovery prompt instead of an inert "Allow Access" when permission is permanently blocked', async () => {
+    // canAskAgain: false means the OS won't re-prompt -- "Allow Access"
+    // would silently no-op if shown here.
+    setPermissions(false, false);
+    const { getByText, queryByText } = render(<RecordVideoScreen />);
+
+    expect(
+      getByText('Camera and microphone access is blocked. Enable it in Settings to record a food video.'),
+    ).toBeTruthy();
+    expect(queryByText('Allow Access')).toBeNull();
+
+    const { Linking } = require('react-native');
+    jest.spyOn(Linking, 'openSettings').mockResolvedValue(undefined);
+    await act(async () => {
+      fireEvent.press(getByText('Open Settings'));
+    });
+    expect(Linking.openSettings).toHaveBeenCalled();
+    expect(mockRequestCameraPermission).not.toHaveBeenCalled();
   });
 
   it('renders nothing but an empty container while permissions are still resolving', () => {

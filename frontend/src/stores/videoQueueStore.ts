@@ -35,7 +35,8 @@ export type VideoSyncState =
   | 'uploading'
   | 'completing'
   | 'synced'
-  | 'failed'; // only after MAX_ATTEMPTS is exhausted
+  | 'failed' // only after MAX_ATTEMPTS is exhausted
+  | 'missing_local_file'; // terminal -- the recorded file itself is gone, nothing left to upload
 
 export interface QueuedVideo {
   id: string; // client-generated -- doubles as the client_id sent to the backend
@@ -131,7 +132,15 @@ export const useVideoQueueStore = create<VideoQueueStore>()(
       videos: [],
 
       recordVideo: async ({ sourceUri, placeId, contentType, uploadedBy, templateId }) => {
-        const queuedCount = get().videos.filter((v) => v.syncState !== 'synced').length;
+        // 'failed' and 'missing_local_file' are both terminal -- nothing
+        // further will happen to them without an explicit user action
+        // (retryFailedVideo/deleteFailedVideo), so they shouldn't count
+        // against the "how many are actively waiting to post" cap and
+        // permanently block new recordings just because an old one
+        // stalled out.
+        const queuedCount = get().videos.filter(
+          (v) => v.syncState !== 'synced' && v.syncState !== 'failed' && v.syncState !== 'missing_local_file'
+        ).length;
         if (queuedCount >= MAX_QUEUED_VIDEOS) {
           throw new Error(
             `You have ${queuedCount} videos waiting to post. Connect to wifi or clear a ` +
@@ -177,6 +186,7 @@ export const useVideoQueueStore = create<VideoQueueStore>()(
               v.uploadedBy === userId &&
               v.syncState !== 'synced' &&
               v.syncState !== 'failed' &&
+              v.syncState !== 'missing_local_file' &&
               v.attemptCount < MAX_ATTEMPTS &&
               isReadyToRetry(v, now)
           );
@@ -206,7 +216,11 @@ export const useVideoQueueStore = create<VideoQueueStore>()(
 
       deleteFailedVideo: async (id: string) => {
         const video = get().videos.find((v) => v.id === id);
-        if (!video || video.syncState !== 'failed') return;
+        // Either terminal state (exhausted retries, or the local file
+        // itself is already gone) is equally unrecoverable and equally
+        // safe to clear -- deleteAsync is idempotent regardless of
+        // whether the file still exists.
+        if (!video || (video.syncState !== 'failed' && video.syncState !== 'missing_local_file')) return;
         await FileSystem.deleteAsync(video.localUri, { idempotent: true }).catch(() => {});
         set({ videos: get().videos.filter((v) => v.id !== id) });
       },
@@ -246,9 +260,13 @@ async function syncOne(
 
   const fileInfo = await FileSystem.getInfoAsync(video.localUri);
   if (!fileInfo.exists) {
-    // Local file is gone (user cleared storage, etc.) -- nothing to
-    // upload, no recovering it. Drop the row entirely.
-    set({ videos: get().videos.filter((v) => v.id !== video.id) });
+    // Local file is gone (user cleared storage, an OS cache sweep, etc.)
+    // -- nothing to upload, no recovering it. Previously this silently
+    // dropped the row entirely, so the user's recording just vanished
+    // from the queue with no explanation at all. A missing local file is
+    // a real, distinct terminal failure -- not the same as never having
+    // recorded anything -- so it's recorded as one instead of erased.
+    setVideoState({ syncState: 'missing_local_file', lastError: 'Local recording is no longer available.' });
     return;
   }
 
