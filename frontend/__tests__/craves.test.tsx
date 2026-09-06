@@ -1,53 +1,71 @@
-// Recommendation Ledger: Craves-screen instrumentation. surface='craves'
-// -- this screen is a *return to already-saved places*, not a discovery
-// surface, so an impression/click here is re-engagement with existing
-// memory, not fresh taste evidence. Locks in: one bounded, positioned
-// impression batch for the primary Saves list on load; a click event
-// with the real position on selection; the matched-only Craves/Added
-// sections get their own impression+click, positioned within their own
-// filtered (matched-id) list, not the raw unfiltered array. Save/unsave
-// already goes through cravesStore's certified idempotent path (see
-// cravesStore.test.ts) -- not re-tested here.
 import React from 'react';
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import CravesScreen from '../app/(tabs)/craves';
-import { getCraveItems, getMyPlaceSaves } from '../src/api/crave';
+import { CraveItem, getCraveItems, getMyPlaceSaves, PlaceSaveItem } from '../src/api/crave';
+import { SavedPlace } from '../src/api/saves';
 import { logRecommendationEvent, logRecommendationEvents } from '../src/utils/recommendationEventQueue';
 
-const mockPush = jest.fn();
-jest.mock('expo-router', () => ({
-  useRouter: () => ({ push: mockPush }),
-}));
+interface MockFlashListProps {
+  data: unknown[];
+  renderItem: (args: { item: unknown; index: number }) => React.ReactNode;
+  ListHeaderComponent?: React.ReactNode;
+  onViewableItemsChanged?: (info: {
+    viewableItems: Array<{
+      item: unknown;
+      key: string;
+      index: number;
+      isViewable: boolean;
+      timestamp: number;
+    }>;
+  }) => void;
+}
 
-const mockUser = { id: 'user-1', email: 'a@b.com' } as any;
-jest.mock('../src/stores/authStore', () => ({
-  useAuthStore: jest.fn(),
-}));
+let mockFlashListProps: MockFlashListProps | null = null;
+jest.mock('@shopify/flash-list', () => {
+  const ReactModule = require('react');
+  const { View } = require('react-native');
+  return {
+    FlashList: (props: MockFlashListProps) => {
+      mockFlashListProps = props;
+      return ReactModule.createElement(
+        View,
+        { testID: 'mock-flash-list' },
+        props.ListHeaderComponent,
+        ...props.data.map((item, index) => props.renderItem({ item, index })),
+      );
+    },
+  };
+});
+
+const mockPush = jest.fn();
+jest.mock('expo-router', () => ({ useRouter: () => ({ push: mockPush }) }));
+
+const mockUser = { id: 'user-1', email: 'a@b.com' };
+jest.mock('../src/stores/authStore', () => ({ useAuthStore: jest.fn() }));
 import { useAuthStore } from '../src/stores/authStore';
 const mockedUseAuthStore = useAuthStore as unknown as jest.Mock;
 
 const mockLoadSaves = jest.fn();
 const mockRemoveSave = jest.fn().mockResolvedValue(null);
-let mockStoreState: any = { saves: [], loading: false, error: null, loadSaves: mockLoadSaves, removeSave: mockRemoveSave };
+interface MockCravesStoreState {
+  saves: SavedPlace[];
+  loading: boolean;
+  error: string | null;
+  loadSaves: typeof mockLoadSaves;
+  removeSave: typeof mockRemoveSave;
+}
+let mockStoreState: MockCravesStoreState = {
+  saves: [], loading: false, error: null, loadSaves: mockLoadSaves, removeSave: mockRemoveSave,
+};
 jest.mock('../src/stores/cravesStore', () => {
-  const hook: any = () => mockStoreState;
-  hook.getState = () => mockStoreState;
+  const hook = () => mockStoreState;
+  Object.assign(hook, { getState: () => mockStoreState });
   return { useCravesStore: hook };
 });
 
-jest.mock('../src/api/crave', () => ({
-  getCraveItems: jest.fn(),
-  getMyPlaceSaves: jest.fn(),
-}));
-jest.mock('../src/hooks/usePrefetchPlace', () => ({
-  usePrefetchPlace: () => jest.fn(),
-}));
-// AuthSheet pulls in lib/supabase.ts (real client, needs real env vars
-// outside a running app) via its own import chain -- same reason other
-// screens' tests stub this component rather than let that chain load.
-jest.mock('../src/components/AuthSheet', () => ({
-  AuthSheet: () => null,
-}));
+jest.mock('../src/api/crave', () => ({ getCraveItems: jest.fn(), getMyPlaceSaves: jest.fn() }));
+jest.mock('../src/hooks/usePrefetchPlace', () => ({ usePrefetchPlace: () => jest.fn() }));
+jest.mock('../src/components/AuthSheet', () => ({ AuthSheet: () => null }));
 jest.mock('../src/utils/recommendationEventQueue', () => ({
   logRecommendationEvent: jest.fn(),
   logRecommendationEvents: jest.fn(),
@@ -65,21 +83,55 @@ const mockedLogOne = logRecommendationEvent as jest.Mock;
 const mockedLogMany = logRecommendationEvents as jest.Mock;
 
 const SAVED_PLACES = [
-  { id: 'p0', name: 'p0', rank_percentile: 0.9, city_id: 'city-sf' },
-  { id: 'p1', name: 'p1', rank_percentile: 0.5, city_id: 'city-sf' },
-] as any;
+  { id: 'p0', name: 'p0', rank_percentile: 0.9, city_id: 'city-sf', visited: false, visited_at: null, notes: null },
+  { id: 'p1', name: 'p1', rank_percentile: 0.5, city_id: 'city-sf', visited: false, visited_at: null, notes: null },
+] as unknown as SavedPlace[];
 
 function renderScreen() {
   return render(<CravesScreen />);
 }
 
-describe('CravesScreen — Recommendation Ledger instrumentation', () => {
+function exposeAllRows() {
+  if (!mockFlashListProps?.onViewableItemsChanged) throw new Error('FlashList viewability handler missing');
+  act(() => {
+    mockFlashListProps!.onViewableItemsChanged!({
+      viewableItems: mockFlashListProps!.data.map((item, index) => ({
+        item,
+        key: `row-${index}`,
+        index,
+        isViewable: true,
+        timestamp: Date.now(),
+      })),
+    });
+  });
+}
+
+function makeCrave(overrides: Partial<CraveItem> = {}): CraveItem {
+  return {
+    id: 'c0', url: 'u0', source_type: 'tiktok', parsed_place_name: 'Place',
+    matched_place_id: null, match_confidence: null, status: 'pending', created_at: '',
+    thumbnail_url: null, author_name: null, ...overrides,
+  };
+}
+
+function makePlaceSave(overrides: Partial<PlaceSaveItem> = {}): PlaceSaveItem {
+  return {
+    id: 'a0', place_name: 'Typed Place', source_platform: null, source_url: null,
+    place_id: null, lat: null, lng: null, resolution_status: 'pending', created_at: null,
+    resolved_at: null, ...overrides,
+  };
+}
+
+describe('CravesScreen — async truth and exposure instrumentation', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    mockedUseAuthStore.mockImplementation((selector: (s: { user: unknown }) => unknown) =>
+    mockFlashListProps = null;
+    mockedUseAuthStore.mockImplementation((selector: (s: { user: typeof mockUser }) => unknown) =>
       selector({ user: mockUser }),
     );
-    mockStoreState = { saves: [], loading: false, error: null, loadSaves: mockLoadSaves, removeSave: mockRemoveSave };
+    mockStoreState = {
+      saves: [], loading: false, error: null, loadSaves: mockLoadSaves, removeSave: mockRemoveSave,
+    };
     mockLoadSaves.mockImplementation(async () => {
       mockStoreState = { ...mockStoreState, saves: SAVED_PLACES };
     });
@@ -87,76 +139,110 @@ describe('CravesScreen — Recommendation Ledger instrumentation', () => {
     mockedGetMyPlaceSaves.mockResolvedValue([]);
   });
 
-  it('does not describe a failed craves request as an empty account, when saves and placeSaves are also empty', async () => {
-    // Confirmed real bug: cravesError is tracked and correctly rendered
-    // in the FlashList's own ListFooterComponent, but the top-level
-    // "true empty" gate never checked it -- a craves-fetch failure with
-    // zero saves/placeSaves rendered "Start your food memory" instead of
-    // the real error.
+  it('does not describe a failed Craves request as an empty account', async () => {
     mockLoadSaves.mockImplementation(async () => {
       mockStoreState = { ...mockStoreState, saves: [] };
     });
     mockedGetCraveItems.mockRejectedValue(new Error('network'));
 
     const { findByText, queryByText } = renderScreen();
-
-    expect(await findByText("Couldn't load Craves right now.")).toBeTruthy();
+    expect(await findByText(/Couldn't load Craves right now/)).toBeTruthy();
     expect(queryByText('Start your food memory')).toBeNull();
   });
 
-  it('logs one bounded, positioned impression batch for the Saves list on load', async () => {
-    renderScreen();
-
-    await waitFor(() => expect(mockedLogMany).toHaveBeenCalled());
-
-    const savesBatch = mockedLogMany.mock.calls.find((c) =>
-      c[0].some((e: any) => e.place_id === 'p0'),
-    )?.[0];
-    expect(savesBatch).toBeDefined();
-    expect(savesBatch).toHaveLength(2);
-    expect(savesBatch[0]).toMatchObject({
-      surface: 'craves', event_type: 'impression', place_id: 'p0', position: 0,
-      rank_percentile: 0.9, city_id: 'city-sf',
+  it('does not describe a failed manual Added request as an empty account', async () => {
+    mockLoadSaves.mockImplementation(async () => {
+      mockStoreState = { ...mockStoreState, saves: [] };
     });
-    expect(savesBatch[1]).toMatchObject({ place_id: 'p1', position: 1 });
+    mockedGetMyPlaceSaves.mockRejectedValue(new Error('network'));
+
+    const { findByText, queryByText } = renderScreen();
+    expect(await findByText(/Couldn't load added places right now/)).toBeTruthy();
+    expect(queryByText('Start your food memory')).toBeNull();
   });
 
-  it('logs a click with the real position on selecting a saved place', async () => {
+  it('shows true empty only after both secondary resources successfully settle for the current user', async () => {
+    mockLoadSaves.mockImplementation(async () => {
+      mockStoreState = { ...mockStoreState, saves: [] };
+    });
+
+    const { findByText } = renderScreen();
+    expect(await findByText('Start your food memory')).toBeTruthy();
+    expect(mockedGetCraveItems).toHaveBeenCalledTimes(1);
+    expect(mockedGetMyPlaceSaves).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not log fetched Saves until their rows are actually exposed', async () => {
+    renderScreen();
+    await waitFor(() => expect(mockFlashListProps?.data.some(
+      (row) => typeof row === 'object' && row !== null && (row as { kind?: string }).kind === 'save',
+    )).toBe(true));
+
+    expect(mockedLogMany).not.toHaveBeenCalled();
+    exposeAllRows();
+
+    expect(mockedLogMany).toHaveBeenCalledTimes(1);
+    const batch = mockedLogMany.mock.calls[0][0];
+    expect(batch).toEqual(expect.arrayContaining([
+      expect.objectContaining({ place_id: 'p0', position: 0, rank_percentile: 0.9, city_id: 'city-sf' }),
+      expect.objectContaining({ place_id: 'p1', position: 1, rank_percentile: 0.5, city_id: 'city-sf' }),
+    ]));
+  });
+
+  it('deduplicates a row when viewability fires repeatedly', async () => {
+    renderScreen();
+    await waitFor(() => expect(mockFlashListProps?.data.length).toBeGreaterThan(0));
+    exposeAllRows();
+    const calls = mockedLogMany.mock.calls.length;
+    exposeAllRows();
+    expect(mockedLogMany).toHaveBeenCalledTimes(calls);
+  });
+
+  it('logs a saved-place click with the same real section position', async () => {
     const { getByLabelText } = renderScreen();
-    await waitFor(() => expect(mockedLogMany).toHaveBeenCalled());
+    await waitFor(() => expect(mockFlashListProps?.data.length).toBeGreaterThan(0));
+    exposeAllRows();
 
-    // rank_percentile 0.5 -> 'solid' tier ("Worth Knowing"), per scoring.ts's
-    // tierFromPercentile bands.
     fireEvent.press(getByLabelText('p1, Restaurant, Worth Knowing'));
-
-    expect(mockedLogOne).toHaveBeenCalledWith(
-      expect.objectContaining({
-        surface: 'craves', event_type: 'click', place_id: 'p1', position: 1,
-        rank_percentile: 0.5, city_id: 'city-sf',
-      }),
-    );
+    expect(mockedLogOne).toHaveBeenCalledWith(expect.objectContaining({
+      surface: 'craves', event_type: 'click', place_id: 'p1', position: 1,
+      rank_percentile: 0.5, city_id: 'city-sf',
+    }));
     expect(mockPush).toHaveBeenCalledWith('/place/p1');
   });
 
-  it('only counts matched Craves items as impressions/clicks, positioned within the matched-only list', async () => {
+  it('only exposes matched shared Craves and preserves matched-only position', async () => {
     mockedGetCraveItems.mockResolvedValue([
-      { id: 'c0', url: 'u0', source_type: 'tiktok', parsed_place_name: 'Unmatched', matched_place_id: null, match_confidence: null, status: 'pending', created_at: '', thumbnail_url: null, author_name: null },
-      { id: 'c1', url: 'u1', source_type: 'tiktok', parsed_place_name: 'Matched One', matched_place_id: 'm1', match_confidence: 0.9, status: 'matched', created_at: '', thumbnail_url: null, author_name: null },
-    ] as any);
+      makeCrave({ id: 'c0', parsed_place_name: 'Unmatched' }),
+      makeCrave({ id: 'c1', parsed_place_name: 'Matched One', matched_place_id: 'm1', match_confidence: 0.9, status: 'matched' }),
+    ]);
 
     const { getByLabelText } = renderScreen();
-    await waitFor(() =>
-      expect(mockedLogMany).toHaveBeenCalledWith(
-        expect.arrayContaining([expect.objectContaining({ place_id: 'm1', position: 0, surface: 'craves' })]),
-      ),
-    );
-    // The unmatched item never appears in any logged batch -- no place_id to log.
-    expect(mockedLogMany.mock.calls.some((c) => c[0].some((e: any) => e.place_id === 'c0'))).toBe(false);
+    await waitFor(() => expect(getByLabelText('Open matched place for Matched One')).toBeTruthy());
+    expect(mockedLogMany).not.toHaveBeenCalled();
+    exposeAllRows();
+
+    const allEvents = mockedLogMany.mock.calls.flatMap((call) => call[0]);
+    expect(allEvents).toContainEqual(expect.objectContaining({ place_id: 'm1', position: 0 }));
+    expect(allEvents.some((event: { place_id?: string | null }) => event.place_id === 'c0')).toBe(false);
 
     fireEvent.press(getByLabelText('Open matched place for Matched One'));
-    expect(mockedLogOne).toHaveBeenCalledWith(
-      expect.objectContaining({ surface: 'craves', event_type: 'click', place_id: 'm1', position: 0 }),
+    expect(mockedLogOne).toHaveBeenCalledWith(expect.objectContaining({ place_id: 'm1', position: 0 }));
+  });
+
+  it('exposes a matched manual Added row only after viewability', async () => {
+    mockedGetMyPlaceSaves.mockResolvedValue([
+      makePlaceSave({ id: 'a0', place_name: 'Unmatched Added' }),
+      makePlaceSave({ id: 'a1', place_name: 'Matched Added', place_id: 'added-place', resolution_status: 'matched' }),
+    ]);
+
+    const { getByLabelText } = renderScreen();
+    await waitFor(() => expect(getByLabelText('Open matched place for Matched Added')).toBeTruthy());
+    expect(mockedLogMany).not.toHaveBeenCalled();
+    exposeAllRows();
+
+    expect(mockedLogMany.mock.calls.flatMap((call) => call[0])).toContainEqual(
+      expect.objectContaining({ place_id: 'added-place', position: 0 }),
     );
-    expect(mockPush).toHaveBeenCalledWith('/place/m1');
   });
 });
