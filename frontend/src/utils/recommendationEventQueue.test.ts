@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { sendRecommendationEvents } from '../api/recommendationEvents';
+import { supabase } from '../lib/supabase';
 import {
   _resetRecommendationEventQueueForTests,
   flushRecommendationEvents,
@@ -9,6 +10,14 @@ import {
 
 jest.mock('../api/recommendationEvents', () => ({
   sendRecommendationEvents: jest.fn().mockResolvedValue(undefined),
+}));
+
+jest.mock('../lib/supabase', () => ({
+  supabase: {
+    auth: {
+      getSession: jest.fn(),
+    },
+  },
 }));
 
 jest.mock('@react-native-async-storage/async-storage', () => ({
@@ -22,8 +31,10 @@ jest.mock('@react-native-async-storage/async-storage', () => ({
 
 const mockSend = sendRecommendationEvents as jest.Mock;
 const mockStorage = AsyncStorage as jest.Mocked<typeof AsyncStorage>;
+const mockGetSession = supabase.auth.getSession as jest.Mock;
 
 async function settleAsyncWork() {
+  await Promise.resolve();
   await Promise.resolve();
   await Promise.resolve();
   await Promise.resolve();
@@ -40,6 +51,8 @@ beforeEach(async () => {
   mockStorage.setItem.mockResolvedValue(undefined);
   mockStorage.removeItem.mockReset();
   mockStorage.removeItem.mockResolvedValue(undefined);
+  mockGetSession.mockReset();
+  mockGetSession.mockResolvedValue({ data: { session: { user: { id: 'user-a' } } } });
   await settleAsyncWork();
 });
 
@@ -99,7 +112,7 @@ describe('recommendation event queue', () => {
     expect(mockSend).toHaveBeenCalledTimes(1);
   });
 
-  it('persists a confirmed save before it is acknowledged by the server', async () => {
+  it('persists a confirmed save with the authenticated owner before acknowledgment', async () => {
     logRecommendationEvent({
       surface: 'feed',
       event_type: 'save',
@@ -108,6 +121,10 @@ describe('recommendation event queue', () => {
     });
     await settleAsyncWork();
 
+    expect(mockStorage.setItem).toHaveBeenCalledWith(
+      '@crave/recommendation-event-outbox/v1',
+      expect.stringContaining('"ownerUserId":"user-a"'),
+    );
     expect(mockStorage.setItem).toHaveBeenCalledWith(
       '@crave/recommendation-event-outbox/v1',
       expect.stringContaining('save-1'),
@@ -129,8 +146,6 @@ describe('recommendation event queue', () => {
     await settleAsyncWork();
     expect(mockSend).toHaveBeenCalledTimes(1);
 
-    // Durable failures use a slower retry interval and keep the same
-    // client_event_id so the backend's unique index makes resubmission safe.
     jest.advanceTimersByTime(15_000);
     await settleAsyncWork();
 
@@ -159,30 +174,57 @@ describe('recommendation event queue', () => {
     expect(mockSend.mock.calls[0][0]).toHaveLength(1);
   });
 
-  it('rehydrates a persisted durable outcome and sends it on explicit recovery flush', async () => {
+  it('does not send Account A durable events while Account B is authenticated', async () => {
     _resetRecommendationEventQueueForTests();
     mockStorage.getItem.mockResolvedValueOnce(JSON.stringify([
       {
-        surface: 'feed',
-        event_type: 'save',
-        place_id: 'place-2',
-        client_event_id: 'save-from-disk',
-        session_id: 'old-session',
+        ownerUserId: 'user-a',
+        event: {
+          surface: 'feed',
+          event_type: 'save',
+          place_id: 'place-a',
+          client_event_id: 'save-a',
+          session_id: 'old-session',
+        },
       },
     ]));
+    mockGetSession.mockResolvedValue({ data: { session: { user: { id: 'user-b' } } } });
+
+    flushRecommendationEvents();
+    await settleAsyncWork();
+
+    expect(mockSend).not.toHaveBeenCalled();
+    expect(mockStorage.removeItem).not.toHaveBeenCalled();
+  });
+
+  it('rehydrates and sends the durable event once its owning account returns', async () => {
+    _resetRecommendationEventQueueForTests();
+    mockStorage.getItem.mockResolvedValueOnce(JSON.stringify([
+      {
+        ownerUserId: 'user-a',
+        event: {
+          surface: 'feed',
+          event_type: 'save',
+          place_id: 'place-a',
+          client_event_id: 'save-a',
+          session_id: 'old-session',
+        },
+      },
+    ]));
+    mockGetSession.mockResolvedValue({ data: { session: { user: { id: 'user-a' } } } });
 
     flushRecommendationEvents();
     await settleAsyncWork();
 
     expect(mockSend).toHaveBeenCalledWith([
-      expect.objectContaining({ client_event_id: 'save-from-disk' }),
+      expect.objectContaining({ client_event_id: 'save-a' }),
     ]);
   });
 
-  it('drops malformed persisted rows instead of poisoning every future flush', async () => {
+  it('drops malformed persisted rows instead of poisoning future flushes', async () => {
     _resetRecommendationEventQueueForTests();
     mockStorage.getItem.mockResolvedValueOnce(JSON.stringify([
-      { surface: 'feed', event_type: 'save', client_event_id: null },
+      { ownerUserId: 'user-a', event: { surface: 'feed', event_type: 'save', client_event_id: null } },
       { nope: true },
     ]));
 
