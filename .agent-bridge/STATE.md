@@ -52,36 +52,59 @@ credentials/devices/consoles, 4: reopen-code-on-failure policy), and
 — where work exists — exact evidence, procedure, expected result,
 responsible environment, and remediation path.
 
-Current read (Section 11 of that doc): 5 items **PASS** (credential
-leakage, the prod-config hard-fail gate's code side, bundle/package
-IDs, EAS build profiles, permission-explanation strings), 2 **READY
-FOR HUMAN VERIFICATION** (Sentry — PR #140; Railway env vars —
-`docs/RAILWAY_PRODUCTION_ENV_VERIFICATION.md`, formalizing
-`_validate_prod_config()`'s own checklist the same way the Sentry doc
-did), everything else either **BLOCKED ON ACCESS** (Apple/Android
-signing credentials — genuinely can't be checked from a repo session)
-or **NOT STARTED** (hosted legal pages, Supabase/R2/push/Maps
-production config runbooks, EAS signing, physical-device/
-accessibility/smoke-test scripts, store metadata drafts). Do not
-duplicate that tracking here — update the matrix directly as items
-close, and keep this section as a pointer + one-line status, not a
-second copy of the list.
+**2026-09-06 update**: Codex independently opened its own competing
+matrix (PR #142, `docs/CRAVE_MASTER_RELEASE_CERTIFICATION_MATRIX.md`)
+~7 minutes before this one, against the same base, neither of us
+having seen the other first. Per explicit user direction, PR #144 is
+authoritative; #142's unique value (a Performance & Resilience
+category, granular device/accessibility framing, an explicit client-
+Sentry-absence callout, a flat submission checklist) was folded into
+#144 before closing #142. There is now exactly one controlling
+document.
 
-Also tracked there (Section 10): the product-design workstream
-(`docs/SCREEN_INVENTORY_UX_DESIGN_AUDIT_2026-09-06.md`, PR #143) —
-audit complete, screen-by-screen polish not yet started, running in
-parallel with (not blocking) the certification sections above.
+Current read (Section 11 of that doc, post-consolidation): 5 items
+**PASS**, 1 **PASS, conditional**, **11 READY FOR HUMAN VERIFICATION**
+— every Section 4 config runbook (Sentry, Railway env vars, Supabase,
+R2, push, Google Maps/Places), EAS signing/build, physical-device
+certification, accessibility certification, the final smoke test, and
+the Section 8 store-drafting items now have a complete, repo-verified
+procedure. What's genuinely still open: hosted legal pages (blocked on
+a hosting decision), the final pre-submission policy refresh (by
+design never permanently PASS), the client/native crash-observability
+decision, Performance & Resilience certification (no runbook yet),
+Play Console URL field entry, and UGC/moderation representation.
+New supporting docs this pass: `docs/PRODUCTION_ENVIRONMENT_MANIFEST.md`,
+`docs/PROVIDER_DATA_FLOW_INVENTORY.md`,
+`docs/SCREEN_UX_FINDINGS_TRIAGE.md` (every PR #143 finding sorted into
+RELEASE DEFECT/ACCESSIBILITY/PRE-RELEASE POLISH/POST-LAUNCH — 4 real
+defects found), `docs/RELEASE_TEST_ACCOUNTS_AND_FIXTURES.md`,
+`docs/RELEASE_ROLLBACK_PROCEDURES.md`, `docs/STORE_METADATA_DRAFT.md`,
+`docs/SCREENSHOT_CAPTURE_PLAN.md`, and 4 new runbooks (EAS signing,
+physical-device, accessibility, final-smoke-test) plus the 4 remaining
+Section 4 config runbooks (Supabase, R2, Maps, push). Do not duplicate
+that tracking here — update the matrix directly as items close, and
+keep this section as a pointer + one-line status, not a second copy
+of the list.
 
 ## Next action
 
 No engineering phase is currently claimed. The next work is **release
-certification**, tracked entirely in the Master Matrix above. Do not
-reopen Phases 1-7 without a proven regression or an explicitly
-approved new scope — a certification failure becomes a narrow bugfix
-PR (Section 12 of the matrix), never a new hardening phase.
+certification**, tracked entirely in the Master Matrix above, whose
+own read of itself now says: Codex's certification run should be
+almost entirely **execution**, not **research** — read the matrix, run
+the Section 5.0 preflight gate, execute each prepared runbook in
+order, attach evidence, mark PASS/FAIL, open a narrow bugfix PR only
+if something fails. Do not reopen Phases 1-7 without a proven
+regression or an explicitly approved new scope — a certification
+failure becomes a narrow bugfix PR (Section 12 of the matrix), never a
+new hardening phase.
 
-Highest-leverage next bucket-1 work per the matrix: Section 4's
-remaining procedure gaps (Supabase, R2, push, Maps — Sentry and
-Railway env vars both now have runbooks) and drafting the App Store/
-Play Store metadata items (Section 8.2, 8.4) that don't need console
-access to draft.
+Remaining bucket-1 gaps (per the matrix's own Section 11 read): the
+Performance & Resilience runbook (Section 6a) has no procedure yet;
+the client/native crash-observability decision (4.6) needs an actual
+decision, not just documentation that it's undecided; and the 4
+RELEASE DEFECT items in `docs/SCREEN_UX_FINDINGS_TRIAGE.md` (Rank's
+non-functional retry, record-video's silent recording failure,
+Leaderboard's missing Friends-sign-in state, account deletion's
+under-weighted visual treatment) should become narrow bugfix PRs
+before or alongside certification, not after.
