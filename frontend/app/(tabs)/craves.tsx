@@ -51,9 +51,11 @@ export default function CravesScreen() {
   const [craves, setCraves] = useState<CraveItem[]>([]);
   const [cravesLoading, setCravesLoading] = useState(false);
   const [cravesError, setCravesError] = useState(false);
+  const [cravesLoadedForUserId, setCravesLoadedForUserId] = useState<string | null>(null);
   const [placeSaves, setPlaceSaves] = useState<PlaceSaveItem[]>([]);
   const [placeSavesLoading, setPlaceSavesLoading] = useState(false);
   const [placeSavesError, setPlaceSavesError] = useState(false);
+  const [placeSavesLoadedForUserId, setPlaceSavesLoadedForUserId] = useState<string | null>(null);
   const [authVisible, setAuthVisible] = useState(false);
   const [shareVisible, setShareVisible] = useState(false);
   const [pullRefreshing, setPullRefreshing] = useState(false);
@@ -66,12 +68,15 @@ export default function CravesScreen() {
     exposedRowsRef.current = new Set();
     setCraves([]);
     setCravesError(false);
+    setCravesLoadedForUserId(null);
     setPlaceSaves([]);
     setPlaceSavesError(false);
+    setPlaceSavesLoadedForUserId(null);
   }, [user?.id]);
 
   const loadCraves = React.useCallback(() => {
     const myGeneration = accountGenerationRef.current;
+    const targetUserId = user?.id ?? null;
     setCravesLoading(true);
     setCravesError(false);
     return getCraveItems()
@@ -93,11 +98,13 @@ export default function CravesScreen() {
       .finally(() => {
         if (myGeneration !== accountGenerationRef.current) return;
         setCravesLoading(false);
+        setCravesLoadedForUserId(targetUserId);
       });
-  }, []);
+  }, [user?.id]);
 
   const loadPlaceSaves = React.useCallback(() => {
     const myGeneration = accountGenerationRef.current;
+    const targetUserId = user?.id ?? null;
     setPlaceSavesLoading(true);
     setPlaceSavesError(false);
     return getMyPlaceSaves()
@@ -108,15 +115,16 @@ export default function CravesScreen() {
       .catch((err: unknown) => {
         if (myGeneration !== accountGenerationRef.current) return;
         if (__DEV__) console.log('[CRAVES] PLACE_SAVES_ERROR', err instanceof Error ? err.message : String(err));
-        // Preserve any last successful data and mark failure explicitly.
-        // A transport error is not a successful empty result.
+        // Preserve last successful data. A failed request is not a
+        // successful empty response.
         setPlaceSavesError(true);
       })
       .finally(() => {
         if (myGeneration !== accountGenerationRef.current) return;
         setPlaceSavesLoading(false);
+        setPlaceSavesLoadedForUserId(targetUserId);
       });
-  }, []);
+  }, [user?.id]);
 
   useEffect(() => {
     if (!user) return;
@@ -138,6 +146,112 @@ export default function CravesScreen() {
       setPullRefreshing(false);
     }
   }, [user, loadSaves, loadCraves, loadPlaceSaves]);
+
+  // Build all place-bearing sections into the FlashList data stream so the
+  // same actual viewability contract applies to Saves, matched shared Craves,
+  // and matched manual Added entries.
+  const rows = useMemo<CravesRow[]>(() => {
+    const next: CravesRow[] = saves.map((item, position) => ({ kind: 'save', item, position }));
+
+    if (cravesLoading || (user?.id && cravesLoadedForUserId !== user.id)) {
+      next.push({ kind: 'section', section: 'craves' }, { kind: 'craves-loading' });
+    } else if (cravesError) {
+      next.push({ kind: 'section', section: 'craves' }, { kind: 'craves-error' });
+    } else if (craves.length > 0) {
+      next.push({ kind: 'section', section: 'craves' });
+      let matchedPosition = 0;
+      for (const item of craves) {
+        const position = item.matched_place_id ? matchedPosition++ : null;
+        next.push({ kind: 'crave', item, matchedPosition: position });
+      }
+    }
+
+    if (placeSavesLoading || (user?.id && placeSavesLoadedForUserId !== user.id)) {
+      next.push({ kind: 'section', section: 'added' }, { kind: 'place-saves-loading' });
+    } else if (placeSavesError && placeSaves.length === 0) {
+      next.push({ kind: 'section', section: 'added' }, { kind: 'place-saves-error' });
+    } else if (placeSaves.length > 0) {
+      next.push({ kind: 'section', section: 'added' });
+      let matchedPosition = 0;
+      for (const item of placeSaves) {
+        const position = item.place_id ? matchedPosition++ : null;
+        next.push({ kind: 'place-save', item, matchedPosition: position });
+      }
+      if (placeSavesError) next.push({ kind: 'place-saves-error' });
+    }
+
+    return next;
+  }, [
+    saves,
+    craves,
+    cravesLoading,
+    cravesError,
+    cravesLoadedForUserId,
+    placeSaves,
+    placeSavesLoading,
+    placeSavesError,
+    placeSavesLoadedForUserId,
+    user?.id,
+  ]);
+
+  const handleViewableItemsChangedRef = useRef<(
+    info: { viewableItems: ViewToken<CravesRow>[] }
+  ) => void>(() => {});
+
+  handleViewableItemsChangedRef.current = ({ viewableItems }) => {
+    const events: Parameters<typeof logRecommendationEvents>[0] = [];
+
+    for (const token of viewableItems) {
+      if (!token.isViewable || !token.item) continue;
+      const row = token.item;
+
+      if (row.kind === 'save') {
+        const key = `save:${row.item.id}`;
+        if (exposedRowsRef.current.has(key)) continue;
+        exposedRowsRef.current.add(key);
+        events.push({
+          surface: 'craves',
+          event_type: 'impression',
+          place_id: row.item.id,
+          position: row.position,
+          rank_percentile: row.item.rank_percentile,
+          city_id: row.item.city_id ?? null,
+        });
+        continue;
+      }
+
+      if (row.kind === 'crave' && row.item.matched_place_id && row.matchedPosition !== null) {
+        const key = `crave:${row.item.id}`;
+        if (exposedRowsRef.current.has(key)) continue;
+        exposedRowsRef.current.add(key);
+        events.push({
+          surface: 'craves',
+          event_type: 'impression',
+          place_id: row.item.matched_place_id,
+          position: row.matchedPosition,
+        });
+        continue;
+      }
+
+      if (row.kind === 'place-save' && row.item.place_id && row.matchedPosition !== null) {
+        const key = `place-save:${row.item.id}`;
+        if (exposedRowsRef.current.has(key)) continue;
+        exposedRowsRef.current.add(key);
+        events.push({
+          surface: 'craves',
+          event_type: 'impression',
+          place_id: row.item.place_id,
+          position: row.matchedPosition,
+        });
+      }
+    }
+
+    if (events.length > 0) logRecommendationEvents(events);
+  };
+
+  const onViewableItemsChanged = useRef((info: { viewableItems: ViewToken<CravesRow>[] }) => {
+    handleViewableItemsChangedRef.current(info);
+  }).current;
 
   if (__DEV__) {
     console.log('[CRAVES] RENDER', {
@@ -217,14 +331,19 @@ export default function CravesScreen() {
     void loadPlaceSaves();
   };
 
-  const secondarySettled = !cravesLoading && !placeSavesLoading;
-  const secondaryHealthy = !cravesError && !placeSavesError;
+  const secondarySettledForCurrentUser =
+    cravesLoadedForUserId === user.id &&
+    placeSavesLoadedForUserId === user.id &&
+    !cravesLoading &&
+    !placeSavesLoading;
+
   if (
     saves.length === 0 &&
     craves.length === 0 &&
     placeSaves.length === 0 &&
-    secondarySettled &&
-    secondaryHealthy
+    secondarySettledForCurrentUser &&
+    !cravesError &&
+    !placeSavesError
   ) {
     return (
       <>
@@ -243,100 +362,6 @@ export default function CravesScreen() {
       </>
     );
   }
-
-  const rows = useMemo<CravesRow[]>(() => {
-    const next: CravesRow[] = saves.map((item, position) => ({ kind: 'save', item, position }));
-
-    if (cravesLoading) {
-      next.push({ kind: 'section', section: 'craves' }, { kind: 'craves-loading' });
-    } else if (cravesError) {
-      next.push({ kind: 'section', section: 'craves' }, { kind: 'craves-error' });
-    } else if (craves.length > 0) {
-      next.push({ kind: 'section', section: 'craves' });
-      let matchedPosition = 0;
-      for (const item of craves) {
-        const position = item.matched_place_id ? matchedPosition++ : null;
-        next.push({ kind: 'crave', item, matchedPosition: position });
-      }
-    }
-
-    if (placeSavesLoading && placeSaves.length === 0) {
-      next.push({ kind: 'section', section: 'added' }, { kind: 'place-saves-loading' });
-    } else if (placeSavesError && placeSaves.length === 0) {
-      next.push({ kind: 'section', section: 'added' }, { kind: 'place-saves-error' });
-    } else if (placeSaves.length > 0) {
-      next.push({ kind: 'section', section: 'added' });
-      let matchedPosition = 0;
-      for (const item of placeSaves) {
-        const position = item.place_id ? matchedPosition++ : null;
-        next.push({ kind: 'place-save', item, matchedPosition: position });
-      }
-      // Preserve stale-success truth if a refresh failed after data was
-      // already visible: keep the rows and append a retryable status.
-      if (placeSavesError) next.push({ kind: 'place-saves-error' });
-    }
-
-    return next;
-  }, [saves, craves, cravesLoading, cravesError, placeSaves, placeSavesLoading, placeSavesError]);
-
-  const handleViewableItemsChangedRef = useRef<(
-    info: { viewableItems: ViewToken<CravesRow>[] }
-  ) => void>(() => {});
-
-  handleViewableItemsChangedRef.current = ({ viewableItems }) => {
-    const events: Parameters<typeof logRecommendationEvents>[0] = [];
-
-    for (const token of viewableItems) {
-      if (!token.isViewable || !token.item) continue;
-      const row = token.item;
-
-      if (row.kind === 'save') {
-        const key = `save:${row.item.id}`;
-        if (exposedRowsRef.current.has(key)) continue;
-        exposedRowsRef.current.add(key);
-        events.push({
-          surface: 'craves',
-          event_type: 'impression',
-          place_id: row.item.id,
-          position: row.position,
-          rank_percentile: row.item.rank_percentile,
-          city_id: row.item.city_id ?? null,
-        });
-        continue;
-      }
-
-      if (row.kind === 'crave' && row.item.matched_place_id && row.matchedPosition !== null) {
-        const key = `crave:${row.item.id}`;
-        if (exposedRowsRef.current.has(key)) continue;
-        exposedRowsRef.current.add(key);
-        events.push({
-          surface: 'craves',
-          event_type: 'impression',
-          place_id: row.item.matched_place_id,
-          position: row.matchedPosition,
-        });
-        continue;
-      }
-
-      if (row.kind === 'place-save' && row.item.place_id && row.matchedPosition !== null) {
-        const key = `place-save:${row.item.id}`;
-        if (exposedRowsRef.current.has(key)) continue;
-        exposedRowsRef.current.add(key);
-        events.push({
-          surface: 'craves',
-          event_type: 'impression',
-          place_id: row.item.place_id,
-          position: row.matchedPosition,
-        });
-      }
-    }
-
-    if (events.length > 0) logRecommendationEvents(events);
-  };
-
-  const onViewableItemsChanged = useRef((info: { viewableItems: ViewToken<CravesRow>[] }) => {
-    handleViewableItemsChangedRef.current(info);
-  }).current;
 
   return (
     <View style={styles.container}>
