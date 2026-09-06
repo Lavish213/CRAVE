@@ -1,8 +1,9 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import {
   Alert, Linking, ScrollView, StyleSheet, Text, TouchableOpacity, View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import * as Application from 'expo-application';
 import * as Haptics from 'expo-haptics';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { Colors, Spacing, Radius } from '../src/constants/colors';
@@ -16,8 +17,9 @@ import {
   PushPermissionStatus,
 } from '../src/services/pushNotifications';
 
-// App version — hardcoded, update for each release
-const APP_VERSION = '1.0.0';
+const APP_VERSION = Application.nativeApplicationVersion ?? 'Development';
+const BUILD_VERSION = Application.nativeBuildVersion;
+const VERSION_LABEL = BUILD_VERSION ? `${APP_VERSION} (${BUILD_VERSION})` : APP_VERSION;
 
 interface RowProps {
   icon: React.ComponentProps<typeof Ionicons>['name'];
@@ -81,11 +83,8 @@ export default function MoreScreen() {
   const user = useAuthStore((s) => s.user);
   const signOut = useAuthStore((s) => s.signOut);
   const toast = useToast((s) => s.show);
-
-  // Re-checked on every focus (not just mount) so returning from the OS
-  // Settings app after granting/denying reflects the real current state,
-  // not whatever it was when this screen first mounted.
   const [notificationStatus, setNotificationStatus] = useState<PushPermissionStatus>('undetermined');
+
   useFocusEffect(
     React.useCallback(() => {
       let cancelled = false;
@@ -101,15 +100,9 @@ export default function MoreScreen() {
   const handleNotificationsPress = () => {
     if (notificationStatus === 'unavailable') return;
     if (notificationStatus === 'granted' || notificationStatus === 'denied') {
-      // Already decided one way or the other -- there's no in-app toggle
-      // yet (a single always-on notification category doesn't warrant
-      // one), so the only meaningful action is the OS's own settings.
       Linking.openSettings().catch(() => toast("Couldn't open Settings."));
       return;
     }
-    // Contextual: explain the benefit before the OS permission prompt,
-    // rather than requesting it automatically and unexplained the moment
-    // someone signs in.
     Alert.alert(
       'Enable notifications',
       "Get notified when your photo or video submission is approved or rejected.",
@@ -136,16 +129,13 @@ export default function MoreScreen() {
   const handleDeleteAccount = () => {
     Alert.alert(
       'Delete your account?',
-      'This permanently deletes your profile, follows, and login — it cannot be undone.',
+      'This permanently deletes your account, personal activity, saves, rankings, reports, and uploaded photos/videos. It cannot be undone.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Delete Account',
           style: 'destructive',
           onPress: () => {
-            // Second confirmation — irreversible and destroys the login
-            // itself, not just app data, so one tap is too easy to hit by
-            // accident.
             Alert.alert('Are you absolutely sure?', 'This cannot be undone.', [
               { text: 'Cancel', style: 'cancel' },
               {
@@ -155,7 +145,7 @@ export default function MoreScreen() {
                   try {
                     await deleteMyAccount();
                   } catch {
-                    toast("Couldn't delete your account. Try again.");
+                    toast("Couldn't complete account deletion. Your session is still active — try again.");
                     return;
                   }
                   await signOut();
@@ -174,13 +164,11 @@ export default function MoreScreen() {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      {/* Header */}
       <View style={styles.header}>
         <Text style={styles.wordmark}>CRAVE</Text>
         <Text style={styles.tagline}>Your cultural discovery engine</Text>
       </View>
 
-      {/* City */}
       <SectionTitle title="CITY" />
       <View style={styles.card}>
         <View style={styles.row}>
@@ -202,7 +190,6 @@ export default function MoreScreen() {
         />
       </View>
 
-      {/* App */}
       <SectionTitle title="APP" />
       <View style={styles.card}>
         <Row
@@ -218,15 +205,9 @@ export default function MoreScreen() {
           label="Rate CRAVE"
           sublabel="Coming soon"
           tint={Colors.textMuted}
-          // No App Store / Play Store listing exists yet (app isn't
-          // published) — this used to open Linking.openURL to a placeholder
-          // that did nothing when tapped, with no indication why. Matches
-          // the "Notifications" row's non-interactive "Coming soon" pattern
-          // until there's a real store URL to wire in.
         />
       </View>
 
-      {/* About */}
       <SectionTitle title="ABOUT" />
       <View style={styles.card}>
         <Row
@@ -261,11 +242,10 @@ export default function MoreScreen() {
         <Row
           icon="code-slash-outline"
           label="Version"
-          rightEl={<Text style={styles.version}>{APP_VERSION}</Text>}
+          rightEl={<Text style={styles.version}>{VERSION_LABEL}</Text>}
         />
       </View>
 
-      {/* Support */}
       <SectionTitle title="SUPPORT" />
       <View style={styles.card}>
         <Row
@@ -276,7 +256,6 @@ export default function MoreScreen() {
         />
       </View>
 
-      {/* Account */}
       {user ? (
         <>
           <SectionTitle title="ACCOUNT" />
@@ -297,7 +276,7 @@ export default function MoreScreen() {
             <Row
               icon="trash-outline"
               label="Delete Account"
-              sublabel="Permanently delete your profile and login"
+              sublabel="Permanently delete your account and associated data"
               tint={Colors.error}
               onPress={handleDeleteAccount}
             />
