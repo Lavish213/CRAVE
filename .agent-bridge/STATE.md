@@ -4,8 +4,9 @@ Status: ready-for-review
 Owner: Codex
 Branch: codex/phase7-release-hardening
 Base SHA: 8900039a8c7c14b3db22696af6942fa7113d2dd3 (main, post-Phase-5 follow-up PR #136)
-PR: #137 — Phase 7: Release hardening and account-deletion integrity
-Implementation head before this handoff: 1057fd0d5557dc91890457e76c97ee170f3f67d6
+PR: #138 — Phase 7: Release hardening and account-deletion integrity
+Superseded PR: #137 — closed unmerged only because GitHub's GraphQL rate limit blocked the draft→ready transition; #138 uses the same branch/head lineage.
+Implementation head before handoff-only commits: 1057fd0d5557dc91890457e76c97ee170f3f67d6
 Scope: Phase 7 of `CRAVE_PHASES_3_TO_7_PRODUCTION_HARDENING_EXECUTION_SPEC.md` — release hardening only.
 
 ## Merged baseline
@@ -60,7 +61,14 @@ Exact implementation head `1057fd0d5557dc91890457e76c97ee170f3f67d6` passed:
 - Dependency scan (`pip-audit`): **No known vulnerabilities found**.
 - Conflict-marker guard: **success**.
 
-The first Phase-7 CI head found only two stale Settings test expectations (old hardcoded version and old deletion-error copy). They were updated to assert the new production contract; no production rollback was made. The corrected head above is fully green.
+Handoff head `a65177c18943401b404c6e535bdc26e744fda331` also passed the full gate in superseded draft PR #137:
+
+- GitHub CI workflow #510: **success**.
+- CodeQL workflow #475: **success**.
+- Frontend typecheck/tests: **success**.
+- Backend SQLite/Postgres/migrations/dependency scan/guard: **success**.
+
+The first Phase-7 CI head found only two stale Settings test expectations (old hardcoded version and old deletion-error copy). They were updated to assert the new production contract; no production rollback was made.
 
 ## Explicit release-certification gates still open
 
@@ -78,13 +86,12 @@ Phase 7 code hardening can merge with these residuals documented, but CRAVE must
 
 ## Review / merge gate
 
-- PR #137 is currently draft.
-- After this handoff commit, require CI + CodeQL green again on the exact new head.
-- Mark ready for review only after that green-head check.
-- Read actual review content; a failed/rate-limited review query is not evidence of “no findings.”
-- Fix only verified actionable findings and rerun the exact-head gate.
-- Merge with expected head SHA only when final CI/review state is clean.
+- PR #138 is open and non-draft on the same Phase-7 branch.
+- CodeRabbit manual review on #137 was explicitly rate-limited, with no actionable finding returned. That capacity result is not treated as an approval or a bug report.
+- Require CI + CodeQL green on the exact #138 final head after this PR-number-only handoff commit.
+- Read actual #138 review content; fix only verified actionable findings.
+- Merge with expected head SHA only when the final exact-head checks are green and no actionable review finding is outstanding.
 
 ## Next action
 
-Run the final handoff-head CI/CodeQL gate, move PR #137 out of draft, inspect/trigger CodeRabbit review as available, resolve any real findings, then squash-merge Phase 7. Do not start new feature work in this branch.
+Run the final PR-#138 head CI/CodeQL gate, inspect CodeRabbit/review content as available, resolve any real finding, then squash-merge Phase 7. Do not start new feature work in this branch.
