@@ -40,17 +40,51 @@ Exact Phase-7 final PR head `663cc323b368a7b44d0a214df20b862985934110` passed:
 
 CodeRabbit did not return an actionable Phase-7 finding before merge; its manual review attempt was explicitly quota/rate limited. That capacity result was not treated as an approval.
 
-## External release-certification gates still open
+## Controlling document: Master Release Certification Matrix
 
-CRAVE must **not** be called fully release-certified until these are completed outside repo-only CI:
+`docs/MASTER_RELEASE_CERTIFICATION_MATRIX.md` (PR to be opened) is now
+**the** controlling document for everything remaining before CRAVE
+ships — supersedes the bullet list that used to live in this section.
+Every requirement is tracked there with a status (PASS / READY FOR
+HUMAN VERIFICATION / BLOCKED ON ACCESS / NOT STARTED / FAILED), bucket
+(1: Codex autonomous, 2: Codex prepares/human executes, 3: requires
+credentials/devices/consoles, 4: reopen-code-on-failure policy), and
+— where work exists — exact evidence, procedure, expected result,
+responsible environment, and remediation path.
 
-- Real iOS + Android camera/microphone/permission regression, including blocked-permission Settings recovery and background/foreground transitions.
-- VoiceOver + TalkBack pass across primary flows; Dynamic Type, focus order, touch targets, contrast, and reduced-motion checks.
-- Hosted privacy-policy URL in store metadata.
-- Google Play external web account-deletion resource in addition to the in-app path.
-- App Store privacy declarations and Google Play Data Safety declarations matched to final runtime behavior and SDKs.
-- Final signing, production secrets/API URLs, Android Maps key restrictions, push/upload configuration, and store-console validation.
-- Production-build client/native crash and unhandled-JS observability verification.
+**2026-09-06 update**: Codex independently opened its own competing
+matrix (PR #142, `docs/CRAVE_MASTER_RELEASE_CERTIFICATION_MATRIX.md`)
+~7 minutes before this one, against the same base, neither of us
+having seen the other first. Per explicit user direction, PR #144 is
+authoritative; #142's unique value (a Performance & Resilience
+category, granular device/accessibility framing, an explicit client-
+Sentry-absence callout, a flat submission checklist) was folded into
+#144 before closing #142. There is now exactly one controlling
+document.
+
+Current read (Section 11 of that doc, post-consolidation): 5 items
+**PASS**, 1 **PASS, conditional**, **11 READY FOR HUMAN VERIFICATION**
+— every Section 4 config runbook (Sentry, Railway env vars, Supabase,
+R2, push, Google Maps/Places), EAS signing/build, physical-device
+certification, accessibility certification, the final smoke test, and
+the Section 8 store-drafting items now have a complete, repo-verified
+procedure. What's genuinely still open: hosted legal pages (blocked on
+a hosting decision), the final pre-submission policy refresh (by
+design never permanently PASS), the client/native crash-observability
+decision, Performance & Resilience certification (no runbook yet),
+Play Console URL field entry, and UGC/moderation representation.
+New supporting docs this pass: `docs/PRODUCTION_ENVIRONMENT_MANIFEST.md`,
+`docs/PROVIDER_DATA_FLOW_INVENTORY.md`,
+`docs/SCREEN_UX_FINDINGS_TRIAGE.md` (every PR #143 finding sorted into
+RELEASE DEFECT/ACCESSIBILITY/PRE-RELEASE POLISH/POST-LAUNCH — 4 real
+defects found), `docs/RELEASE_TEST_ACCOUNTS_AND_FIXTURES.md`,
+`docs/RELEASE_ROLLBACK_PROCEDURES.md`, `docs/STORE_METADATA_DRAFT.md`,
+`docs/SCREENSHOT_CAPTURE_PLAN.md`, and 4 new runbooks (EAS signing,
+physical-device, accessibility, final-smoke-test) plus the 4 remaining
+Section 4 config runbooks (Supabase, R2, Maps, push). Do not duplicate
+that tracking here — update the matrix directly as items close, and
+keep this section as a pointer + one-line status, not a second copy
+of the list.
 
 ## Release-certification housekeeping (Claude, 2026-09-06)
 
@@ -115,19 +149,35 @@ permission flows, plus the "no generic AI-app layout" uniqueness rule).
 
 ## Next action
 
-No engineering phase is currently claimed. The next work is **release certification**, not another hardening phase. Do not reopen Phases 1–7 without a proven regression or an explicitly approved new scope.
+No engineering phase is currently claimed. The next work is **release
+certification**, tracked entirely in the Master Matrix above, whose
+own read of itself now says: Codex's certification run should be
+almost entirely **execution**, not **research** — read the matrix, run
+the Section 5.0 preflight gate, execute each prepared runbook in
+order, attach evidence, mark PASS/FAIL, open a narrow bugfix PR only
+if something fails. Do not reopen Phases 1-7 without a proven
+regression or an explicitly approved new scope — a certification
+failure becomes a narrow bugfix PR (Section 12 of the matrix), never a
+new hardening phase.
 
-Open release-certification items (per the user-approved roadmap):
-hosted legal pages (Privacy Policy + Google Play account-deletion page,
-Codex workstream), Sentry production verification (UNVERIFIED, see
-above — needs Railway/Sentry dashboard access), production
-infrastructure verification (API URL, Supabase, R2, push config, Maps
-key restrictions, and confirming `APP_ENV=prod` specifically — the
-`secret_key` dependency above), EAS/native production build, physical-
-device certification, accessibility certification, and store
-compliance. Production credential leakage is the one item now fully
-closed: **PASS**, see above.
-Running in parallel, not blocking release certification: the product-
-design workstream above (screen inventory + UX/design audit filed;
-the actual screen-by-screen polish pass is the next step once that
-doc is reviewed).
+Remaining bucket-1 gaps (per the matrix's own Section 11 read): the
+Performance & Resilience runbook (Section 6a) has no procedure yet;
+the client/native crash-observability decision (4.6) needs an actual
+decision, not just documentation that it's undecided; and the 4
+RELEASE DEFECT items in `docs/SCREEN_UX_FINDINGS_TRIAGE.md` (Rank's
+non-functional retry, record-video's silent recording failure,
+Leaderboard's missing Friends-sign-in state, account deletion's
+under-weighted visual treatment) should become narrow bugfix PRs
+before or alongside certification, not after.
+
+**2026-09-06, later**: the screen/UX track (Section 10 of the matrix)
+was upgraded from "polish pass" to a real redesign — see
+`docs/DESIGN_EXPLORATION_LOG.md` for Round 1 of visual-direction
+mockups (rejected star ratings and Tinder-style swipe interaction,
+promoted Decision Session as the Feed's primary surface per the
+existing execution brief, kept photography emphasis, left light/dark
+theme explicitly undecided). Sections 6/7's device/accessibility
+runbooks and the screenshot-capture plan are scoped to the *current*
+screens and are historical-baseline evidence only once the redesign
+lands — they will need a fresh pass against the redesigned screens,
+not a retrofit.
