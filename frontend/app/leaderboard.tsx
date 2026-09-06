@@ -75,14 +75,24 @@ export default function LeaderboardScreen() {
     queryKey: ['leaderboard', scope, scope === 'friends' ? user?.id : null],
     queryFn: () => fetchLeaderboard({ among: scope }),
     staleTime: 2 * 60 * 1000,
+    // Global has no auth dependency; friends does, and must not fetch at
+    // all when signed out (matches friends-feed.tsx's identical guard).
+    enabled: scope !== 'friends' || !!user,
   });
+  const canFetch = scope !== 'friends' || !!user;
 
   // Cached data shows instantly on refocus; this just revalidates quietly
   // in the background instead of resetting to a full loading state.
+  //
+  // Guarded on `canFetch` here too, not just via the query's own
+  // `enabled` -- react-query's `refetch()` is an explicit imperative
+  // trigger that runs the queryFn regardless of `enabled` (that flag only
+  // gates *automatic* fetches).
   useFocusEffect(
     useCallback(() => {
+      if (!canFetch) return;
       refetch();
-    }, [refetch]),
+    }, [canFetch, refetch]),
   );
 
   const switchScope = (next: Scope) => {
@@ -115,7 +125,7 @@ export default function LeaderboardScreen() {
           <SkeletonRowList count={7} avatar />
         </View>
       ) : isError ? (
-        <ErrorState message="Couldn't load the leaderboard" onRetry={() => refetch()} />
+        <ErrorState message="Couldn't load the leaderboard" onRetry={() => canFetch && refetch()} />
       ) : rows.length === 0 ? (
         <EmptyState
           icon="trophy-outline"
@@ -134,7 +144,7 @@ export default function LeaderboardScreen() {
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
-              onRefresh={() => refetch()}
+              onRefresh={() => canFetch && refetch()}
               tintColor={Colors.primary}
             />
           }

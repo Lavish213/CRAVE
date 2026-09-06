@@ -74,11 +74,22 @@ export default function UserProfileScreen() {
   // guarded; this is the separate "nothing resets the visible state when
   // a fresh load starts" gap.
   const loadedForIdRef = useRef<string | null>(null);
+  // Separately tracks *who was looking* the last time this loaded --
+  // following/followsMe/blocked are relative to the viewer, not just the
+  // profile being viewed. Viewing the same id="X" is not the same load
+  // when the viewer switches from account A to account B: if both A and B
+  // are non-self relative to X, `isSelf` (id + me.id alone) doesn't
+  // change, so load()'s reference wouldn't change and this screen would
+  // silently keep showing A's follow/block relationship with X under B's
+  // session. me?.id is included in load()'s own deps below specifically
+  // to force a fresh load whenever the viewer changes, independent of id.
+  const loadedForViewerRef = useRef<string | null>(null);
 
   const load = useCallback(async () => {
     if (!id) return;
     const myGeneration = ++loadGenerationRef.current;
-    if (loadedForIdRef.current !== id) {
+    const viewerId = me?.id ?? null;
+    if (loadedForIdRef.current !== id || loadedForViewerRef.current !== viewerId) {
       setProfile(null);
       setRankings([]);
       setFollowing(false);
@@ -87,12 +98,22 @@ export default function UserProfileScreen() {
       setNotFound(false);
       setLoading(true);
     }
+    // Marked as "attempted" here, before the fetch settles either way --
+    // not only on success. This id/viewer pairing has been *addressed* by
+    // this generation regardless of outcome; the render-time stale-gate
+    // above only needs to force the skeleton until an attempt has been
+    // made, not until one has succeeded. Setting this only on success
+    // left the render-time gate permanently stuck on the skeleton after
+    // any error (a 404 included) -- `loading` would still correctly flip
+    // to false in `finally` below, but isStaleForCurrentIdentity would
+    // never clear, so the component could never render past it.
+    loadedForIdRef.current = id;
+    loadedForViewerRef.current = viewerId;
     setRankingsError(false);
     setRelationshipError(false);
     try {
       const p = await fetchProfile(id);
       if (myGeneration !== loadGenerationRef.current) return;
-      loadedForIdRef.current = id;
       setProfile(p);
 
       const [r, status, blockStatus] = await Promise.all([
@@ -123,7 +144,7 @@ export default function UserProfileScreen() {
     } finally {
       if (myGeneration === loadGenerationRef.current) setLoading(false);
     }
-  }, [id, isSelf]);
+  }, [id, isSelf, me?.id]);
 
   useFocusEffect(
     useCallback(() => {
@@ -211,7 +232,14 @@ export default function UserProfileScreen() {
     ]);
   };
 
-  if (loading) {
+  // Derived at render time, not just from `loading` -- `loading` only
+  // flips back to true from inside load(), which runs in an *effect*
+  // (useFocusEffect), one render after `id`/`me` themselves have already
+  // changed. Gating on the refs directly closes that one-render gap, same
+  // fix as profile.tsx's identical `isStaleForCurrentUser`.
+  const isStaleForCurrentIdentity =
+    loadedForIdRef.current !== id || loadedForViewerRef.current !== (me?.id ?? null);
+  if (loading || isStaleForCurrentIdentity) {
     // Matches the ranked-list-of-places shape this screen eventually
     // shows (RankedPlaceRow), same treatment as app/(tabs)/profile.tsx's
     // own ranked list -- this screen was still a plain ActivityIndicator,

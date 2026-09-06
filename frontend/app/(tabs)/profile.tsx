@@ -190,7 +190,15 @@ export default function ProfileScreen() {
     );
   }
 
-  if (loading) {
+  // Derived at render time, not just from `loading` -- `loading` only
+  // flips back to true from inside load(), which runs in an *effect*
+  // (useFocusEffect), one render after `user` itself has already changed.
+  // Gating on the ref directly closes that one-render gap: the instant
+  // `user` becomes a different account than whatever was last loaded,
+  // this is true immediately, in the same render, before load()'s effect
+  // has even had a chance to run.
+  const isStaleForCurrentUser = loadedForUserIdRef.current !== user.id;
+  if (loading || isStaleForCurrentUser) {
     return (
       <View style={styles.content}>
         <SkeletonRowList count={4} />

@@ -61,14 +61,23 @@ export default function FriendsFeedScreen() {
     queryKey: ['friends-feed', user?.id],
     queryFn: () => fetchFriendsFeed(),
     staleTime: 2 * 60 * 1000,
+    enabled: !!user,
   });
 
   // Cached data shows instantly on refocus; this just revalidates quietly
   // in the background instead of resetting to a full loading state.
+  //
+  // Guarded on `user` here too, not just via the query's own `enabled` --
+  // react-query's `refetch()` is an explicit imperative trigger that runs
+  // the queryFn regardless of `enabled` (that flag only gates *automatic*
+  // fetches). Without this guard, a signed-out call (e.g. this effect
+  // re-firing right after sign-out, before this screen unmounts) would
+  // still issue a live request for this account-scoped feed.
   useFocusEffect(
     useCallback(() => {
+      if (!user) return;
       refetch();
-    }, [refetch]),
+    }, [user, refetch]),
   );
 
   if (loading) {
@@ -80,7 +89,7 @@ export default function FriendsFeedScreen() {
   }
 
   if (isError) {
-    return <ErrorState message="Couldn't load your friends feed" onRetry={() => refetch()} />;
+    return <ErrorState message="Couldn't load your friends feed" onRetry={() => user && refetch()} />;
   }
 
   if (events.length === 0) {
@@ -104,7 +113,7 @@ export default function FriendsFeedScreen() {
       refreshControl={
         <RefreshControl
           refreshing={refreshing}
-          onRefresh={() => refetch()}
+          onRefresh={() => user && refetch()}
           tintColor={Colors.primary}
         />
       }

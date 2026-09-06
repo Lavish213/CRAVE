@@ -103,7 +103,16 @@ async function fetchLocation(): Promise<LocationState> {
 // (getForegroundPermissionsAsync() doesn't prompt, so this costs nothing
 // when nothing has changed).
 async function recheckIfPreviouslyDenied(): Promise<void> {
-  if (_state?.status === 'granted') return;
+  // Skip while still resolving (undefined), not just when already
+  // granted -- the permission dialog itself can trigger an AppState
+  // background/foreground transition on some platforms while the very
+  // first fetchLocation() call is still in flight. Without this, that
+  // transition would wipe `_promise`/`_state` out from under the
+  // original in-flight request and start a second, redundant one racing
+  // it -- the same bug the old `_cached !== null` check (which also
+  // covered `undefined`, by virtue of comparing against `null`
+  // specifically) happened to avoid.
+  if (_state === undefined || _state.status === 'granted') return;
   try {
     const { status } = await Location.getForegroundPermissionsAsync();
     if (status !== 'granted') return;

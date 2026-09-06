@@ -103,7 +103,13 @@ pass's locked scope):
   anywhere" pass across multiple real screens would need a much heavier
   test harness; the per-screen regression tests above cover the same
   ground more cheaply per-screen.
-- No PR opened yet (wasn't asked for).
+- PR #129 open against main (see header). CodeRabbit's review returned 5 actionable findings, all verified against current code and all valid -- fixed in a follow-up commit:
+  1. `STATE.md` itself had a stale "No PR opened yet" line contradicting the PR now recorded at the top -- fixed (this line).
+  2. `profile.tsx`'s account-switch reset ran inside `load()`'s effect, one render after `user` itself changes -- a genuine single-render gap where the outgoing account's data could still paint. Added a render-time-derived `isStaleForCurrentUser` check (reads `loadedForUserIdRef` directly) so the skeleton gate no longer depends on the effect having fired yet.
+  3. `friends-feed.tsx`/`leaderboard.tsx`: `enabled: !!user` (leaderboard: `scope !== 'friends' || !!user`) added to each query, **and** every focus/retry/refresh call site guarded too -- react-query's `refetch()` runs regardless of `enabled`, so the flag alone doesn't stop a manual trigger from firing a live request for a viewer-scoped surface while signed out.
+  4. `user/[id].tsx`: `load()`'s stale-guard only tracked the viewed profile's `id`, not the viewer (`me?.id`) -- if the viewer's account changed while `isSelf` happened to evaluate the same both times (neither old nor new viewer is the profile owner), `load()` never got a new reference and stale follow/block state from the *previous* viewer kept rendering. Now tracks both. Applied the same render-time gate as profile.tsx here too, which surfaced its own bug: the ref that unlocks the gate was only ever set on a *successful* fetch, so any error (a 404 included) left the gate permanently stuck on the skeleton -- fixed by marking the id/viewer pairing "attempted" before the fetch settles, not only after it succeeds.
+  5. `useLocation.ts`: a real bug in this PR's own rewrite, not a pre-existing one -- the foreground-recheck guard only special-cased `status === 'granted'`, dropping the old code's (incidental but load-bearing) protection against restarting a request that's still resolving. The permission dialog itself can trigger an AppState transition on some platforms while the very first request is in flight; without the fix, that would tear down and restart it. Fixed to also skip while `status` is still unresolved.
+  - Verified: `npx tsc --noEmit` clean; `npx jest` 340/340 (34 suites -- 338 baseline + 2 new: a friends-feed signed-out-never-fetches test, a useLocation in-flight-request-not-restarted test).
 
 ## Next action
 

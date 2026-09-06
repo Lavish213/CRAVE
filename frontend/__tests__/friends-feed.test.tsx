@@ -8,6 +8,7 @@ import React from 'react';
 import { fireEvent, render } from '@testing-library/react-native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import FriendsFeedScreen from '../app/friends-feed';
+import { useAuthStore } from '../src/stores/authStore';
 import { ActivityEvent, fetchFriendsFeed } from '../src/api/social';
 
 const mockPush = jest.fn();
@@ -15,11 +16,19 @@ jest.mock('expo-router', () => ({
   useRouter: () => ({ push: mockPush }),
   useFocusEffect: (cb: () => void) => require('react').useEffect(cb, [cb]),
 }));
+jest.mock('../src/stores/authStore', () => ({
+  useAuthStore: jest.fn(),
+}));
 jest.mock('../src/api/social', () => ({
   fetchFriendsFeed: jest.fn(),
 }));
 
+const mockedUseAuthStore = useAuthStore as unknown as jest.Mock;
 const mockedFetchFriendsFeed = fetchFriendsFeed as jest.MockedFunction<typeof fetchFriendsFeed>;
+
+function setAuth(user: { id: string } | null) {
+  mockedUseAuthStore.mockImplementation((selector: (s: unknown) => unknown) => selector({ user }));
+}
 
 function renderScreen() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -57,6 +66,20 @@ function followedEvent(overrides: Partial<ActivityEvent> = {}): ActivityEvent {
 describe('FriendsFeedScreen', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    setAuth({ id: 'me' });
+  });
+
+  it('never fetches this account-scoped feed while signed out, even on focus/retry/refresh', async () => {
+    // This screen's query is entirely viewer-scoped (your own follow
+    // graph's activity) -- react-query's `enabled` only gates automatic
+    // fetches, so the focus-refetch and retry/refresh call sites all need
+    // their own guard too, or a signed-out call to any of them would
+    // still issue a live request.
+    setAuth(null);
+    renderScreen();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(mockedFetchFriendsFeed).not.toHaveBeenCalled();
   });
 
   it('shows the follow-people empty state when there is no activity, and navigates to the leaderboard from its CTA', async () => {
