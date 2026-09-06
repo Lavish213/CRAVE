@@ -46,7 +46,9 @@ downstream in this checklist will work until this is fixed. Stop here.
 ## Proof 2 — trigger one controlled exception
 
 The repo already ships a purpose-built endpoint for exactly this:
-`GET /debug/sentry-test` (`backend/app/api/v1/routes/debug.py`). It
+`GET /api/v1/debug/sentry-test` (`backend/app/api/v1/routes/debug.py`
+— mounted at `/api` in `app/main.py`, `/v1` in
+`app/api/v1/__init__.py`, `/debug` in the router itself). It
 raises a static `RuntimeError` with a fixed, non-sensitive message — no
 user data, no request input reflected in it — which flows through
 `global_exception_handler` → `sentry_sdk.capture_exception(exc)`.
@@ -59,11 +61,11 @@ docstring in `backend/app/core/auth.py`).
 ```bash
 # optional first: confirms which deployment/commit you're actually
 # hitting before firing the test exception
-curl -s https://<prod-backend-host>/debug/version
+curl -s https://<prod-backend-host>/api/v1/debug/version
 
 curl -s -o /dev/null -w "%{http_code}\n" \
   -H "x-debug-api-key: $DEBUG_API_KEY" \
-  https://<prod-backend-host>/debug/sentry-test
+  https://<prod-backend-host>/api/v1/debug/sentry-test
 ```
 
 **Pass:** HTTP `500` — that is the correct/expected outcome; the

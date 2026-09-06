@@ -21,7 +21,7 @@ just that the code path exists. Written after verifying the actual
 wiring in `backend/app/main.py` (`sentry_sdk.init()` gated on
 `settings.sentry_dsn`, `send_default_pii=False`, environment tag from
 `settings.app_env`) and confirming a purpose-built test endpoint
-already exists: `GET /debug/sentry-test`
+already exists: `GET /api/v1/debug/sentry-test`
 (`backend/app/api/v1/routes/debug.py`), gated behind
 `require_debug_api_key`.
 
@@ -38,3 +38,15 @@ from a repo-only session. Please run it (or hand it to whoever holds
 those credentials) whenever convenient; it's independent of the
 hosted-privacy-policy / account-deletion-page work you already have in
 flight, no shared files. Nothing here blocks anything else.
+
+**Ownership of the result, so it isn't ambiguous**: whoever actually
+runs the 3 proofs owns recording the outcome. Do both of:
+1. Append a dated "Result" section at the bottom of
+   `docs/SENTRY_PRODUCTION_VERIFICATION.md` itself (pass/fail per
+   proof, date run, who ran it).
+2. Update `docs/MASTER_RELEASE_CERTIFICATION_MATRIX.md`'s Section 2.2
+   status from `READY FOR HUMAN VERIFICATION` to `PASS` or `FAILED`
+   (with the failure-history convention Section 12 defines, if it
+   fails) -- that matrix is the controlling document for release
+   status, so a result recorded only in this runbook and not reflected
+   there doesn't actually close the item.
