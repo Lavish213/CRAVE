@@ -40,18 +40,45 @@ Exact Phase-7 final PR head `663cc323b368a7b44d0a214df20b862985934110` passed:
 
 CodeRabbit did not return an actionable Phase-7 finding before merge; its manual review attempt was explicitly quota/rate limited. That capacity result was not treated as an approval.
 
-## External release-certification gates still open
+## Controlling document: Master Release Certification Matrix
 
-CRAVE must **not** be called fully release-certified until these are completed outside repo-only CI:
+`docs/MASTER_RELEASE_CERTIFICATION_MATRIX.md` (PR to be opened) is now
+**the** controlling document for everything remaining before CRAVE
+ships — supersedes the bullet list that used to live in this section.
+Every requirement is tracked there with a status (PASS / READY FOR
+HUMAN VERIFICATION / BLOCKED ON ACCESS / NOT STARTED / FAILED), bucket
+(1: Codex autonomous, 2: Codex prepares/human executes, 3: requires
+credentials/devices/consoles, 4: reopen-code-on-failure policy), and
+— where work exists — exact evidence, procedure, expected result,
+responsible environment, and remediation path.
 
-- Real iOS + Android camera/microphone/permission regression, including blocked-permission Settings recovery and background/foreground transitions.
-- VoiceOver + TalkBack pass across primary flows; Dynamic Type, focus order, touch targets, contrast, and reduced-motion checks.
-- Hosted privacy-policy URL in store metadata.
-- Google Play external web account-deletion resource in addition to the in-app path.
-- App Store privacy declarations and Google Play Data Safety declarations matched to final runtime behavior and SDKs.
-- Final signing, production secrets/API URLs, Android Maps key restrictions, push/upload configuration, and store-console validation.
-- Production-build client/native crash and unhandled-JS observability verification.
+Current read (Section 11 of that doc): 5 items **PASS** (credential
+leakage, the prod-config hard-fail gate's code side, bundle/package
+IDs, EAS build profiles, permission-explanation strings), 1 **READY
+FOR HUMAN VERIFICATION** (Sentry — PR #140), everything else either
+**BLOCKED ON ACCESS** (a procedure gap, e.g. Railway env-var
+verification doesn't have a runbook yet the way Sentry does) or **NOT
+STARTED** (hosted legal pages, Supabase/R2/push/Maps production
+config, EAS signing, physical-device/accessibility/smoke-test
+scripts, store metadata drafts). Do not duplicate that tracking here
+— update the matrix directly as items close, and keep this section as
+a pointer + one-line status, not a second copy of the list.
+
+Also tracked there (Section 10): the product-design workstream
+(`docs/SCREEN_INVENTORY_UX_DESIGN_AUDIT_2026-09-06.md`, PR #143) —
+audit complete, screen-by-screen polish not yet started, running in
+parallel with (not blocking) the certification sections above.
 
 ## Next action
 
-No engineering phase is currently claimed. The next work is **release certification**, not another hardening phase. Do not reopen Phases 1–7 without a proven regression or an explicitly approved new scope.
+No engineering phase is currently claimed. The next work is **release
+certification**, tracked entirely in the Master Matrix above. Do not
+reopen Phases 1-7 without a proven regression or an explicitly
+approved new scope — a certification failure becomes a narrow bugfix
+PR (Section 12 of the matrix), never a new hardening phase.
+
+Highest-leverage next bucket-1 work per the matrix: write the
+Railway-env-var verification runbook (Section 4.1 — mirrors what
+`docs/SENTRY_PRODUCTION_VERIFICATION.md` already did for Sentry) and
+start drafting the App Store/Play Store metadata items (Section 8.2,
+8.4) that don't need console access to draft.
