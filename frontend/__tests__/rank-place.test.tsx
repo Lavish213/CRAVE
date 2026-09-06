@@ -198,6 +198,96 @@ describe('RankPlaceScreen', () => {
     expect(mockBack).toHaveBeenCalled();
   });
 
+  it('disables the opponent card and never submits it as a winner when its detail fetch fails', async () => {
+    // Confirmed Phase 4 bug: a failed opponent-detail fetch left the card
+    // showing its "A place you ranked" placeholder fully clickable --
+    // an unidentified place could still be voted the winner. The card
+    // must be disabled, and a real retry offered instead.
+    mockedStartRanking.mockResolvedValue(COMPARING_STEP('opponent-1'));
+    mockedFetchPlaceDetail.mockImplementation((id: string) =>
+      id === 'place-A'
+        ? Promise.resolve(makePlace('place-A', { name: 'Tasty Spot' }))
+        : Promise.reject(new Error('network')),
+    );
+
+    const { findByText, findByLabelText, queryByLabelText } = render(<RankPlaceScreen />);
+    await findByText('Tasty Spot');
+    fireEvent.press(await findByLabelText('Loved it'));
+
+    expect(await findByText("Couldn't load that place — retry")).toBeTruthy();
+    // The unresolved opponent's card must not be labeled (and therefore
+    // not tappable) with the fabricated placeholder name.
+    expect(queryByLabelText('Choose A place you ranked as the better one')).toBeNull();
+    expect(mockedSubmitComparison).not.toHaveBeenCalled();
+
+    // Retry re-fetches just the opponent and, once resolved, the card
+    // becomes rankable again.
+    mockedFetchPlaceDetail.mockImplementation((id: string) =>
+      Promise.resolve(makePlace(id, { name: id === 'place-A' ? 'Tasty Spot' : 'Old Favorite' })),
+    );
+    await act(async () => {
+      fireEvent.press(await findByLabelText('Retry loading the other place'));
+    });
+    expect(await findByLabelText('Choose Old Favorite as the better one')).toBeTruthy();
+  });
+
+  it('does not double-submit a comparison on a rapid double tap', async () => {
+    // React state (`busy`) alone can't close this race -- two native
+    // touch events can both reach their handler before either's
+    // setBusy(true) commits a re-render. Fired synchronously without
+    // awaiting the first call, matching how two fast taps would
+    // actually overlap.
+    mockedStartRanking.mockResolvedValue(COMPARING_STEP());
+    let resolveSubmit: (step: RankingStep) => void;
+    mockedSubmitComparison.mockImplementation(
+      () => new Promise((resolve) => { resolveSubmit = resolve; }),
+    );
+
+    const { findByText, findByLabelText } = render(<RankPlaceScreen />);
+    await findByText('Tasty Spot');
+    fireEvent.press(await findByLabelText('Loved it'));
+    const skipBtn = await findByLabelText("Can't decide");
+
+    fireEvent.press(skipBtn);
+    fireEvent.press(skipBtn);
+    await act(async () => {
+      resolveSubmit!(RANKED_STEP());
+    });
+
+    expect(mockedSubmitComparison).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not commit a late-resolving comparison result from a previous place after the route moved on', async () => {
+    // Route-generation safety: a submission still in flight for place-A
+    // must never render/commit under place-B after the user has already
+    // moved to ranking a different place.
+    mockedStartRanking.mockResolvedValue(COMPARING_STEP());
+    let resolveSubmit: (step: RankingStep) => void;
+    mockedSubmitComparison.mockImplementation(
+      () => new Promise((resolve) => { resolveSubmit = resolve; }),
+    );
+
+    const { rerender, findByText, findByLabelText, queryByText } = render(<RankPlaceScreen />);
+    await findByText('Tasty Spot');
+    fireEvent.press(await findByLabelText('Loved it'));
+    fireEvent.press(await findByLabelText("Can't decide"));
+    // place-A's comparison submission is now in flight, unresolved.
+
+    mockPlaceId = 'place-B';
+    mockedFetchPlaceDetail.mockResolvedValue(makePlace('place-B', { name: 'New Route Place' }));
+    rerender(<RankPlaceScreen />);
+    await findByText('New Route Place');
+
+    await act(async () => {
+      resolveSubmit!(RANKED_STEP({ place_id: 'place-A', rank_score: 5.0 }));
+    });
+
+    // Place-A's late result must not flip this screen to the done stage
+    // (or any stale content) while it's now showing place-B.
+    expect(queryByText('OUT OF 10')).toBeNull();
+    expect(await findByText('New Route Place')).toBeTruthy();
+  });
+
   it('does not let a stale place from before a placeId change render under the new route', async () => {
     let resolveOld: (p: PlaceOut) => void;
     mockedFetchPlaceDetail.mockImplementationOnce(

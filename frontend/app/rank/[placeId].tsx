@@ -54,12 +54,28 @@ export default function RankPlaceScreen() {
 
   const [place, setPlace] = useState<PlaceOut | null>(null);
   const [opponent, setOpponent] = useState<PlaceOut | null>(null);
+  // Distinct from opponent === null while resolving -- true only once the
+  // opponent's own detail fetch has actually failed. Gates the opponent
+  // card's rankability (see the comparing-stage render below): previously
+  // a failed opponent fetch just left `opponent` null with no flag, and
+  // the card rendered its "A place you ranked" placeholder fully
+  // clickable via ComparisonChoice's onChoose -- a real, confirmed bug
+  // (an unidentified place could still be voted the winner). disabled
+  // only prevents that one card's tap; "Can't decide" and the just-
+  // ranked place's own card stay available either way.
+  const [opponentError, setOpponentError] = useState(false);
   const [stage, setStage] = useState<Stage>('tier');
   const [tier, setTier] = useState<RankTier | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [result, setResult] = useState<Ranking | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // React state alone (`busy`) can't close a fast-double-tap race -- two
+  // native touch events can both reach their JS handler before either's
+  // setBusy(true) has actually committed a re-render with disabled=true.
+  // A ref mutates synchronously and immediately, so the *second* call in
+  // the same event-loop tick still sees it, closing the gap state can't.
+  const submittingRef = useRef(false);
   // Only ever counts up — the exact number of remaining comparisons isn't
   // known ahead of time (it depends on how the binary search splits), so
   // showing "3 of 4" would be a guess. "Comparison 3" is honest.
@@ -86,9 +102,16 @@ export default function RankPlaceScreen() {
   useEffect(() => {
     if (!placeId) return;
     const myGeneration = ++placeGenerationRef.current;
+    // A submission still in flight for the *previous* place must not go
+    // on blocking this (new) place's own tier/comparison controls until
+    // that stale request happens to settle -- its own generation check
+    // already keeps its result from being applied, but the lock itself
+    // needs releasing here too, not left to that unrelated `finally`.
+    submittingRef.current = false;
     setPlace(null);
     setError(null);
     setOpponent(null);
+    setOpponentError(false);
     setStage('tier');
     setTier(null);
     setToken(null);
@@ -106,62 +129,108 @@ export default function RankPlaceScreen() {
       });
   }, [placeId]);
 
+  // The opponent id from the most recent comparison step -- kept
+  // separately from the resolved `opponent` object so a failed detail
+  // fetch still has something for handleRetryOpponent to re-fetch.
+  const opponentPlaceIdRef = useRef<string | null>(null);
+
+  const loadOpponent = useCallback(async (opponentPlaceId: string, myGeneration: number) => {
+    setOpponentError(false);
+    try {
+      const resolved = await fetchPlaceDetail(opponentPlaceId);
+      if (myGeneration !== placeGenerationRef.current) return;
+      setOpponent(resolved);
+    } catch {
+      if (myGeneration !== placeGenerationRef.current) return;
+      // The backend already knows this opponent (it's in the signed
+      // token) -- only its display detail failed to resolve. Previously
+      // this left `opponent` at null with no distinguishing flag, and
+      // the comparing-stage card rendered its "A place you ranked"
+      // placeholder fully clickable: an unidentified place could still
+      // be submitted as the winner. Never fabricate that outcome --
+      // disable the card instead (see the render below) and offer a
+      // real retry rather than silently degrading to a plainer card.
+      setOpponent(null);
+      setOpponentError(true);
+    }
+  }, []);
+
+  const handleRetryOpponent = () => {
+    if (!opponentPlaceIdRef.current) return;
+    loadOpponent(opponentPlaceIdRef.current, placeGenerationRef.current);
+  };
+
   /** Both entry points (start + each answer) return the same shape. */
-  const applyStep = useCallback(async (step: RankingStep) => {
+  const applyStep = useCallback(async (step: RankingStep, myGeneration: number) => {
+    // Late work from a previous placeId (e.g. a submission that was
+    // still in flight when the route moved to a different place) must
+    // never commit its result under the place this screen now shows.
+    if (myGeneration !== placeGenerationRef.current) return;
+
     if (step.status === 'ranked') {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setResult(step.ranking);
       setStage('done');
       setToken(null);
       setOpponent(null);
+      setOpponentError(false);
+      opponentPlaceIdRef.current = null;
       return;
     }
 
     setToken(step.comparison_token);
     setStage('comparing');
     setRound((r) => r + 1);
+    opponentPlaceIdRef.current = step.opponent_place_id;
 
     // The backend returns only an id — the head-to-head needs a photo and a
-    // name to be a real comparison, so resolve it. A failure here still
-    // leaves a usable (if plainer) card rather than blocking the flow.
-    try {
-      setOpponent(await fetchPlaceDetail(step.opponent_place_id));
-    } catch {
-      setOpponent(null);
-    }
-  }, []);
+    // name to be a real comparison, so resolve it.
+    await loadOpponent(step.opponent_place_id, myGeneration);
+  }, [loadOpponent]);
 
   const handlePickTier = async (picked: RankTier) => {
-    if (!placeId || busy) return;
+    if (!placeId || submittingRef.current) return;
+    const myGeneration = placeGenerationRef.current;
+    submittingRef.current = true;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setBusy(true);
     setError(null);
     setTier(picked);
     try {
-      await applyStep(await startRanking({ place_id: placeId, tier: picked }));
+      await applyStep(await startRanking({ place_id: placeId, tier: picked }), myGeneration);
     } catch (err: any) {
+      if (myGeneration !== placeGenerationRef.current) return;
       const detail = err?.response?.data?.detail;
       setError(detail ?? "Couldn't start ranking this place.");
       setStage('tier');
       setTier(null);
     } finally {
+      submittingRef.current = false;
       setBusy(false);
     }
   };
 
   const handleChoose = async (winner: 'new' | 'opponent' | 'skip') => {
-    if (!token || busy) return;
+    // A failed-to-resolve opponent must never be submittable as a winner
+    // -- this is the same rule the comparing-stage card's own `disabled`
+    // enforces, checked again here so nothing (a stale ref, a timing
+    // quirk) can route around it.
+    if (!token || submittingRef.current || (winner === 'opponent' && (opponentError || !opponent))) return;
+    const myGeneration = placeGenerationRef.current;
+    submittingRef.current = true;
     setBusy(true);
     setError(null);
     if (winner === 'new' && opponent) {
       setBeatOpponentName(opponent.name);
     }
     try {
-      await applyStep(await submitComparison(token, winner));
+      await applyStep(await submitComparison(token, winner), myGeneration);
     } catch (err: any) {
+      if (myGeneration !== placeGenerationRef.current) return;
       const detail = err?.response?.data?.detail;
       setError(detail ?? "Couldn't record that comparison.");
     } finally {
+      submittingRef.current = false;
       setBusy(false);
     }
   };
@@ -319,13 +388,31 @@ export default function RankPlaceScreen() {
           </View>
 
           <ComparisonChoice
-            name={opponent?.name ?? 'A place you ranked'}
+            name={opponentError ? 'Unavailable' : (opponent?.name ?? 'A place you ranked')}
             imageUrl={opponent?.primary_image_url ?? opponent?.image}
             category={opponent?.category}
-            badge="Already ranked"
+            badge={opponentError ? "Couldn't load" : 'Already ranked'}
+            // Never rankable while unidentified -- opponentError, or a
+            // still-resolving opponent (opponent === null the moment
+            // this stage first renders, before its own fetch settles),
+            // must not be votable. "Can't decide" below stays available
+            // either way.
             onChoose={() => handleChoose('opponent')}
-            disabled={busy}
+            disabled={busy || opponentError || !opponent}
           />
+
+          {opponentError ? (
+            <TouchableOpacity
+              style={styles.opponentRetryBtn}
+              onPress={handleRetryOpponent}
+              disabled={busy}
+              accessibilityRole="button"
+              accessibilityLabel="Retry loading the other place"
+            >
+              <Ionicons name="refresh" size={14} color={Colors.primary} />
+              <Text style={styles.opponentRetryText}>Couldn't load that place — retry</Text>
+            </TouchableOpacity>
+          ) : null}
 
           <TouchableOpacity
             style={styles.skipBtn}
@@ -490,6 +577,15 @@ const styles = StyleSheet.create({
     minHeight: 40,
   },
   skipBtnText: { color: Colors.textSecondary, fontSize: 13, fontWeight: '600' },
+  opponentRetryBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: Spacing.sm,
+    minHeight: 44,
+  },
+  opponentRetryText: { color: Colors.primary, fontSize: 13, fontWeight: '700' },
   busyOverlay: {
     ...StyleSheet.absoluteFillObject,
     alignItems: 'center',
