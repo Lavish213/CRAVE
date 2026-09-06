@@ -20,9 +20,6 @@ router = APIRouter(prefix="/account", tags=["account"])
 
 
 class DeleteAccountRequest(BaseModel):
-    # Cheap insurance against an accidental/retried DELETE actually
-    # deleting something — the frontend must explicitly opt in, not just
-    # hit the endpoint.
     confirm: bool = False
 
 
@@ -36,6 +33,14 @@ def delete_my_account(
         raise HTTPException(status_code=400, detail="confirm must be true")
 
     result = delete_account(db, user_id)
+    if not result.get("complete"):
+        # Do not let the client sign out and tell the user deletion succeeded
+        # while storage, database, or Supabase Auth still has unfinished work.
+        # The service is idempotent, so retrying this endpoint is safe.
+        raise HTTPException(
+            status_code=502,
+            detail="Account deletion could not be completed. Please try again.",
+        )
     return result
 
 
