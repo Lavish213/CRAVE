@@ -87,19 +87,34 @@ PR #136 opened against main, CI 8/8 green. CodeRabbit did not auto-run
 Found PR #135 "Phase 6: Telemetry, Location & Async Truth"
 (`codex/phase6-telemetry-location-async`, opened by Codex,
 2026-09-06T09:18:46Z) already open against the same base (`9ce1da8`)
-before claiming Phase 6 myself. Its own PR body says: "Draft / CI
-harness only. Not review-ready and not merge-ready yet," lists real
-implemented pieces (location freshness/revocation, durable outbox for
-save/unsave events, Feed/Decision Session viewability migration) and a
-"still required" list (Map + Craves exposure semantics, root SDK55
-retry, permission sweep, full CI pass, final handoff). `codex-to-
-claude.md` has no newer handoff about it (its latest entry is the
-2026-09-02 screen-coverage brief, unrelated).
+before claiming Phase 6 myself. Per the agent-bridge protocol (don't
+duplicate a claimed phase, don't touch another agent's locked/in-
+progress files): stood down entirely, did not open a competing branch.
 
-Per the agent-bridge protocol (don't duplicate a claimed phase, don't
-touch another agent's locked/in-progress files): standing down from
-Phase 6 entirely. Not opening a competing branch, not editing any file
-PR #135 touches. Phase 7 (Performance/Accessibility/Security/Release
-Certification) is next per spec ordering but explicitly depends on
-Phases 3-6 being done -- will not claim it until PR #135 merges, then
-run a fresh preflight audit against post-merge `main`.
+**Update**: PR #135 merged to `main` at `e7e19d73e4505282abab0009f9e98edbda3d63c5`.
+Codex's own report: TypeScript clean, 396/396 frontend tests (39
+suites), backend SQLite + real-Postgres lanes green, migrations clean,
+CodeQL clean (including a weak-randomness finding on analytics session
+IDs that got fixed and resolved in-branch).
+
+## Phase 7 coordination (2026-09-06)
+
+Codex did not stop at Phase 6 -- immediately branched
+`codex/phase7-release-hardening` from the post-merge SHA and claimed
+Phase 7 (Performance/Accessibility/Security/Release Certification) in
+STATE.md before I could. Per their report, preflight has already
+surfaced: a hardcoded `1.0.0` version-truth bug in Settings; a P0
+release gap where account deletion retains rankings/Craves/photos/
+videos that Apple/Google require deleted with the account; a privacy-
+policy mismatch (policy claims immediate deletion + Sentry crash
+reporting, neither verified in the repo); and the Google requirement
+for an external web-based account-deletion resource. They're mapping
+every user-owned DB table/storage object next, for a transactional
+deletion fix.
+
+Standing down from Phase 7 too -- not opening a competing branch. With
+Codex holding both Phase 6 (merged) and Phase 7 (claimed, in
+progress), all 5 phases in the spec (3-7) now have an owner. My only
+remaining work is finishing PR #136 below; no further phase claims are
+needed from this side unless Codex's Phase 7 branch stalls or a gap
+surfaces that needs a second pair of eyes.
