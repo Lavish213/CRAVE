@@ -32,6 +32,34 @@ These match the four-way split already agreed:
 3. **Requires credentials/devices/consoles** — cannot be done from a repo session at all, by anyone, without that access.
 4. **Only reopens code if certification fails** — a bucket-3 item failing becomes a narrow, scoped bugfix PR against the specific defect found, never a new giant hardening phase.
 
+## Evidence conventions
+
+What counts as proof, decided now rather than left to whoever runs a
+gate to judge afterward. "Looks good" is never sufficient on its own.
+
+- **Config/code verification**: quote the exact file/line/value, as
+  every PASS row in this matrix already does.
+- **API/endpoint checks**: the exact command run and its actual output
+  (status code, response body) — not a paraphrase of what it probably
+  returned.
+- **Device/UI verification**: a screen recording for anything with a
+  transition, permission dialog, or timing element; a screenshot is
+  acceptable only for a static end-state.
+- **Third-party dashboard results**: the specific identifier that
+  proves it (a Sentry event ID/link, an EAS build ID, a Railway
+  deployment ID, a store-console submission status with a timestamp)
+  — not "checked the dashboard, looks fine."
+- **Server-side confirmation for destructive actions** (account
+  deletion, data removal): confirm the actual row/object is gone at
+  the data layer, not just that the client showed a success state —
+  this exact gap (client claims success, server didn't actually
+  finish) was a real Phase 7 finding, and evidence conventions should
+  make it structurally impossible to re-introduce during certification.
+- **Every result** gets a date and who ran it, recorded in both the
+  specific runbook (a dated Result section) and this matrix (the
+  item's status line) — see Section 12 for the failure-history
+  convention specifically.
+
 ---
 
 ## Section 1 — Automated engineering (context, not a remaining gate)
@@ -107,6 +135,15 @@ Not re-litigated here. Only reopens under bucket-4 policy (Section 12) if a late
 - **Responsible environment**: repo + wherever hosted.
 - **Remediation path**: if they diverge, update whichever is stale — usually the hosted copy, since the in-app copy ships through this repo's own release process.
 
+### 3.4 Final policy/current-requirements refresh
+
+- **Bucket**: 1 (the check itself is repo/web research; any resulting doc change is bucket 1)
+- **Status**: **NOT STARTED** — deliberately not markable PASS today.
+- **Procedure**: immediately before submission (not at any earlier point), re-confirm Apple's and Google Play's *current* privacy-policy, account-deletion, and Data Safety requirements against `docs/PROVIDER_DATA_FLOW_INVENTORY.md` and Sections 3/8 of this matrix — platform rules change, and a requirement satisfied today can drift out of date by submission time.
+- **Expected result**: no discrepancy between what this matrix assumes and the platforms' actual current rules at submission time.
+- **Responsible environment**: repo/web research, done by whoever runs final submission prep.
+- **Remediation path**: update the affected section(s) and re-verify before proceeding — this gate should **never be permanently marked PASS**; treat it as re-run immediately before every submission, including future app updates.
+
 ---
 
 ## Section 4 — Production infrastructure verification
@@ -123,43 +160,85 @@ Not re-litigated here. Only reopens under bucket-4 policy (Section 12) if a late
 
 ### 4.2 Supabase production configuration
 
-- **Bucket**: 2 → 3
-- **Status**: **NOT STARTED** — no repo-side or dashboard-side check has been run yet.
-- **Procedure**: not yet written. Should confirm: production Supabase project URL matches `SUPABASE_URL`/`EXPO_PUBLIC_SUPABASE_URL`, anon key matches `EXPO_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` is set backend-only (never in any `EXPO_PUBLIC_*` var — confirmed absent from frontend in the 2.1 audit), and that Google/Apple OAuth providers are configured for the production Supabase project specifically (not a dev/staging one).
+- **Bucket**: 2 (procedure written) → 3 (execution)
+- **Status**: **READY FOR HUMAN VERIFICATION**
+- **Evidence**: `docs/RUNBOOK_SUPABASE_PRODUCTION.md` — grounded in `backend/app/core/user_auth.py`'s actual JWKS-based verification (`{SUPABASE_URL}/auth/v1/.well-known/jwks.json`, ES256/RS256 only) and `account_deletion_service.py`'s use of `SUPABASE_SERVICE_ROLE_KEY`.
+- **Procedure**: the doc's 3 proofs — (1) all four Supabase values (backend `SUPABASE_URL`/`SUPABASE_SERVICE_ROLE_KEY`, frontend `EXPO_PUBLIC_SUPABASE_URL`/`EXPO_PUBLIC_SUPABASE_ANON_KEY`) point at the same real production project, (2) Google/Apple OAuth providers are configured on that specific project, (3) a real end-to-end sign-in succeeds against production.
 - **Expected result**: sign-in works end-to-end against the real production Supabase project.
-- **Responsible environment**: Supabase dashboard + Railway (for the backend env vars).
-- **Remediation path**: correct whichever var/provider config is wrong; re-test sign-in.
+- **Responsible environment**: Supabase dashboard + Railway + EAS env.
+- **Remediation path**: correct whichever var/provider config is wrong per the doc's fail-path; re-test sign-in.
 
 ### 4.3 Cloudflare R2 production bucket/configuration
 
-- **Bucket**: 2 → 3
-- **Status**: **NOT STARTED**.
-- **Procedure**: not yet written. Should confirm: `R2_ACCOUNT_ID`/`R2_ACCESS_KEY`/`R2_SECRET_KEY`/`R2_BUCKET` point at the real production bucket (not a dev/test one), `R2_PUBLIC_BASE_URL` resolves to a real reachable public URL, and that a real upload → confirm → public-fetch round-trip succeeds against production.
+- **Bucket**: 2 (procedure written) → 3 (execution)
+- **Status**: **READY FOR HUMAN VERIFICATION**
+- **Evidence**: `docs/RUNBOOK_R2_PRODUCTION.md` — grounded in `backend/app/services/upload/r2_client.py`'s actual env-var usage and the previously-fixed `R2_PUBLIC_BASE_URL` vs. S3-endpoint distinction.
+- **Procedure**: the doc's 3 proofs — (1) credentials/bucket identity match the production bucket, (2) the public-serving URL actually resolves, (3) a real upload → read → delete round-trip succeeds against production.
 - **Expected result**: photo/video upload and public serving work end-to-end against production R2.
 - **Responsible environment**: Cloudflare dashboard + Railway.
-- **Remediation path**: correct the misconfigured var; re-test the upload round-trip.
+- **Remediation path**: correct the misconfigured var per the doc's fail-path; re-test the round-trip.
 
 ### 4.4 Push notification configuration
 
-- **Bucket**: 2 → 3
-- **Status**: **NOT STARTED**.
-- **Procedure**: not yet written. Should confirm production push credentials (APNs key/cert for iOS, FCM config for Android) are registered with Expo's push service for the production build specifically, and that a real device receives a test push.
-- **Expected result**: a signed production build receives a push notification.
+- **Bucket**: 2 (procedure written) → 3 (execution)
+- **Status**: **READY FOR HUMAN VERIFICATION**
+- **Evidence**: `docs/RUNBOOK_PUSH_NOTIFICATIONS_PRODUCTION.md` — grounded in `app/services/notifications/expo_push.py`'s actual implementation (a plain unauthenticated POST to Expo's push API, best-effort/swallowed failures, no Enhanced Push Notification Security token in use — flagged as an open decision, not a defect).
+- **Procedure**: the doc's 3 proofs — (1) platform push credentials registered with Expo for the production build, (2) a device actually registers a push token server-side, (3) a real push is sent and received on both platforms.
+- **Expected result**: a signed production build receives a push notification on both iOS and Android.
 - **Responsible environment**: Apple Developer / Firebase / Expo push service dashboards + a physical device (overlaps Section 6).
-- **Remediation path**: fix the credential/config gap; re-send the test push.
+- **Remediation path**: fix the credential/config gap per the doc's fail-path; re-send the test push. Separately decide (not a blocking defect) whether Enhanced Push Notification Security should be adopted before certifying this PASS.
 
 ### 4.5 Google Maps/Places production keys and restrictions
 
-- **Bucket**: 2 → 3
-- **Status**: **NOT STARTED** — `frontend/app.config.js` correctly reads `GOOGLE_MAPS_ANDROID_API_KEY` from the environment (not hardcoded, confirmed in the 2.1 audit) and documents that the key should be restricted to `com.crave.app` + the release signing SHA-1, but that restriction has not been confirmed as actually configured in Google Cloud Console.
-- **Procedure**: not yet written. Confirm in Google Cloud Console: the Android key is restricted to the production package name + production signing SHA-1 (not the dev/debug one); confirm `GOOGLE_PLACES_API_KEY` (backend, `google_places_api_key` setting) is a separate, appropriately-scoped key with its own usage cap (the app already has `google_places_max_calls_per_run` as a safety cap — confirm the actual Cloud Console quota/billing alert matches).
+- **Bucket**: 2 (procedure written) → 3 (execution)
+- **Status**: **READY FOR HUMAN VERIFICATION**
+- **Evidence**: `docs/RUNBOOK_GOOGLE_MAPS_PLACES_PRODUCTION.md` — grounded in `frontend/app.config.js`'s env-driven key injection and `backend/app/config/settings.py`'s separate `google_places_api_key`/`google_places_max_calls_per_run` safety cap.
+- **Procedure**: the doc's 3 proofs — (1) the Android Maps key is restricted to `com.crave.app` + the production signing SHA-1, (2) the backend Places key is a distinct, appropriately-scoped/capped server key, (3) the map actually renders on a production Android build.
 - **Expected result**: Maps renders on a production Android build; no key is usable outside its intended scope if extracted from the binary.
 - **Responsible environment**: Google Cloud Console.
-- **Remediation path**: apply the correct restriction; rebuild if the key value itself needs to change.
+- **Remediation path**: apply the correct restriction per the doc's fail-path; rebuild if the key value itself needs to change.
+
+### 4.6 Client/native crash observability decision
+
+- **Bucket**: 1 (decision + any resulting integration work)
+- **Status**: **NOT STARTED** — confirmed absent, not a regression. `docs/PROVIDER_DATA_FLOW_INVENTORY.md`'s Sentry entry confirms no `@sentry/react-native`, no Expo Sentry config plugin, and no client-side `Sentry.init`/`captureException` exists anywhere in `frontend/`. Backend Sentry (Section 2.2) covers server-side errors only — a client-side crash (a JS exception during render, a native crash) currently has no observability path at all.
+- **Procedure**: not yet written — this needs a product decision first (does this release need client crash reporting before shipping, or is backend-only observability an acceptable v1 posture), then, if yes, an integration + its own verification runbook mirroring Section 2.2's structure.
+- **Expected result**: an explicit, documented decision either way — not silence.
+- **Responsible environment**: repo-only for the decision and any resulting integration.
+- **Remediation path**: n/a — this is a decision gate, not a defect. Do not mark this PASS by default; mark it PASS only once the decision is made and, if "yes," the integration is verified.
 
 ---
 
 ## Section 5 — EAS + native production build
+
+### 5.0 Preflight gate (run before spending time on a signed build)
+
+Building a signed candidate is expensive (real EAS build minutes, and
+every rebuild invalidates the "one candidate, one certification"
+principle in Section 10/13). Confirm all of the following **before**
+running `docs/RUNBOOK_EAS_SIGNING_PRODUCTION_BUILD.md`:
+
+- [ ] `main` is clean — no uncommitted changes, no open PRs with
+      required fixes still pending merge.
+- [ ] CI is green on `main`'s current head (typecheck, full test
+      suites, both SQLite and real-Postgres backend lanes).
+- [ ] CodeQL is green on `main`'s current head.
+- [ ] No unresolved P0/P1 — specifically, the RELEASE DEFECT items in
+      `docs/SCREEN_UX_FINDINGS_TRIAGE.md` are either fixed or
+      explicitly deferred with a documented reason.
+- [ ] The PRE-RELEASE POLISH pass (same triage doc) is done — building
+      a candidate and then changing Feed/Place Detail/etc. afterward
+      invalidates part of that candidate's certification evidence.
+- [ ] Section 3 (legal pages) is at least at a stable state — a candidate
+      certified before the hosted privacy policy exists will need its
+      store-metadata fields revisited, though not necessarily a rebuild.
+- [ ] `docs/PRODUCTION_ENVIRONMENT_MANIFEST.md` is fully resolved (every
+      required variable set correctly) — Section 4's runbooks should
+      all be at least attempted, ideally PASS, before building.
+
+Only once every box is checked, proceed to build. This gate exists to
+avoid rebuilding a signed binary for something that was fully
+checkable beforehand.
 
 ### 5.1 iOS bundle ID / Android package ID
 
@@ -183,41 +262,79 @@ Not re-litigated here. Only reopens under bucket-4 policy (Section 12) if a late
 
 ### 5.3 Apple certificates/provisioning, Android signing credentials
 
-- **Bucket**: 3
-- **Status**: **BLOCKED ON ACCESS** — cannot be checked from this repo/session at all; requires an Apple Developer account and a Google Play Console / keystore.
-- **Procedure**: not applicable to write from here — this is entirely EAS-managed-credentials or manual-credentials territory inside `eas credentials`, run by whoever holds the Apple/Google accounts.
+- **Bucket**: 2 (procedure now written) → 3 (execution — genuinely can't be done from a repo session)
+- **Status**: **READY FOR HUMAN VERIFICATION**
+- **Evidence**: `docs/RUNBOOK_EAS_SIGNING_PRODUCTION_BUILD.md` Steps 1-2.
+- **Procedure**: confirm bundle/package identity matches store consoles, then `eas credentials` to confirm valid non-expired iOS distribution cert + provisioning profile, and a real (non-debug) Android production upload keystore.
 - **Expected result**: valid, non-expired distribution certificate + provisioning profile (iOS) and a production upload keystore (Android) are configured in EAS.
 - **Responsible environment**: Apple Developer Program + Google Play Console + EAS.
-- **Remediation path**: generate/renew credentials through `eas credentials` or the respective console; re-run the build.
+- **Remediation path**: generate/renew credentials through `eas credentials` or the respective console; re-run the build. If the Android keystore changes, also update the Maps key SHA-1 restriction (Section 4.5).
 
 ### 5.4 Real production release build produced
 
-- **Bucket**: 3 (depends on 5.3)
-- **Status**: **NOT STARTED**.
-- **Procedure**: `eas build --profile production --platform all` (or per-platform), once 5.3 is resolved — not a dev/simulator build.
-- **Expected result**: a signed, installable production build for both platforms.
+- **Bucket**: 2 (procedure now written) → 3 (execution, depends on 5.3)
+- **Status**: **READY FOR HUMAN VERIFICATION**
+- **Evidence**: `docs/RUNBOOK_EAS_SIGNING_PRODUCTION_BUILD.md` Steps 3-4.
+- **Procedure**: `eas build --profile production --platform all`, confirm the build picks up production-scoped `EXPO_PUBLIC_*` values (not `preview`/`development`), install and smoke-check on one real device per platform before proceeding to full certification.
+- **Expected result**: a signed, installable production build for both platforms, confirmed talking to the real production backend.
 - **Responsible environment**: EAS + the credential accounts in 5.3.
 - **Remediation path**: any build failure here is diagnosed against EAS's own build logs — a config or credential fix, not an app-code fix, unless the failure is a genuine native-module/build-config bug (bucket 4).
+
+### 5.5 Release-candidate identity record (template)
+
+Fill in and date-stamp once per certification candidate — this is
+what answers "which build actually passed" later, per the standing
+concern that certification evidence is worthless if nobody can later
+prove which exact binary it applies to.
+
+```
+Release candidate identity — <date>
+Mobile (frontend) commit:     <git SHA>
+Backend commit:               <git SHA>
+Backend deployment ID:        <Railway deployment ID, from /api/v1/debug/version>
+iOS version / build number:   <e.g. 1.0.0 (4)>
+Android version / build:      <e.g. 1.0.0 (4)>
+EAS build ID (iOS):           <build ID>
+EAS build ID (Android):       <build ID>
+Production environment:       <confirm Section 4 status as of this candidate>
+Certification date range:     <start> to <end>
+Device/OS matrix tested:      <e.g. iPhone 15, iOS 18.x; Pixel 8, Android 15>
+Remediation PRs (if any):     <PR #s for any bucket-4 fixes rolled into this candidate>
+Result:                       PASS / FAILED — see Section 9 for the smoke test that confirms this
+```
 
 ---
 
 ## Section 6 — Physical-device certification
 
-- **Bucket**: 2 (test script) → 3 (execution)
-- **Status**: **NOT STARTED** — no device-test script has been written yet. The UX/design audit (`docs/SCREEN_INVENTORY_UX_DESIGN_AUDIT_2026-09-06.md`, PR #143) documents the *expected* behavior for several of these (permission denied/blocked flows for camera/mic/location/notifications) in enough detail to seed a real script, but the script itself doesn't exist as a standalone artifact yet.
-- **Procedure**: not yet written. Must cover, on at least one real iPhone and one real Android device, against a real production or production-like build: camera, microphone, video recording/upload, photo upload, location, notifications, denied permissions, permanently-denied permissions → Settings recovery, background→foreground transitions, login/logout, account deletion, offline/reconnect behavior.
-- **Expected result**: every flow above behaves as designed (per the audit's documented expected states) on real hardware, not just in the Jest/RTL simulation this repo's tests run.
-- **Responsible environment**: physical iPhone + physical Android device, ideally running the real production build from Section 5.
+- **Bucket**: 2 (procedure written) → 3 (execution)
+- **Status**: **READY FOR HUMAN VERIFICATION**
+- **Evidence**: `docs/RUNBOOK_PHYSICAL_DEVICE_CERTIFICATION.md` — a per-flow pass/fail table (auth/account lifecycle, camera/mic/media, location, notifications, background/foreground/connectivity) grounded in the UX audit's documented expected behavior, plus explicit callouts to re-check the 3 RELEASE DEFECT items from `docs/SCREEN_UX_FINDINGS_TRIAGE.md` on real hardware.
+- **Procedure**: run the full table on at least one real iPhone and one real Android device, against the signed release candidate from Section 5 (not a dev/Expo-Go build).
+- **Expected result**: every flow behaves as designed on real hardware, not just in the Jest/RTL simulation this repo's tests run.
+- **Responsible environment**: physical iPhone + physical Android device, running the real production build from Section 5.
 - **Remediation path**: a failure here is bucket 4 — a narrow, scoped bugfix PR against the specific defect (e.g. "permanently-denied camera permission doesn't route to Settings on Android 14"), not a new hardening phase.
+
+---
+
+## Section 6a — Performance and resilience certification
+
+- **Bucket**: 2 (procedure) → 3 (execution)
+- **Status**: **NOT STARTED** — not covered by any runbook yet; the newest category on this matrix, folded in from an independently-built companion matrix (PR #142) that covered this angle this one didn't originally have.
+- **Procedure**: not yet written. Should cover, on the real signed candidate: cold-start time on representative hardware, Feed/list scrolling smoothness under real production data volume, Map pan/zoom/pin responsiveness, image/video memory pressure under repeated media flows (no crash/catastrophic degradation), API failure resilience (does the app degrade gracefully or cascade-fail when a backend call fails), upload retry/restart behavior surviving an app restart, the recommendation-event outbox recovering after restart/reconnect, and a basic production backend latency sanity check.
+- **Expected result**: no release-blocking jank, memory crash, or resilience gap under realistic use.
+- **Responsible environment**: physical devices (overlaps Section 6) + production backend.
+- **Remediation path**: bucket 4 — a failure becomes a narrow performance/resilience bugfix PR, not a new hardening phase.
 
 ---
 
 ## Section 7 — Accessibility certification
 
-- **Bucket**: 2 (test script) → 3 (execution)
-- **Status**: **NOT STARTED** — no accessibility test script exists yet.
-- **Procedure**: not yet written. Must cover VoiceOver (iOS) and TalkBack (Android) passes across primary flows (Feed, Place Detail, Rank, Craves, Settings, record-video), Dynamic Type / larger text, screen-reader focus order, accessible labels (spot-checked already in earlier phases — see `ACCESSIBILITY_CONTRAST_AUDIT.md` referenced in `constants/colors.ts`'s own comments), touch-target sizes, contrast, reduced motion, and keyboard/focus behavior where applicable (web).
-- **Expected result**: primary flows are fully operable with VoiceOver/TalkBack, text scales without breaking layout, and the existing contrast-audit fixes (e.g. `textSecondary`'s `#8C8C8C` value) hold up under real assistive-tech use, not just automated contrast math.
+- **Bucket**: 2 (procedure written) → 3 (execution)
+- **Status**: **READY FOR HUMAN VERIFICATION**
+- **Evidence**: `docs/RUNBOOK_ACCESSIBILITY_CERTIFICATION.md` — a per-screen VoiceOver/TalkBack checklist (labels, focus order, state announcements, destructive-action clarity, permission-dialog handling) plus Dynamic Type, touch-target, contrast, and reduced-motion checks, in the UX audit's own priority order.
+- **Procedure**: run the full checklist across Feed, Place Detail, Rank, Craves, Map, Profile/Settings, record-video, Search, Leaderboard, with VoiceOver/TalkBack actually enabled on real devices.
+- **Expected result**: primary flows are fully operable with VoiceOver/TalkBack, text scales without breaking layout, and the existing contrast-audit fixes (e.g. `textSecondary`'s `#8C8C8C` value) hold up under real assistive-tech use — not just automated contrast math. Reduced-motion support is confirmed as a genuine open question (no `AccessibilityInfo.isReduceMotionEnabled()` usage found anywhere), not assumed already handled.
 - **Responsible environment**: physical devices with VoiceOver/TalkBack enabled.
 - **Remediation path**: bucket 4 — a failure becomes a narrow accessibility bugfix PR.
 
@@ -237,12 +354,13 @@ Not re-litigated here. Only reopens under bucket-4 policy (Section 12) if a late
 
 ### 8.2 Apple Privacy Nutrition Labels / Google Play Data Safety mapping
 
-- **Bucket**: 1
-- **Status**: **NOT STARTED** — not yet drafted. This is explicitly a bucket-1 item (Codex can map declared data categories from actual runtime behavior — what CRAVE actually collects/sends: location, photos/videos, account identifiers via Supabase, crash/error data via conditional Sentry — without needing store-console access to draft the mapping).
-- **Procedure**: not yet written.
-- **Expected result**: a drafted mapping ready to paste into App Store Connect / Play Console, accurate to what the app and backend actually do (matching the privacy policy and the Section 2.2 Sentry finding — server-side-only crash reporting, not client SDK).
-- **Responsible environment**: repo-only for the draft; console entry is bucket 3.
-- **Remediation path**: n/a — forward work.
+- **Bucket**: 1 (draft done) → 3 (console entry)
+- **Status**: **READY FOR HUMAN VERIFICATION**
+- **Evidence**: `docs/PROVIDER_DATA_FLOW_INVENTORY.md` — maps every external processor (Supabase, Railway, R2, Google Maps/Places, Expo push, conditional Sentry) to exactly what CRAVE sends it, why, retention, and linkability, with an explicit section on how to translate each row into Apple's and Google's own category taxonomies.
+- **Procedure**: re-confirm the inventory is current (Section 3.4's final-policy-refresh discipline applies here too), then transcribe into App Store Connect's Privacy Nutrition Label form and Play Console's Data Safety form.
+- **Expected result**: a mapping ready to paste into both consoles, accurate to actual runtime behavior — matching the privacy policy and the Section 2.2/4.6 Sentry findings (server-side-only today, client absent).
+- **Responsible environment**: repo-only for the draft (done); console entry is bucket 3.
+- **Remediation path**: if runtime behavior changes (a new provider, a new data category collected), update the inventory first, then the console declarations — never the reverse.
 
 ### 8.3 Google Play external account-deletion URL + Privacy Policy URL fields
 
@@ -255,33 +373,44 @@ Not re-litigated here. Only reopens under bucket-4 policy (Section 12) if a late
 
 ### 8.4 Age/content rating, app category, support/contact info, screenshots/description/metadata
 
-- **Bucket**: 1 (drafting copy/category recommendation) → 3 (console submission/questionnaire)
-- **Status**: **NOT STARTED**.
-- **Procedure**: not yet written. Drafting (category recommendation, support email/URL, store description copy, age-rating-questionnaire answers based on actual app content) can happen autonomously; screenshots need either a real or high-fidelity build to capture from (overlaps Section 5/6).
+- **Bucket**: 1 (drafts done) → 3 (console submission/questionnaire, screenshot capture)
+- **Status**: **READY FOR HUMAN VERIFICATION**
+- **Evidence**: `docs/STORE_METADATA_DRAFT.md` (app name/description/category/keywords/support-contact/age-rating draft/review notes) and `docs/SCREENSHOT_CAPTURE_PLAN.md` (required screens, device sizes, ordering, captions, seeded-data plan — not final screenshots, since those wait for the PRE-RELEASE POLISH pass per Section 10/13).
+- **Procedure**: fill in the draft's explicitly-marked `[pending]` fields (support URL/email, final legal entity name) with real values, complete the actual age-rating questionnaire against current store wording (not just this draft's recommendation), then capture screenshots per the capture plan once screens are finalized.
 - **Expected result**: complete, accurate store listing.
-- **Responsible environment**: repo/drafting is bucket 1; actual console entry and screenshot capture from a real build is bucket 3.
+- **Responsible environment**: repo/drafting is bucket 1 (done); actual console entry and screenshot capture from a real build is bucket 3.
+- **Remediation path**: n/a — forward work, drafts ready for human completion.
+
+### 8.5 UGC / moderation representation to store reviewers
+
+- **Bucket**: 1 (draft) → 3 (confirm against actual moderation operations)
+- **Status**: **NOT STARTED** — a draft exists (`docs/STORE_METADATA_DRAFT.md`'s UGC section, naming `ReportPhotoSheet` and the block flow) but explicitly flags that the actual moderation-response process/SLA has not been confirmed with whoever owns backend moderation operations.
+- **Procedure**: confirm the real moderation process (who reviews reports, expected response time, escalation path) and finalize the store-facing description to match — both stores increasingly expect UGC apps to describe real moderation capability, not just that a report button exists.
+- **Expected result**: an accurate description of real moderation capability and process.
+- **Responsible environment**: repo for the description; confirming actual process is an internal/operational check, not a console or device dependency.
 - **Remediation path**: n/a — forward work.
 
 ---
 
 ## Section 9 — Final release smoke test
 
-- **Bucket**: 2 (script) → 3 (execution)
-- **Status**: **NOT STARTED** — no smoke-test script written yet.
-- **Procedure**: not yet written. Must cover, on the actual signed store-candidate build pointed at production: fresh account creation, the main CRAVE flows (Feed → Place Detail → Rank, Craves, Map, Search), media upload (photo + video), verifying a recommendation/telemetry event actually lands (the repo already has `GET /debug/recommendation-events` for exactly this kind of check), receiving a push notification, then deleting the account and verifying the deletion contract (matching Phase 7's actual scope and the account-deletion UI walkthrough in the UX audit).
-- **Expected result**: every step succeeds against real production infrastructure with no manual workarounds.
-- **Responsible environment**: a physical device (or at minimum a real build) + production backend + the debug endpoints (`/api/v1/debug/version`, `/api/v1/debug/recommendation-events`) for verification.
-- **Remediation path**: bucket 4 — any failure here is a narrow, scoped bugfix PR against the specific step that failed.
+- **Bucket**: 2 (procedure written) → 3 (execution)
+- **Status**: **READY FOR HUMAN VERIFICATION**
+- **Evidence**: `docs/RUNBOOK_FINAL_RELEASE_SMOKE_TEST.md` — a single 13-step linear journey (build-identity confirmation → fresh signup → discovery → Place Detail → rank → save/Craves → media upload → telemetry check via `/api/v1/debug/recommendation-events` → push → Sentry sanity → logout/re-login → account deletion → post-deletion access check) using the disposable-deletion test account from `docs/RELEASE_TEST_ACCOUNTS_AND_FIXTURES.md`.
+- **Procedure**: run the full journey once, on the exact signed candidate, after every other certification section has passed — this is explicitly the *last* gate, not a parallel check.
+- **Expected result**: every step succeeds against real production infrastructure with no manual workarounds, and step 12's server-side deletion check confirms actual removal, not just a client-side success toast.
+- **Responsible environment**: a physical device (or at minimum a real build) + production backend + the debug endpoints for verification.
+- **Remediation path**: bucket 4 — any failure here is a narrow, scoped bugfix PR against the specific step that failed; a failure at the integration level specifically (individually-passing pieces that don't work together) should be flagged as such.
 
 ---
 
 ## Section 10 — Screen/UX design certification track
 
 - **Bucket**: 1 (audit + polish implementation itself is repo-only code work; no devices/consoles needed)
-- **Status**: **AUDIT COMPLETE, POLISH NOT STARTED**
-- **Evidence**: `docs/SCREEN_INVENTORY_UX_DESIGN_AUDIT_2026-09-06.md` (PR #143) — full inventory of 20 routes + 13 shared components against a 5-category framework. This track runs in parallel with, not blocking, Sections 1-9; it is a product-quality track, not a release-blocking gate the store or a platform enforces, but is explicitly part of "done" per the user's own product bar.
-- **Procedure**: the audit's own recommended sequencing — systemic fixes first (a real `Typography` scale, a `Shadows`-adoption decision, consolidating `PlaceCard`/`PlaceCardCompact` and the duplicated ranked-row components), then the screen-specific polish pass in priority order: Feed → Place Detail → Map → Craves/Rankings → Profile/Settings → edge-state screens.
-- **Expected result**: each screen reviewed against the audit's specific, named gaps (e.g. Leaderboard reusing `RankedPlaceRow`, Rank's retry button actually retrying, account-deletion's visual weight) and either fixed or explicitly deferred with a reason.
+- **Status**: **AUDIT + TRIAGE COMPLETE, POLISH NOT STARTED**
+- **Evidence**: `docs/SCREEN_INVENTORY_UX_DESIGN_AUDIT_2026-09-06.md` (PR #143) — full inventory of 20 routes + 13 shared components against a 5-category framework — and `docs/SCREEN_UX_FINDINGS_TRIAGE.md`, which sorts every finding into RELEASE DEFECT (4 items — Rank's non-functional retry, record-video's silent recording failure, Leaderboard's missing Friends-sign-in state, account deletion's under-weighted visual treatment), ACCESSIBILITY (none new — deferred to Section 7's own pass), PRE-RELEASE POLISH (9 items — do before the certification candidate is built), and POST-LAUNCH (8 items — safe to defer). This track runs in parallel with, not blocking, Sections 1-9; it is a product-quality track, not a release-blocking gate the store or a platform enforces, but is explicitly part of "done" per the user's own product bar.
+- **Procedure**: fix the 4 RELEASE DEFECT items as narrow bugfix PRs (same discipline as any Section 12 failure); complete the PRE-RELEASE POLISH list before Section 5.0's preflight gate is checked off; leave POST-LAUNCH items tracked but unblocking.
+- **Expected result**: each RELEASE DEFECT fixed and verified; each PRE-RELEASE POLISH item fixed or explicitly deferred with a documented reason before the certification candidate is built.
 - **Responsible environment**: repo-only.
 - **Remediation path**: n/a — this is the forward work itself, tracked as its own set of scoped PRs per screen/system, not a single giant redesign PR.
 
@@ -297,37 +426,85 @@ Not re-litigated here. Only reopens under bucket-4 policy (Section 12) if a late
 | 3.1 | Hosted Privacy Policy URL | 1 | **NOT STARTED** |
 | 3.2 | Hosted account-deletion page | 1 | **NOT STARTED** |
 | 3.3 | Hosted-vs-in-app parity | 1 | **NOT STARTED** |
+| 3.4 | Final policy/current-requirements refresh | 1 | **NOT STARTED** (never permanently PASS) |
 | 4.1 | `APP_ENV=prod` + Railway env vars | 2→3 | **READY FOR HUMAN VERIFICATION** |
-| 4.2 | Supabase production config | 2→3 | **NOT STARTED** |
-| 4.3 | R2 production config | 2→3 | **NOT STARTED** |
-| 4.4 | Push notification config | 2→3 | **NOT STARTED** |
-| 4.5 | Google Maps/Places production keys | 2→3 | **NOT STARTED** |
+| 4.2 | Supabase production config | 2→3 | **READY FOR HUMAN VERIFICATION** |
+| 4.3 | R2 production config | 2→3 | **READY FOR HUMAN VERIFICATION** |
+| 4.4 | Push notification config | 2→3 | **READY FOR HUMAN VERIFICATION** |
+| 4.5 | Google Maps/Places production keys | 2→3 | **READY FOR HUMAN VERIFICATION** |
+| 4.6 | Client/native crash observability decision | 1 | **NOT STARTED** (decision gate) |
 | 5.1 | iOS bundle ID / Android package ID | 1 | **PASS** |
 | 5.2 | EAS build profiles configured | 1 | **PASS** |
-| 5.3 | Apple/Android signing credentials | 3 | **BLOCKED ON ACCESS** |
-| 5.4 | Real production release build | 3 | **NOT STARTED** |
-| 6 | Physical-device certification | 2→3 | **NOT STARTED** |
-| 7 | Accessibility certification | 2→3 | **NOT STARTED** |
+| 5.3 | Apple/Android signing credentials | 2→3 | **READY FOR HUMAN VERIFICATION** |
+| 5.4 | Real production release build | 2→3 | **READY FOR HUMAN VERIFICATION** |
+| 5.5 | Release-candidate identity record | 1 | **TEMPLATE READY** (fill in per candidate) |
+| 6 | Physical-device certification | 2→3 | **READY FOR HUMAN VERIFICATION** |
+| 6a | Performance and resilience certification | 2→3 | **NOT STARTED** |
+| 7 | Accessibility certification | 2→3 | **READY FOR HUMAN VERIFICATION** |
 | 8.1 | Permission-explanation strings | 1 | **PASS** |
-| 8.2 | Privacy Nutrition Labels / Data Safety | 1 | **NOT STARTED** |
+| 8.2 | Privacy Nutrition Labels / Data Safety | 1→3 | **READY FOR HUMAN VERIFICATION** |
 | 8.3 | Play Console URL fields | 3 | **NOT STARTED** |
-| 8.4 | Age rating/category/support/metadata | 1→3 | **NOT STARTED** |
-| 9 | Final release smoke test | 2→3 | **NOT STARTED** |
-| 10 | Screen/UX design certification track | 1 | **AUDIT COMPLETE, POLISH NOT STARTED** |
+| 8.4 | Age rating/category/support/metadata | 1→3 | **READY FOR HUMAN VERIFICATION** |
+| 8.5 | UGC/moderation representation | 1→3 | **NOT STARTED** |
+| 9 | Final release smoke test | 2→3 | **READY FOR HUMAN VERIFICATION** |
+| 10 | Screen/UX design certification track | 1 | **AUDIT + TRIAGE COMPLETE, POLISH NOT STARTED** |
 
 **Read of the table**: 5 items are fully **PASS**. 1 is **PASS,
-conditional** on a bucket-3 confirmation. 2 are **READY FOR HUMAN
-VERIFICATION** (Sentry, and now Railway env vars) — the strongest
-state short of PASS, since both procedures are fully written and
-repo-verified. Everything else is either **BLOCKED ON ACCESS** (Apple/
-Android signing credentials — genuinely can't be checked from a repo
-session at all) or **NOT STARTED** (a procedure gap, not just an
-access gap — e.g. Supabase/R2/push/Maps config in Section 4 still need
-their own runbooks the way Sentry and Railway env vars got one). The
-next highest-leverage bucket-1 work is closing those remaining Section
-4 procedure gaps and starting the Section 8 drafting work — both are
-real repo-only work Codex can do next, before this matrix's remaining
-rows become purely "wait for human access."
+conditional** on a bucket-3 confirmation. 11 are **READY FOR HUMAN
+VERIFICATION** — every Section 4 config runbook, EAS signing/build,
+device certification, accessibility, the final smoke test, and the
+Section 8 drafting items now have a complete, repo-verified procedure
+waiting only on someone with the right dashboard/device/console access
+to execute it. What remains genuinely **NOT STARTED** is now narrow
+and specific: the hosted legal pages (blocked on a hosting decision,
+Section 3.1-3.3), the final pre-submission policy refresh (3.4, by
+design never permanently PASS), the client/native crash-observability
+decision (4.6), Performance & Resilience certification (6a, no runbook
+yet), Play Console URL field entry (8.3, trivially blocked on 3.1/3.2),
+and UGC/moderation representation (8.5, needs one internal
+confirmation). Codex's certification run should now be almost entirely
+**execution**, not **research**: read this matrix, run the preflight
+gate (Section 5.0), execute each prepared runbook in order, attach
+evidence, mark PASS/FAIL, open a narrow bugfix PR only if something
+fails.
+
+## Submission gates (flat checklist)
+
+Every one of these is release-blocking. This is the same information
+as Sections 1-10, restated as a single linear checklist for the moment
+of actually deciding to submit — check every box, don't submit until
+all are checked.
+
+- [ ] Hosted Privacy Policy is public, stable, and entered in both
+      stores (3.1, 8.3).
+- [ ] Google Play external account-deletion resource is public,
+      functional, and entered in Play Console (3.2, 8.3).
+- [ ] Hosted-vs-in-app legal parity confirmed (3.3).
+- [ ] Final policy/current-requirements refresh done immediately
+      before this submission (3.4).
+- [ ] Production infrastructure verified: Railway env vars, Supabase,
+      R2, push, Google Maps/Places (Section 4.1-4.5).
+- [ ] Client/native crash-observability decision made and, if
+      integration was chosen, verified (4.6).
+- [ ] Exact signed iOS and Android release candidates built, with a
+      completed release-candidate identity record (5.3-5.5).
+- [ ] Physical-device functional matrix passes on iOS and Android (6).
+- [ ] Performance and resilience certification passes (6a).
+- [ ] Accessibility matrix passes on iOS and Android (7).
+- [ ] Privacy Nutrition Labels / Data Safety declarations match the
+      frozen runtime and provider set (8.2).
+- [ ] Store metadata, assets, support details, and UGC/moderation
+      representation are complete (8.4, 8.5).
+- [ ] Final production smoke test passes on the exact submission
+      candidate (9).
+- [ ] No unresolved RELEASE DEFECT from the screen/UX triage remains
+      (10, `docs/SCREEN_UX_FINDINGS_TRIAGE.md`).
+- [ ] No unresolved P0/P1 of any kind remains.
+- [ ] Any certification-generated bugfix PR has passed CI/CodeQL/tests
+      and the affected gate has been re-run (Section 12).
+- [ ] Rollback/release-response procedures are reviewed and current
+      (`docs/RELEASE_ROLLBACK_PROCEDURES.md`) before submitting, not
+      drafted only after an incident.
 
 ## Section 12 — Bucket-4 policy (when to reopen code)
 
@@ -351,3 +528,34 @@ per occurrence; never overwrite a prior entry. An item with no
 history" a checkable convention instead of an unenforced instruction —
 a reviewer can grep this file for `Failure history` and see every
 item's track record in one pass.
+
+## Section 13 — Operational readiness (post-release)
+
+Certification (everything above) is pre-release. What happens in the
+hours/days immediately after release is a separate concern, prepared
+now rather than improvised during an incident:
+`docs/RELEASE_ROLLBACK_PROCEDURES.md` covers backend rollback,
+mid-migration rollback, a critical mobile-build defect, credential
+rotation, store rejection, and a post-release observability spike.
+Review it before submitting, per the submission checklist above — not
+just when something has already gone wrong.
+
+## Section 14 — Continuous expansion rule
+
+This matrix is not considered frozen until store submission. Add
+newly discovered release requirements, certification failures,
+store-review requirements, device-specific regressions, privacy/
+provider changes, or operational dependencies as new rows or sections
+rather than keeping them in chat-only notes. The final objective is
+simple: **one document must be able to answer exactly what is done,
+what remains, what is blocked by access, what failed, what evidence
+proves each PASS, and whether the exact candidate is safe to submit.**
+
+This matrix supersedes any other document making the same claim —
+in particular, PR #142's independently-built companion matrix was
+consolidated into this one (its Performance & Resilience category,
+granular device/accessibility framing, explicit crash-observability
+callout, and flat submission checklist are now Sections 6a, 6/7's
+evidence, 4.6, and the Submission Gates checklist above) and closed
+in favor of this document, per explicit direction, so there is exactly
+one controlling release-certification document, not two.
