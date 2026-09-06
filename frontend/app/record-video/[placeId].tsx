@@ -97,11 +97,19 @@ export default function RecordVideoScreen() {
 
       if (!result?.uri) return; // recording was cancelled with no output
 
-      // Re-checked: a sign-out during the recording itself (rare, but
-      // real -- this can take up to MAX_DURATION_SEC) must still be
-      // reported truthfully rather than silently discarding a completed
-      // recording with no explanation at all.
-      if (!placeId || !user?.id) {
+      // Re-checked against the *current* auth state, not the `user`
+      // this closure captured when startRecording began -- a sign-out
+      // during the recording itself (rare, but real: this can take up
+      // to MAX_DURATION_SEC) would otherwise go undetected, since the
+      // closed-over `user` variable still holds the pre-sign-out
+      // identity for this call's entire remaining lifetime regardless
+      // of what the store holds by the time it actually checks. That
+      // let a video queue and sync under a session that had already
+      // ended. Also requires it's still the *same* user (not just "a"
+      // user), in case someone signed in as a different account in the
+      // gap.
+      const currentUser = useAuthStore.getState().user;
+      if (!placeId || !currentUser?.id || currentUser.id !== user?.id) {
         toast("Couldn't save your video — you're no longer signed in.");
         return;
       }
@@ -112,11 +120,11 @@ export default function RecordVideoScreen() {
           sourceUri: result.uri,
           placeId,
           contentType: contentTypeForUri(result.uri),
-          uploadedBy: user.id,
+          uploadedBy: currentUser.id,
           templateId: selectedTemplateId,
         });
         toast("Saved — it'll post as soon as you're online.");
-        runSyncPass(user.id).catch(() => {});
+        runSyncPass(currentUser.id).catch(() => {});
         router.back();
       } catch (err: any) {
         toast(err?.message ?? "Couldn't save your video. Try again.");

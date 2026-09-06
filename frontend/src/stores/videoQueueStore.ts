@@ -82,6 +82,18 @@ const MAX_QUEUED_VIDEOS = 10;
 // device storage and because a runaway queue would mean a very long
 // backlog to drain once connectivity returns.
 
+// A 'failed' video (unlike 'missing_local_file') still retains its real,
+// full local file -- that's the whole point, so retryFailedVideo has
+// something to resubmit. Excluding it from MAX_QUEUED_VIDEOS (so it
+// can't permanently block new recordings) would otherwise let an
+// unbounded number of them accumulate with no UI to ever clear them,
+// each still holding a multi-MB file. This caps how many are *retained*
+// -- once exceeded, the oldest failed video's local file is deleted
+// (freeing the storage) and it's folded into missing_local_file, which
+// accurately describes it from that point on: retryable in principle,
+// but the file itself is now actually gone.
+const MAX_RETAINED_FAILED_VIDEOS = 3;
+
 function generateLocalId(): string {
   // Not cryptographically secure -- doesn't need to be. This is purely a
   // local idempotency key (see backend routes/videos.py's client_id
@@ -195,7 +207,7 @@ export const useVideoQueueStore = create<VideoQueueStore>()(
             try {
               await syncOne(video, set, get);
             } catch (err: any) {
-              recordFailure(video.id, err?.message ?? String(err), set, get);
+              await recordFailure(video.id, err?.message ?? String(err), set, get);
               // Keep going -- one bad video shouldn't block the rest of the queue.
             }
           }
@@ -243,6 +255,24 @@ async function syncOne(
     });
   };
 
+  // Checked *before* ever contacting the backend -- requesting an upload
+  // slot creates a real `pending` PlaceVideo row server-side (see
+  // request_video_upload_slot), so checking the local file only after
+  // that call meant every missing-file video also left an orphaned
+  // pending row behind for no reason (it can never be confirmed, since
+  // there's nothing left to upload).
+  const fileInfo = await FileSystem.getInfoAsync(video.localUri);
+  if (!fileInfo.exists) {
+    // Local file is gone (user cleared storage, an OS cache sweep, etc.)
+    // -- nothing to upload, no recovering it. Previously this silently
+    // dropped the row entirely, so the user's recording just vanished
+    // from the queue with no explanation at all. A missing local file is
+    // a real, distinct terminal failure -- not the same as never having
+    // recorded anything -- so it's recorded as one instead of erased.
+    setVideoState({ syncState: 'missing_local_file', lastError: 'Local recording is no longer available.' });
+    return;
+  }
+
   // Always (re-)request an upload URL, even if serverId is already set --
   // the presigned URL itself is never persisted (only the server row id
   // is), and a fresh URL is needed on every attempt regardless. The
@@ -258,18 +288,6 @@ async function syncOne(
   });
   setVideoState({ serverId });
 
-  const fileInfo = await FileSystem.getInfoAsync(video.localUri);
-  if (!fileInfo.exists) {
-    // Local file is gone (user cleared storage, an OS cache sweep, etc.)
-    // -- nothing to upload, no recovering it. Previously this silently
-    // dropped the row entirely, so the user's recording just vanished
-    // from the queue with no explanation at all. A missing local file is
-    // a real, distinct terminal failure -- not the same as never having
-    // recorded anything -- so it's recorded as one instead of erased.
-    setVideoState({ syncState: 'missing_local_file', lastError: 'Local recording is no longer available.' });
-    return;
-  }
-
   setVideoState({ syncState: 'uploading' });
   await uploadVideoToSignedUrl(uploadUrl, video.localUri, video.contentType);
 
@@ -280,7 +298,7 @@ async function syncOne(
   await FileSystem.deleteAsync(video.localUri, { idempotent: true }).catch(() => {});
 }
 
-function recordFailure(
+async function recordFailure(
   id: string,
   message: string,
   set: (partial: Partial<VideoQueueStore>) => void,
@@ -299,6 +317,38 @@ function recordFailure(
       };
     }),
   });
+  await pruneRetainedFailedVideos(set, get);
+}
+
+// A 'failed' video retains its real local file (unlike
+// 'missing_local_file'), and with no queue-management UI to ever
+// explicitly delete one, an unbounded number could otherwise pile up --
+// each a real multi-MB file -- since Phase 5 deliberately excluded
+// 'failed' from MAX_QUEUED_VIDEOS so a run of failures couldn't
+// permanently block new recordings. This bounds that the other way:
+// once more than MAX_RETAINED_FAILED_VIDEOS have accumulated, the
+// oldest ones' local files are freed and folded into
+// missing_local_file, which is simply the truth from that point on.
+async function pruneRetainedFailedVideos(
+  set: (partial: Partial<VideoQueueStore>) => void,
+  get: () => VideoQueueStore
+) {
+  const failed = get()
+    .videos.filter((v) => v.syncState === 'failed')
+    .sort((a, b) => a.createdAt - b.createdAt);
+  const overflow = failed.length - MAX_RETAINED_FAILED_VIDEOS;
+  if (overflow <= 0) return;
+
+  for (const video of failed.slice(0, overflow)) {
+    await FileSystem.deleteAsync(video.localUri, { idempotent: true }).catch(() => {});
+    set({
+      videos: get().videos.map((v) =>
+        v.id === video.id
+          ? { ...v, syncState: 'missing_local_file', lastError: 'Local recording is no longer available.' }
+          : v
+      ),
+    });
+  }
 }
 
 // Foreground trigger -- mirrors cravesStore.ts's own AppState listener.
