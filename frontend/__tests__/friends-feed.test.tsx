@@ -32,11 +32,14 @@ function setAuth(user: { id: string } | null) {
 
 function renderScreen() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(
-    <QueryClientProvider client={client}>
-      <FriendsFeedScreen />
-    </QueryClientProvider>,
-  );
+  return {
+    client,
+    ...render(
+      <QueryClientProvider client={client}>
+        <FriendsFeedScreen />
+      </QueryClientProvider>,
+    ),
+  };
 }
 
 function rankedEvent(overrides: Partial<ActivityEvent> = {}): ActivityEvent {
@@ -80,6 +83,18 @@ describe('FriendsFeedScreen', () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(mockedFetchFriendsFeed).not.toHaveBeenCalled();
+  });
+
+  it('caches its response under a key scoped to the signed-in user, not a shared unscoped key', async () => {
+    // Key-shape assertion complementing queryClient.test.ts's real
+    // cache-boundary integration test (which uses myRankings as the
+    // primary case) -- proves this screen's own key actually carries
+    // user.id, not just that *a* key exists.
+    mockedFetchFriendsFeed.mockResolvedValue([]);
+    const { client, findByText } = renderScreen();
+    await findByText('Nothing here yet');
+
+    expect(client.getQueryData(['friends-feed', 'me'])).toEqual([]);
   });
 
   it('shows the follow-people empty state when there is no activity, and navigates to the leaderboard from its CTA', async () => {

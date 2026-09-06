@@ -96,13 +96,15 @@ pass's locked scope):
   with per-key scoping, not instead of it), but means a sign-out costs
   a refetch of catalog data too. Not worth narrowing further without a
   reason to.
-- No new automated coverage for `queryClient.clear()` actually being
-  called with real query keys populated (the authStore test mocks the
-  whole module and asserts `.clear()` was called once) -- an end-to-end
-  "populate cache as A, sign out, sign in as B, assert zero A data
-  anywhere" pass across multiple real screens would need a much heavier
-  test harness; the per-screen regression tests above cover the same
-  ground more cheaply per-screen.
+- Closed: `src/lib/queryClient.test.ts` now exercises the real (unmocked)
+  `queryClient` singleton together with the real `authStore.signOut()` --
+  populates `['myRankings','user-A']`, runs the actual sign-out path,
+  asserts it's gone, then proves account B's own key never reads back
+  A's payload. `friends-feed.test.tsx`/`leaderboard.test.tsx` each got one
+  added assertion confirming their actual cache key shape (user-scoped
+  for friends-feed and leaderboard's friends scope; deliberately
+  unscoped for leaderboard's global scope) rather than relying on the
+  myRankings case alone to stand in for all three.
 - PR #129 open against main (see header). CodeRabbit's review returned 5 actionable findings, all verified against current code and all valid -- fixed in a follow-up commit:
   1. `STATE.md` itself had a stale "No PR opened yet" line contradicting the PR now recorded at the top -- fixed (this line).
   2. `profile.tsx`'s account-switch reset ran inside `load()`'s effect, one render after `user` itself changes -- a genuine single-render gap where the outgoing account's data could still paint. Added a render-time-derived `isStaleForCurrentUser` check (reads `loadedForUserIdRef` directly) so the skeleton gate no longer depends on the effect having fired yet.
