@@ -2,12 +2,14 @@
 
 Status: ready-for-review
 Owner: Claude
-Branch: claude/phase1-identity-isolation
+Branch: claude/phase1-identity-isolation (PR #129 open against main)
 Base SHA: 6e32ba4 (main)
-Commit SHA: 21bf785
+Commit SHA: 06a1c84
 Scope: Phase 1 of an 8-phase frontend production-hardening program (user-
 directed) -- identity isolation only. Independent of PR #126, #127, #128
-(all still open, no file overlap).
+(all still open, no file overlap). Merge before starting Phase 2 (Search)
+per explicit user direction -- avoid stacking dependent PRs without a
+reason.
 Locked files: none -- handoff complete.
 
 ## Outcome
