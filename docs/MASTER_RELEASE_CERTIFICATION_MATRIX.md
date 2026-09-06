@@ -406,13 +406,13 @@ Result:                       PASS / FAILED — see Section 9 for the smoke test
 
 ## Section 10 — Screen/UX design certification track
 
-- **Bucket**: 1 (audit + polish implementation itself is repo-only code work; no devices/consoles needed)
-- **Status**: **AUDIT + TRIAGE COMPLETE, POLISH NOT STARTED**
-- **Evidence**: `docs/SCREEN_INVENTORY_UX_DESIGN_AUDIT_2026-09-06.md` (PR #143) — full inventory of 20 routes + 13 shared components against a 5-category framework — and `docs/SCREEN_UX_FINDINGS_TRIAGE.md`, which sorts every finding into RELEASE DEFECT (4 items — Rank's non-functional retry, record-video's silent recording failure, Leaderboard's missing Friends-sign-in state, account deletion's under-weighted visual treatment), ACCESSIBILITY (none new — deferred to Section 7's own pass), PRE-RELEASE POLISH (9 items — do before the certification candidate is built), and POST-LAUNCH (8 items — safe to defer). This track runs in parallel with, not blocking, Sections 1-9; it is a product-quality track, not a release-blocking gate the store or a platform enforces, but is explicitly part of "done" per the user's own product bar.
-- **Procedure**: fix the 4 RELEASE DEFECT items as narrow bugfix PRs (same discipline as any Section 12 failure); complete the PRE-RELEASE POLISH list before Section 5.0's preflight gate is checked off; leave POST-LAUNCH items tracked but unblocking.
-- **Expected result**: each RELEASE DEFECT fixed and verified; each PRE-RELEASE POLISH item fixed or explicitly deferred with a documented reason before the certification candidate is built.
-- **Responsible environment**: repo-only.
-- **Remediation path**: n/a — this is the forward work itself, tracked as its own set of scoped PRs per screen/system, not a single giant redesign PR.
+- **Bucket**: 1 (audit + implementation is repo-only code work; no devices/consoles needed)
+- **Status**: **AUDIT + TRIAGE COMPLETE; SCOPE UPGRADED FROM "POLISH" TO "REDESIGN," MOCKUP ROUND 1 DONE**
+- **Evidence**: `docs/SCREEN_INVENTORY_UX_DESIGN_AUDIT_2026-09-06.md` (PR #143, full inventory of 20 routes + 13 shared components against a 5-category framework), `docs/SCREEN_UX_FINDINGS_TRIAGE.md` (every finding sorted into RELEASE DEFECT — 4 items — / ACCESSIBILITY / PRE-RELEASE POLISH — 9 items — / POST-LAUNCH — 8 items), and `docs/DESIGN_EXPLORATION_LOG.md` (visual-direction mockup rounds — Round 1 complete: rejected D's star-rating model and A's Tinder-style swipe interaction, promoted B's Decision-Session-as-primary-Feed-surface hierarchy — which the pre-existing execution brief already called for — kept A's photography emphasis, deprioritized C's editorial-magazine architecture, explicitly left light/dark undecided from the mockups themselves; Round 2 briefed but not yet generated). Explicit user framing: **"the shipped app is ass so were doing a redesign"** — this is no longer a lighter incremental-polish pass layered onto the current screens; it is a real visual/structural redesign, this track's biggest scope change since the audit.
+- **Procedure**: mockup rounds continue in `docs/DESIGN_EXPLORATION_LOG.md` until a direction locks; the 4 RELEASE DEFECT items can be fixed as narrow bugfix PRs independent of the redesign timeline (they're behavioral bugs, not visual ones); everything else in the triage doc's PRE-RELEASE POLISH/POST-LAUNCH lists is superseded by whatever the locked redesign direction actually calls for, not executed as originally scoped against the current screens.
+- **Expected result**: a locked visual/structural direction, implemented, before Section 5.0's preflight gate is checked off — building a signed candidate against pre-redesign screens would need to be recertified anyway.
+- **Responsible environment**: repo-only for implementation; the mockup/direction rounds themselves happen wherever design generation is being done, with results always recorded back into `docs/DESIGN_EXPLORATION_LOG.md`.
+- **Remediation path**: n/a — this is the forward work itself. Sections 6 (physical-device), 7 (accessibility), and the screenshot-capture plan (`docs/SCREENSHOT_CAPTURE_PLAN.md`) are all scoped to the *current* screens and will need a fresh pass once the redesign lands — treat their existing content as a procedure template to re-run, not evidence that's still valid against a redesigned UI.
 
 ---
 
@@ -447,7 +447,7 @@ Result:                       PASS / FAILED — see Section 9 for the smoke test
 | 8.4 | Age rating/category/support/metadata | 1→3 | **READY FOR HUMAN VERIFICATION** |
 | 8.5 | UGC/moderation representation | 1→3 | **NOT STARTED** |
 | 9 | Final release smoke test | 2→3 | **READY FOR HUMAN VERIFICATION** |
-| 10 | Screen/UX design certification track | 1 | **AUDIT + TRIAGE COMPLETE, POLISH NOT STARTED** |
+| 10 | Screen/UX design certification track | 1 | **REDESIGN IN PROGRESS** (mockup Round 1 done, see `docs/DESIGN_EXPLORATION_LOG.md`) |
 
 **Read of the table**: 5 items are fully **PASS**. 1 is **PASS,
 conditional** on a bucket-3 confirmation. 11 are **READY FOR HUMAN
