@@ -324,7 +324,11 @@ describe('videoQueueStore', () => {
     }
   });
 
-  it('drops the queue entry if the local file has been removed by the OS', async () => {
+  it('marks the queue entry missing_local_file rather than silently dropping it when the OS has removed the file', async () => {
+    // Confirmed Phase 5 gap: previously this silently deleted the row --
+    // the user's recording just vanished from the queue with no
+    // explanation. A missing local file is a real, distinct terminal
+    // failure, not the same as never having recorded anything.
     (videosApi.requestVideoUpload as jest.Mock).mockResolvedValue({
       video_id: 'server-1',
       upload_url: 'https://r2.example.test/put',
@@ -341,7 +345,73 @@ describe('videoQueueStore', () => {
 
     await useVideoQueueStore.getState().runSyncPass('user-a');
 
-    expect(useVideoQueueStore.getState().videos).toHaveLength(0);
+    const [video] = useVideoQueueStore.getState().videos;
+    expect(video.syncState).toBe('missing_local_file');
+    expect(video.lastError).toBe('Local recording is no longer available.');
     expect(videosApi.uploadVideoToSignedUrl).not.toHaveBeenCalled();
+  });
+
+  it('does not retry a missing_local_file video on a later sync pass', async () => {
+    (videosApi.requestVideoUpload as jest.Mock).mockResolvedValue({
+      video_id: 'server-1', upload_url: 'https://r2.example.test/put', key: 'k',
+    });
+    (FileSystem.getInfoAsync as jest.Mock).mockResolvedValue({ exists: false });
+
+    await useVideoQueueStore.getState().recordVideo({
+      sourceUri: 'file:///tmp/clip.mp4', placeId: 'place-1', contentType: 'video/mp4', uploadedBy: 'user-a',
+    });
+    await useVideoQueueStore.getState().runSyncPass('user-a');
+    (videosApi.requestVideoUpload as jest.Mock).mockClear();
+
+    await useVideoQueueStore.getState().runSyncPass('user-a');
+    expect(videosApi.requestVideoUpload).not.toHaveBeenCalled();
+  });
+
+  it('lets deleteFailedVideo clear a missing_local_file entry', async () => {
+    (videosApi.requestVideoUpload as jest.Mock).mockResolvedValue({
+      video_id: 'server-1', upload_url: 'https://r2.example.test/put', key: 'k',
+    });
+    (FileSystem.getInfoAsync as jest.Mock).mockResolvedValue({ exists: false });
+
+    await useVideoQueueStore.getState().recordVideo({
+      sourceUri: 'file:///tmp/clip.mp4', placeId: 'place-1', contentType: 'video/mp4', uploadedBy: 'user-a',
+    });
+    await useVideoQueueStore.getState().runSyncPass('user-a');
+    const missing = useVideoQueueStore.getState().videos[0];
+
+    await useVideoQueueStore.getState().deleteFailedVideo(missing.id);
+    expect(useVideoQueueStore.getState().videos).toHaveLength(0);
+  });
+
+  it('does not let failed or missing-file videos permanently block new recordings against MAX_QUEUED_VIDEOS', async () => {
+    // Both are terminal states nothing further will happen to without an
+    // explicit delete -- they shouldn't count as "actively waiting to
+    // post" and lock a user out of recording anything new ever again.
+    (videosApi.requestVideoUpload as jest.Mock).mockRejectedValue(new Error('still broken'));
+    const clock = mockClock();
+
+    try {
+      // Drive 10 videos to the 'failed' terminal state (MAX_ATTEMPTS).
+      for (let i = 0; i < 10; i++) {
+        await useVideoQueueStore.getState().recordVideo({
+          sourceUri: `file:///tmp/clip-${i}.mp4`, placeId: 'place-1', contentType: 'video/mp4', uploadedBy: 'user-a',
+        });
+      }
+      for (let i = 0; i < 5; i++) {
+        await useVideoQueueStore.getState().runSyncPass('user-a');
+        clock.advance(PAST_MAX_BACKOFF_MS);
+      }
+      expect(useVideoQueueStore.getState().videos.every((v) => v.syncState === 'failed')).toBe(true);
+
+      // A new recording must still be accepted -- none of the 10 above
+      // are "actively waiting to post" anymore.
+      await expect(
+        useVideoQueueStore.getState().recordVideo({
+          sourceUri: 'file:///tmp/one-more.mp4', placeId: 'place-1', contentType: 'video/mp4', uploadedBy: 'user-a',
+        })
+      ).resolves.toBeTruthy();
+    } finally {
+      clock.restore();
+    }
   });
 });

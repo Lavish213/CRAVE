@@ -8,6 +8,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Linking,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -69,6 +70,18 @@ export default function RecordVideoScreen() {
 
   const startRecording = useCallback(async () => {
     if (!cameraRef.current || isRecording) return;
+    // Verify identity and target *before* activating the camera at all --
+    // previously this screen recorded a full video first and only
+    // checked placeId/user afterward, silently discarding a completed
+    // recording with zero feedback if either was missing. The render-time
+    // guards below already keep a signed-out viewer from reaching this
+    // screen through its own normal entry point, but this button is the
+    // one that actually spends the user's effort (a real recording), so
+    // it re-verifies rather than trusting that guard alone.
+    if (!placeId || !user?.id) {
+      toast("Couldn't save your video — sign in and try again.");
+      return;
+    }
     setIsRecording(true);
     recordingStartRef.current = Date.now();
     setElapsedMs(0);
@@ -84,7 +97,14 @@ export default function RecordVideoScreen() {
 
       if (!result?.uri) return; // recording was cancelled with no output
 
-      if (!placeId || !user?.id) return;
+      // Re-checked: a sign-out during the recording itself (rare, but
+      // real -- this can take up to MAX_DURATION_SEC) must still be
+      // reported truthfully rather than silently discarding a completed
+      // recording with no explanation at all.
+      if (!placeId || !user?.id) {
+        toast("Couldn't save your video — you're no longer signed in.");
+        return;
+      }
 
       setSaving(true);
       try {
@@ -114,25 +134,68 @@ export default function RecordVideoScreen() {
     cameraRef.current?.stopRecording();
   }, []);
 
+  // Preconditions, verified before the camera is ever mounted -- this
+  // screen's one known entry point (PlaceVideoGallery) already gates on
+  // sign-in before navigating here, but that guard lives in the caller,
+  // not this route; a deep link or any future entry point would otherwise
+  // reach a fully-functional camera UI with no identity/target to record
+  // against at all.
+  if (!placeId) {
+    return (
+      <View style={[styles.container, styles.centered]}>
+        <Ionicons name="alert-circle-outline" size={48} color={Colors.textSecondary} />
+        <Text style={styles.permissionText}>This video link is invalid.</Text>
+        <TouchableOpacity style={styles.permissionButton} onPress={() => router.back()}>
+          <Text style={styles.permissionButtonText}>Go back</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
+  if (!user) {
+    return (
+      <View style={[styles.container, styles.centered]}>
+        <Ionicons name="person-circle-outline" size={48} color={Colors.textSecondary} />
+        <Text style={styles.permissionText}>Sign in to record a food video.</Text>
+        <TouchableOpacity style={styles.permissionButton} onPress={() => router.back()}>
+          <Text style={styles.permissionButtonText}>Go back</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
   if (!cameraPermission || !micPermission) {
     return <View style={styles.container} />;
   }
 
   if (!cameraPermission.granted || !micPermission.granted) {
+    // canAskAgain is false once the OS has permanently denied the prompt
+    // (or the user picked "Don't ask again") -- requesting again in that
+    // state just silently no-ops, so "Allow Access" would sit there
+    // looking actionable while doing nothing. Route to the OS Settings
+    // app instead, matching this app's own existing convention (see
+    // settings.tsx's identical handling for notification permissions).
+    const blocked = !cameraPermission.canAskAgain || !micPermission.canAskAgain;
     return (
       <View style={[styles.container, styles.centered]}>
         <Ionicons name="videocam-outline" size={48} color={Colors.textSecondary} />
         <Text style={styles.permissionText}>
-          CRAVE needs camera and microphone access to record a food video.
+          {blocked
+            ? 'Camera and microphone access is blocked. Enable it in Settings to record a food video.'
+            : 'CRAVE needs camera and microphone access to record a food video.'}
         </Text>
         <TouchableOpacity
           style={styles.permissionButton}
           onPress={async () => {
+            if (blocked) {
+              Linking.openSettings().catch(() => toast("Couldn't open Settings."));
+              return;
+            }
             await requestCameraPermission();
             await requestMicPermission();
           }}
         >
-          <Text style={styles.permissionButtonText}>Allow Access</Text>
+          <Text style={styles.permissionButtonText}>{blocked ? 'Open Settings' : 'Allow Access'}</Text>
         </TouchableOpacity>
       </View>
     );
