@@ -158,12 +158,15 @@ describe('recommendation event queue', () => {
   it('retains a durable save after send failure and retries it later', async () => {
     mockSend.mockRejectedValueOnce(new Error('offline')).mockResolvedValue(undefined);
 
+    // The mutation owner is known at the call site in production; passing it
+    // here removes ambient-session timing from the durability test and proves
+    // the actual owner-preserving path used by cravesStore.
     logRecommendationEvent({
       surface: 'feed',
       event_type: 'save',
       place_id: 'place-1',
       client_event_id: 'save-1',
-    });
+    }, 'user-a');
     await settleAsyncWork();
 
     jest.advanceTimersByTime(4000);
@@ -188,11 +191,10 @@ describe('recommendation event queue', () => {
       client_event_id: 'unsave-1',
     };
 
-    logRecommendationEvent(event);
-    logRecommendationEvent(event);
+    logRecommendationEvent(event, 'user-a');
+    logRecommendationEvent(event, 'user-a');
     await settleAsyncWork();
-    flushRecommendationEvents();
-    await settleAsyncWork();
+    await flushRecommendationEvents();
 
     expect(mockSend).toHaveBeenCalledTimes(1);
     expect(mockSend.mock.calls[0][0]).toHaveLength(1);
@@ -214,8 +216,7 @@ describe('recommendation event queue', () => {
     ]));
     mockGetSession.mockResolvedValue({ data: { session: { user: { id: 'user-b' } } } });
 
-    flushRecommendationEvents();
-    await settleAsyncWork();
+    await flushRecommendationEvents();
 
     expect(mockSend).not.toHaveBeenCalled();
     expect(mockStorage.removeItem).not.toHaveBeenCalled();
@@ -237,8 +238,7 @@ describe('recommendation event queue', () => {
     ]));
     mockGetSession.mockResolvedValue({ data: { session: { user: { id: 'user-a' } } } });
 
-    flushRecommendationEvents();
-    await settleAsyncWork();
+    await flushRecommendationEvents();
 
     expect(mockSend).toHaveBeenCalledWith([
       expect.objectContaining({ client_event_id: 'save-a' }),
@@ -252,8 +252,7 @@ describe('recommendation event queue', () => {
       { nope: true },
     ]));
 
-    flushRecommendationEvents();
-    await settleAsyncWork();
+    await flushRecommendationEvents();
 
     expect(mockSend).not.toHaveBeenCalled();
   });
