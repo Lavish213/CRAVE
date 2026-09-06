@@ -2,10 +2,10 @@
 
 Status: ready-for-review
 Owner: Claude
-Branch: claude/phase5-followup-coderabbit-findings (PR to be opened
+Branch: claude/phase5-followup-coderabbit-findings (PR #136 open
 against main)
 Base SHA: 9ce1da8 (main, Phase 5 squash merge -- PR #134)
-Commit SHA: 742103e
+Commit SHA: 7c3e671
 Allowed next files: none from me -- this branch is in review, no more
 code planned here unless CI/review findings require it.
 

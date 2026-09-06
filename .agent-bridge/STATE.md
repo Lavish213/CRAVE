@@ -2,12 +2,12 @@
 
 Status: ready-for-review
 Owner: Claude
-Branch: claude/phase5-followup-coderabbit-findings (PR to be opened
+Branch: claude/phase5-followup-coderabbit-findings (PR #136 open
 against main)
 Base SHA: 9ce1da8 (main, Phase 5 squash merge -- PR #134)
-Commit SHA: 742103e
-Scope: Follow-up to Phase 5 (Video/Media Transaction Integrity, PR
-#134). PR #134 was merged by an earlier autonomous pass in this same
+Commit SHA: 7c3e671
+Scope: Follow-up to Phase 5 (Video/Media Transaction Integrity, PR #134).
+PR #134 was merged by an earlier autonomous pass in this same
 session *before* CodeRabbit's review findings had been addressed -- a
 process mistake, not a deliberate decision. This branch fixes the 3
 real findings CodeRabbit raised against the now-merged code, re-

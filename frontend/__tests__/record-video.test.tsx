@@ -219,6 +219,34 @@ describe('RecordVideoScreen', () => {
     expect(mockToastShow).toHaveBeenCalledWith("Couldn't save your video — you're no longer signed in.");
   });
 
+  it('does not sync under a different account that signed in while recordVideo was still saving', async () => {
+    // Confirmed CodeRabbit finding on PR #136: `recordVideo` is itself
+    // async, so the account checked at the top of the handler is not
+    // guaranteed to still be signed in by the time it resolves. Syncing
+    // anyway would authenticate the request as whoever is currently
+    // signed in while attributing it to the account that started the
+    // recording -- the same cross-account mistake this store's own
+    // runSyncPass already guards against elsewhere.
+    mockRecordAsync.mockResolvedValue({ uri: 'file:///tmp/clip.mov' });
+    let resolveRecordVideo: () => void;
+    mockRecordVideo.mockImplementation(
+      () => new Promise((resolve) => { resolveRecordVideo = () => resolve(undefined); }),
+    );
+    const { getByLabelText } = render(<RecordVideoScreen />);
+
+    fireEvent.press(getByLabelText('Start recording'));
+    await act(async () => { await Promise.resolve(); }); // let recordAsync + the pre-save check settle
+    setAuthUser({ id: 'user-2' }); // a different account signs in while recordVideo is still pending
+    await act(async () => {
+      resolveRecordVideo!();
+    });
+
+    expect(mockRecordVideo).toHaveBeenCalledWith(expect.objectContaining({ uploadedBy: 'user-1' }));
+    expect(mockRunSyncPass).not.toHaveBeenCalled();
+    expect(mockToastShow).toHaveBeenCalledWith("Saved — it'll post as soon as you're online.");
+    expect(mockBack).toHaveBeenCalled();
+  });
+
   it('defaults to video/mp4 for an unrecognized or missing extension', async () => {
     mockRecordAsync.mockResolvedValue({ uri: 'file:///tmp/clip' });
     const { getByLabelText } = render(<RecordVideoScreen />);

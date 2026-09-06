@@ -340,7 +340,15 @@ async function pruneRetainedFailedVideos(
   if (overflow <= 0) return;
 
   for (const video of failed.slice(0, overflow)) {
-    await FileSystem.deleteAsync(video.localUri, { idempotent: true }).catch(() => {});
+    try {
+      await FileSystem.deleteAsync(video.localUri, { idempotent: true });
+    } catch {
+      // Deletion genuinely failed (not just "already gone" -- that's
+      // what idempotent:true is for) -- the file may still be on disk,
+      // so leave this video 'failed' rather than falsely claiming
+      // missing_local_file. It stays counted for the next prune pass.
+      continue;
+    }
     set({
       videos: get().videos.map((v) =>
         v.id === video.id

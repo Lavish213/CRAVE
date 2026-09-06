@@ -396,6 +396,44 @@ describe('videoQueueStore', () => {
     }
   });
 
+  it('keeps a video failed (not missing_local_file) when pruning cannot actually delete its file', async () => {
+    // Confirmed CodeRabbit finding on PR #136: the prune loop previously
+    // swallowed a deleteAsync rejection and still marked the video
+    // missing_local_file regardless -- misrepresenting a file that may
+    // still be on disk as gone, and permanently excluding it from any
+    // future prune/retry since missing_local_file isn't 'failed'.
+    (videosApi.requestVideoUpload as jest.Mock).mockRejectedValue(new Error('still broken'));
+    (FileSystem.deleteAsync as jest.Mock).mockRejectedValueOnce(new Error('EACCES'));
+    const clock = mockClock();
+
+    try {
+      const created = [];
+      for (let i = 0; i < 4; i++) {
+        created.push(
+          await useVideoQueueStore.getState().recordVideo({
+            sourceUri: `file:///tmp/clip-${i}.mp4`, placeId: 'place-1', contentType: 'video/mp4', uploadedBy: 'user-a',
+          })
+        );
+        clock.advance(1_000);
+      }
+      for (let i = 0; i < 5; i++) {
+        await useVideoQueueStore.getState().runSyncPass('user-a');
+        clock.advance(PAST_MAX_BACKOFF_MS);
+      }
+
+      const videos = useVideoQueueStore.getState().videos;
+      // clip-0 is the only prune candidate (4 failed - 3 retained = 1
+      // overflow); its deletion was the one rejected above, so it must
+      // stay 'failed', not be falsely folded into missing_local_file.
+      const oldestId = created[0].id;
+      const oldest = videos.find((v) => v.id === oldestId);
+      expect(oldest?.syncState).toBe('failed');
+      expect(videos.some((v) => v.syncState === 'missing_local_file')).toBe(false);
+    } finally {
+      clock.restore();
+    }
+  });
+
   it('does not retry a missing_local_file video on a later sync pass', async () => {
     (videosApi.requestVideoUpload as jest.Mock).mockResolvedValue({
       video_id: 'server-1', upload_url: 'https://r2.example.test/put', key: 'k',

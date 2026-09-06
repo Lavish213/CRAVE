@@ -124,7 +124,17 @@ export default function RecordVideoScreen() {
           templateId: selectedTemplateId,
         });
         toast("Saved — it'll post as soon as you're online.");
-        runSyncPass(currentUser.id).catch(() => {});
+        // Re-check once more: `recordVideo` is itself async, so the
+        // account active at the top of this function is not guaranteed
+        // to still be the one signed in now. Syncing under the wrong
+        // account would authenticate the request as whoever is
+        // currently signed in while attributing it to currentUser.id --
+        // the same cross-account mistake this store's own runSyncPass
+        // comment already warns about.
+        const userAtSyncTime = useAuthStore.getState().user;
+        if (userAtSyncTime?.id === currentUser.id) {
+          runSyncPass(currentUser.id).catch(() => {});
+        }
         router.back();
       } catch (err: any) {
         toast(err?.message ?? "Couldn't save your video. Try again.");
