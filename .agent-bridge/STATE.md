@@ -54,15 +54,18 @@ responsible environment, and remediation path.
 
 Current read (Section 11 of that doc): 5 items **PASS** (credential
 leakage, the prod-config hard-fail gate's code side, bundle/package
-IDs, EAS build profiles, permission-explanation strings), 1 **READY
-FOR HUMAN VERIFICATION** (Sentry — PR #140), everything else either
-**BLOCKED ON ACCESS** (a procedure gap, e.g. Railway env-var
-verification doesn't have a runbook yet the way Sentry does) or **NOT
-STARTED** (hosted legal pages, Supabase/R2/push/Maps production
-config, EAS signing, physical-device/accessibility/smoke-test
-scripts, store metadata drafts). Do not duplicate that tracking here
-— update the matrix directly as items close, and keep this section as
-a pointer + one-line status, not a second copy of the list.
+IDs, EAS build profiles, permission-explanation strings), 2 **READY
+FOR HUMAN VERIFICATION** (Sentry — PR #140; Railway env vars —
+`docs/RAILWAY_PRODUCTION_ENV_VERIFICATION.md`, formalizing
+`_validate_prod_config()`'s own checklist the same way the Sentry doc
+did), everything else either **BLOCKED ON ACCESS** (Apple/Android
+signing credentials — genuinely can't be checked from a repo session)
+or **NOT STARTED** (hosted legal pages, Supabase/R2/push/Maps
+production config runbooks, EAS signing, physical-device/
+accessibility/smoke-test scripts, store metadata drafts). Do not
+duplicate that tracking here — update the matrix directly as items
+close, and keep this section as a pointer + one-line status, not a
+second copy of the list.
 
 Also tracked there (Section 10): the product-design workstream
 (`docs/SCREEN_INVENTORY_UX_DESIGN_AUDIT_2026-09-06.md`, PR #143) —
@@ -77,8 +80,8 @@ reopen Phases 1-7 without a proven regression or an explicitly
 approved new scope — a certification failure becomes a narrow bugfix
 PR (Section 12 of the matrix), never a new hardening phase.
 
-Highest-leverage next bucket-1 work per the matrix: write the
-Railway-env-var verification runbook (Section 4.1 — mirrors what
-`docs/SENTRY_PRODUCTION_VERIFICATION.md` already did for Sentry) and
-start drafting the App Store/Play Store metadata items (Section 8.2,
-8.4) that don't need console access to draft.
+Highest-leverage next bucket-1 work per the matrix: Section 4's
+remaining procedure gaps (Supabase, R2, push, Maps — Sentry and
+Railway env vars both now have runbooks) and drafting the App Store/
+Play Store metadata items (Section 8.2, 8.4) that don't need console
+access to draft.

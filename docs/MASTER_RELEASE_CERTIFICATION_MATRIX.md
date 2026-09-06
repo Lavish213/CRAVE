@@ -60,7 +60,7 @@ Not re-litigated here. Only reopens under bucket-4 policy (Section 12) if a late
 
 - **Bucket**: 2 (instructions prepared) → 3 (execution)
 - **Status**: **READY FOR HUMAN VERIFICATION**
-- **Evidence**: `docs/SENTRY_PRODUCTION_VERIFICATION.md` (PR #140). Repo-side wiring confirmed real: `app/main.py`'s `sentry_sdk.init()` is gated on `settings.sentry_dsn`, tags `environment=settings.app_env`, sets `send_default_pii=False`; `global_exception_handler` calls `capture_exception`; a purpose-built test endpoint (`GET /debug/sentry-test`, gated by `require_debug_api_key`) already exists for triggering a real, safe test event.
+- **Evidence**: `docs/SENTRY_PRODUCTION_VERIFICATION.md` (PR #140). Repo-side wiring confirmed real: `app/main.py`'s `sentry_sdk.init()` is gated on `settings.sentry_dsn`, tags `environment=settings.app_env`, sets `send_default_pii=False`; `global_exception_handler` calls `capture_exception`; a purpose-built test endpoint (`GET /api/v1/debug/sentry-test`, gated by `require_debug_api_key`) already exists for triggering a real, safe test event.
 - **Procedure**: the doc's 3 ordered proofs — (1) confirm `SENTRY_DSN`/`APP_ENV=prod`/`DEBUG_API_KEY` are set on the production Railway service, (2) `curl` the debug endpoint with the debug key, expect HTTP 500, (3) confirm the resulting event lands in the Sentry dashboard tagged `environment:prod` with no PII/secrets in it. Full fail-path (what to check if no event arrives) is in the doc.
 - **Expected result**: exactly one new Sentry event, correctly tagged, clean of sensitive data.
 - **Responsible environment**: Railway dashboard + Sentry project dashboard — outside this session's access.
@@ -113,12 +113,13 @@ Not re-litigated here. Only reopens under bucket-4 policy (Section 12) if a late
 
 ### 4.1 `APP_ENV=prod` and related Railway environment variables
 
-- **Bucket**: 2 (procedure) → 3 (execution)
-- **Status**: **BLOCKED ON ACCESS** — procedure not yet written as its own doc (unlike Sentry, which got one because it was investigated in depth this session). The dependency is real and load-bearing (see 2.3): if `APP_ENV` isn't `prod`, an entire security hard-fail gate silently no-ops.
-- **Procedure**: not yet written. Should cover, at minimum: `APP_ENV=prod`, `SECRET_KEY` (32+ bytes, not the placeholder), `DATABASE_URL`, `SUPABASE_URL`, `CORS_ALLOW_ORIGINS` (not `"*"`), `API_KEY`, `SENTRY_DSN`/`DEBUG_API_KEY` (covered by 2.2) — i.e. formalize `_validate_prod_config()`'s own checklist into a runbook, the same way the Sentry doc formalized Sentry's.
-- **Expected result**: every var `_validate_prod_config()` checks is actually set correctly in the real production Railway service (and the service actually boots — a failed boot due to this gate is itself informative, not silent).
+- **Bucket**: 2 (procedure written) → 3 (execution)
+- **Status**: **READY FOR HUMAN VERIFICATION** — the dependency is real and load-bearing (see 2.3): if `APP_ENV` isn't `prod`, an entire security hard-fail gate silently no-ops, so this is one of the highest-leverage items on this matrix.
+- **Evidence**: `docs/RAILWAY_PRODUCTION_ENV_VERIFICATION.md` — formalizes `app/main.py`'s own `_validate_prod_config()` checklist (`APP_ENV`, `SECRET_KEY`, `DATABASE_URL`, `SUPABASE_URL`, `CORS_ALLOW_ORIGINS`, `API_KEY`) into a runbook, the same way `docs/SENTRY_PRODUCTION_VERIFICATION.md` formalized Sentry's.
+- **Procedure**: the doc's 3 ordered proofs — (1) confirm `APP_ENV=prod` directly in the Railway Variables tab (the single highest-leverage check — everything else is enforced automatically once this is correct, but nothing is enforced until it is), (2) confirm the service actually boots and serves `/health`/`/api/v1/debug/version` (an indirect proof that `_validate_prod_config()`'s full checklist already passed, since the service couldn't have booted otherwise), (3) directly spot-check each variable's value for production-appropriateness, not just presence. Full fail-path (reading the exact `startup_validation_failed` log line if the service won't boot) is in the doc.
+- **Expected result**: `APP_ENV=prod`, the service is live and serving the expected deploy, and every checked variable is production-appropriate on inspection.
 - **Responsible environment**: Railway dashboard.
-- **Remediation path**: set the missing/wrong var, redeploy, confirm the service boots and `/health` responds.
+- **Remediation path**: set the missing/wrong var, redeploy, confirm the service boots and `/health`/`/api/v1/debug/version` respond. If `SECRET_KEY`/`DATABASE_URL` changed, expect existing signed ranking-comparison tokens to invalidate — expected, not a bug.
 
 ### 4.2 Supabase production configuration
 
@@ -269,7 +270,7 @@ Not re-litigated here. Only reopens under bucket-4 policy (Section 12) if a late
 - **Status**: **NOT STARTED** — no smoke-test script written yet.
 - **Procedure**: not yet written. Must cover, on the actual signed store-candidate build pointed at production: fresh account creation, the main CRAVE flows (Feed → Place Detail → Rank, Craves, Map, Search), media upload (photo + video), verifying a recommendation/telemetry event actually lands (the repo already has `GET /debug/recommendation-events` for exactly this kind of check), receiving a push notification, then deleting the account and verifying the deletion contract (matching Phase 7's actual scope and the account-deletion UI walkthrough in the UX audit).
 - **Expected result**: every step succeeds against real production infrastructure with no manual workarounds.
-- **Responsible environment**: a physical device (or at minimum a real build) + production backend + the debug endpoints (`/debug/version`, `/debug/recommendation-events`) for verification.
+- **Responsible environment**: a physical device (or at minimum a real build) + production backend + the debug endpoints (`/api/v1/debug/version`, `/api/v1/debug/recommendation-events`) for verification.
 - **Remediation path**: bucket 4 — any failure here is a narrow, scoped bugfix PR against the specific step that failed.
 
 ---
@@ -296,7 +297,7 @@ Not re-litigated here. Only reopens under bucket-4 policy (Section 12) if a late
 | 3.1 | Hosted Privacy Policy URL | 1 | **NOT STARTED** |
 | 3.2 | Hosted account-deletion page | 1 | **NOT STARTED** |
 | 3.3 | Hosted-vs-in-app parity | 1 | **NOT STARTED** |
-| 4.1 | `APP_ENV=prod` + Railway env vars | 2→3 | **BLOCKED ON ACCESS** |
+| 4.1 | `APP_ENV=prod` + Railway env vars | 2→3 | **READY FOR HUMAN VERIFICATION** |
 | 4.2 | Supabase production config | 2→3 | **NOT STARTED** |
 | 4.3 | R2 production config | 2→3 | **NOT STARTED** |
 | 4.4 | Push notification config | 2→3 | **NOT STARTED** |
@@ -315,15 +316,18 @@ Not re-litigated here. Only reopens under bucket-4 policy (Section 12) if a late
 | 10 | Screen/UX design certification track | 1 | **AUDIT COMPLETE, POLISH NOT STARTED** |
 
 **Read of the table**: 5 items are fully **PASS**. 1 is **PASS,
-conditional** on a bucket-3 confirmation. 1 is **READY FOR HUMAN
-VERIFICATION** (Sentry) — the strongest state short of PASS, since the
-procedure is fully written and repo-verified. Everything else is
-either **BLOCKED ON ACCESS** (a procedure gap, not just an access
-gap) or **NOT STARTED**. The next highest-leverage bucket-1 work is
-closing the "procedure not yet written" gaps in Section 4 (mirroring
-what was done for Sentry) and starting the Section 8 drafting work —
-both are real repo-only work Codex can do next, before this matrix's
-remaining rows become purely "wait for human access."
+conditional** on a bucket-3 confirmation. 2 are **READY FOR HUMAN
+VERIFICATION** (Sentry, and now Railway env vars) — the strongest
+state short of PASS, since both procedures are fully written and
+repo-verified. Everything else is either **BLOCKED ON ACCESS** (Apple/
+Android signing credentials — genuinely can't be checked from a repo
+session at all) or **NOT STARTED** (a procedure gap, not just an
+access gap — e.g. Supabase/R2/push/Maps config in Section 4 still need
+their own runbooks the way Sentry and Railway env vars got one). The
+next highest-leverage bucket-1 work is closing those remaining Section
+4 procedure gaps and starting the Section 8 drafting work — both are
+real repo-only work Codex can do next, before this matrix's remaining
+rows become purely "wait for human access."
 
 ## Section 12 — Bucket-4 policy (when to reopen code)
 
@@ -337,3 +341,13 @@ Update this matrix's row for the failed item from **FAILED** back to
 **PASS** once the fix is verified — don't delete the failure history,
 since a future regression on the same item is exactly what a later
 re-certification pass should catch.
+
+**Where that history actually lives**: every item's entry gets a
+`Failure history` line the first time it fails (add the field if the
+item doesn't have one yet). Format: `Failure history: <date> — <one-
+line description of what failed> — fixed by PR #<n>.` Append one line
+per occurrence; never overwrite a prior entry. An item with no
+`Failure history` line has never failed. This makes "don't delete the
+history" a checkable convention instead of an unenforced instruction —
+a reviewer can grep this file for `Failure history` and see every
+item's track record in one pass.
