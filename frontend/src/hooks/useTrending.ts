@@ -43,6 +43,13 @@ export function useTrendingWithRefresh(): [PlaceOut[], boolean, () => void] {
   }, [error]);
 
   const refresh = () => {
+    // `enabled: false` only gates react-query's *automatic* fetches --
+    // refetch() runs the queryFn regardless, so without this guard a
+    // pull-to-refresh with no city selected still called
+    // fetchTrending(selectedCity!.id) against a null selectedCity,
+    // throwing and putting this query into a real error state (plus a
+    // dev-only console.warn above) for what should just be a no-op.
+    if (!selectedCity) return;
     refetch();
   };
 

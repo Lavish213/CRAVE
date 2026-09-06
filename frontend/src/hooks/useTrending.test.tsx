@@ -73,7 +73,13 @@ describe('useTrendingWithRefresh', () => {
 
     const { result } = renderHook(() => useTrendingWithRefresh(), { wrapper: makeWrapper(client) });
 
-    await waitFor(() => expect(result.current[1]).toBe(false));
+    // result.current[1] is isRefetching, which is already false during
+    // the *initial* fetch (isRefetching only ever describes a refetch of
+    // already-settled data) -- asserting on it alone could pass before
+    // the rejection has actually settled. Wait on the query's own state
+    // instead, so this genuinely covers the post-rejection case.
+    await waitFor(() => expect(client.getQueryState(['trending', 'city-sf'])?.status).toBe('error'));
+    expect(result.current[1]).toBe(false);
     expect(result.current[0]).toEqual([]);
   });
 
@@ -82,6 +88,16 @@ describe('useTrendingWithRefresh', () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 
     renderHook(() => useTrendingWithRefresh(), { wrapper: makeWrapper(client) });
+
+    expect(mockedFetchTrending).not.toHaveBeenCalled();
+  });
+
+  it('refresh() is a no-op when no city is selected, rather than crashing into an error state', () => {
+    useCityStore.setState({ selectedCity: null });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+
+    const { result } = renderHook(() => useTrendingWithRefresh(), { wrapper: makeWrapper(client) });
+    result.current[2](); // refresh()
 
     expect(mockedFetchTrending).not.toHaveBeenCalled();
   });

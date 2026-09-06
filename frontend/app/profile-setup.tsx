@@ -162,7 +162,7 @@ export default function ProfileSetupScreen() {
             ) : availability === 'error' ? (
               <TouchableOpacity
                 onPress={handleRetryCheck}
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                style={styles.retryTarget}
                 accessibilityRole="button"
                 accessibilityLabel="Retry checking username availability"
               >
@@ -227,6 +227,9 @@ const styles = StyleSheet.create({
     minHeight: 50,
   },
   at: { color: Colors.textSecondary, fontSize: 16, fontWeight: '700' },
+  // Explicit 44x44 minimum -- the 20px icon alone (even with hitSlop)
+  // fell short of this app's own touch-target convention everywhere else.
+  retryTarget: { minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
   input: { flex: 1, color: Colors.text, fontSize: 16, paddingVertical: 12 },
   hint: { fontSize: 12, marginTop: 2 },
   error: { color: Colors.error, fontSize: 13 },

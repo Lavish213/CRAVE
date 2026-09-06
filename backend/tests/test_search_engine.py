@@ -122,3 +122,24 @@ def test_pagination_slices_the_ranked_result_not_the_raw_sql_order(db):
     page2_ids = {p.id for p in page2}
     assert page1_ids.isdisjoint(page2_ids)
     assert len(page1_ids) + len(page2_ids) == 4
+
+
+def test_a_page_at_offset_beyond_100_is_not_silently_empty(db):
+    # Regression test for a real bug in an earlier version of this fix:
+    # execute_search()'s widened pool_limit (up to 500) was silently
+    # truncated back down to search_query.py's public MAX_LIMIT (100) by
+    # search_places()'s own _clamp_limit(), since execute_search wasn't
+    # yet passing the max_limit= override. Any page with offset >= 100
+    # then sliced into a candidate list shorter than the requested
+    # offset and returned an empty page while total_count still reported
+    # the real (larger) match count.
+    session, created = db
+    city = _make_city(session, created)
+    for i in range(110):
+        _make_place(session, created, city, name=f"{SEARCH_TERM} {i:03d}", rank_score=i / 110)
+
+    results, total = execute_search(session, query=SEARCH_TERM, limit=10, offset=105)
+
+    assert total == 110
+    assert len(results) == 5  # only 5 remain past offset 105 of 110 total
+    assert len(results) > 0

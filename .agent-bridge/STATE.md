@@ -4,7 +4,7 @@ Status: ready-for-review
 Owner: Claude
 Branch: claude/phase2-search-discovery (PR #130 open against main)
 Base SHA: 31f24d2 (main, post-Phase-1 merge)
-Commit SHA: 2d22b93
+Commit SHA: (see next commit -- CodeRabbit review fixes)
 Scope: Phase 2 of the user-directed multi-phase frontend hardening
 program -- Search as a proper discovery system, plus the two Craves/
 Profile Setup bugs Phase 1 diagnosed but deliberately deferred (small,
@@ -97,11 +97,49 @@ against current code before fixing:
   have a result that would win post-enrichment excluded if it didn't
   make that pool -- an accepted, documented bound, not a realistic
   search session.
-- No PR opened yet.
+- PR #130 open against main. CodeRabbit's review returned 6 findings; 5
+  actionable, all verified and fixed:
+  1. **Real bug in this PR's own first draft** -- `search_places()`'s
+     own `_clamp_limit()` silently truncated `execute_search()`'s
+     widened `pool_limit` back down to the public `MAX_LIMIT` (100), so
+     any page at `offset >= 100` sliced into a shorter-than-expected
+     candidate list and returned an empty page while `total` still
+     reported real matches. Fixed by adding a `max_limit=` override
+     parameter to `search_places()`/`_clamp_limit()`, used only by
+     `execute_search()`'s internal pool fetch (`MAX_CANDIDATE_POOL`,
+     500) -- the public per-page cap (100) is untouched for any other
+     caller. Added a regression test at offset=105/limit=10 against 110
+     seeded places.
+  2. `profile-setup.test.tsx`: `not.toBe(false)` on
+     `accessibilityState.disabled` also passes when the value is
+     `undefined` -- tightened to `toBe(true)`.
+  3. `profile-setup.tsx`: the retry icon (20px + 8px hitSlop = 36x36
+     effective) fell short of this app's own 44x44 touch-target
+     convention used everywhere else -- added an explicit
+     `minWidth/minHeight: 44` wrapper style.
+  4. `useTrending.test.tsx`: the error-case test asserted on
+     `isRefetching` alone, which is already `false` during the *initial*
+     fetch (before the rejection settles) -- could pass prematurely.
+     Fixed to wait on `client.getQueryState(...)?.status === 'error'`
+     first.
+  5. `useTrending.ts`: `refresh()` didn't guard against no city
+     selected -- a manual refresh with `enabled: false` (react-query's
+     `refetch()` runs regardless of `enabled`) called
+     `fetchTrending(selectedCity!.id)` against a null city, throwing
+     into a real error state for what should be a no-op. Added the
+     guard, matching Phase 1's identical `friends-feed.tsx`/
+     `leaderboard.tsx` fix.
+  - The 6th finding (this repo's own `.agent-bridge/claude-to-codex.md`
+    inbox recording a stale, unrelated handoff instead of the current
+    branch) is a process-hygiene finding, not a code bug -- addressed
+    by replacing that file's content with a current Phase 1+2 summary.
+  - Verified: `npx tsc --noEmit` clean; frontend suite 360/360 (37
+    suites -- 359 + 1 new); backend suite 1029/1029 passed + 2 skipped
+    (1028 baseline + 1 new offset>100 regression test).
 
 ## Next action
 
-Open a PR, verify CI (frontend + backend/Postgres both need to be
-green), request CodeRabbit review, then hold this branch to the same
-gates Phase 1 used before merge: CI green, review findings addressed,
-and no scope creep beyond what's recorded here.
+Verify CI (frontend + backend/Postgres both need to be green on the
+latest commit), confirm CodeRabbit's re-scan has nothing new, then hold
+this branch to the same gates Phase 1 used before merge -- no further
+scope creep beyond what's recorded here.

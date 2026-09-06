@@ -78,7 +78,7 @@ describe('ProfileSetupScreen', () => {
     fireEvent.changeText(getByLabelText('Username'), 'newhandle');
     expect(await findByText("Couldn't check availability — tap to retry.")).toBeTruthy();
     expect(queryByText('Letters, numbers and underscores. 3-20 characters.')).toBeNull();
-    expect(getByLabelText('Continue').props.accessibilityState?.disabled).not.toBe(false);
+    expect(getByLabelText('Continue').props.accessibilityState?.disabled).toBe(true);
 
     mockedCheckUsernameAvailable.mockResolvedValueOnce(true);
     fireEvent.press(getByLabelText('Retry checking username availability'));
