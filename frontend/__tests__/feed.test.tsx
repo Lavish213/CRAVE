@@ -1,11 +1,6 @@
-// Feed screen (app/(tabs)/index.tsx) — first dedicated test coverage for
-// this screen. Locks in: tier-section bucketing, the Recommendation
-// Ledger's impression batch (logged once per new page, never re-logged on
-// an unrelated re-render such as opening the filter sheet), a click event
-// on selection, the save/unsave auth-gating behavior, category/price
-// filtering, and the page-overlap de-dup guard that fixed a real
-// production "duplicate key" crash (see buildFeedRows/places' own
-// comments in the screen for the full incident).
+// Feed screen (app/(tabs)/index.tsx) — dedicated coverage for tier
+// bucketing, viewability-based Recommendation Ledger exposure, click/save
+// behavior, filtering, errors, and pagination de-duplication.
 import React from 'react';
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -58,9 +53,6 @@ jest.mock('../src/stores/cravesStore', () => {
   });
   return { useCravesStore: hook };
 });
-// AuthSheet pulls in lib/supabase.ts (real client) via its own import
-// chain -- stubbed the same way every other screen's tests do, but kept
-// visible-state-aware here so the auth-gating test can assert on it.
 jest.mock('../src/components/AuthSheet', () => {
   const { Text } = require('react-native');
   return {
@@ -121,14 +113,6 @@ function renderScreen() {
 describe('FeedScreen', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    // mockReset (not just clearAllMocks) specifically for these two:
-    // mockResolvedValueOnce/mockRejectedValueOnce queues otherwise survive
-    // into the next test if a prior test didn't consume every queued
-    // value -- confirmed to actually happen between the error-state and
-    // de-dup tests when run as part of the full file rather than in
-    // isolation. Deliberately not a blanket jest.resetAllMocks(): that
-    // also wipes jest-expo's own internal native-module mock
-    // implementations (breaks RTL's host-component detection entirely).
     mockedFetchPlaces.mockReset();
     (fetchCities as jest.Mock).mockReset().mockResolvedValue([]);
     mockAddSave.mockResolvedValue(null);
@@ -186,7 +170,8 @@ describe('FeedScreen', () => {
     const { findByLabelText } = renderScreen();
     const wildcard = await findByLabelText(/^decision-wild,/);
     await waitFor(() => {
-      expect(mockedLogMany).toHaveBeenCalledWith([
+      const exposureBatch = mockedLogMany.mock.calls.flatMap((call) => call[0]);
+      expect(exposureBatch).toEqual(expect.arrayContaining([
         expect.objectContaining({
           surface: 'decision_session', event_type: 'impression', place_id: 'decision-best',
           decision_role: 'best_fit', position: 0, rank_percentile: 0.9,
@@ -195,7 +180,13 @@ describe('FeedScreen', () => {
           surface: 'decision_session', event_type: 'impression', place_id: 'decision-wild',
           decision_role: 'wildcard', position: 1, rank_percentile: 0.9,
         }),
-      ]);
+        // All rows use the same FlashList viewability contract. If the first
+        // normal Feed card is visible in the same callback it belongs in the
+        // same exposure batch rather than being artificially split by source.
+        expect.objectContaining({
+          surface: 'feed', event_type: 'impression', place_id: 'feed-place', position: 0,
+        }),
+      ]));
     });
 
     fireEvent.press(wildcard);
@@ -223,7 +214,7 @@ describe('FeedScreen', () => {
     expect(queryByText('Explore')).toBeNull();
   });
 
-  it('logs one bounded impression batch for the first page, and does not re-log on an unrelated re-render', async () => {
+  it('logs one bounded impression batch for the first visible page, and does not re-log on an unrelated re-render', async () => {
     const places = [makePlace('p0', 0.97), makePlace('p1', 0.5)];
     mockedFetchPlaces.mockResolvedValue(page(places));
 
@@ -236,9 +227,6 @@ describe('FeedScreen', () => {
       expect.objectContaining({ surface: 'feed', event_type: 'impression', place_id: 'p1', position: 1, city_id: 'city-sf' }),
     ]);
 
-    // Opening the filter sheet re-renders the screen without fetching a
-    // new page -- the impression effect is keyed on page count, not on
-    // this state, so it must not fire again.
     fireEvent.press(getByLabelText('Filter places'));
     expect(mockedLogMany).toHaveBeenCalledTimes(1);
   });
@@ -293,11 +281,6 @@ describe('FeedScreen', () => {
       expect.objectContaining({ surface: 'feed', rank_percentile: 0.97, city_id: 'city-sf' }),
     );
 
-    // isSaved() is read inline on every render, not memoized -- but
-    // nothing else re-renders the screen on its own here, so force one
-    // to pick up the new mocked return value (mirrors a real re-render
-    // that would follow cravesStore's own state update after a real
-    // addSave resolves).
     mockIsSaved.mockReturnValue(true);
     rerender(buildTree());
     const removeBtn = await findByLabelText('Remove p0 from saves');
@@ -323,8 +306,6 @@ describe('FeedScreen', () => {
 
     await waitFor(() => expect(queryByLabelText(/^p0,/)).toBeNull());
     expect(getByLabelText(/^p1,/)).toBeTruthy();
-    // Filtering only changes what's rendered -- it must not trigger a
-    // second impression batch for the same already-logged page.
     expect(mockedLogMany).toHaveBeenCalledTimes(1);
   });
 
@@ -340,10 +321,6 @@ describe('FeedScreen', () => {
   });
 
   it('de-duplicates a place id that reappears across page fetches (the pagination-shift regression)', async () => {
-    // Regression coverage for the documented production crash: the
-    // discovery pipeline inserting rows between page fetches shifts the
-    // offset window, so the same place can land in two different pages
-    // (p1 reappears in page 2 here, exactly like the live incident).
     mockedFetchPlaces
       .mockResolvedValueOnce(page([makePlace('p0', 0.97), makePlace('p1', 0.5)], 3, 1, 'snapshot.2'))
       .mockResolvedValueOnce(page([makePlace('p1', 0.5), makePlace('p2', 0.3)], 3, 2));
@@ -351,17 +328,11 @@ describe('FeedScreen', () => {
     const { findByLabelText, queryAllByLabelText, UNSAFE_getByType } = renderScreen();
     await findByLabelText(/^p0,/);
 
-    // Drive pagination directly through FlashList's onEndReached rather
-    // than simulating a real scroll gesture (layout measurements are
-    // zeroed out under RTL/jsdom, so a scroll event never crosses
-    // onEndReachedThreshold in practice).
     await act(async () => {
       UNSAFE_getByType(FlashList).props.onEndReached();
     });
 
     await findByLabelText(/^p2,/);
-    // p1 must render exactly once, not twice, despite appearing in both
-    // page responses.
     expect(queryAllByLabelText(/^p1,/)).toHaveLength(1);
     expect(mockedFetchPlaces).toHaveBeenNthCalledWith(
       2,

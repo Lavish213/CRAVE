@@ -5,7 +5,7 @@ Owner: Claude
 Branch: claude/phase5-followup-coderabbit-findings (PR #136 open
 against main)
 Base SHA: 9ce1da8 (main, Phase 5 squash merge -- PR #134)
-Commit SHA: 7c3e671
+Commit SHA: 8a8f2f6
 Scope: Follow-up to Phase 5 (Video/Media Transaction Integrity, PR #134).
 PR #134 was merged by an earlier autonomous pass in this same
 session *before* CodeRabbit's review findings had been addressed -- a
@@ -50,12 +50,35 @@ found 3 issues, all confirmed real against the current code on `main`:
   `missing_local_file` (an accurate description from that point --
   retryable in principle, but the file itself is now actually gone).
 
+CodeRabbit's review of this branch itself (PR #136, at commit
+`7c3e671`) then found 2 more real issues, fixed at commit `4ac6c48`:
+
+- **Cross-account sync after a slow `recordVideo()`**: the account
+  checked at the top of the save handler could differ from the account
+  signed in once the (async) `recordVideo()` actually resolved --
+  `runSyncPass` would then authenticate as whoever is *currently*
+  signed in while attributing the sync to the account that started the
+  recording. Fixed by re-reading `useAuthStore.getState().user` again
+  immediately before calling `runSyncPass`, skipping it on a mismatch.
+- **`pruneRetainedFailedVideos` swallowed a failed `deleteAsync` and
+  still marked the video `missing_local_file` regardless** --
+  misrepresenting a file that may still be on disk as gone, and
+  permanently excluding it from any future prune/retry (since
+  `missing_local_file` isn't `'failed'`). Fixed to only transition on
+  an actually-successful delete; a rejected delete leaves the video
+  `'failed'` so it's retried on the next prune pass.
+
+Plus 2 doc nits also raised by CodeRabbit on #136: a line starting
+with a bare `#134` (renders as a Markdown heading in some viewers), and
+both agent-bridge files still saying "PR to be opened" after #136 was
+already open. Both fixed.
+
 ## Verification
 
-- Frontend: `npx tsc --noEmit` clean. `npx jest` 377/377 passed, 37
-  suites (375 baseline + 2 net new: the stale-closure regression test
-  and the retention-cap test, offset by consolidating one existing
-  assertion).
+- Frontend: `npx tsc --noEmit` clean. `npx jest` 379/379 passed, 37
+  suites (added 2 more regression tests on top of Phase 5 follow-up's
+  own 2, for the cross-account-sync and failed-delete-preserves-state
+  fixes above).
 - Backend: `python3 -m pytest -q` 1041 passed, 2 skipped -- unchanged;
   no backend files touched.
 
@@ -75,46 +98,62 @@ found 3 issues, all confirmed real against the current code on `main`:
   proceed if reviews are "capacity-limited" -- that condition must be
   freshly verified, not assumed from an earlier turn's summary.
 
-## Next action
+## Phase 6 (Codex -- merged)
 
-PR #136 opened against main, CI 8/8 green. CodeRabbit did not auto-run
-(repo has <10 stars, needs an explicit trigger each time) -- posted
-`@coderabbitai review` and holding for CI-green + review-content-read
-(not just status) before merging, per the process note above.
+PR #135 "Phase 6: Telemetry, Location & Async Truth"
+(`codex/phase6-telemetry-location-async`) was opened by Codex on
+2026-09-06T09:18:46Z, based on this same `9ce1da8`. Found it before
+claiming Phase 6 myself and stood down entirely per the agent-bridge
+protocol -- no competing branch opened.
 
-## Phase 6 coordination (2026-09-06)
+Merged to `main` at `e7e19d73e4505282abab0009f9e98edbda3d63c5`. Per
+Codex's own report, the final handoff commit (`85a120af`) passed:
+frontend TypeScript, frontend Jest 396/396 (39 suites), backend
+SQLite + real-Postgres lanes, migrations, dependency scan, conflict-
+marker guard, and CodeQL (including a weak-randomness finding on
+analytics session IDs, fixed and resolved in-branch). Confirmed fixes
+covered Feed/Decision-Session viewability-based exposure, Map
+visible-pin-only impressions with city/account context binding,
+Craves async truth (secondary-resource failure vs. true empty) plus
+viewability, 5-minute location freshness with permission-revocation
+detection, Add Spot blocked-permission Settings recovery, a durable
+account-owned outbox for save/unsave learning events (with the same
+class of cross-account race this file's own Phase 5 follow-up fixed,
+closed the same way), and root error recovery delegating to Expo
+Router's SDK55 retry contract. Search's existing viewability contract
+was verified healthy and left untouched.
 
-Found PR #135 "Phase 6: Telemetry, Location & Async Truth"
-(`codex/phase6-telemetry-location-async`, opened by Codex,
-2026-09-06T09:18:46Z) already open against the same base (`9ce1da8`)
-before claiming Phase 6 myself. Per the agent-bridge protocol (don't
-duplicate a claimed phase, don't touch another agent's locked/in-
-progress files): stood down entirely, did not open a competing branch.
+## Phase 7 (Codex -- claimed, in progress)
 
-**Update**: PR #135 merged to `main` at `e7e19d73e4505282abab0009f9e98edbda3d63c5`.
-Codex's own report: TypeScript clean, 396/396 frontend tests (39
-suites), backend SQLite + real-Postgres lanes green, migrations clean,
-CodeQL clean (including a weak-randomness finding on analytics session
-IDs that got fixed and resolved in-branch).
-
-## Phase 7 coordination (2026-09-06)
-
-Codex did not stop at Phase 6 -- immediately branched
-`codex/phase7-release-hardening` from the post-merge SHA and claimed
-Phase 7 (Performance/Accessibility/Security/Release Certification) in
-STATE.md before I could. Per their report, preflight has already
-surfaced: a hardcoded `1.0.0` version-truth bug in Settings; a P0
-release gap where account deletion retains rankings/Craves/photos/
-videos that Apple/Google require deleted with the account; a privacy-
-policy mismatch (policy claims immediate deletion + Sentry crash
-reporting, neither verified in the repo); and the Google requirement
-for an external web-based account-deletion resource. They're mapping
-every user-owned DB table/storage object next, for a transactional
-deletion fix.
+Codex branched `codex/phase7-release-hardening` from the post-merge
+SHA immediately after Phase 6 landed and claimed Phase 7
+(Performance/Accessibility/Security/Release Certification) before I
+could. Per their report, preflight has already surfaced: a hardcoded
+`1.0.0` version-truth bug in Settings; a **P0 release gap** where
+account deletion retains rankings/Craves/photos/videos that
+Apple/Google require deleted with the account; a privacy-policy
+mismatch (policy claims immediate deletion + Sentry crash reporting,
+neither verified in the repo); and the Google requirement for an
+external web-based account-deletion resource (R2 already has a usable
+`delete_object()` primitive for the storage side). They're mapping
+every user-owned DB table/storage object next, for one transactional
+deletion fix rather than a partial sweep.
 
 Standing down from Phase 7 too -- not opening a competing branch. With
 Codex holding both Phase 6 (merged) and Phase 7 (claimed, in
 progress), all 5 phases in the spec (3-7) now have an owner. My only
-remaining work is finishing PR #136 below; no further phase claims are
+remaining work is getting PR #136 merged; no further phase claims are
 needed from this side unless Codex's Phase 7 branch stalls or a gap
 surfaces that needs a second pair of eyes.
+
+## Next action
+
+PR #136 opened against main, CI 8/8 green on commit `4ac6c48`.
+CodeRabbit does not auto-run on this repo (<10 stars) and its free-
+tier quota is 1 review/hour -- posted `@coderabbitai review` after
+each pushed fix and holding for CI-green + actual review-content-read
+(not just a status check) before merging, per the process note above.
+Just merged `origin/main` (post-Phase-6) into this branch to resolve
+the `.agent-bridge/STATE.md` conflict from Codex's parallel Phase 6
+handoff; no other file conflicted. Re-running full verification after
+the merge before pushing.
