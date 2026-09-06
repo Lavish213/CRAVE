@@ -5,8 +5,8 @@
 // - impressions/clicks are best-effort observational telemetry. Losing an
 //   occasional batch is an analytics gap, not lost user state.
 // - confirmed save/unsave outcomes are explicit preference signals and carry
-//   a server-deduped client_event_id. Those are persisted to a small
-//   AsyncStorage outbox until the server acknowledges them.
+//   a server-deduped client_event_id. Those are persisted to a small,
+//   account-owned AsyncStorage outbox until the server acknowledges them.
 //
 // Ranking itself is already persisted transactionally by the ranking backend
 // and its recommendation event is server-originated, so it does not need a
@@ -16,6 +16,7 @@ import {
   RecommendationEventInput,
   sendRecommendationEvents,
 } from '../api/recommendationEvents';
+import { supabase } from '../lib/supabase';
 
 const FLUSH_INTERVAL_MS = 4000;
 const RETRY_INTERVAL_MS = 15_000;
@@ -24,8 +25,13 @@ const DURABLE_STORAGE_KEY = '@crave/recommendation-event-outbox/v1';
 
 const sessionId = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
 
+interface DurableEnvelope {
+  ownerUserId: string;
+  event: RecommendationEventInput;
+}
+
 let volatileQueue: RecommendationEventInput[] = [];
-let durableQueue: RecommendationEventInput[] = [];
+let durableQueue: DurableEnvelope[] = [];
 let durableHydrated = false;
 let hydratePromise: Promise<void> | null = null;
 let flushTimer: ReturnType<typeof setTimeout> | null = null;
@@ -33,6 +39,29 @@ let flushInProgress = false;
 
 function isDurableOutcome(event: RecommendationEventInput): boolean {
   return (
+    (event.event_type === 'save' || event.event_type === 'unsave') &&
+    typeof event.client_event_id === 'string' &&
+    event.client_event_id.length > 0
+  );
+}
+
+async function currentUserId(): Promise<string | null> {
+  try {
+    const { data } = await supabase.auth.getSession();
+    return data.session?.user.id ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function isValidDurableEnvelope(value: unknown): value is DurableEnvelope {
+  if (!value || typeof value !== 'object') return false;
+  const envelope = value as Partial<DurableEnvelope>;
+  if (typeof envelope.ownerUserId !== 'string' || envelope.ownerUserId.length === 0) return false;
+  if (!envelope.event || typeof envelope.event !== 'object') return false;
+  const event = envelope.event as Partial<RecommendationEventInput>;
+  return (
+    typeof event.surface === 'string' &&
     (event.event_type === 'save' || event.event_type === 'unsave') &&
     typeof event.client_event_id === 'string' &&
     event.client_event_id.length > 0
@@ -47,8 +76,6 @@ async function persistDurableQueue(): Promise<void> {
     }
     await AsyncStorage.setItem(DURABLE_STORAGE_KEY, JSON.stringify(durableQueue));
   } catch (err) {
-    // Keep the in-memory copy even if device storage is temporarily
-    // unavailable. The next mutation/flush gets another persistence chance.
     if (__DEV__) {
       console.warn('[recommendationEventQueue] persist_failed', err instanceof Error ? err.message : err);
     }
@@ -65,20 +92,7 @@ async function hydrateDurableQueue(): Promise<void> {
       if (!raw) return;
       const parsed: unknown = JSON.parse(raw);
       if (!Array.isArray(parsed)) return;
-
-      // Only retain entries that still satisfy the durable contract. This
-      // makes a malformed/old persisted row fail closed instead of crashing
-      // every future flush.
-      durableQueue = parsed.filter((item): item is RecommendationEventInput => {
-        if (!item || typeof item !== 'object') return false;
-        const candidate = item as Partial<RecommendationEventInput>;
-        return (
-          typeof candidate.surface === 'string' &&
-          (candidate.event_type === 'save' || candidate.event_type === 'unsave') &&
-          typeof candidate.client_event_id === 'string' &&
-          candidate.client_event_id.length > 0
-        );
-      });
+      durableQueue = parsed.filter(isValidDurableEnvelope);
     } catch (err) {
       if (__DEV__) {
         console.warn('[recommendationEventQueue] hydrate_failed', err instanceof Error ? err.message : err);
@@ -102,11 +116,22 @@ function scheduleFlush(delayMs = FLUSH_INTERVAL_MS): void {
 
 async function enqueueDurable(event: RecommendationEventInput): Promise<void> {
   await hydrateDurableQueue();
+  const ownerUserId = await currentUserId();
+  if (!ownerUserId) {
+    // A confirmed save/unsave should normally still have an authenticated
+    // session here. If auth disappeared in the narrow gap before enqueue,
+    // do not persist an ownerless event that could later be attributed to
+    // whichever account happens to sign in next.
+    if (__DEV__) console.warn('[recommendationEventQueue] durable_event_without_owner');
+    return;
+  }
+
   const id = event.client_event_id!;
-  if (!durableQueue.some((queued) => queued.client_event_id === id)) {
-    durableQueue.push(event);
+  if (!durableQueue.some((queued) => queued.event.client_event_id === id)) {
+    durableQueue.push({ ownerUserId, event });
     await persistDurableQueue();
   }
+
   if (durableQueue.length >= MAX_QUEUE_SIZE) {
     if (flushTimer) {
       clearTimeout(flushTimer);
@@ -137,11 +162,27 @@ async function flushDurable(): Promise<boolean> {
   await hydrateDurableQueue();
   if (durableQueue.length === 0) return true;
 
-  const batch = durableQueue.slice(0, MAX_QUEUE_SIZE);
+  const ownerUserId = await currentUserId();
+  if (!ownerUserId) return false;
+
+  const ownedBatch = durableQueue
+    .filter((queued) => queued.ownerUserId === ownerUserId)
+    .slice(0, MAX_QUEUE_SIZE);
+
+  if (ownedBatch.length === 0) {
+    // The outbox contains another account's events. Keep them dormant until
+    // that account signs back in; never send them under the current token.
+    return true;
+  }
+
   try {
-    await sendRecommendationEvents(batch);
-    const acknowledgedIds = new Set(batch.map((event) => event.client_event_id));
-    durableQueue = durableQueue.filter((event) => !acknowledgedIds.has(event.client_event_id));
+    await sendRecommendationEvents(ownedBatch.map((queued) => queued.event));
+    const acknowledgedIds = new Set(
+      ownedBatch.map((queued) => queued.event.client_event_id),
+    );
+    durableQueue = durableQueue.filter(
+      (queued) => !acknowledgedIds.has(queued.event.client_event_id),
+    );
     await persistDurableQueue();
     return true;
   } catch (err) {
@@ -159,7 +200,15 @@ async function flushQueues(): Promise<void> {
     await flushVolatile();
     const durableSucceeded = await flushDurable();
 
-    if (volatileQueue.length > 0 || durableQueue.length > 0) {
+    // Only schedule automatic retry when there is work that can plausibly
+    // progress in this session. Another account's dormant durable rows are
+    // retried explicitly on app/auth recovery through flushRecommendationEvents.
+    const ownerUserId = durableQueue.length > 0 ? await currentUserId() : null;
+    const hasOwnedDurable = ownerUserId
+      ? durableQueue.some((queued) => queued.ownerUserId === ownerUserId)
+      : false;
+
+    if (volatileQueue.length > 0 || hasOwnedDurable) {
       scheduleFlush(durableSucceeded ? FLUSH_INTERVAL_MS : RETRY_INTERVAL_MS);
     }
   } finally {
@@ -197,10 +246,7 @@ export function logRecommendationEvents(
   events.forEach(logRecommendationEvent);
 }
 
-/**
- * Explicit retry hook for app-foreground/network-recovery callers. Safe to
- * invoke repeatedly; concurrent passes collapse into one.
- */
+/** Explicit recovery hook for app-foreground/auth-restoration callers. */
 export function flushRecommendationEvents(): void {
   if (flushTimer) {
     clearTimeout(flushTimer);
@@ -220,8 +266,8 @@ export function _resetRecommendationEventQueueForTests(): void {
   flushInProgress = false;
 }
 
-// Recover a durable preference outbox after process restart even if the user
-// does not perform another save/unsave during this session.
+// Recover the active account's durable preference events after process
+// restart even if no new save/unsave occurs in this session.
 void hydrateDurableQueue().then(() => {
   if (durableQueue.length > 0) scheduleFlush();
 });
