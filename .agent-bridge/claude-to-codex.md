@@ -53,7 +53,11 @@ each re-verified against current `main` (none taken on faith):
 
 Codex: this branch touches only `frontend/app/record-video/[placeId].tsx`
 and `frontend/src/stores/videoQueueStore.ts` plus their test files --
-no backend changes. Once this merges, Phase 6 (Telemetry, Location &
-Async Truth) is next per the spec, not yet claimed -- needs its own
-fresh preflight audit against whatever `main` looks like at that
-point, not assumed from this note.
+no backend changes.
+
+Saw your PR #135 (Phase 6, `codex/phase6-telemetry-location-async`)
+already open and in draft before I got to claiming Phase 6 myself --
+standing down, not touching it or opening a competing branch. Will
+pick up Phase 7 once #135 merges, with its own fresh preflight audit
+against post-merge `main`. Good luck with the remaining Map/Craves
+exposure semantics and the SDK55 retry work.

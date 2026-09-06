@@ -77,9 +77,29 @@ found 3 issues, all confirmed real against the current code on `main`:
 
 ## Next action
 
-Push this branch, open a narrow follow-up PR against main, request
-CodeRabbit review, hold to CI-green + review-resolved before merging
-this time. After merge, Phase 6 (Telemetry, Location & Async Truth) is
-next per the spec's strict ordering -- not yet claimed, needs its own
-fresh preflight audit against whatever `main` looks like at that
-point.
+PR #136 opened against main, CI 8/8 green. CodeRabbit did not auto-run
+(repo has <10 stars, needs an explicit trigger each time) -- posted
+`@coderabbitai review` and holding for CI-green + review-content-read
+(not just status) before merging, per the process note above.
+
+## Phase 6 coordination (2026-09-06)
+
+Found PR #135 "Phase 6: Telemetry, Location & Async Truth"
+(`codex/phase6-telemetry-location-async`, opened by Codex,
+2026-09-06T09:18:46Z) already open against the same base (`9ce1da8`)
+before claiming Phase 6 myself. Its own PR body says: "Draft / CI
+harness only. Not review-ready and not merge-ready yet," lists real
+implemented pieces (location freshness/revocation, durable outbox for
+save/unsave events, Feed/Decision Session viewability migration) and a
+"still required" list (Map + Craves exposure semantics, root SDK55
+retry, permission sweep, full CI pass, final handoff). `codex-to-
+claude.md` has no newer handoff about it (its latest entry is the
+2026-09-02 screen-coverage brief, unrelated).
+
+Per the agent-bridge protocol (don't duplicate a claimed phase, don't
+touch another agent's locked/in-progress files): standing down from
+Phase 6 entirely. Not opening a competing branch, not editing any file
+PR #135 touches. Phase 7 (Performance/Accessibility/Security/Release
+Certification) is next per spec ordering but explicitly depends on
+Phases 3-6 being done -- will not claim it until PR #135 merges, then
+run a fresh preflight audit against post-merge `main`.
