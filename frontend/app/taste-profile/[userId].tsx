@@ -51,13 +51,58 @@ export default function TasteProfileScreen() {
   // the new one's and silently repaint this screen with the wrong person's
   // stats.
   const loadGenerationRef = useRef(0);
+  // Whose data this screen currently holds -- both the profile being
+  // viewed AND who was viewing it, same pattern as user/[id].tsx's
+  // identical guard (see its own comment for the full rationale: blocked/
+  // taste are relative to the viewer, not just the profile being viewed,
+  // so a viewer switch with the same target userId -- isSelf unchanged in
+  // both cases -- must still force a fresh load).
+  //
+  // Also closes a real confirmed bug: previously neither `taste` nor
+  // `blocked` were ever reset when a new load started, only overwritten on
+  // success. Profile A's taste profile loads and renders; navigating to
+  // profile B succeeds on the profile fetch (so the header correctly shows
+  // B) but then B's *taste* fetch itself fails (network error, 5xx) --
+  // the catch block only ever sets `notFound` for a 404, so `taste` was
+  // simply left holding A's stale data, which then rendered in full under
+  // B's identity. Resetting profile/taste/blocked whenever the identity
+  // pairing changes (not on every load -- a same-identity refocus
+  // shouldn't flash the skeleton) closes this.
+  const loadedForIdRef = useRef<string | null>(null);
+  const loadedForViewerRef = useRef<string | null>(null);
 
   const load = useCallback(async () => {
     if (!userId) return;
     const myGeneration = ++loadGenerationRef.current;
-    setLoading(true);
+    const viewerId = me?.id ?? null;
+    if (loadedForIdRef.current !== userId || loadedForViewerRef.current !== viewerId) {
+      // Identity-scoped: only wipe another identity's stale data, so a
+      // same-identity refocus/retry doesn't flash the skeleton over
+      // still-good data while it quietly re-fetches in the background.
+      setProfile(null);
+      setTaste(null);
+      setBlocked(false);
+      setLoading(true);
+    }
+    // Outcome flags describe *this* attempt, not the identity pairing --
+    // they must reset on every attempt, including a same-identity retry
+    // from ErrorState's onRetry (accessError) or a plain refocus after a
+    // transient 404. Previously gated inside the block above: a retry
+    // that actually succeeded still rendered the stale error screen over
+    // the freshly-fetched, perfectly good data, since nothing ever
+    // cleared the flag for a same-identity attempt (confirmed by
+    // CodeRabbit; the identity-gated `!profile` catch-all doesn't save
+    // this, since profile/taste's own reset is correctly identity-gated).
     setNotFound(false);
     setAccessError(false);
+    // Marked as "attempted" here, before the fetch settles either way --
+    // same reasoning as user/[id].tsx's identical comment: the render-time
+    // stale-gate below only needs to force the skeleton until an attempt
+    // has been made for this identity pairing, not until one has
+    // succeeded. Setting this only on success would leave the gate stuck
+    // on the skeleton forever after any error.
+    loadedForIdRef.current = userId;
+    loadedForViewerRef.current = viewerId;
     try {
       const [p, blockStatus] = await Promise.all([
         fetchProfile(userId),
@@ -81,7 +126,7 @@ export default function TasteProfileScreen() {
     } finally {
       if (myGeneration === loadGenerationRef.current) setLoading(false);
     }
-  }, [userId, isSelf]);
+  }, [userId, isSelf, me?.id]);
 
   useFocusEffect(
     useCallback(() => {
@@ -89,7 +134,14 @@ export default function TasteProfileScreen() {
     }, [load]),
   );
 
-  if (loading) {
+  // Derived at render time, not just from `loading` -- `loading` only
+  // flips back to true from inside load(), which runs in an *effect*
+  // (useFocusEffect), one render after `userId`/`me` themselves have
+  // already changed. Gating on the refs directly closes that one-render
+  // gap, same fix as user/[id].tsx's identical `isStaleForCurrentIdentity`.
+  const isStaleForCurrentIdentity =
+    loadedForIdRef.current !== userId || loadedForViewerRef.current !== (me?.id ?? null);
+  if (loading || isStaleForCurrentIdentity) {
     // Same treatment as app/(tabs)/profile.tsx's own stats+ranked-list
     // loading state -- this screen was still a plain ActivityIndicator,
     // inconsistent with every other list/stat-shaped screen in the app.

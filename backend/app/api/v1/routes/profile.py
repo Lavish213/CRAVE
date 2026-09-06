@@ -12,6 +12,7 @@ from app.core.rate_limit import rate_limit
 from app.core.user_auth import get_current_user_id, get_current_user_id_optional
 from app.db.session import get_db
 from app.services.profile import profile_service
+from app.services.social.block_service import is_blocked
 from app.services.social.taste_profile_service import get_taste_profile
 from app.services.social.recommendation_service import get_match_score
 from app.services.upload.r2_client import generate_presigned_upload_url, generate_public_url
@@ -122,9 +123,15 @@ def request_avatar_upload_url(
 def get_public_profile(
     user_id: str,
     db: Session = Depends(get_db),
+    viewer_id: Optional[str] = Depends(get_current_user_id_optional),
 ):
     profile = profile_service.get_profile(db, user_id)
-    if not profile or not profile.is_public:
+    # A private profile is still visible to its own owner -- previously this
+    # only ever checked is_public, with no notion of who's asking, so a
+    # signed-in user who had set their own profile private got "profile not
+    # found" viewing their own /user/[id] page (reachable from their own
+    # leaderboard row or a friend-ranking entry pointing at themselves).
+    if not profile or (not profile.is_public and viewer_id != user_id):
         raise HTTPException(status_code=404, detail="profile not found")
     return profile
 
@@ -143,10 +150,16 @@ def get_taste_profile_route(
     places ranked, tier breakdown, favorite cuisine, top city,
     percentile). Gated on the same is_public check as GET /{user_id}
     (public profile) rather than a separate rule, so it's consistent
-    with whatever visibility the person already chose for their profile.
-    Block enforcement is handled client-side (same convention the
-    existing user/[id] screen already uses via GET /blocks/status),
-    not duplicated here.
+    with whatever visibility the person already chose for their profile
+    -- except for the owner themselves, who can always see their own
+    taste profile regardless of its visibility setting.
+
+    Block enforcement now happens here too (previously client-side
+    only, via GET /blocks/status -- a direct API call bypassed it
+    entirely, since a blocked relationship never touched this route's
+    own response). A blocked relationship is symmetric (see
+    block_service.is_blocked): neither party can pull the other's
+    activity-derived data, which taste stats are, through this route.
 
     Also includes "match_score" — Beli's pairwise taste-compatibility
     number — whenever the viewer is signed in and looking at someone
@@ -155,8 +168,10 @@ def get_taste_profile_route(
     signed-out visitor; match_score is simply omitted (None) for them.
     """
     profile = profile_service.get_profile(db, user_id)
-    if not profile or not profile.is_public:
+    if not profile or (not profile.is_public and viewer_id != user_id):
         raise HTTPException(status_code=404, detail="profile not found")
+    if viewer_id and viewer_id != user_id and is_blocked(db, user_a=viewer_id, user_b=user_id):
+        raise HTTPException(status_code=403, detail="blocked")
     taste = get_taste_profile(db, user_id=user_id)
     match_score = None
     if viewer_id and viewer_id != user_id:

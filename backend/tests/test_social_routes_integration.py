@@ -20,13 +20,14 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app
-from app.core.user_auth import get_current_user_id
+from app.core.user_auth import get_current_user_id, get_current_user_id_optional
 from app.core.rate_limit import rate_limit
 from app.db.session import SessionLocal
 from app.db.models.city import City
 from app.db.models.place import Place
 from app.db.models.user_profile import UserProfile
 from app.db.models.user_follow import UserFollow
+from app.db.models.user_block import UserBlock
 from app.db.models.place_ranking import PlaceRanking
 from app.db.models.activity_event import ActivityEvent
 from app.db.models.recommendation_event import RecommendationEvent
@@ -37,6 +38,19 @@ client = TestClient(app)
 
 def _as_user(user_id: str):
     app.dependency_overrides[get_current_user_id] = lambda: user_id
+
+
+# GET /profile/{user_id} and GET /profile/{user_id}/taste depend on
+# get_current_user_id_optional, a distinct callable from get_current_user_id
+# -- it calls the real get_current_user_id internally as a plain Python
+# function, not through FastAPI's DI, so overriding get_current_user_id via
+# _as_user() above has no effect on these routes' viewer_id. They need their
+# own override.
+def _as_optional_viewer(user_id):
+    if user_id is None:
+        app.dependency_overrides.pop(get_current_user_id_optional, None)
+    else:
+        app.dependency_overrides[get_current_user_id_optional] = lambda: user_id
 
 
 @pytest.fixture(autouse=True)
@@ -50,6 +64,7 @@ def _clear_overrides():
     app.dependency_overrides[rate_limit] = lambda: None
     yield
     app.dependency_overrides.pop(get_current_user_id, None)
+    app.dependency_overrides.pop(get_current_user_id_optional, None)
     app.dependency_overrides.pop(rate_limit, None)
 
 
@@ -102,6 +117,9 @@ def users(db):
     db.query(UserFollow).filter(UserFollow.follower_id.in_(ids.values())).delete(
         synchronize_session=False
     )
+    db.query(UserBlock).filter(
+        UserBlock.blocker_id.in_(ids.values()) | UserBlock.blocked_id.in_(ids.values())
+    ).delete(synchronize_session=False)
     db.query(UserProfile).filter(UserProfile.id.in_(ids.values())).delete(
         synchronize_session=False
     )
@@ -390,3 +408,151 @@ def test_username_available_endpoint():
     resp = client.get("/api/v1/profile/username-available", params={"username": "totally_new_name_xyz"})
     assert resp.status_code == 200
     assert resp.json()["available"] is True
+
+
+# ---------------------------------------------------------------------------
+# Authorization matrix: GET /profile/{id}, GET /profile/{id}/taste,
+# GET /rankings/user/{id} against privacy (is_public) and block state.
+#
+# Phase 3 (Authorization, Identity & Detail Integrity): these three routes
+# previously either ignored the caller's own identity entirely when
+# deciding is_public access (so a user who set their own profile private
+# got "profile not found" viewing it themselves -- reachable from their
+# own leaderboard row or a friend-ranking entry pointing at themselves), or
+# never checked block status at all (get_taste_profile_route's own prior
+# docstring said so explicitly: "Block enforcement is handled client-side
+# ... not duplicated here" -- a direct API call, bypassing the app's own
+# UI, could still pull a blocking party's full taste/ranking data).
+# ---------------------------------------------------------------------------
+
+def _setup_profile(user_id: str, *, is_public: bool = True) -> str:
+    username = f"user_{uuid.uuid4().hex[:10]}"
+    _as_user(user_id)
+    resp = client.post("/api/v1/profile/setup", json={"username": username})
+    assert resp.status_code == 201
+    if not is_public:
+        resp = client.patch("/api/v1/profile/me", json={"is_public": False})
+        assert resp.status_code == 200
+    return username
+
+
+def test_get_profile_public_user_viewed_by_unrelated_viewer(users):
+    _setup_profile(users["alice"])
+    _as_optional_viewer(users["bob"])
+    resp = client.get(f"/api/v1/profile/{users['alice']}")
+    assert resp.status_code == 200
+    assert resp.json()["id"] == users["alice"]
+
+
+def test_get_profile_private_user_hidden_from_unrelated_viewer(users):
+    _setup_profile(users["alice"], is_public=False)
+    _as_optional_viewer(users["bob"])
+    resp = client.get(f"/api/v1/profile/{users['alice']}")
+    assert resp.status_code == 404
+
+
+def test_get_profile_owner_can_view_own_private_profile(users):
+    # The confirmed bug: is_public alone decided visibility, with no
+    # exception for the profile's own owner -- reachable in the app via
+    # profile.tsx's "Your Taste Profile" link and via tapping your own row
+    # on the leaderboard or a place's "friends ranked this" list.
+    _setup_profile(users["alice"], is_public=False)
+    _as_optional_viewer(users["alice"])
+    resp = client.get(f"/api/v1/profile/{users['alice']}")
+    assert resp.status_code == 200
+    assert resp.json()["id"] == users["alice"]
+
+
+def test_get_profile_nonexistent_target_404(users):
+    _as_optional_viewer(users["alice"])
+    resp = client.get(f"/api/v1/profile/does-not-exist-{uuid.uuid4().hex[:8]}")
+    assert resp.status_code == 404
+
+
+def test_get_profile_unauthenticated_sees_public_not_private(users):
+    _setup_profile(users["alice"], is_public=True)
+    _as_optional_viewer(None)
+    resp = client.get(f"/api/v1/profile/{users['alice']}")
+    assert resp.status_code == 200
+
+    _setup_profile(users["bob"], is_public=False)
+    _as_optional_viewer(None)
+    resp = client.get(f"/api/v1/profile/{users['bob']}")
+    assert resp.status_code == 404
+
+
+def test_get_taste_profile_owner_can_view_own_private_taste(users):
+    _setup_profile(users["alice"], is_public=False)
+    _as_optional_viewer(users["alice"])
+    resp = client.get(f"/api/v1/profile/{users['alice']}/taste")
+    assert resp.status_code == 200
+
+
+def test_get_taste_profile_blocked_caller_gets_403_even_when_public(users):
+    # A blocks B. B calling this route directly (not through the app, which
+    # would have hidden the "Taste Profile" link client-side) must not get
+    # A's data just because A's profile is public.
+    _setup_profile(users["alice"], is_public=True)
+    _setup_profile(users["bob"], is_public=True)
+
+    _as_user(users["alice"])
+    resp = client.post(f"/api/v1/blocks/{users['bob']}")
+    assert resp.status_code == 201
+
+    _as_optional_viewer(users["bob"])
+    resp = client.get(f"/api/v1/profile/{users['alice']}/taste")
+    assert resp.status_code == 403
+
+
+def test_get_taste_profile_reverse_block_direction_also_403(users):
+    # Enforcement is symmetric by product contract (block_service.is_blocked)
+    # -- the blocker is equally denied the blocked party's data, not just
+    # the other way around.
+    _setup_profile(users["alice"], is_public=True)
+    _setup_profile(users["bob"], is_public=True)
+
+    _as_user(users["alice"])
+    client.post(f"/api/v1/blocks/{users['bob']}")
+
+    _as_optional_viewer(users["alice"])
+    resp = client.get(f"/api/v1/profile/{users['bob']}/taste")
+    assert resp.status_code == 403
+
+
+def test_get_taste_profile_unblock_restores_access(users):
+    _setup_profile(users["alice"], is_public=True)
+    _setup_profile(users["bob"], is_public=True)
+
+    _as_user(users["alice"])
+    client.post(f"/api/v1/blocks/{users['bob']}")
+    client.delete(f"/api/v1/blocks/{users['bob']}")
+
+    _as_optional_viewer(users["bob"])
+    resp = client.get(f"/api/v1/profile/{users['alice']}/taste")
+    assert resp.status_code == 200
+
+
+def test_get_user_rankings_owner_can_view_own_private_rankings(users):
+    _setup_profile(users["alice"], is_public=False)
+    _as_user(users["alice"])
+    resp = client.get(f"/api/v1/rankings/user/{users['alice']}")
+    assert resp.status_code == 200
+
+
+def test_get_user_rankings_blocked_caller_gets_403_even_when_public(users):
+    _setup_profile(users["alice"], is_public=True)
+    _setup_profile(users["bob"], is_public=True)
+
+    _as_user(users["alice"])
+    client.post(f"/api/v1/blocks/{users['bob']}")
+
+    _as_user(users["bob"])
+    resp = client.get(f"/api/v1/rankings/user/{users['alice']}")
+    assert resp.status_code == 403
+
+
+def test_get_user_rankings_private_hidden_from_unrelated_viewer(users):
+    _setup_profile(users["alice"], is_public=False)
+    _as_user(users["bob"])
+    resp = client.get(f"/api/v1/rankings/user/{users['alice']}")
+    assert resp.status_code == 404

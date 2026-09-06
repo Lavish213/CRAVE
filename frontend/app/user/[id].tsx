@@ -51,6 +51,13 @@ export default function UserProfileScreen() {
   const [blocked, setBlocked] = useState(false);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
+  // Distinct from notFound -- a network failure/timeout/5xx on the primary
+  // profile fetch previously collapsed into the same "Profile not found"
+  // EmptyState as a genuine 404, with no retry affordance. A transient
+  // infrastructure failure is not the same product truth as "this account
+  // doesn't exist, or its list is private," and unlike that EmptyState,
+  // this is retryable.
+  const [profileError, setProfileError] = useState(false);
   const [busy, setBusy] = useState(false);
   const [blockBusy, setBlockBusy] = useState(false);
   const [rankingsError, setRankingsError] = useState(false);
@@ -90,14 +97,26 @@ export default function UserProfileScreen() {
     const myGeneration = ++loadGenerationRef.current;
     const viewerId = me?.id ?? null;
     if (loadedForIdRef.current !== id || loadedForViewerRef.current !== viewerId) {
+      // Identity-scoped: only wipe another identity's stale data, so a
+      // same-identity refocus/retry doesn't flash the skeleton over
+      // still-good data while it quietly re-fetches in the background.
       setProfile(null);
       setRankings([]);
       setFollowing(false);
       setFollowsMe(false);
       setBlocked(false);
-      setNotFound(false);
       setLoading(true);
     }
+    // Outcome flags describe *this* attempt, not the identity pairing --
+    // they must reset on every attempt, including a same-identity retry
+    // from ErrorState's onRetry (profileError) or a plain refocus after a
+    // transient 404. Previously gated inside the block above: a retry
+    // that actually succeeded still rendered the stale error screen over
+    // the freshly-fetched, perfectly good data, since nothing ever
+    // cleared the flag for a same-identity attempt (confirmed by
+    // CodeRabbit).
+    setNotFound(false);
+    setProfileError(false);
     // Marked as "attempted" here, before the fetch settles either way --
     // not only on success. This id/viewer pairing has been *addressed* by
     // this generation regardless of outcome; the render-time stale-gate
@@ -140,7 +159,15 @@ export default function UserProfileScreen() {
       }
     } catch (err: any) {
       if (myGeneration !== loadGenerationRef.current) return;
+      // A 404 here is real product truth ("this account doesn't exist, or
+      // its list is private" -- see get_public_profile's own is_public
+      // gate). Anything else (network failure, timeout, 5xx) is an
+      // infrastructure failure, not that truth, and must stay retryable
+      // rather than collapsing into the same "not found" copy with no way
+      // back -- this previously did exactly that, mislabeling a transient
+      // failure as a nonexistent/private account.
       if (err?.response?.status === 404) setNotFound(true);
+      else setProfileError(true);
     } finally {
       if (myGeneration === loadGenerationRef.current) setLoading(false);
     }
@@ -251,7 +278,7 @@ export default function UserProfileScreen() {
     );
   }
 
-  if (notFound || !profile) {
+  if (notFound) {
     return (
       <EmptyState
         icon="person-outline"
@@ -259,6 +286,14 @@ export default function UserProfileScreen() {
         body="This account doesn't exist, or its list is private."
       />
     );
+  }
+
+  // profileError (an explicit non-404 failure) and the !profile fallback
+  // (shouldn't happen given the two states above, but a defensive
+  // catch-all) get the same retryable treatment -- neither is the "not
+  // found" product truth above.
+  if (profileError || !profile) {
+    return <ErrorState message="Couldn't load this profile" onRetry={load} />;
   }
 
   return (

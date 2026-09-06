@@ -84,6 +84,28 @@ describe('TasteProfileScreen', () => {
     expect(mockedFetchTasteProfile).not.toHaveBeenCalled();
   });
 
+  it('recovers on retry after a transient access-check failure, instead of staying stuck on the error', async () => {
+    // Confirmed by CodeRabbit: accessError was only ever cleared inside
+    // the identity-change reset block, so a same-identity retry (this
+    // screen's own onRetry={load}) that actually succeeded still
+    // rendered the stale ErrorState over the freshly-loaded, perfectly
+    // good data -- the flag never cleared for a same-identity attempt.
+    mockedFetchProfile.mockResolvedValue(makeProfile());
+    mockedFetchBlockStatus.mockRejectedValueOnce(new Error('network'));
+    mockedFetchTasteProfile.mockResolvedValue(makeTaste({ total_ranked: 12 }));
+
+    const { findByText, findByLabelText, queryByText } = render(<TasteProfileScreen />);
+    expect(await findByText("Couldn't verify profile access")).toBeTruthy();
+
+    mockedFetchBlockStatus.mockResolvedValue({ blocked: false });
+    await act(async () => {
+      fireEvent.press(await findByLabelText('Try again'));
+    });
+
+    expect(await findByText('12')).toBeTruthy();
+    expect(queryByText("Couldn't verify profile access")).toBeNull();
+  });
+
   it('shows a self-specific no-data message when viewing your own empty taste profile', async () => {
     mockUserId = 'me';
     setMe('me');
@@ -148,6 +170,58 @@ describe('TasteProfileScreen', () => {
 
     const { findByText } = render(<TasteProfileScreen />);
     expect(await findByText('61%')).toBeTruthy();
+  });
+
+  it('does not render a previous profile\'s stale taste data under a new profile whose own taste fetch fails', async () => {
+    // The confirmed Phase 3 bug: A's taste profile loads and renders in
+    // full. Navigating to B succeeds on the *profile* fetch (so the
+    // header correctly updates to B) but B's own taste fetch then fails
+    // (network error, 5xx) -- the catch block only ever handles a 404, so
+    // `taste` was previously left holding A's stale data untouched, which
+    // then rendered in full under B's now-correct header.
+    mockedFetchProfile.mockResolvedValue(makeProfile({ username: 'alice', display_name: 'Alice' }));
+    mockedFetchTasteProfile.mockResolvedValue(makeTaste({ total_ranked: 12 }));
+
+    const { rerender, findByText, queryByText } = render(<TasteProfileScreen />);
+    expect(await findByText("Alice's Taste Profile")).toBeTruthy();
+    expect(await findByText('12')).toBeTruthy();
+
+    mockUserId = 'yet-another-user';
+    mockedFetchProfile.mockResolvedValue(makeProfile({ id: 'yet-another-user', username: 'bob', display_name: 'Bob' }));
+    mockedFetchTasteProfile.mockRejectedValue(new Error('network'));
+    rerender(<TasteProfileScreen />);
+
+    // Alice's stale total_ranked=12 must not still be showing once bob's
+    // profile has loaded -- taste gets reset, not left holding alice's
+    // data, so this correctly falls through to the same "nothing to show
+    // yet" state a real empty taste profile would (a real fetch failure
+    // here is a smaller, separate gap from the one this test covers:
+    // stale cross-identity data must never render, whatever the resulting
+    // empty/error copy).
+    expect(await findByText("@bob hasn't ranked anything yet.")).toBeTruthy();
+    expect(queryByText('12')).toBeNull();
+    expect(queryByText("Alice's Taste Profile")).toBeNull();
+  });
+
+  it('reloads when the viewer switches accounts even though the profile being viewed stays the same', async () => {
+    // isSelf (userId === me.id) is unchanged across this switch -- both
+    // viewer-A and viewer-C are "not self" relative to the same target
+    // profile -- so load()'s dependency array must include me.id itself,
+    // not just isSelf, or this would never refetch and could go on
+    // showing viewer A's block/taste view under viewer C's session.
+    mockedFetchProfile.mockResolvedValue(makeProfile({ username: 'alice' }));
+    mockedFetchBlockStatus.mockResolvedValue({ blocked: false });
+    mockedFetchTasteProfile.mockResolvedValue(makeTaste({ total_ranked: 12 }));
+
+    const { rerender, findByText, queryByText } = render(<TasteProfileScreen />);
+    expect(await findByText('12')).toBeTruthy();
+
+    setMe('viewer-c');
+    mockedFetchBlockStatus.mockResolvedValue({ blocked: true });
+    rerender(<TasteProfileScreen />);
+
+    expect(await findByText("You've blocked @alice.")).toBeTruthy();
+    expect(queryByText('12')).toBeNull();
   });
 
   it('does not let a stale response from a previous userId render under the new route', async () => {

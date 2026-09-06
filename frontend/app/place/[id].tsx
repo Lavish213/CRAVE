@@ -166,6 +166,16 @@ export default function PlaceDetailScreen() {
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [menuVerifiedAt, setMenuVerifiedAt] = useState<string | null>(null);
   const [menuLoading, setMenuLoading] = useState(true);
+  // Distinct from a genuinely empty menu (a 200 with items: []) -- the
+  // place and its menu are separate resources (place.has_menu is the
+  // authoritative "should have one" signal), so a menu fetch failure
+  // (network error, timeout, 5xx) must not collapse into the exact same
+  // "Menu coming soon"/"No menu on file yet" copy an actual empty result
+  // gets. Previously it did: the .catch() below reset menuItems to []
+  // with no distinguishing flag, so a real infrastructure failure looked
+  // identical to a place with no menu on file, and had no way to retry
+  // without leaving the whole page (place itself stays usable either way).
+  const [menuError, setMenuError] = useState(false);
   const [menuExpanded, setMenuExpanded] = useState(false);
 
   // expo-router can reuse this screen instance across a param change (e.g.
@@ -177,11 +187,14 @@ export default function PlaceDetailScreen() {
   // sharing one would make each falsely invalidate the other on mount.
   const menuGenerationRef = useRef(0);
 
-  // Fetch menu separately (not worth a useQuery for this small side-load)
-  useEffect(() => {
+  // Fetch menu separately (not worth a useQuery for this small side-load).
+  // Extracted to a stable callback so the new retry affordance can reuse
+  // it, same pattern as profile-setup.tsx's runCheck/handleRetryCheck.
+  const loadMenu = useCallback(() => {
     if (!id) return;
     const myGeneration = ++menuGenerationRef.current;
     setMenuLoading(true);
+    setMenuError(false);
     getPlaceMenu(id)
       .then((m) => {
         if (myGeneration !== menuGenerationRef.current) return;
@@ -192,12 +205,17 @@ export default function PlaceDetailScreen() {
         if (myGeneration !== menuGenerationRef.current) return;
         setMenuItems([]);
         setMenuVerifiedAt(null);
+        setMenuError(true);
       })
       .finally(() => {
         if (myGeneration !== menuGenerationRef.current) return;
         setMenuLoading(false);
       });
   }, [id]);
+
+  useEffect(() => {
+    loadMenu();
+  }, [loadMenu]);
 
   const [craves, setCraves] = useState<CraveItem[]>([]);
   const cravesGenerationRef = useRef(0);
@@ -766,6 +784,18 @@ export default function PlaceDetailScreen() {
               <View key={i} style={{ height: 44, borderRadius: Radius.sm, backgroundColor: Colors.surface }} />
             ))}
           </View>
+        ) : menuError ? (
+          <View style={styles.menuErrorWrap}>
+            <Text style={styles.noMenu}>Couldn't load the menu</Text>
+            <TouchableOpacity
+              style={styles.menuRetryBtn}
+              onPress={loadMenu}
+              accessibilityRole="button"
+              accessibilityLabel="Retry loading the menu"
+            >
+              <Text style={styles.expandLabel}>Retry</Text>
+            </TouchableOpacity>
+          </View>
         ) : menuItems.length === 0 ? (
           <Text style={styles.noMenu}>
             {place.has_menu ? 'Menu coming soon' : 'No menu on file yet'}
@@ -1049,6 +1079,8 @@ const styles = StyleSheet.create({
   },
   menuVerified: { color: Colors.textSecondary, fontSize: 12 },
   noMenu: { color: Colors.textSecondary, fontSize: 14, paddingVertical: 8 },
+  menuErrorWrap: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
+  menuRetryBtn: { minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
   menuCat: { marginBottom: 16 },
   menuCatLabel: {
     fontSize: 11,
