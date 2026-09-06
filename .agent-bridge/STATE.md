@@ -5,7 +5,7 @@ Owner: Claude
 Branch: claude/phase4-ranking-transaction-integrity (PR to be opened
 against main)
 Base SHA: 73e5556 (main, post-Phase-3 squash merge -- PR #132)
-Commit SHA: (see next commit)
+Commit SHA: 80bc69f
 Scope: Phase 4 of the canonical CRAVE_PHASES_3_TO_7_PRODUCTION_HARDENING_
 EXECUTION_SPEC.md -- Ranking Transaction Integrity.
 Locked files: none -- handoff complete.
