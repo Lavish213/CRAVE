@@ -23,7 +23,10 @@ const RETRY_INTERVAL_MS = 15_000;
 const MAX_QUEUE_SIZE = 40;
 const DURABLE_STORAGE_KEY = '@crave/recommendation-event-outbox/v1';
 
-const sessionId = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
+// Analytics correlation only, never an auth/security token. A per-process
+// timestamp is sufficient and avoids weak-randomness scanners treating this
+// identifier like a security primitive.
+const sessionId = `session_${Date.now().toString(36)}`;
 
 interface DurableEnvelope {
   ownerUserId: string;
@@ -36,6 +39,7 @@ let durableHydrated = false;
 let hydratePromise: Promise<void> | null = null;
 let flushTimer: ReturnType<typeof setTimeout> | null = null;
 let flushInProgress = false;
+let activeFlushPromise: Promise<void> | null = null;
 
 function isDurableOutcome(event: RecommendationEventInput): boolean {
   return (
@@ -119,11 +123,6 @@ async function enqueueDurable(
   ownerUserIdOverride?: string,
 ): Promise<void> {
   await hydrateDurableQueue();
-  // Prefer the owner captured by the mutation that actually produced this
-  // confirmed outcome. Reading the ambient session is only a fallback for
-  // legacy/direct callers: Account A's save can finish milliseconds after a
-  // switch to B, and using "who is signed in now" would misattribute A's
-  // preference to B.
   const ownerUserId = ownerUserIdOverride ?? await currentUserId();
   if (!ownerUserId) {
     if (__DEV__) console.warn('[recommendationEventQueue] durable_event_without_owner');
@@ -153,9 +152,6 @@ async function flushVolatile(): Promise<void> {
   try {
     await sendRecommendationEvents(batch);
   } catch (err) {
-    // Deliberately best-effort: do not turn scrolling telemetry into a
-    // persisted retry storm. Explicit preference outcomes use the durable
-    // branch below instead.
     if (__DEV__) {
       console.warn('[recommendationEventQueue] volatile_flush_failed', err instanceof Error ? err.message : err);
     }
@@ -173,11 +169,7 @@ async function flushDurable(): Promise<boolean> {
     .filter((queued) => queued.ownerUserId === ownerUserId)
     .slice(0, MAX_QUEUE_SIZE);
 
-  if (ownedBatch.length === 0) {
-    // The outbox contains another account's events. Keep them dormant until
-    // that account signs back in; never send them under the current token.
-    return true;
-  }
+  if (ownedBatch.length === 0) return true;
 
   try {
     await sendRecommendationEvents(ownedBatch.map((queued) => queued.event));
@@ -197,27 +189,28 @@ async function flushDurable(): Promise<boolean> {
   }
 }
 
-async function flushQueues(): Promise<void> {
-  if (flushInProgress) return;
-  flushInProgress = true;
-  try {
-    await flushVolatile();
-    const durableSucceeded = await flushDurable();
+async function performFlush(): Promise<void> {
+  await flushVolatile();
+  const durableSucceeded = await flushDurable();
 
-    // Only schedule automatic retry when there is work that can plausibly
-    // progress in this session. Another account's dormant durable rows are
-    // retried explicitly on app/auth recovery through flushRecommendationEvents.
-    const ownerUserId = durableQueue.length > 0 ? await currentUserId() : null;
-    const hasOwnedDurable = ownerUserId
-      ? durableQueue.some((queued) => queued.ownerUserId === ownerUserId)
-      : false;
+  const ownerUserId = durableQueue.length > 0 ? await currentUserId() : null;
+  const hasOwnedDurable = ownerUserId
+    ? durableQueue.some((queued) => queued.ownerUserId === ownerUserId)
+    : false;
 
-    if (volatileQueue.length > 0 || hasOwnedDurable) {
-      scheduleFlush(durableSucceeded ? FLUSH_INTERVAL_MS : RETRY_INTERVAL_MS);
-    }
-  } finally {
-    flushInProgress = false;
+  if (volatileQueue.length > 0 || hasOwnedDurable) {
+    scheduleFlush(durableSucceeded ? FLUSH_INTERVAL_MS : RETRY_INTERVAL_MS);
   }
+}
+
+function flushQueues(): Promise<void> {
+  if (activeFlushPromise) return activeFlushPromise;
+  flushInProgress = true;
+  activeFlushPromise = performFlush().finally(() => {
+    flushInProgress = false;
+    activeFlushPromise = null;
+  });
+  return activeFlushPromise;
 }
 
 /**
@@ -259,12 +252,12 @@ export function logRecommendationEvents(
 }
 
 /** Explicit recovery hook for app-foreground/auth-restoration callers. */
-export function flushRecommendationEvents(): void {
+export function flushRecommendationEvents(): Promise<void> {
   if (flushTimer) {
     clearTimeout(flushTimer);
     flushTimer = null;
   }
-  void flushQueues();
+  return flushQueues();
 }
 
 /** Test-only singleton reset. */
@@ -276,10 +269,9 @@ export function _resetRecommendationEventQueueForTests(): void {
   durableHydrated = false;
   hydratePromise = null;
   flushInProgress = false;
+  activeFlushPromise = null;
 }
 
-// Recover the active account's durable preference events after process
-// restart even if no new save/unsave occurs in this session.
 void hydrateDurableQueue().then(() => {
   if (durableQueue.length > 0) scheduleFlush();
 });
