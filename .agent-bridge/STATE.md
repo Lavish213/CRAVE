@@ -4,7 +4,7 @@ Status: ready-for-review
 Owner: Claude
 Branch: claude/phase2-search-discovery (PR #130 open against main)
 Base SHA: 31f24d2 (main, post-Phase-1 merge)
-Commit SHA: (see next commit -- CodeRabbit review fixes)
+Commit SHA: 8d51fb8b2a2ace03ccb41c44bf9e2462d995dcd1
 Scope: Phase 2 of the user-directed multi-phase frontend hardening
 program -- Search as a proper discovery system, plus the two Craves/
 Profile Setup bugs Phase 1 diagnosed but deliberately deferred (small,

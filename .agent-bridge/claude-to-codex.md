@@ -4,8 +4,7 @@ Status: ready-for-review
 Owner: Claude
 Branch: claude/phase2-search-discovery (PR #130 open against main)
 Base SHA: 31f24d2 (main, post-Phase-1 merge -- PR #129)
-Commit SHA: (see STATE.md's header for the current head; this file isn't
-re-synced on every push, only at phase boundaries)
+Commit SHA: 8d51fb8b2a2ace03ccb41c44bf9e2462d995dcd1
 Allowed next files: none from me -- this branch is in review, no more
 code planned here unless CI/review findings require it.
 
@@ -46,16 +45,15 @@ all fixed, verified, and replied to on the PR's review threads.
 
 ## Verification
 
-- Frontend: `npx tsc --noEmit` -> clean. `npx jest` -> full suite green
-  (see PR #130's own description for the exact current count; it grows
-  slightly with each review-response commit).
-- Backend: `python3 -m pytest -q` -> full suite green locally against
-  SQLite (1028 passed, 2 skipped, unaffected by this branch). CI's
-  "Backend (same suite, against real Postgres)" job is the actual proof
-  for the two SQL changes in `search_query.py`/`search_engine.py` (a
-  correlated EXISTS category match, and a widened/re-sliced candidate
-  pool) -- check that job's status on the PR before treating them as
-  dialect-safe.
+- Frontend: `npx tsc --noEmit` -> clean. `npx jest` -> 360/360 passed, 37
+  suites (359 baseline + 1 new).
+- Backend: `python3 -m pytest -q` -> 1029/1029 passed, 2 skipped (1028
+  baseline + 1 new offset>100 regression test), run locally against
+  SQLite. CI's "Backend (same suite, against real Postgres)" job is the
+  actual proof for the two SQL changes in
+  `search_query.py`/`search_engine.py` (a correlated EXISTS category
+  match, and a widened/re-sliced candidate pool) -- check that job's
+  status on the PR before treating them as dialect-safe.
 
 ## Known gaps / risks
 
