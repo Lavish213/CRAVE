@@ -1,75 +1,107 @@
 # Active agent state
 
-Status: claimed
+Status: ready-for-review
 Owner: Claude
 Branch: claude/phase2-search-discovery
-Base SHA: 31f24d2 (main, includes Phase 1's merged PR #129)
-Commit SHA: (none yet)
+Base SHA: 31f24d2 (main, post-Phase-1 merge)
+Commit SHA: 84c60b1
 Scope: Phase 2 of the user-directed multi-phase frontend hardening
-program -- Search only, as a proper discovery system. Explicitly not
-combined with Craves or Profile Setup, even though this phase also
-carries the fix for the two bugs Phase 1 diagnosed-but-deferred in those
-files (Craves failure->empty, Profile Setup availability handling) --
-those are small, independently-scoped fixes riding in this PR only
-because they were fully diagnosed already, not a scope expansion into
-"fix everything." Search Retry (search.tsx) is genuinely in-scope since
-it's the same file this phase rebuilds.
-Confirmed stack (re-verified against current main before writing this,
-not assumed from the earlier diagnosis):
-  1. Debounce resurrection -- handleClear() resets query/debouncedQuery
-     but never clears the pending debounceRef timer; a timer from text
-     typed just before the clear tap still fires and resurrects the
-     cleared query.
-  2. Broken retry -- onRetry={() => setDebouncedQuery(query)} is a no-op
-     (already equal when the error fires); refetchSearch exists and is
-     already correctly wired to pull-to-refresh two lines below.
-  3. Cuisine/category search -- searchPlaces() never sends category_id
-     to the backend at all; search_query.py only does
-     Place.name.ilike(search_term), so a cuisine/category typed as a
-     query matches nothing unless a place's *name* happens to contain it.
-  4. Near Me/location integration -- search.tsx still consumes
-     useLocation() (Phase 1's unchanged-signature coords-or-null
-     wrapper), not useLocationStatus(), so it can't distinguish
-     pending/denied/unavailable/stale -- exactly the "future consumer"
-     case Phase 1's PR body flagged.
-  5. Trending lifecycle/cache -- useTrending.ts is a hand-rolled
-     module-level cache with no TTL, inconsistent with every other list
-     screen (search/leaderboard/friends-feed) now on React Query.
-  6. Analytics exposure semantics -- search.tsx logs an "impression" the
-     instant results arrive (retrieved), not on actual viewability
-     (exposed).
-  7. Ranking-before-pagination -- search_query.py applies SQL
-     LIMIT/OFFSET using only rank_score/distance_sq, then
-     search_ranker.py's exact-match/menu-boost re-scoring runs *after*
-     that page is already cut -- a result that would win post-enrichment
-     can never surface if it didn't make the raw SQL-ordered page window.
-  8. Cancellation -- searchPlaces() never passes an abort signal to
-     client.get(), so a superseded query can be marked stale by React
-     Query but the underlying HTTP request keeps running to completion.
-Also carried from Phase 1's deferred list (same file/adjacent scope):
-  9. Craves failure->empty (craves.tsx) -- cravesError is tracked and
-     rendered correctly in the list footer, but the top-level "true
-     empty" gate never checks it.
-  10. Profile Setup availability handling (profile-setup.tsx) -- the
-      username-check's .catch() collapses to 'idle', indistinguishable
-      from "haven't typed yet," no retry path.
-Locked files (expected, not final until the sweep confirms nothing else
-needs touching): app/(tabs)/search.tsx, src/api/search.ts,
-src/hooks/useTrending.ts, src/utils/recommendationEventQueue.ts (if
-exposure semantics need a new event type there), backend
-app/services/query/search_query.py, app/services/search/search_engine.py,
-app/services/search/search_ranker.py, app/api/v1/routes/search.py,
-app/(tabs)/craves.tsx, app/profile-setup.tsx.
-Verification plan: re-verify each of the 10 items above against current
-code before touching (already done once above; re-check again
-immediately before editing each file in case anything changed). Full
-frontend suite + tsc --noEmit after frontend changes; backend test suite
-after backend changes. New regression tests for: debounce-resurrection,
-retry-actually-refetches, cuisine/category match, cancellation,
-ranking-survives-pagination, craves failure->empty, profile-setup retry.
+program -- Search as a proper discovery system, plus the two Craves/
+Profile Setup bugs Phase 1 diagnosed but deliberately deferred (small,
+independently-scoped, riding along only because already fully
+diagnosed).
+Locked files: none -- handoff complete.
+
+## Outcome
+
+All 10 items (8 confirmed-stack + 2 carried-over), each re-verified
+against current code before fixing:
+
+- **Debounce resurrection** (search.tsx): `handleClear()` reset
+  query/debouncedQuery but never cancelled the pending debounce timer
+  -- text typed just before a clear tap still fired 350ms later and
+  resurrected the cleared query. Now clears the timer too.
+- **Broken retry** (search.tsx): the error retry button called
+  `setDebouncedQuery(query)`, a no-op since they're already equal
+  whenever the error fires. Now calls the already-correct,
+  already-destructured `refetchSearch`.
+- **Cuisine/category search** (backend `search_query.py`): search only
+  ever matched `Place.name.ilike(...)` -- a cuisine/category name (e.g.
+  "Italian", "sushi") matched nothing unless a place's own name
+  happened to contain it. Added a correlated EXISTS match against
+  `Category.name` (via `place_categories`), OR'd with the existing name
+  match.
+- **Near Me/location integration** (search.tsx): migrated from
+  `useLocation()` to `useLocationStatus()` -- the screen's own "Searching
+  everywhere..." copy now distinguishes still-resolving from a terminal
+  denied/unavailable state, previously identical.
+- **Trending lifecycle/cache** (`useTrending.ts`): rewritten onto React
+  Query (staleTime mirrors backend `trending.py`'s own 5-min
+  response-cache TTL) -- was a hand-rolled module-level cache with no
+  TTL, the one list hook in the app not already on React Query like
+  every sibling screen. Public API unchanged; both real call sites
+  (search.tsx, index.tsx) needed no changes.
+- **Analytics exposure semantics** (search.tsx): impressions now log
+  from FlashList's `onViewableItemsChanged`, not the instant results are
+  retrieved -- "retrieved" and "exposed" were conflated. Deduped per
+  query via a Set, reset on a genuinely new query.
+- **Ranking-before-pagination** (backend `search_engine.py`):
+  `search_query.py`'s SQL fetch applies LIMIT/OFFSET using only
+  rank_score/distance, but `search_ranker.py`'s exact-match/menu/
+  proximity re-scoring runs *after* that -- a result that would win
+  post-enrichment could never surface if it didn't already make the
+  raw-ordered page window. Widened the candidate fetch (bounded like
+  `search_query.py`'s own fuzzy-fallback pool, same tradeoff for the
+  same reason -- 500-row cap, +100 padding over offset+limit) so
+  enrichment has room to promote a result into the visible page, then
+  slices the real page out of the ranked result.
+- **Cancellation** (`search.ts`/search.tsx): `searchPlaces()` never
+  forwarded React Query's per-query AbortSignal, so a query superseded
+  by the next keystroke's debounced fetch kept running its full HTTP
+  request to completion. Now threaded through from `queryFn`'s own
+  `signal` argument.
+- **Craves failure->empty** (craves.tsx): the top-level "true empty"
+  gate never checked `cravesError` (already tracked, already correctly
+  rendered in the FlashList's own footer) -- a craves-fetch failure with
+  zero saves/placeSaves rendered "Start your food memory" instead of
+  the error.
+- **Profile Setup availability handling** (profile-setup.tsx): the
+  username-check's failure path collapsed to `'idle'`, indistinguishable
+  from "haven't typed a valid username yet," with no retry (retyping
+  the same text never reruns the debounce effect). Added a distinct
+  `'error'` state with a working retry affordance.
+
+## Verification
+
+- Frontend: `npx tsc --noEmit` clean; `npx jest` 359 passed, 37 suites
+  (340 baseline + 19 new across two commits).
+- Backend: full suite 1028 passed, 2 skipped (baseline, unaffected) --
+  ran locally against SQLite; the category-name EXISTS join and the
+  widened-pool query are standard ANSI SQL with no known SQLite/Postgres
+  divergence, but CI's "Backend (same suite, against real Postgres)"
+  job is the actual proof for this branch (this exact file previously
+  caught a real SQLite-vs-Postgres-only bug -- see its DISTINCT/
+  ORDER BY comment -- so it's not assumed clean without that job).
+
+## Known gaps / risks
+
+- Fuzzy-fallback typo-tolerance (`_fuzzy_fallback_search` in
+  `search_query.py`) still only compares against `Place.name`, not
+  category names -- a genuinely misspelled cuisine (e.g. "italain")
+  that no place's name happens to contain won't match. The primary
+  confirmed bug (no category matching *at all*, even for exact/
+  substring matches) is fixed; typo-tolerance for cuisine names
+  specifically is a smaller, separate enhancement, deliberately left.
+- The widened ranking candidate pool (500 rows, capped) means very deep
+  pagination (beyond roughly page ~16 at a 30-item page size) can still
+  have a result that would win post-enrichment excluded if it didn't
+  make that pool -- an accepted, documented bound, not a realistic
+  search session.
+- No PR opened yet.
 
 ## Next action
 
-Confirm each of the 10 items above is still accurate against this
-branch's current search.tsx/craves.tsx/profile-setup.tsx/backend files,
-then implement fixes one at a time, verifying after each.
+Open a PR, verify CI (frontend + backend/Postgres both need to be
+green), request CodeRabbit review, then hold this branch to the same
+gates Phase 1 used before merge: CI green, review findings addressed,
+and no scope creep beyond what's recorded here.
