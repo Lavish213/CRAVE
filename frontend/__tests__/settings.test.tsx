@@ -19,11 +19,6 @@ jest.mock('expo-router', () => ({
 jest.mock('../src/stores/authStore', () => ({
   useAuthStore: jest.fn(),
 }));
-// useCityStore is real (only selectedCity is read here), but importing it
-// transitively pulls in src/api/cities -> src/api/client ->
-// src/lib/supabase, which throws at module-load time without real env
-// vars -- same reason every other screen's tests that use the real
-// cityStore stub this module too.
 jest.mock('../src/api/cities', () => ({
   fetchCities: jest.fn().mockResolvedValue([]),
 }));
@@ -54,8 +49,6 @@ jest.mock('../src/hooks/useToast', () => ({
 
 const SF_CITY = { id: 'city-sf', name: 'San Francisco', slug: 'san-francisco', lat: 37.7749, lng: -122.4194 };
 
-// Alert.alert takes a list of button descriptors -- press a real button
-// by simulating exactly what the OS would do: call its onPress.
 function pressAlertButton(buttonText: string) {
   const call = (Alert.alert as jest.Mock).mock.calls[(Alert.alert as jest.Mock).mock.calls.length - 1];
   const buttons = call[2] as { text: string; onPress?: () => void }[];
@@ -142,9 +135,9 @@ describe('SettingsScreen', () => {
     expect(mockPush).toHaveBeenCalledWith('/legal/terms');
   });
 
-  it('shows the hardcoded app version and explains CRAVE via an alert', () => {
+  it('shows the native app/build version and explains CRAVE via an alert', () => {
     const { getByText, getByLabelText } = render(<SettingsScreen />);
-    expect(getByText('1.0.0')).toBeTruthy();
+    expect(getByText('mock (mock)')).toBeTruthy();
 
     fireEvent.press(getByLabelText('How CRAVE Works'));
     expect(Alert.alert).toHaveBeenCalledWith('How CRAVE Works', expect.stringContaining('CRAVE ranks restaurants'));
@@ -162,9 +155,6 @@ describe('SettingsScreen', () => {
   });
 
   it('shows the account section only when signed in, with the account email as the label', () => {
-    // The account-email row has no onPress, so (per Row's own
-    // implementation, same pattern as Profile's StatTile) it never gets
-    // an accessibilityLabel -- assert on its rendered text instead.
     const { getByText, getByLabelText, queryByLabelText, rerender } = render(<SettingsScreen />);
     expect(getByText('a@b.com')).toBeTruthy();
     expect(getByLabelText('Sign Out')).toBeTruthy();
@@ -200,8 +190,6 @@ describe('SettingsScreen', () => {
     fireEvent.press(getByLabelText('Delete Account'));
     expect(mockedDeleteMyAccount).not.toHaveBeenCalled();
 
-    // First confirm only opens the second, more explicit warning --
-    // deliberately not a single tap for an irreversible action.
     pressAlertButton('Delete Account');
     expect(mockedDeleteMyAccount).not.toHaveBeenCalled();
 
@@ -221,7 +209,9 @@ describe('SettingsScreen', () => {
     pressAlertButton('Yes, delete everything');
     await new Promise((r) => setTimeout(r, 0));
 
-    expect(mockToastShow).toHaveBeenCalledWith("Couldn't delete your account. Try again.");
+    expect(mockToastShow).toHaveBeenCalledWith(
+      "Couldn't complete account deletion. Your session is still active — try again.",
+    );
     expect(mockSignOut).not.toHaveBeenCalled();
   });
 });

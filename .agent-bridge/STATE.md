@@ -1,159 +1,97 @@
 # Active agent state
 
 Status: ready-for-review
-Owner: Claude
-Branch: claude/phase5-followup-coderabbit-findings (PR #136 open
-against main)
-Base SHA: 9ce1da8 (main, Phase 5 squash merge -- PR #134)
-Commit SHA: 8a8f2f6
-Scope: Follow-up to Phase 5 (Video/Media Transaction Integrity, PR #134).
-PR #134 was merged by an earlier autonomous pass in this same
-session *before* CodeRabbit's review findings had been addressed -- a
-process mistake, not a deliberate decision. This branch fixes the 3
-real findings CodeRabbit raised against the now-merged code, re-
-verified against current `main` before touching anything (none were
-taken on faith).
-Locked files: none -- handoff complete.
+Owner: Codex
+Branch: codex/phase7-release-hardening
+Base SHA: 8900039a8c7c14b3db22696af6942fa7113d2dd3 (main, post-Phase-5 follow-up PR #136)
+PR: #138 — Phase 7: Release hardening and account-deletion integrity
+Superseded PR: #137 — closed unmerged only because GitHub's GraphQL rate limit blocked the draft→ready transition; #138 uses the same branch/head lineage.
+Implementation head before handoff-only commits: 1057fd0d5557dc91890457e76c97ee170f3f67d6
+Scope: Phase 7 of `CRAVE_PHASES_3_TO_7_PRODUCTION_HARDENING_EXECUTION_SPEC.md` — release hardening only.
 
-## Outcome
+## Merged baseline
 
-CodeRabbit's review of PR #134 (landed after the merge, at 08:31 UTC)
-found 3 issues, all confirmed real against the current code on `main`:
+- Phases 1–5: merged.
+- Phase 5 follow-up PR #136: merged as `8900039a8c7c14b3db22696af6942fa7113d2dd3`; all actionable CodeRabbit findings resolved before merge.
+- Phase 6 PR #135: merged as `e7e19d73e4505282abab0009f9e98edbda3d63c5` and included in the Phase-7 base.
 
-- **P1 -- stale auth closure after `recordAsync()`**:
-  `record-video/[placeId].tsx`'s post-recording precondition check
-  read `user`, the value the `startRecording` closure captured when it
-  *began* -- not the store's actual current state. Since `recordAsync()`
-  can run for up to `MAX_DURATION_SEC` (10s), a sign-out during that
-  window went undetected: the closure still held the pre-sign-out
-  identity for this call's entire remaining execution, so the video
-  could still queue and `runSyncPass` could still fire under a session
-  that had already ended. Fixed by reading `useAuthStore.getState().user`
-  fresh at the check point, and additionally requiring it match the
-  user who started the recording (not just "some" user), matching
-  Phase 3/4's own "verify current state, not a closure" discipline.
-- **P2 -- local-file existence checked after requesting a backend
-  upload slot**: `videoQueueStore.ts`'s `syncOne` called
-  `requestVideoUpload` (which creates a real `pending` `PlaceVideo` row
-  server-side) *before* checking whether the local file still existed.
-  Every missing-file video therefore also left an orphaned pending row
-  behind for nothing (it can never be confirmed -- there's nothing
-  left to upload). Reordered: the file-existence check now runs first.
-- **P2 -- unbounded local storage for `failed` videos**: Phase 5's own
-  fix excluded `failed` from `MAX_QUEUED_VIDEOS` specifically so a run
-  of failures couldn't permanently block new recordings -- but
-  `failed` (unlike `missing_local_file`) still retains its real,
-  multi-MB local file, and with no queue-management UI to ever
-  explicitly delete one, this let an unbounded number accumulate.
-  Added `MAX_RETAINED_FAILED_VIDEOS = 3`: once exceeded, the oldest
-  failed videos' local files are freed and folded into
-  `missing_local_file` (an accurate description from that point --
-  retryable in principle, but the file itself is now actually gone).
+## Confirmed Phase-7 fixes
 
-CodeRabbit's review of this branch itself (PR #136, at commit
-`7c3e671`) then found 2 more real issues, fixed at commit `4ac6c48`:
+### Account deletion integrity
 
-- **Cross-account sync after a slow `recordVideo()`**: the account
-  checked at the top of the save handler could differ from the account
-  signed in once the (async) `recordVideo()` actually resolved --
-  `runSyncPass` would then authenticate as whoever is *currently*
-  signed in while attributing the sync to the account that started the
-  recording. Fixed by re-reading `useAuthStore.getState().user` again
-  immediately before calling `runSyncPass`, skipping it on a mismatch.
-- **`pruneRetainedFailedVideos` swallowed a failed `deleteAsync` and
-  still marked the video `missing_local_file` regardless** --
-  misrepresenting a file that may still be on disk as gone, and
-  permanently excluding it from any future prune/retry (since
-  `missing_local_file` isn't `'failed'`). Fixed to only transition on
-  an actually-successful delete; a rejected delete leaves the video
-  `'failed'` so it's retried on the next prune pass.
+`backend/app/services/account/account_deletion_service.py` now deletes data that remains associated with the requesting user across CRAVE's profile/social/activity/recommendation/saves/craves/streak/push/report/media graph, deletes user-uploaded R2 objects, then deletes the Supabase Auth identity.
 
-Plus 2 doc nits also raised by CodeRabbit on #136: a line starting
-with a bare `#134` (renders as a Markdown heading in some viewers), and
-both agent-bridge files still saying "PR to be opened" after #136 was
-already open. Both fixed.
+Order and failure semantics are deliberate and retryable:
 
-## Verification
+1. User-owned image/video R2 objects (`orig_key`, `processed_key`, `thumb_key`) are deleted first. Storage failure fails closed before DB/auth deletion; object deletion is idempotent for retry.
+2. App-side rows are deleted in one DB transaction. DB failure rolls back DB changes and returns incomplete.
+3. Supabase Auth is deleted last. Upstream/auth failure returns incomplete instead of pretending the account is gone. App-side deletion is idempotent, so a later retry can finish the auth half.
 
-- Frontend: `npx tsc --noEmit` clean. `npx jest` 379/379 passed, 37
-  suites (added 2 more regression tests on top of Phase 5 follow-up's
-  own 2, for the cross-account-sync and failed-delete-preserves-state
-  fixes above).
-- Backend: `python3 -m pytest -q` 1041 passed, 2 skipped -- unchanged;
-  no backend files touched.
+The deletion sweep includes user profile, follows/blocks both directions, personal rankings, activity events (actor/target), recommendation events, hitlist saves/suggestions/dedup keys, Crave shares, menu submissions, push tokens, streak state, authored media reports, reports against owned media, and user-owned image/video rows. `reviewed_by` references on retained moderation records are anonymized where applicable.
 
-## Known gaps / risks
+Public catalog facts that no longer contain a user identifier are not deleted solely because they originated from a user contribution. Example: an approved menu submission may have materialized anonymous `PlaceClaim` facts; those no longer identify the deleted account.
 
-- Same real-device-testing gap as Phase 5 itself: this session has no
-  iOS/Android simulator or device access. Not claimed as satisfied.
-- The no-UI-for-the-video-queue gap flagged in Phase 5's own STATE.md
-  still stands -- `MAX_RETAINED_FAILED_VIDEOS` bounds the storage risk
-  it creates but doesn't replace an actual management surface.
-- **Process note for future phases**: a scheduled check-in merged PR
-  #134 without confirming CodeRabbit's review had actually completed
-  and been addressed -- it appears to have acted on a stale/incomplete
-  read of the PR's review state. Future phase check-ins must
-  explicitly re-fetch and read full review-comment content (not just a
-  status check) before merging, even when a wakeup prompt says to
-  proceed if reviews are "capacity-limited" -- that condition must be
-  freshly verified, not assumed from an earlier turn's summary.
+`backend/app/api/v1/routes/account.py` now returns HTTP 502 when deletion is incomplete, so the client cannot sign out and tell the user deletion succeeded while storage/auth cleanup is unfinished.
 
-## Phase 6 (Codex -- merged)
+`frontend/app/settings.tsx` keeps the session active and shows a retryable error when account deletion fails; success still signs out only after the backend reports completion. Destructive copy now matches the actual deletion contract.
 
-PR #135 "Phase 6: Telemetry, Location & Async Truth"
-(`codex/phase6-telemetry-location-async`) was opened by Codex on
-2026-09-06T09:18:46Z, based on this same `9ce1da8`. Found it before
-claiming Phase 6 myself and stood down entirely per the agent-bridge
-protocol -- no competing branch opened.
+### Release/config truth
 
-Merged to `main` at `e7e19d73e4505282abab0009f9e98edbda3d63c5`. Per
-Codex's own report, the final handoff commit (`85a120af`) passed:
-frontend TypeScript, frontend Jest 396/396 (39 suites), backend
-SQLite + real-Postgres lanes, migrations, dependency scan, conflict-
-marker guard, and CodeQL (including a weak-randomness finding on
-analytics session IDs, fixed and resolved in-branch). Confirmed fixes
-covered Feed/Decision-Session viewability-based exposure, Map
-visible-pin-only impressions with city/account context binding,
-Craves async truth (secondary-resource failure vs. true empty) plus
-viewability, 5-minute location freshness with permission-revocation
-detection, Add Spot blocked-permission Settings recovery, a durable
-account-owned outbox for save/unsave learning events (with the same
-class of cross-account race this file's own Phase 5 follow-up fixed,
-closed the same way), and root error recovery delegating to Expo
-Router's SDK55 retry contract. Search's existing viewability contract
-was verified healthy and left untouched.
+`frontend/app/settings.tsx` no longer hardcodes `1.0.0`. It displays `expo-application` native application version and native build version, so EAS/native build numbering is what users see.
 
-## Phase 7 (Codex -- claimed, in progress)
+OTA runtime policy remains **REJECTED / NOT CONFIGURED**: current repo config does not prove actual `expo-updates`/`updates.url`/`runtimeVersion` use. Phase 7 did not invent an OTA architecture just because EAS channel names exist.
 
-Codex branched `codex/phase7-release-hardening` from the post-merge
-SHA immediately after Phase 6 landed and claimed Phase 7
-(Performance/Accessibility/Security/Release Certification) before I
-could. Per their report, preflight has already surfaced: a hardcoded
-`1.0.0` version-truth bug in Settings; a **P0 release gap** where
-account deletion retains rankings/Craves/photos/videos that
-Apple/Google require deleted with the account; a privacy-policy
-mismatch (policy claims immediate deletion + Sentry crash reporting,
-neither verified in the repo); and the Google requirement for an
-external web-based account-deletion resource (R2 already has a usable
-`delete_object()` primitive for the storage side). They're mapping
-every user-owned DB table/storage object next, for one transactional
-deletion fix rather than a partial sweep.
+### Privacy truth
 
-Standing down from Phase 7 too -- not opening a competing branch. With
-Codex holding both Phase 6 (merged) and Phase 7 (claimed, in
-progress), all 5 phases in the spec (3-7) now have an owner. My only
-remaining work is getting PR #136 merged; no further phase claims are
-needed from this side unless Codex's Phase 7 branch stalls or a gap
-surfaces that needs a second pair of eyes.
+`frontend/app/legal/privacy.tsx` now matches the implemented deletion/retention behavior and no longer claims a separate in-app Sentry crash SDK that the frontend does not ship. It documents operational hosting logs, deletion failure truth, and the distinction between personal account data and anonymous public restaurant facts.
+
+Backend dependencies include `sentry-sdk`, but this audit did not find repo evidence of `sentry_sdk.init` or `SENTRY_DSN`; therefore no backend Sentry-runtime claim is made from the dependency alone.
+
+## Regression coverage / final code verification
+
+Exact implementation head `1057fd0d5557dc91890457e76c97ee170f3f67d6` passed:
+
+- GitHub CI workflow #509: **success**.
+- CodeQL workflow #474: **success**.
+- Frontend TypeScript: clean.
+- Frontend Jest: **400/400 passed, 39 suites**.
+- Backend SQLite: **1035 passed, 6 skipped**.
+- Backend real-Postgres lane: full migration chain from empty, newest migration downgrade/re-upgrade, and test suite: **success**.
+- Alembic: exactly one head.
+- Dependency scan (`pip-audit`): **No known vulnerabilities found**.
+- Conflict-marker guard: **success**.
+
+Handoff head `a65177c18943401b404c6e535bdc26e744fda331` also passed the full gate in superseded draft PR #137:
+
+- GitHub CI workflow #510: **success**.
+- CodeQL workflow #475: **success**.
+- Frontend typecheck/tests: **success**.
+- Backend SQLite/Postgres/migrations/dependency scan/guard: **success**.
+
+The first Phase-7 CI head found only two stale Settings test expectations (old hardcoded version and old deletion-error copy). They were updated to assert the new production contract; no production rollback was made.
+
+## Explicit release-certification gates still open
+
+These cannot be truthfully satisfied by repo-only CI and must remain release blockers until separately verified:
+
+- Real iOS + Android camera/microphone/permission regression, including blocked-permission Settings recovery and background/foreground transitions.
+- VoiceOver + TalkBack pass across primary flows; Dynamic Type, focus order, touch targets, contrast, reduced-motion behavior where applicable.
+- Hosted privacy-policy URL in store metadata.
+- Google Play external web account-deletion resource in addition to the in-app path.
+- App Store privacy declarations / Google Play Data Safety declarations matched to final runtime behavior and third-party SDKs.
+- Final signing, production secrets/API URLs, Android Maps key restrictions, push/upload configuration, and store-console validation.
+- Client/native crash and unhandled-JS observability must be verified on production builds; no claim is made from CI alone.
+
+Phase 7 code hardening can merge with these residuals documented, but CRAVE must **not** be called fully release-certified until the native/store gates above are completed.
+
+## Review / merge gate
+
+- PR #138 is open and non-draft on the same Phase-7 branch.
+- CodeRabbit manual review on #137 was explicitly rate-limited, with no actionable finding returned. That capacity result is not treated as an approval or a bug report.
+- Require CI + CodeQL green on the exact #138 final head after this PR-number-only handoff commit.
+- Read actual #138 review content; fix only verified actionable findings.
+- Merge with expected head SHA only when the final exact-head checks are green and no actionable review finding is outstanding.
 
 ## Next action
 
-PR #136 opened against main, CI 8/8 green on commit `4ac6c48`.
-CodeRabbit does not auto-run on this repo (<10 stars) and its free-
-tier quota is 1 review/hour -- posted `@coderabbitai review` after
-each pushed fix and holding for CI-green + actual review-content-read
-(not just a status check) before merging, per the process note above.
-Just merged `origin/main` (post-Phase-6) into this branch to resolve
-the `.agent-bridge/STATE.md` conflict from Codex's parallel Phase 6
-handoff; no other file conflicted. Re-running full verification after
-the merge before pushing.
+Run the final PR-#138 head CI/CodeQL gate, inspect CodeRabbit/review content as available, resolve any real finding, then squash-merge Phase 7. Do not start new feature work in this branch.
