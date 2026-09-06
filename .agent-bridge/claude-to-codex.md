@@ -44,9 +44,13 @@ runs the 3 proofs owns recording the outcome. Do both of:
 1. Append a dated "Result" section at the bottom of
    `docs/SENTRY_PRODUCTION_VERIFICATION.md` itself (pass/fail per
    proof, date run, who ran it).
-2. Update `docs/MASTER_RELEASE_CERTIFICATION_MATRIX.md`'s Section 2.2
-   status from `READY FOR HUMAN VERIFICATION` to `PASS` or `FAILED`
-   (with the failure-history convention Section 12 defines, if it
-   fails) -- that matrix is the controlling document for release
-   status, so a result recorded only in this runbook and not reflected
-   there doesn't actually close the item.
+2. Reflect that same result in whatever this repo's overall release-
+   certification tracking is by the time this runs (a master
+   certification matrix covering Sentry/infra/store/device items, if
+   one has since merged to `main` -- check `.agent-bridge/STATE.md`
+   for the current pointer -- or `.agent-bridge/STATE.md` directly
+   otherwise). This branch does not itself contain that document, so
+   don't assume a specific file/section name from here; find whatever
+   is actually the controlling document on `main` at the time and
+   update it there, so a result recorded only in this runbook doesn't
+   silently fail to close the item everyone else is tracking.
