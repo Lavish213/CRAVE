@@ -231,12 +231,18 @@ export default function MapScreen() {
   const hasHandledFirstRegionRef = useRef(false);
 
   const [features, setFeatures] = useState<NormalizedMapFeature[]>([]);
+  const [featuresContextKey, setFeaturesContextKey] = useState<string | null>(null);
   const [selectedFeature, setSelectedFeature] = useState<SelectedFeature | null>(null);
   const [mapLoading, setMapLoading] = useState(false);
   const [mapLoaded, setMapLoaded] = useState(false);
   const [mapError, setMapError] = useState(false);
   const requestIdRef = useRef(0);
   const lastFetchCoverageRef = useRef<FetchCoverage | null>(null);
+
+  const currentFeatureContextKey = viewMode === 'saved'
+    ? `saved:${user?.id ?? 'signed-out'}`
+    : `city:${selectedCity?.id ?? 'nearby'}`;
+  const activeFeatures = featuresContextKey === currentFeatureContextKey ? features : [];
 
   const mapSessionIdRef = useRef(_makeMapSessionId());
   const exposedMapIdsRef = useRef<Set<string>>(new Set());
@@ -251,7 +257,7 @@ export default function MapScreen() {
     mapSessionIdRef.current = _makeMapSessionId();
     exposedMapIdsRef.current.clear();
     visiblePinIdsRef.current = [];
-  }, [selectedCity?.id, viewMode]);
+  }, [currentFeatureContextKey]);
 
   const mapLat = selectedCity?.lat ?? userLocation?.lat ?? DEFAULT_REGION.latitude;
   const mapLng = selectedCity?.lng ?? userLocation?.lng ?? DEFAULT_REGION.longitude;
@@ -262,6 +268,7 @@ export default function MapScreen() {
   const loadFeatures = useCallback(
     (lat: number, lng: number, radiusKm: number) => {
       const myRequestId = ++requestIdRef.current;
+      const requestContextKey = `city:${selectedCity?.id ?? 'nearby'}`;
       lastAttemptRef.current = { lat, lng, radiusKm };
       setMapError(false);
       setMapLoading(true);
@@ -291,6 +298,7 @@ export default function MapScreen() {
             });
           }
           setFeatures(normalized);
+          setFeaturesContextKey(requestContextKey);
           setMapLoaded(true);
           lastFetchCoverageRef.current = { lat, lng, radiusKm };
         })
@@ -326,6 +334,7 @@ export default function MapScreen() {
     exposedMapIdsRef.current.clear();
     visiblePinIdsRef.current = [];
     setFeatures([]);
+    setFeaturesContextKey(null);
     setMapLoaded(false);
     loadFeatures(mapLat, mapLng, prefetchRadiusKmForRegion(cityToRegion(mapLat, mapLng)));
   }, [selectedCity?.id, mapLat, mapLng, loadFeatures, viewMode]);
@@ -340,6 +349,7 @@ export default function MapScreen() {
 
   const loadSavedPlaces = useCallback(() => {
     const myRequestId = ++requestIdRef.current;
+    const requestContextKey = `saved:${user?.id ?? 'signed-out'}`;
     setMapError(false);
     setMapLoading(true);
     fetchSavedPlacesGeoJSON()
@@ -347,6 +357,7 @@ export default function MapScreen() {
         if (myRequestId !== requestIdRef.current) return;
         if (__DEV__) console.log('[MAP] SAVED_FEATURES_LOADED', { count: normalized.length });
         setFeatures(normalized);
+        setFeaturesContextKey(requestContextKey);
         setMapLoaded(true);
         if (normalized.length === 1) {
           const only = normalized[0];
@@ -380,7 +391,7 @@ export default function MapScreen() {
         if (myRequestId !== requestIdRef.current) return;
         setMapLoading(false);
       });
-  }, []);
+  }, [user?.id]);
 
   useEffect(() => {
     if (viewMode !== 'saved') return;
@@ -391,9 +402,10 @@ export default function MapScreen() {
     exposedMapIdsRef.current.clear();
     visiblePinIdsRef.current = [];
     setFeatures([]);
+    setFeaturesContextKey(null);
     setMapLoaded(false);
     loadSavedPlaces();
-  }, [viewMode, user, loadSavedPlaces]);
+  }, [viewMode, user?.id, loadSavedPlaces]);
 
   const handleMapReady = useCallback(() => {
     const region = cityToRegion(mapLat, mapLng);
@@ -459,15 +471,15 @@ export default function MapScreen() {
 
   const availableCategories = useMemo(() => {
     const names = new Set<string>();
-    for (const f of features) {
+    for (const f of activeFeatures) {
       if (f.category) names.add(f.category);
     }
     return Array.from(names);
-  }, [features]);
+  }, [activeFeatures]);
 
   const filteredFeatures = useMemo(() => {
-    if (!hasActiveFilters(filters)) return features;
-    return features.filter((f) => {
+    if (!hasActiveFilters(filters)) return activeFeatures;
+    return activeFeatures.filter((f) => {
       if (
         filters.priceTiers.length > 0 &&
         (f.price_tier == null || !filters.priceTiers.includes(f.price_tier))
@@ -482,7 +494,7 @@ export default function MapScreen() {
       }
       return true;
     });
-  }, [features, filters]);
+  }, [activeFeatures, filters]);
 
   const clusters = useMemo(
     () => buildClusters(filteredFeatures, mapRegion, viewportWidth, viewportHeight),
@@ -490,7 +502,14 @@ export default function MapScreen() {
   );
 
   useEffect(() => {
-    if (!mapLoaded || mapLoading || mapError) return;
+    if (
+      featuresContextKey !== currentFeatureContextKey ||
+      !mapLoaded ||
+      mapLoading ||
+      mapError
+    ) {
+      return;
+    }
     const visiblePins = clusters
       .filter(
         (cluster): cluster is ClusterPoint & { feature: NormalizedMapFeature } =>
@@ -517,7 +536,16 @@ export default function MapScreen() {
         search_session_id: mapSessionIdRef.current,
       })),
     );
-  }, [clusters, mapRegion, selectedCity?.id, mapLoaded, mapLoading, mapError]);
+  }, [
+    clusters,
+    mapRegion,
+    selectedCity?.id,
+    mapLoaded,
+    mapLoading,
+    mapError,
+    featuresContextKey,
+    currentFeatureContextKey,
+  ]);
 
   const handleRecenter = useCallback(() => {
     if (!userLocation) return;
@@ -620,7 +648,7 @@ export default function MapScreen() {
         <View style={styles.cityStripScroll}>
           <CitySelectorStrip />
         </View>
-        {features.length > 0 && (
+        {activeFeatures.length > 0 && (
           <TouchableOpacity
             style={styles.filterBtn}
             onPress={() => setFilterVisible(true)}
@@ -650,27 +678,32 @@ export default function MapScreen() {
           accessibilityLabel="Retry loading places"
         >
           <Text style={styles.mapBannerText}>
-            {features.length > 0
+            {activeFeatures.length > 0
               ? 'Showing previously loaded places — tap to retry'
               : 'Could not load places — tap to retry'}
           </Text>
         </TouchableOpacity>
       )}
 
-      {mapLoaded && !mapLoading && !mapError && features.length === 0 && (
-        <View style={styles.mapBanner}>
-          <Text style={styles.mapBannerText}>
-            {viewMode === 'saved'
-              ? "You haven't saved any places yet"
-              : 'No places in this city yet'}
-          </Text>
-        </View>
-      )}
-
       {mapLoaded &&
+        featuresContextKey === currentFeatureContextKey &&
         !mapLoading &&
         !mapError &&
-        features.length > 0 &&
+        activeFeatures.length === 0 && (
+          <View style={styles.mapBanner}>
+            <Text style={styles.mapBannerText}>
+              {viewMode === 'saved'
+                ? "You haven't saved any places yet"
+                : 'No places in this city yet'}
+            </Text>
+          </View>
+        )}
+
+      {mapLoaded &&
+        featuresContextKey === currentFeatureContextKey &&
+        !mapLoading &&
+        !mapError &&
+        activeFeatures.length > 0 &&
         filteredFeatures.length === 0 && (
           <TouchableOpacity
             style={styles.mapBanner}
