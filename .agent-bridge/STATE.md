@@ -52,6 +52,42 @@ CRAVE must **not** be called fully release-certified until these are completed o
 - Final signing, production secrets/API URLs, Android Maps key restrictions, push/upload configuration, and store-console validation.
 - Production-build client/native crash and unhandled-JS observability verification.
 
+## Release-certification housekeeping (Claude, 2026-09-06)
+
+Two small docs-only items, not a reopened phase:
+
+- `docs/SENTRY_PRODUCTION_VERIFICATION.md` (PR #140) — permanent
+  runbook for confirming `SENTRY_DSN`/`APP_ENV`/`DEBUG_API_KEY` are set
+  in the production Railway environment and that a real event reaches
+  Sentry. Repo-side wiring was already verified; the runbook itself
+  still needs someone with Railway + Sentry dashboard access to
+  actually run it — **Sentry production certification remains
+  UNVERIFIED** until that happens and a successful event is recorded.
+- `docs/PRODUCTION_CREDENTIAL_LEAKAGE_AUDIT_2026-09-06.md` — repo-scope
+  audit for committed secrets / hardcoded credentials / dev-value
+  leakage into a production build. **Result: PASS.** No committed
+  `.env`/secret files (confirmed across full git history, not just the
+  current tree), no hardcoded API keys/tokens/DSNs/service-role
+  keys/DB URLs, `EXPO_PUBLIC_*` usage is limited to 4 vars that are all
+  legitimately public-safe by design, CI/EAS/GitHub Actions configs use
+  proper env-var/secrets-context indirection throughout. One dependency
+  noted, not a leak: `secret_key`'s insecure placeholder default is
+  caught by a hard-fail-on-boot check in `app/main.py`, but that check
+  only runs when `APP_ENV=prod` — so its safety is conditional on the
+  still-open production-infrastructure-verification step below, not
+  something this audit can close on its own.
+
 ## Next action
 
 No engineering phase is currently claimed. The next work is **release certification**, not another hardening phase. Do not reopen Phases 1–7 without a proven regression or an explicitly approved new scope.
+
+Open release-certification items (per the user-approved roadmap):
+hosted legal pages (Privacy Policy + Google Play account-deletion page,
+Codex workstream), Sentry production verification (UNVERIFIED, see
+above — needs Railway/Sentry dashboard access), production
+infrastructure verification (API URL, Supabase, R2, push config, Maps
+key restrictions, and confirming `APP_ENV=prod` specifically — the
+`secret_key` dependency above), EAS/native production build, physical-
+device certification, accessibility certification, and store
+compliance. Production credential leakage is the one item now fully
+closed: **PASS**, see above.
