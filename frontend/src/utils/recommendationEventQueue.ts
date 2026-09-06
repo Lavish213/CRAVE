@@ -114,14 +114,18 @@ function scheduleFlush(delayMs = FLUSH_INTERVAL_MS): void {
   }, delayMs);
 }
 
-async function enqueueDurable(event: RecommendationEventInput): Promise<void> {
+async function enqueueDurable(
+  event: RecommendationEventInput,
+  ownerUserIdOverride?: string,
+): Promise<void> {
   await hydrateDurableQueue();
-  const ownerUserId = await currentUserId();
+  // Prefer the owner captured by the mutation that actually produced this
+  // confirmed outcome. Reading the ambient session is only a fallback for
+  // legacy/direct callers: Account A's save can finish milliseconds after a
+  // switch to B, and using "who is signed in now" would misattribute A's
+  // preference to B.
+  const ownerUserId = ownerUserIdOverride ?? await currentUserId();
   if (!ownerUserId) {
-    // A confirmed save/unsave should normally still have an authenticated
-    // session here. If auth disappeared in the narrow gap before enqueue,
-    // do not persist an ownerless event that could later be attributed to
-    // whichever account happens to sign in next.
     if (__DEV__) console.warn('[recommendationEventQueue] durable_event_without_owner');
     return;
   }
@@ -216,14 +220,22 @@ async function flushQueues(): Promise<void> {
   }
 }
 
-/** Queues one event and attaches the current app-session id. */
+/**
+ * Queues one event and attaches the current app-session id.
+ *
+ * `durableOwnerUserId` is intentionally optional and ignored for volatile
+ * observations. Save/unsave mutation code should pass the userId captured at
+ * mutation start so a later account switch cannot change ownership of a
+ * confirmed outcome while its network request is still finishing.
+ */
 export function logRecommendationEvent(
   event: Omit<RecommendationEventInput, 'session_id'>,
+  durableOwnerUserId?: string,
 ): void {
   const attached: RecommendationEventInput = { ...event, session_id: sessionId };
 
   if (isDurableOutcome(attached)) {
-    void enqueueDurable(attached);
+    void enqueueDurable(attached, durableOwnerUserId);
     return;
   }
 
@@ -239,11 +251,11 @@ export function logRecommendationEvent(
   }
 }
 
-/** Queues several events using the same durability classification as singles. */
+/** Queues several observational events using the default classification. */
 export function logRecommendationEvents(
   events: Array<Omit<RecommendationEventInput, 'session_id'>>,
 ): void {
-  events.forEach(logRecommendationEvent);
+  events.forEach((event) => logRecommendationEvent(event));
 }
 
 /** Explicit recovery hook for app-foreground/auth-restoration callers. */
