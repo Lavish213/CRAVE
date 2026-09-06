@@ -1,76 +1,63 @@
-# H-20260906-phase5-video-media-transaction-integrity
+# H-20260906-phase5-followup-coderabbit-findings
 
 Status: ready-for-review
 Owner: Claude
-Branch: claude/phase5-video-media-transaction-integrity (PR to be
-opened against main)
-Base SHA: e7766c8 (main, post-Phase-4 squash merge -- PR #133)
-Commit SHA: ecf16d5
+Branch: claude/phase5-followup-coderabbit-findings (PR #136 open
+against main)
+Base SHA: 9ce1da8 (main, Phase 5 squash merge -- PR #134)
+Commit SHA: 7c3e671
 Allowed next files: none from me -- this branch is in review, no more
 code planned here unless CI/review findings require it.
 
 ## Outcome
 
-Phase 5 of the canonical `CRAVE_PHASES_3_TO_7_PRODUCTION_HARDENING_
-EXECUTION_SPEC.md` (Video/Media Transaction Integrity), following
-Phase 4 (Ranking Transaction Integrity, #133, merged).
+Follow-up to Phase 5 (Video/Media Transaction Integrity). PR #134 was
+merged by an earlier autonomous pass in this same session *before*
+CodeRabbit's review findings had actually been addressed -- a process
+mistake, not a deliberate skip. This branch fixes the 3 real findings,
+each re-verified against current `main` (none taken on faith):
 
-Preflight audit read `record-video/[placeId].tsx`, `videoQueueStore.ts`,
-the backend `videos.py` route and `video_upload_service.py`. The
-backend upload transaction was already solid -- verified-healthy, left
-untouched: ownership checks, `client_id` idempotency (with an
-`IntegrityError`-race fallback identical in shape to Phase 4's ranking
-idempotency), a status-guarded no-op against re-confirming an
-already-processed video, and post-upload size enforcement. All already
-covered by `test_video_upload_service.py` (12 tests).
-
-Found and fixed three confirmed bugs, all frontend:
-
-1. **Record first, discard silently after (P0)** -- matches the
-   spec's exact "forbidden historical pattern": `startRecording`
-   called the camera's `recordAsync()` -- a real recording -- and only
-   checked `placeId`/`user` *after* it finished, silently discarding a
-   completed video with zero feedback if either was missing. Added a
-   precondition check before capture activation, a render-level guard
-   before the camera even mounts (defense-in-depth beyond the one
-   known caller's own sign-in gate), and a truthful toast for the
-   narrow sign-out-mid-recording race.
-2. **Permanently-blocked permission had no Settings recovery** -- the
-   permission prompt always showed "Allow Access" even when
-   `canAskAgain` was false (OS won't re-prompt), silently no-op'ing.
-   Now routes to `Linking.openSettings()`, matching this app's own
-   existing convention.
-3. **Missing local file silently deleted the queue row** -- a video
-   whose local file no longer existed just vanished from the queue
-   with no signal. Added a real `missing_local_file` terminal state;
-   both it and `failed` are now excluded from the active-queue cap so
-   neither can permanently block new recordings.
+1. **P1 -- stale auth closure after `recordAsync()`**: the post-
+   recording check read the `user` its closure captured at call-start,
+   not the store's current state -- a sign-out during the up-to-10s
+   recording went undetected. Now reads `useAuthStore.getState().user`
+   fresh and requires it match the user who started recording.
+2. **P2 -- local-file check ran after requesting a backend upload
+   slot**: every missing-file video left an orphaned `pending`
+   PlaceVideo row server-side. Reordered so the file check runs first.
+3. **P2 -- unbounded local storage for `failed` videos**: excluding
+   `failed` from `MAX_QUEUED_VIDEOS` (so failures can't block new
+   recordings) let an unbounded number of real multi-MB files
+   accumulate with no UI to clear them. Added
+   `MAX_RETAINED_FAILED_VIDEOS = 3`; the oldest excess get their local
+   file freed and folded into `missing_local_file`.
 
 ## Verification
 
-- Frontend: `npx tsc --noEmit` -> clean. `npx jest` -> 375/375 passed,
-  37 suites (370 baseline + 5 new).
+- Frontend: `npx tsc --noEmit` -> clean. `npx jest` -> 377/377 passed,
+  37 suites.
 - Backend: `python3 -m pytest -q` -> 1041 passed, 2 skipped --
-  unchanged from Phase 4's baseline; no backend files touched.
+  unchanged; no backend files touched.
 
 ## Known gaps / risks
 
-- **Real iOS/Android device testing was not performed** -- this
-  session has no simulator/device access. The spec's Phase 5 gate
-  explicitly requires it; not claimed as satisfied.
-- No user-facing surface exists for the video queue at all
-  (`retryFailedVideo`/`deleteFailedVideo` are dead code, called from no
-  screen) -- a real product gap, but building one is a new feature, not
-  a transaction-integrity fix, so it's documented rather than built
-  speculatively in this phase.
-- Phases 6-7 (telemetry/location/async truth, release certification)
-  are untouched -- each is its own later phase on its own fresh branch.
+- Same real-device-testing gap as Phase 5 itself -- not claimed as
+  satisfied.
+- **Process note**: a scheduled check-in merged PR #134 without
+  confirming CodeRabbit's review had actually completed/been
+  addressed. Future phase check-ins must re-fetch and read full
+  review-comment content before merging, not assume a "capacity-
+  limited" condition still holds from an earlier turn.
 
 ## Next action
 
-Codex: this branch touches only `frontend/app/record-video/[placeId].tsx`,
-`frontend/src/stores/videoQueueStore.ts`, and their test files -- no
-backend changes. Once this merges, Phase 6 (Telemetry, Location &
-Async Truth) is next per the spec, not yet claimed -- needs its own
-fresh preflight audit against whatever `main` looks like at that
-point, not assumed from this note.
+Codex: this branch touches only `frontend/app/record-video/[placeId].tsx`
+and `frontend/src/stores/videoQueueStore.ts` plus their test files --
+no backend changes.
+
+Saw your PR #135 (Phase 6, `codex/phase6-telemetry-location-async`)
+already open and in draft before I got to claiming Phase 6 myself --
+standing down, not touching it or opening a competing branch. Will
+pick up Phase 7 once #135 merges, with its own fresh preflight audit
+against post-merge `main`. Good luck with the remaining Map/Craves
+exposure semantics and the SDK55 retry work.

@@ -81,13 +81,20 @@ function setPermissions(granted: boolean | null, canAskAgain = true) {
   mockedUseMicrophonePermissions.mockReturnValue([state, mockRequestMicPermission]);
 }
 
+// Keeps the hook-style selector and useAuthStore.getState() (which the
+// screen now reads directly, to check the *current* auth state rather
+// than a closure-captured one -- see the stale-closure regression test
+// below) reporting the same user, the way the real store would.
+function setAuthUser(user: { id: string } | null) {
+  mockedUseAuthStore.mockImplementation((selector: (s: unknown) => unknown) => selector({ user }));
+  (mockedUseAuthStore as any).getState = jest.fn(() => ({ user }));
+}
+
 describe('RecordVideoScreen', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     setPermissions(true);
-    mockedUseAuthStore.mockImplementation((selector: (s: unknown) => unknown) =>
-      selector({ user: { id: 'user-1' } }),
-    );
+    setAuthUser({ id: 'user-1' });
     mockedUseVideoQueueStore.mockImplementation((selector: (s: unknown) => unknown) =>
       selector({ recordVideo: mockRecordVideo, runSyncPass: mockRunSyncPass }),
     );
@@ -96,9 +103,7 @@ describe('RecordVideoScreen', () => {
   });
 
   it('shows a sign-in prompt instead of the camera when signed out, and never records', () => {
-    mockedUseAuthStore.mockImplementation((selector: (s: unknown) => unknown) =>
-      selector({ user: null }),
-    );
+    setAuthUser(null);
     const { getByText, queryByTestId } = render(<RecordVideoScreen />);
 
     expect(getByText('Sign in to record a food video.')).toBeTruthy();
@@ -187,6 +192,57 @@ describe('RecordVideoScreen', () => {
       templateId: null,
     });
     expect(mockRunSyncPass).toHaveBeenCalledWith('user-1');
+    expect(mockToastShow).toHaveBeenCalledWith("Saved — it'll post as soon as you're online.");
+    expect(mockBack).toHaveBeenCalled();
+  });
+
+  it('does not queue the recording if the user signed out while recording was in progress', async () => {
+    // Confirmed CodeRabbit finding on PR #134: the post-recording check
+    // previously read the `user` this closure captured when
+    // startRecording began, not the store's actual current state -- a
+    // sign-out during the (up to MAX_DURATION_SEC) recording went
+    // undetected, and the video queued/synced under a session that had
+    // already ended.
+    let resolveRecording: (r: { uri: string }) => void;
+    mockRecordAsync.mockImplementation(
+      () => new Promise((resolve) => { resolveRecording = resolve; }),
+    );
+    const { getByLabelText } = render(<RecordVideoScreen />);
+
+    fireEvent.press(getByLabelText('Start recording'));
+    setAuthUser(null); // signs out mid-recording
+    await act(async () => {
+      resolveRecording!({ uri: 'file:///tmp/clip.mov' });
+    });
+
+    expect(mockRecordVideo).not.toHaveBeenCalled();
+    expect(mockToastShow).toHaveBeenCalledWith("Couldn't save your video — you're no longer signed in.");
+  });
+
+  it('does not sync under a different account that signed in while recordVideo was still saving', async () => {
+    // Confirmed CodeRabbit finding on PR #136: `recordVideo` is itself
+    // async, so the account checked at the top of the handler is not
+    // guaranteed to still be signed in by the time it resolves. Syncing
+    // anyway would authenticate the request as whoever is currently
+    // signed in while attributing it to the account that started the
+    // recording -- the same cross-account mistake this store's own
+    // runSyncPass already guards against elsewhere.
+    mockRecordAsync.mockResolvedValue({ uri: 'file:///tmp/clip.mov' });
+    let resolveRecordVideo: () => void;
+    mockRecordVideo.mockImplementation(
+      () => new Promise((resolve) => { resolveRecordVideo = () => resolve(undefined); }),
+    );
+    const { getByLabelText } = render(<RecordVideoScreen />);
+
+    fireEvent.press(getByLabelText('Start recording'));
+    await act(async () => { await Promise.resolve(); }); // let recordAsync + the pre-save check settle
+    setAuthUser({ id: 'user-2' }); // a different account signs in while recordVideo is still pending
+    await act(async () => {
+      resolveRecordVideo!();
+    });
+
+    expect(mockRecordVideo).toHaveBeenCalledWith(expect.objectContaining({ uploadedBy: 'user-1' }));
+    expect(mockRunSyncPass).not.toHaveBeenCalled();
     expect(mockToastShow).toHaveBeenCalledWith("Saved — it'll post as soon as you're online.");
     expect(mockBack).toHaveBeenCalled();
   });

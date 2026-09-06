@@ -349,6 +349,89 @@ describe('videoQueueStore', () => {
     expect(video.syncState).toBe('missing_local_file');
     expect(video.lastError).toBe('Local recording is no longer available.');
     expect(videosApi.uploadVideoToSignedUrl).not.toHaveBeenCalled();
+    // Confirmed CodeRabbit finding on PR #134: the local-file check must
+    // happen *before* requesting a backend upload slot -- otherwise
+    // every missing-file video also left an orphaned `pending`
+    // PlaceVideo row server-side for nothing.
+    expect(videosApi.requestVideoUpload).not.toHaveBeenCalled();
+  });
+
+  it('bounds how many failed videos retain their local file, freeing the oldest ones past the retention cap', async () => {
+    // Confirmed CodeRabbit finding on PR #134: excluding 'failed' from
+    // MAX_QUEUED_VIDEOS (so a run of failures can't block new
+    // recordings) otherwise let an unbounded number of them accumulate,
+    // each still holding a real multi-MB file, with no UI to ever clear
+    // them. MAX_RETAINED_FAILED_VIDEOS (3) bounds that: past it, the
+    // oldest failed videos' local files are freed and folded into
+    // missing_local_file.
+    (videosApi.requestVideoUpload as jest.Mock).mockRejectedValue(new Error('still broken'));
+    const clock = mockClock();
+
+    try {
+      const created = [];
+      for (let i = 0; i < 5; i++) {
+        created.push(
+          await useVideoQueueStore.getState().recordVideo({
+            sourceUri: `file:///tmp/clip-${i}.mp4`, placeId: 'place-1', contentType: 'video/mp4', uploadedBy: 'user-a',
+          })
+        );
+        clock.advance(1_000); // distinct createdAt per video, oldest (clip-0) first
+      }
+      for (let i = 0; i < 5; i++) {
+        await useVideoQueueStore.getState().runSyncPass('user-a');
+        clock.advance(PAST_MAX_BACKOFF_MS);
+      }
+
+      const videos = useVideoQueueStore.getState().videos;
+      const failed = videos.filter((v) => v.syncState === 'failed').map((v) => v.id).sort();
+      const missing = videos.filter((v) => v.syncState === 'missing_local_file').map((v) => v.id).sort();
+      // The 3 newest (clip-2, clip-3, clip-4) stay 'failed'; the 2
+      // oldest (clip-0, clip-1) are pruned to 'missing_local_file'.
+      expect(failed).toEqual([created[2].id, created[3].id, created[4].id].sort());
+      expect(missing).toEqual([created[0].id, created[1].id].sort());
+      expect(FileSystem.deleteAsync).toHaveBeenCalledWith(created[0].localUri, { idempotent: true });
+      expect(FileSystem.deleteAsync).toHaveBeenCalledWith(created[1].localUri, { idempotent: true });
+    } finally {
+      clock.restore();
+    }
+  });
+
+  it('keeps a video failed (not missing_local_file) when pruning cannot actually delete its file', async () => {
+    // Confirmed CodeRabbit finding on PR #136: the prune loop previously
+    // swallowed a deleteAsync rejection and still marked the video
+    // missing_local_file regardless -- misrepresenting a file that may
+    // still be on disk as gone, and permanently excluding it from any
+    // future prune/retry since missing_local_file isn't 'failed'.
+    (videosApi.requestVideoUpload as jest.Mock).mockRejectedValue(new Error('still broken'));
+    (FileSystem.deleteAsync as jest.Mock).mockRejectedValueOnce(new Error('EACCES'));
+    const clock = mockClock();
+
+    try {
+      const created = [];
+      for (let i = 0; i < 4; i++) {
+        created.push(
+          await useVideoQueueStore.getState().recordVideo({
+            sourceUri: `file:///tmp/clip-${i}.mp4`, placeId: 'place-1', contentType: 'video/mp4', uploadedBy: 'user-a',
+          })
+        );
+        clock.advance(1_000);
+      }
+      for (let i = 0; i < 5; i++) {
+        await useVideoQueueStore.getState().runSyncPass('user-a');
+        clock.advance(PAST_MAX_BACKOFF_MS);
+      }
+
+      const videos = useVideoQueueStore.getState().videos;
+      // clip-0 is the only prune candidate (4 failed - 3 retained = 1
+      // overflow); its deletion was the one rejected above, so it must
+      // stay 'failed', not be falsely folded into missing_local_file.
+      const oldestId = created[0].id;
+      const oldest = videos.find((v) => v.id === oldestId);
+      expect(oldest?.syncState).toBe('failed');
+      expect(videos.some((v) => v.syncState === 'missing_local_file')).toBe(false);
+    } finally {
+      clock.restore();
+    }
   });
 
   it('does not retry a missing_local_file video on a later sync pass', async () => {
@@ -401,7 +484,15 @@ describe('videoQueueStore', () => {
         await useVideoQueueStore.getState().runSyncPass('user-a');
         clock.advance(PAST_MAX_BACKOFF_MS);
       }
-      expect(useVideoQueueStore.getState().videos.every((v) => v.syncState === 'failed')).toBe(true);
+      // All 10 reached a terminal state -- some stay 'failed' (their
+      // local file retained, up to MAX_RETAINED_FAILED_VIDEOS), the rest
+      // pruned to 'missing_local_file' (file freed) once that cap was
+      // exceeded. Either way, none are still actively retrying.
+      expect(
+        useVideoQueueStore.getState().videos.every(
+          (v) => v.syncState === 'failed' || v.syncState === 'missing_local_file'
+        )
+      ).toBe(true);
 
       // A new recording must still be accepted -- none of the 10 above
       // are "actively waiting to post" anymore.
