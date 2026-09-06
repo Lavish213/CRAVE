@@ -212,18 +212,10 @@ export default function MoreScreen() {
           tint={notificationStatus === 'unavailable' ? Colors.textMuted : undefined}
           onPress={notificationStatus === 'unavailable' ? undefined : handleNotificationsPress}
         />
-        <Divider />
-        <Row
-          icon="star-outline"
-          label="Rate CRAVE"
-          sublabel="Coming soon"
-          tint={Colors.textMuted}
-          // No App Store / Play Store listing exists yet (app isn't
-          // published) — this used to open Linking.openURL to a placeholder
-          // that did nothing when tapped, with no indication why. Matches
-          // the "Notifications" row's non-interactive "Coming soon" pattern
-          // until there's a real store URL to wire in.
-        />
+        {/* "Rate CRAVE" removed rather than shown as "Coming soon": no App
+            Store/Play Store listing exists yet to link to (app isn't
+            published), and the release gate forbids "Coming soon" controls
+            in a submitted build. Re-add once a real store URL exists. */}
       </View>
 
       {/* About */}

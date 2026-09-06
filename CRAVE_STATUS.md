@@ -281,6 +281,16 @@ administrator bypass retained for the agreed small-fix lane.
   point beyond a small chip on Place Detail —
   by design (E3), not an oversight; see "Design invariants — don't relitigate these"
   below before proposing a Feed action or a video tab.
+- **Place Detail's "Report" action is photo-only.** `ReportPhotoSheet` +
+  `/moderation/images/{id}/report` cover reporting a bad/wrong photo,
+  but there's no way for a user to report wrong hours, a closed
+  restaurant, a duplicate listing, or wrong menu info from Place
+  Detail — confirmed via a fresh audit of both the screen and the
+  backend's report-related routes (`menu_submissions.py`,
+  `moderation.py`, `place_detail_router.py`): only the photo path
+  exists end to end. Needs a real new surface (backend endpoint +
+  moderation-queue wiring + frontend sheet), not a bounded fix —
+  deliberately not improvised here without that spec.
 - **Search is keyword matching**, no typo tolerance or intent parsing.
 - **Category taxonomy is now real** (cuisine/venue/dietary/ownership/
   occasion/recognition, "The Pass" E8) and the Filter UI groups by it.
