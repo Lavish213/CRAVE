@@ -86,6 +86,31 @@ that tracking here — update the matrix directly as items close, and
 keep this section as a pointer + one-line status, not a second copy
 of the list.
 
+## Release-certification housekeeping (Claude, 2026-09-06)
+
+Two small docs-only items, not a reopened phase:
+
+- `docs/SENTRY_PRODUCTION_VERIFICATION.md` (PR #140) — permanent
+  runbook for confirming `SENTRY_DSN`/`APP_ENV`/`DEBUG_API_KEY` are set
+  in the production Railway environment and that a real event reaches
+  Sentry. Repo-side wiring was already verified; the runbook itself
+  still needs someone with Railway + Sentry dashboard access to
+  actually run it — **Sentry production certification remains
+  UNVERIFIED** until that happens and a successful event is recorded.
+- `docs/PRODUCTION_CREDENTIAL_LEAKAGE_AUDIT_2026-09-06.md` — repo-scope
+  audit for committed secrets / hardcoded credentials / dev-value
+  leakage into a production build. **Result: PASS.** No committed
+  `.env`/secret files (confirmed across full git history, not just the
+  current tree), no hardcoded API keys/tokens/DSNs/service-role
+  keys/DB URLs, `EXPO_PUBLIC_*` usage is limited to 4 vars that are all
+  legitimately public-safe by design, CI/EAS/GitHub Actions configs use
+  proper env-var/secrets-context indirection throughout. One dependency
+  noted, not a leak: `secret_key`'s insecure placeholder default is
+  caught by a hard-fail-on-boot check in `app/main.py`, but that check
+  only runs when `APP_ENV=prod` — so its safety is conditional on the
+  still-open production-infrastructure-verification step below, not
+  something this audit can close on its own.
+
 ## Next action
 
 No engineering phase is currently claimed. The next work is **release
@@ -108,3 +133,15 @@ non-functional retry, record-video's silent recording failure,
 Leaderboard's missing Friends-sign-in state, account deletion's
 under-weighted visual treatment) should become narrow bugfix PRs
 before or alongside certification, not after.
+
+**2026-09-06, later**: the screen/UX track (Section 10 of the matrix)
+was upgraded from "polish pass" to a real redesign — see
+`docs/DESIGN_EXPLORATION_LOG.md` for Round 1 of visual-direction
+mockups (rejected star ratings and Tinder-style swipe interaction,
+promoted Decision Session as the Feed's primary surface per the
+existing execution brief, kept photography emphasis, left light/dark
+theme explicitly undecided). Sections 6/7's device/accessibility
+runbooks and the screenshot-capture plan are scoped to the *current*
+screens and are historical-baseline evidence only once the redesign
+lands — they will need a fresh pass against the redesigned screens,
+not a retrofit.
