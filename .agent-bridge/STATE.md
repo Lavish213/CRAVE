@@ -5,7 +5,7 @@ Owner: Claude
 Branch: claude/phase5-video-media-transaction-integrity (PR to be opened
 against main)
 Base SHA: e7766c8 (main, post-Phase-4 squash merge -- PR #133)
-Commit SHA: (see next commit)
+Commit SHA: ecf16d5
 Scope: Phase 5 of the canonical CRAVE_PHASES_3_TO_7_PRODUCTION_HARDENING_
 EXECUTION_SPEC.md -- Video/Media Transaction Integrity.
 Locked files: none -- handoff complete.
