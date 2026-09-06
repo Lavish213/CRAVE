@@ -5,14 +5,15 @@
  * The old public contract folded three genuinely different situations --
  * "still resolving," "permission denied," and "permission granted but the
  * GPS read itself failed" -- into the same `null`, so no consumer could
- * ever tell them apart (a spinner, a permission prompt, and a "try again"
- * all need different UI, but all three read identically as "no location").
- * useLocationStatus() below exposes the real state; useLocation() stays a
- * thin, unchanged-signature wrapper around it for the existing call sites
- * that only ever wanted coordinates-or-null and don't branch on why.
+ * ever tell them apart.
  *
- * Caches the result for the session so multiple components share one
- * permission request / GPS call.
+ * The shared location is intentionally a fast, balanced-accuracy location
+ * suitable for Feed/Search/Map startup. Add Spot already performs its own
+ * fresh high-accuracy read because asserting a physical place has a stricter
+ * accuracy requirement than discovery. The shared cache is refreshed after
+ * five minutes when the app returns to the foreground, and foreground also
+ * re-validates permission so coordinates revoked in OS Settings cannot stay
+ * trusted until a full restart.
  */
 import { useEffect, useState } from 'react';
 import { AppState } from 'react-native';
@@ -24,34 +25,54 @@ export interface UserLocation {
 }
 
 export type LocationStatus =
-  | 'resolving'     // permission/GPS request in flight (includes the very first call)
-  | 'granted'       // usable coordinates available -- see `coords`
-  | 'denied'        // permission denied; recoverable via OS Settings + foreground recheck
-  | 'unavailable';  // permission granted but the position read itself failed (GPS off, no fix, timeout)
+  | 'resolving'
+  | 'granted'
+  | 'denied'
+  | 'unavailable';
 
 export interface LocationState {
   status: LocationStatus;
-  coords: UserLocation | null; // non-null iff status === 'granted'
-  /** epoch ms of the last successful coords read, for callers that want
-   *  their own freshness policy. Null until the first 'granted'. */
+  coords: UserLocation | null;
+  /** Epoch ms of the last successful coordinate read. */
   updatedAt: number | null;
 }
 
+/**
+ * Feed/Search/Map may reuse balanced-accuracy coordinates for this long.
+ * Add Spot intentionally bypasses this cache and requests a fresh,
+ * high-accuracy location in its own transaction.
+ */
+export const LOCATION_FRESHNESS_MS = 5 * 60 * 1000;
+
 const RESOLVING: LocationState = { status: 'resolving', coords: null, updatedAt: null };
 
-// Module-level cache so multiple components share one permission request.
-// `undefined` distinguishes "not yet resolved" from every settled state.
-let _state: LocationState | undefined = undefined;
+let _state: LocationState | undefined;
 let _promise: Promise<LocationState> | null = null;
-
-// Every mounted consumer registers here so a permission change discovered
-// after the initial denial (see recheckIfPreviouslyDenied below) can push
-// a fresh value to every already-mounted consumer, not just whichever
-// component happens to remount next.
 const _listeners = new Set<(state: LocationState) => void>();
 
-function _notifyListeners(state: LocationState) {
+function _notifyListeners(state: LocationState): void {
   _listeners.forEach((listener) => listener(state));
+}
+
+function _setState(state: LocationState): LocationState {
+  _state = state;
+  _notifyListeners(state);
+  return state;
+}
+
+async function readCurrentPosition(): Promise<LocationState> {
+  try {
+    const pos = await Location.getCurrentPositionAsync({
+      accuracy: Location.Accuracy.Balanced,
+    });
+    return _setState({
+      status: 'granted',
+      coords: { lat: pos.coords.latitude, lng: pos.coords.longitude },
+      updatedAt: Date.now(),
+    });
+  } catch {
+    return _setState({ status: 'unavailable', coords: null, updatedAt: null });
+  }
 }
 
 async function fetchLocation(): Promise<LocationState> {
@@ -62,85 +83,72 @@ async function fetchLocation(): Promise<LocationState> {
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') {
-        _state = { status: 'denied', coords: null, updatedAt: null };
-        return _state;
+        return _setState({ status: 'denied', coords: null, updatedAt: null });
       }
-
-      try {
-        const pos = await Location.getCurrentPositionAsync({
-          accuracy: Location.Accuracy.Balanced,
-        });
-        _state = {
-          status: 'granted',
-          coords: { lat: pos.coords.latitude, lng: pos.coords.longitude },
-          updatedAt: Date.now(),
-        };
-      } catch {
-        // Permission granted, but the position read itself failed (GPS
-        // off, no fix yet, hardware timeout) -- distinct from a denial:
-        // sending this user to Settings would show a permission that's
-        // already granted, telling them nothing useful.
-        _state = { status: 'unavailable', coords: null, updatedAt: null };
-      }
-      return _state;
+      return readCurrentPosition();
     } catch {
-      // requestForegroundPermissionsAsync itself threw.
-      _state = { status: 'denied', coords: null, updatedAt: null };
-      return _state;
+      return _setState({ status: 'denied', coords: null, updatedAt: null });
+    } finally {
+      _promise = null;
     }
   })();
 
   return _promise;
 }
 
-// A denial (or an unavailable read) used to be cached for the rest of the
-// app's session with no way out: a user who denies the prompt on first
-// launch, then later grants location access from OS Settings and returns
-// to the app, would still see every location-dependent screen (map
-// centering, Search's "nearest first", Home's location feed) behave as if
-// still denied until a full app restart. Called on every foreground
-// transition; already-granted state is left untouched
-// (getForegroundPermissionsAsync() doesn't prompt, so this costs nothing
-// when nothing has changed).
-async function recheckIfPreviouslyDenied(): Promise<void> {
-  // Skip while still resolving (undefined), not just when already
-  // granted -- the permission dialog itself can trigger an AppState
-  // background/foreground transition on some platforms while the very
-  // first fetchLocation() call is still in flight. Without this, that
-  // transition would wipe `_promise`/`_state` out from under the
-  // original in-flight request and start a second, redundant one racing
-  // it -- the same bug the old `_cached !== null` check (which also
-  // covered `undefined`, by virtue of comparing against `null`
-  // specifically) happened to avoid.
-  if (_state === undefined || _state.status === 'granted') return;
+/**
+ * Re-validates permission on foreground and refreshes stale coordinates.
+ *
+ * This deliberately skips while the first request is still unresolved: the
+ * OS permission sheet itself can generate a background/foreground transition,
+ * and restarting the request there would create two competing permission/GPS
+ * transactions. Once settled, foreground checks are non-prompting.
+ */
+async function recheckOnForeground(): Promise<void> {
+  if (_state === undefined || _promise) return;
+
+  let permissionStatus: string;
   try {
-    const { status } = await Location.getForegroundPermissionsAsync();
-    if (status !== 'granted') return;
+    ({ status: permissionStatus } = await Location.getForegroundPermissionsAsync());
   } catch {
     return;
   }
-  _state = undefined;
-  _promise = null;
-  const state = await fetchLocation();
-  _notifyListeners(state);
+
+  if (permissionStatus !== 'granted') {
+    if (_state.status !== 'denied' || _state.coords !== null) {
+      _setState({ status: 'denied', coords: null, updatedAt: null });
+    }
+    return;
+  }
+
+  const now = Date.now();
+  const isFreshGranted =
+    _state.status === 'granted' &&
+    _state.updatedAt !== null &&
+    now - _state.updatedAt < LOCATION_FRESHNESS_MS;
+
+  if (isFreshGranted) return;
+
+  // Permission is granted and either the previous state was denied/
+  // unavailable or its coordinates are stale. A direct position read avoids
+  // needlessly invoking the permission-request API again after Settings.
+  _promise = readCurrentPosition().finally(() => {
+    _promise = null;
+  });
+  await _promise;
 }
 
 AppState.addEventListener('change', (state) => {
   if (state !== 'active') return;
-  recheckIfPreviouslyDenied().catch(() => {});
+  recheckOnForeground().catch(() => {});
 });
 
-// Test-only: resets module-level cache/listener state between test cases.
-// Not used by app code -- production never needs to forget a resolved
-// location mid-session, only tests re-running this module's singleton
-// state across independent cases need a way to clear it.
 export function _resetLocationStateForTests(): void {
   _state = undefined;
   _promise = null;
   _listeners.clear();
 }
 
-/** The full lifecycle: which state, plus coordinates when granted. */
 export function useLocationStatus(): LocationState {
   const [state, setState] = useState<LocationState>(_state ?? RESOLVING);
 
@@ -162,11 +170,8 @@ export function useLocationStatus(): LocationState {
 }
 
 /**
- * Coordinates-or-null. Unchanged signature for the existing call sites
- * (Search/Feed/Map/Place Detail/ShareLinkSheet) that only ever wanted
- * "do I have a usable location right now" and don't need to distinguish
- * why not -- screens that do (e.g. a permanently-denied permission sheet)
- * should use useLocationStatus() instead.
+ * Coordinates-or-null compatibility wrapper. Consumers that need to explain
+ * resolving/denied/unavailable states should use useLocationStatus().
  */
 export function useLocation(): UserLocation | null {
   return useLocationStatus().coords;

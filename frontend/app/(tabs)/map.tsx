@@ -15,69 +15,35 @@ import { MapBottomSheet } from '../../src/components/MapBottomSheet';
 import { logRecommendationEvent, logRecommendationEvents } from '../../src/utils/recommendationEventQueue';
 import { FilterSheet, FilterState, EMPTY_FILTERS, hasActiveFilters } from '../../src/components/FilterSheet';
 
-// Recommendation Ledger, surface='map'. Deliberately narrower than the
-// other surfaces' instrumentation: log a bounded impression batch only
-// when a settled/debounced region actually produces a fresh fetch (the
-// coverage-cache/stale-region guards above already skip a fetch for
-// already-seen ground -- no new impression fires for that skip, since
-// nothing new was shown). No raw lat/lng/region ever gets logged, only
-// place_id + tier context -- this is meant to reconstruct "what was
-// shown and picked," not a location trail.
+// Recommendation Ledger, surface='map'. A fetched feature is a candidate,
+// not an impression: the request deliberately covers 1.6x the visible
+// viewport and filtering/clustering happen only after retrieval. An
+// impression is therefore emitted only once a place is represented by an
+// individual (non-clustered) pin inside the current viewport. Cluster
+// children remain unexposed until zooming actually splits them into pins.
+// No raw lat/lng/region is logged.
 //
-// Only one click point: the bottom-sheet row tap (which already
-// performs the place-detail navigation in the existing code -- see
-// onOpen below). A bare pin tap that only reveals the preview sheet is
-// NOT separately logged -- in real usage a pin gets tapped, glanced at,
-// and often dismissed without opening; logging every glance as a full
-// 'click' would inflate the signal with "just looking" taps the same
-// way logging every pan would. Cluster taps get no event at all -- a
-// cluster has no single place_id, it's a zoom gesture, not a selection.
-//
-// No new column: reuses the existing `search_session_id` field (see
-// backend's recommendation_event.py) as a generic "stable id for one
-// continuous surface-interaction session," not literally search-only
-// despite the name -- reconstruction genuinely doesn't need a new
-// column, just a broader documented use of this one. Minted fresh
-// whenever the city or view mode changes (a deliberate restart of what's
-// being explored), not on every pan.
-const MAX_LOGGED_MAP_FEATURES = 30;
-
+// The bottom-sheet "open" action remains the single click point. A bare pin
+// tap is preview/engagement, not a full place-detail click, and a cluster tap
+// has no single place_id to attribute.
+let mapSessionSequence = 0;
 function _makeMapSessionId(): string {
-  return `map_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+  mapSessionSequence += 1;
+  return `map_${Date.now().toString(36)}_${mapSessionSequence.toString(36)}`;
 }
 
-// How long to wait after the user stops panning/zooming before refetching —
-// avoids firing a request on every intermediate frame of a gesture.
 const REGION_FETCH_DEBOUNCE_MS = 500;
-
-// Fetch a wider radius than the exact visible viewport so a small pan lands
-// on already-loaded pins instantly instead of showing a fresh loading state
-// — previously every fetch matched the viewport exactly, so any pan at all
-// (even a few hundred meters) required a brand-new round trip before pins
-// reappeared.
 const PREFETCH_RADIUS_MULTIPLIER = 1.6;
-
-// Screen-space clustering. The previous longitude-only grid used a fixed
-// geographic floor and left every 1-2 item bucket as separate pins. A city
-// result capped at 250 therefore still produced the live-confirmed marker
-// cloud. These radii are pixels/points on the rendered viewport: broad views
-// get stronger decluttering, while street views progressively reveal pins.
 const STREET_CLUSTER_RADIUS = 44;
 const NEIGHBORHOOD_CLUSTER_RADIUS = 56;
 const CITY_CLUSTER_RADIUS_MIN = 64;
 const CITY_CLUSTER_RADIUS_MAX = 84;
-
-// Floor for the region a cluster tap zooms into. Previously 0.003 -- itself
-// ~4x bigger than the old cell-size floor above, so tapping a cluster hit
-// its own ceiling before zooming in far enough for the (now-fixed) cell
-// size to ever matter. Lowered so repeated cluster taps can actually reach
-// street-level separation instead of visibly stalling.
 const CLUSTER_TAP_MIN_DELTA = 0.0004;
 
 const TIER_COLORS: Record<string, string> = {
-  elite:   Colors.tierCravePick,
+  elite: Colors.tierCravePick,
   trusted: Colors.tierGem,
-  solid:   Colors.tierSolid,
+  solid: Colors.tierSolid,
   default: Colors.tierNew,
 };
 
@@ -92,9 +58,6 @@ function cityToRegion(lat: number, lng: number): Region {
   return { latitude: lat, longitude: lng, latitudeDelta: 0.08, longitudeDelta: 0.08 };
 }
 
-// Approximate the on-screen search radius (km) implied by a map region's
-// current zoom level, so panning/zooming actually changes what gets fetched
-// instead of always querying the same fixed 5km box.
 function radiusKmForRegion(region: Region): number {
   const latRad = (region.latitude * Math.PI) / 180;
   const kmPerLngDegree = 111.32 * Math.cos(latRad);
@@ -104,30 +67,18 @@ function radiusKmForRegion(region: Region): number {
   return Math.min(50, Math.max(0.5, radius));
 }
 
-// What we actually fetch: the visible radius padded by
-// PREFETCH_RADIUS_MULTIPLIER, re-clamped to the API's 50km max, so a pan
-// within that margin needs no new request at all.
 function prefetchRadiusKmForRegion(region: Region): number {
   return Math.min(50, radiusKmForRegion(region) * PREFETCH_RADIUS_MULTIPLIER);
 }
 
-// Equirectangular approximation, consistent with radiusKmForRegion's own —
-// accurate enough at map-pan scale, used to check whether a pan landed
-// somewhere the last successful fetch already covers.
 function distanceKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
-  const latRad = ((lat1 + lat2) / 2 * Math.PI) / 180;
+  const latRad = (((lat1 + lat2) / 2) * Math.PI) / 180;
   const kmPerLngDegree = 111.32 * Math.cos(latRad);
   const dLat = (lat2 - lat1) * 111.32;
   const dLng = (lng2 - lng1) * kmPerLngDegree;
   return Math.sqrt(dLat * dLat + dLng * dLng);
 }
 
-// radiusKmForRegion is half the LONGER side — the right measure for how
-// much to fetch, but too small for a coverage check: a viewport's actual
-// corners sit at the half-DIAGONAL distance from center, which is always
-// >= half the longer side. Using radiusKmForRegion here could call a
-// viewport "covered" while its corners still poke outside the cached
-// circle. This is the stricter, correct value for that comparison only.
 function coverageRadiusKmForRegion(region: Region): number {
   const latRad = (region.latitude * Math.PI) / 180;
   const widthKm = region.longitudeDelta * 111.32 * Math.cos(latRad);
@@ -141,14 +92,11 @@ interface FetchCoverage {
   radiusKm: number;
 }
 
-// True when everything within visibleRadiusKm of (lat, lng) already sits
-// inside a previously-fetched circle — i.e. this pan needs no new request
-// at all, not even the padded prefetch one.
 function isCoveredByPriorFetch(
   lat: number,
   lng: number,
   visibleRadiusKm: number,
-  coverage: FetchCoverage | null
+  coverage: FetchCoverage | null,
 ): boolean {
   if (!coverage) return false;
   return distanceKm(lat, lng, coverage.lat, coverage.lng) + visibleRadiusKm <= coverage.radiusKm;
@@ -170,8 +118,6 @@ interface ClusterPoint {
   feature?: NormalizedMapFeature;
 }
 
-// Simple grid-based clustering: bucket features into cells sized relative to
-// the current zoom level, and merge cells with 3+ points into one cluster pin.
 export function buildClusters(
   features: NormalizedMapFeature[],
   region: Region,
@@ -228,9 +174,6 @@ export function buildClusters(
     nearest.members.push(feature);
     nearest.sumLat += feature.coordinate.lat;
     nearest.sumLng += feature.coordinate.lng;
-    // Keep subsequent collision checks anchored to the cluster centroid,
-    // matching the coordinate users actually see rather than an invisible
-    // grid origin.
     nearest.x = nearest.members.reduce(
       (sum, member) => sum + ((member.coordinate.lng - west) / region.longitudeDelta) * safeWidth,
       0,
@@ -261,6 +204,17 @@ export function buildClusters(
   });
 }
 
+function isCoordinateInsideRegion(latitude: number, longitude: number, region: Region): boolean {
+  const halfLat = region.latitudeDelta / 2;
+  const halfLng = region.longitudeDelta / 2;
+  return (
+    latitude >= region.latitude - halfLat &&
+    latitude <= region.latitude + halfLat &&
+    longitude >= region.longitude - halfLng &&
+    longitude <= region.longitude + halfLng
+  );
+}
+
 export default function MapScreen() {
   const { width: viewportWidth, height: viewportHeight } = useWindowDimensions();
   const router = useRouter();
@@ -269,123 +223,52 @@ export default function MapScreen() {
   const user = useAuthStore((s) => s.user);
   const mapRef = useRef<MapView>(null);
 
-  // 'city' = the global catalog (existing behavior). 'saved' = just this
-  // user's own saved places — the personal, curated map both Beli and
-  // Biter advertise as a core feature, which this screen never had before
-  // (it only ever showed the global catalog).
   const [viewMode, setViewMode] = useState<'city' | 'saved'>('city');
   const [filterVisible, setFilterVisible] = useState(false);
   const [filters, setFilters] = useState<FilterState>(EMPTY_FILTERS);
-
-  // True for the one onRegionChangeComplete event caused by our own
-  // animateToRegion call (city change / cluster tap) — lets us skip firing a
-  // redundant viewport fetch for a move the user didn't make.
   const programmaticMoveRef = useRef(false);
   const fetchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  // Live-confirmed via device logs: the very first onRegionChangeComplete
-  // firing after MapView mounts reports a bogus, heavily-zoomed-in transient
-  // region (~1km radius) that has nothing to do with `initialRegion` — an
-  // iOS MapKit/react-native-maps quirk where the view reports its settle
-  // state before layout has actually finished applying the requested
-  // region. Because that spurious event starts its fetch AFTER the mount
-  // effect's correct one, it wins the requestIdRef race and silently
-  // clobbers the real results with an empty response — the map showed zero
-  // pins in every city, every time, confirmed against real production data
-  // that Feed/Search both loaded correctly in the same session. Skipping
-  // only this one first call is safe: the mount effect below already
-  // performs the real initial load.
   const hasHandledFirstRegionRef = useRef(false);
 
   const [features, setFeatures] = useState<NormalizedMapFeature[]>([]);
+  const [featuresContextKey, setFeaturesContextKey] = useState<string | null>(null);
   const [selectedFeature, setSelectedFeature] = useState<SelectedFeature | null>(null);
   const [mapLoading, setMapLoading] = useState(false);
   const [mapLoaded, setMapLoaded] = useState(false);
   const [mapError, setMapError] = useState(false);
-
-  // Bumped on every loadFeatures call — an in-flight request whose result
-  // arrives after a newer one has already resolved gets discarded instead
-  // of overwriting it. Without this, mount fires a load at the default/
-  // fallback location and GPS resolving fires a second one moments later;
-  // if the first (default-location) request is the slower of the two and
-  // fails after the second already succeeded, its late .catch() clobbered
-  // mapError back to true even though pins from the newer request were
-  // already showing — exactly the "pins visible + error banner" state
-  // confirmed on a real device.
   const requestIdRef = useRef(0);
-
-  // The most recent successful fetch's center + actual fetched radius —
-  // lets a subsequent pan skip firing a request at all when the visible
-  // area is already fully inside this circle, instead of always refetching
-  // on every debounced region change regardless of coverage.
   const lastFetchCoverageRef = useRef<FetchCoverage | null>(null);
 
-  // Recommendation Ledger bookkeeping. lastImpressionIdsRef holds the
-  // ordered place_ids from the most recently *logged* impression batch,
-  // so a bottom-sheet click can report its real position within what was
-  // actually shown (and logged) rather than an arbitrary array index --
-  // same pattern as Craves' matched-only position lookup.
-  const mapSessionIdRef = useRef(_makeMapSessionId());
-  const lastImpressionIdsRef = useRef<string[]>([]);
+  const currentFeatureContextKey = viewMode === 'saved'
+    ? `saved:${user?.id ?? 'signed-out'}`
+    : `city:${selectedCity?.id ?? 'nearby'}`;
+  const activeFeatures = featuresContextKey === currentFeatureContextKey ? features : [];
 
-  // Re-mints on a deliberate restart of what's being explored (a new
-  // city picked, or switching city<->saved), not on every incidental
-  // mapLat/mapLng change (e.g. GPS resolving shortly after mount would
-  // otherwise also re-fire this if it depended on those instead).
-  // Skips the very first run -- mapSessionIdRef already has its initial
-  // value from useRef() above, minting again here would just discard it
-  // for no reason on mount.
+  const mapSessionIdRef = useRef(_makeMapSessionId());
+  const exposedMapIdsRef = useRef<Set<string>>(new Set());
+  const visiblePinIdsRef = useRef<string[]>([]);
   const isFirstSessionMintRef = useRef(true);
+
   useEffect(() => {
     if (isFirstSessionMintRef.current) {
       isFirstSessionMintRef.current = false;
       return;
     }
     mapSessionIdRef.current = _makeMapSessionId();
-  }, [selectedCity?.id, viewMode]);
+    exposedMapIdsRef.current.clear();
+    visiblePinIdsRef.current = [];
+  }, [currentFeatureContextKey]);
 
-  // Shared by loadFeatures and loadSavedPlaces below -- both are real
-  // "here's what's now shown on the map" moments. No rank_percentile:
-  // NormalizedMapFeature only carries an absolute rank_score, not a
-  // catalog percentile the way Feed/Search places do -- left null rather
-  // than fabricated from a conversion that doesn't exist server-side.
-  const logMapImpression = useCallback(
-    (normalized: NormalizedMapFeature[]) => {
-      if (normalized.length === 0) {
-        lastImpressionIdsRef.current = [];
-        return;
-      }
-      const bounded = normalized.slice(0, MAX_LOGGED_MAP_FEATURES);
-      lastImpressionIdsRef.current = bounded.map((f) => f.id);
-      logRecommendationEvents(
-        bounded.map((f, i) => ({
-          surface: 'map',
-          event_type: 'impression',
-          place_id: f.id,
-          position: i,
-          city_id: selectedCity?.id ?? null,
-          search_session_id: mapSessionIdRef.current,
-        })),
-      );
-    },
-    [selectedCity?.id],
-  );
-
-  // Effective center: city > user location > default
   const mapLat = selectedCity?.lat ?? userLocation?.lat ?? DEFAULT_REGION.latitude;
   const mapLng = selectedCity?.lng ?? userLocation?.lng ?? DEFAULT_REGION.longitude;
-
   const initialRegion = cityToRegion(mapLat, mapLng);
   const [mapRegion, setMapRegion] = useState<Region>(initialRegion);
-
-  // Last-attempted params (unlike lastFetchCoverageRef, set regardless of
-  // success/failure) — lets a "Retry" tap redo the exact request that just
-  // failed instead of needing the user to pan the map to trigger a new one.
   const lastAttemptRef = useRef<FetchCoverage | null>(null);
 
   const loadFeatures = useCallback(
     (lat: number, lng: number, radiusKm: number) => {
       const myRequestId = ++requestIdRef.current;
+      const requestContextKey = `city:${selectedCity?.id ?? 'nearby'}`;
       lastAttemptRef.current = { lat, lng, radiusKm };
       setMapError(false);
       setMapLoading(true);
@@ -397,17 +280,40 @@ export default function MapScreen() {
       })
         .then((normalized) => {
           if (myRequestId !== requestIdRef.current) return;
-          if (__DEV__) console.log('[MAP] FEATURES_LOADED', { count: normalized.length, lat, lng, radiusKm, cityId: selectedCity?.id, sample: normalized[0] ? { id: normalized[0].id, lat: normalized[0].coordinate.lat, lng: normalized[0].coordinate.lng, tier: normalized[0].tier } : null });
+          if (__DEV__) {
+            console.log('[MAP] FEATURES_LOADED', {
+              count: normalized.length,
+              lat,
+              lng,
+              radiusKm,
+              cityId: selectedCity?.id,
+              sample: normalized[0]
+                ? {
+                    id: normalized[0].id,
+                    lat: normalized[0].coordinate.lat,
+                    lng: normalized[0].coordinate.lng,
+                    tier: normalized[0].tier,
+                  }
+                : null,
+            });
+          }
           setFeatures(normalized);
+          setFeaturesContextKey(requestContextKey);
           setMapLoaded(true);
           lastFetchCoverageRef.current = { lat, lng, radiusKm };
-          logMapImpression(normalized);
         })
         .catch((err) => {
           if (myRequestId !== requestIdRef.current) return;
-          // Was completely silent before — "Could not load places" gave no
-          // way to tell a timeout from a 4xx/5xx from a network drop.
-          if (__DEV__) console.log('[MAP] LOAD_FAILED', { lat, lng, radiusKm, status: err?.response?.status, message: err?.message, data: err?.response?.data });
+          if (__DEV__) {
+            console.log('[MAP] LOAD_FAILED', {
+              lat,
+              lng,
+              radiusKm,
+              status: err?.response?.status,
+              message: err?.message,
+              data: err?.response?.data,
+            });
+          }
           setMapError(true);
         })
         .finally(() => {
@@ -415,39 +321,24 @@ export default function MapScreen() {
           setMapLoading(false);
         });
     },
-    [selectedCity?.id, logMapImpression]
+    [selectedCity?.id],
   );
 
-  // Initial load + reload on city change (or GPS location resolving).
-  // Only in 'city' mode — while browsing "my places", a city selection
-  // elsewhere (or GPS resolving) must not silently steal the map back to
-  // the global catalog; re-running when viewMode flips back to 'city' is
-  // what the dependency on it is for.
   useEffect(() => {
     if (viewMode !== 'city') return;
-    // A pan-triggered debounce scheduled just before this fires would
-    // otherwise invoke a stale loadFeatures closure bound to the previous
-    // city/region once its timer elapses — since it calls loadFeatures
-    // after this effect's call, it would win the requestIdRef race and
-    // overwrite these correct, newer results with the old city's pins.
     if (fetchDebounceRef.current) {
       clearTimeout(fetchDebounceRef.current);
       fetchDebounceRef.current = null;
     }
-    // Without this, a failed load for the new city leaves the previous
-    // city's pins on screen with features.length still > 0 — which now
-    // (correctly, for the already-covered-viewport case) suppresses the
-    // error banner entirely, silently showing the wrong city's data with
-    // no indication anything went wrong.
     lastFetchCoverageRef.current = null;
+    exposedMapIdsRef.current.clear();
+    visiblePinIdsRef.current = [];
     setFeatures([]);
+    setFeaturesContextKey(null);
     setMapLoaded(false);
     loadFeatures(mapLat, mapLng, prefetchRadiusKmForRegion(cityToRegion(mapLat, mapLng)));
   }, [selectedCity?.id, mapLat, mapLng, loadFeatures, viewMode]);
 
-  // Recenter the map on city change — flagged as programmatic so the
-  // resulting onRegionChangeComplete doesn't trigger a duplicate fetch.
-  // Skipped in 'saved' mode for the same reason as the effect above.
   useEffect(() => {
     if (viewMode !== 'city') return;
     const region = cityToRegion(mapLat, mapLng);
@@ -456,12 +347,9 @@ export default function MapScreen() {
     mapRef.current?.animateToRegion(region, 500);
   }, [selectedCity?.id, mapLat, mapLng, viewMode]);
 
-  // Loads the signed-in user's saved places and fits the map to them.
-  // Never viewport-scoped (unlike loadFeatures) — a personal list is
-  // small enough to fetch in full every time. Factored out of the
-  // mode-change effect below so handleRetryMap can also call it.
   const loadSavedPlaces = useCallback(() => {
     const myRequestId = ++requestIdRef.current;
+    const requestContextKey = `saved:${user?.id ?? 'signed-out'}`;
     setMapError(false);
     setMapLoading(true);
     fetchSavedPlacesGeoJSON()
@@ -469,6 +357,7 @@ export default function MapScreen() {
         if (myRequestId !== requestIdRef.current) return;
         if (__DEV__) console.log('[MAP] SAVED_FEATURES_LOADED', { count: normalized.length });
         setFeatures(normalized);
+        setFeaturesContextKey(requestContextKey);
         setMapLoaded(true);
         if (normalized.length === 1) {
           const only = normalized[0];
@@ -487,46 +376,37 @@ export default function MapScreen() {
             animated: true,
           });
         }
-        logMapImpression(normalized);
       })
       .catch((err) => {
         if (myRequestId !== requestIdRef.current) return;
-        if (__DEV__) console.log('[MAP] SAVED_LOAD_FAILED', { message: err?.message, status: err?.response?.status });
+        if (__DEV__) {
+          console.log('[MAP] SAVED_LOAD_FAILED', {
+            message: err?.message,
+            status: err?.response?.status,
+          });
+        }
         setMapError(true);
       })
       .finally(() => {
         if (myRequestId !== requestIdRef.current) return;
         setMapLoading(false);
       });
-  }, [logMapImpression]);
+  }, [user?.id]);
 
   useEffect(() => {
     if (viewMode !== 'saved') return;
     if (!user) {
-      // Shouldn't happen — the toggle only renders when signed in — but
-      // fail safe back to the global catalog rather than showing an
-      // auth-error state on the map.
       setViewMode('city');
       return;
     }
+    exposedMapIdsRef.current.clear();
+    visiblePinIdsRef.current = [];
     setFeatures([]);
+    setFeaturesContextKey(null);
     setMapLoaded(false);
     loadSavedPlaces();
-  }, [viewMode, user, loadSavedPlaces]);
+  }, [viewMode, user?.id, loadSavedPlaces]);
 
-  // Cross-checked against react-native-maps' own long-documented iOS bug
-  // class (their issue tracker: #1507, #3212, #4244, #4420, #5645 — spanning
-  // years) — `initialRegion` is frequently not honored correctly on iOS: the
-  // native view can settle at some other zoom/position entirely regardless
-  // of what was requested, which is consistent with what we saw live here
-  // (~1km reported radius vs. the real ~7km initialRegion). The effect above
-  // already tries to correct this via animateToRegion, but it fires from a
-  // dependency-change effect that runs immediately after the JS render —
-  // before the native map view has actually finished initializing, so
-  // `mapRef.current` can still be unset and the call silently no-ops. The
-  // library's own documented workaround for this exact class of bug is to
-  // redo the correction from `onMapReady`, which fires once the native view
-  // has genuinely finished initializing — guaranteeing the ref is live.
   const handleMapReady = useCallback(() => {
     const region = cityToRegion(mapLat, mapLng);
     programmaticMoveRef.current = true;
@@ -534,7 +414,6 @@ export default function MapScreen() {
     mapRef.current?.animateToRegion(region, 300);
   }, [mapLat, mapLng]);
 
-  // Clear any pending debounced fetch on unmount.
   useEffect(() => {
     return () => {
       if (fetchDebounceRef.current) clearTimeout(fetchDebounceRef.current);
@@ -555,77 +434,128 @@ export default function MapScreen() {
         return;
       }
 
-      // Exploring your saved pins by panning shouldn't trigger a fetch —
-      // the whole personal list is already loaded; there's nothing new a
-      // viewport-scoped request would find.
       if (viewMode !== 'city') return;
 
       if (fetchDebounceRef.current) clearTimeout(fetchDebounceRef.current);
       fetchDebounceRef.current = setTimeout(() => {
         const visibleRadiusKm = coverageRadiusKmForRegion(region);
-        if (isCoveredByPriorFetch(region.latitude, region.longitude, visibleRadiusKm, lastFetchCoverageRef.current)) {
-          if (__DEV__) console.log('[MAP] SKIP_FETCH_ALREADY_COVERED', { lat: region.latitude, lng: region.longitude, visibleRadiusKm });
-          // Still bump this so an older in-flight request for a different
-          // region (panned away from, now panned back to cached ground)
-          // can't land later and overwrite these still-valid cached pins —
-          // otherwise skipping the fetch here does nothing to stop that
-          // stale response from winning once it finally resolves.
+        if (
+          isCoveredByPriorFetch(
+            region.latitude,
+            region.longitude,
+            visibleRadiusKm,
+            lastFetchCoverageRef.current,
+          )
+        ) {
+          if (__DEV__) {
+            console.log('[MAP] SKIP_FETCH_ALREADY_COVERED', {
+              lat: region.latitude,
+              lng: region.longitude,
+              visibleRadiusKm,
+            });
+          }
           requestIdRef.current += 1;
           setMapLoading(false);
           setMapError(false);
           return;
         }
-        loadFeatures(region.latitude, region.longitude, prefetchRadiusKmForRegion(region));
+        loadFeatures(
+          region.latitude,
+          region.longitude,
+          prefetchRadiusKmForRegion(region),
+        );
       }, REGION_FETCH_DEBOUNCE_MS);
     },
-    [loadFeatures, viewMode]
+    [loadFeatures, viewMode],
   );
 
-  // Derived from what's actually loaded (this region's fetch, or the
-  // saved-places layer), not a global catalog-wide list -- same fix as
-  // Feed/Search's filter chips.
   const availableCategories = useMemo(() => {
     const names = new Set<string>();
-    for (const f of features) {
+    for (const f of activeFeatures) {
       if (f.category) names.add(f.category);
     }
     return Array.from(names);
-  }, [features]);
+  }, [activeFeatures]);
 
-  // A view-level narrowing of what's already fetched, applied before
-  // clustering so a filtered-out place never contributes to a cluster's
-  // count/center either. NormalizedMapFeature carries a single `category`
-  // string, not the categories[] array Feed/Search's places have, so the
-  // match here is `===` against any selected category, not `.some(...)`.
   const filteredFeatures = useMemo(() => {
-    if (!hasActiveFilters(filters)) return features;
-    return features.filter((f) => {
-      if (filters.priceTiers.length > 0 && (f.price_tier == null || !filters.priceTiers.includes(f.price_tier))) return false;
-      if (filters.categories.length > 0 && (!f.category || !filters.categories.includes(f.category))) return false;
+    if (!hasActiveFilters(filters)) return activeFeatures;
+    return activeFeatures.filter((f) => {
+      if (
+        filters.priceTiers.length > 0 &&
+        (f.price_tier == null || !filters.priceTiers.includes(f.price_tier))
+      ) {
+        return false;
+      }
+      if (
+        filters.categories.length > 0 &&
+        (!f.category || !filters.categories.includes(f.category))
+      ) {
+        return false;
+      }
       return true;
     });
-  }, [features, filters]);
+  }, [activeFeatures, filters]);
 
   const clusters = useMemo(
     () => buildClusters(filteredFeatures, mapRegion, viewportWidth, viewportHeight),
     [filteredFeatures, mapRegion, viewportWidth, viewportHeight],
   );
 
-  // Snap back to GPS regardless of how far the user has panned — the map
-  // otherwise has no way back to "where I actually am" once you've explored
-  // away from it, short of switching cities.
+  useEffect(() => {
+    if (
+      featuresContextKey !== currentFeatureContextKey ||
+      !mapLoaded ||
+      mapLoading ||
+      mapError
+    ) {
+      return;
+    }
+    const visiblePins = clusters
+      .filter(
+        (cluster): cluster is ClusterPoint & { feature: NormalizedMapFeature } =>
+          cluster.count === 1 &&
+          Boolean(cluster.feature) &&
+          isCoordinateInsideRegion(cluster.latitude, cluster.longitude, mapRegion),
+      )
+      .slice(0, 30);
+
+    visiblePinIdsRef.current = visiblePins.map((cluster) => cluster.feature.id);
+    const newlyExposed = visiblePins.filter(
+      (cluster) => !exposedMapIdsRef.current.has(cluster.feature.id),
+    );
+    if (newlyExposed.length === 0) return;
+
+    newlyExposed.forEach((cluster) => exposedMapIdsRef.current.add(cluster.feature.id));
+    logRecommendationEvents(
+      newlyExposed.map((cluster) => ({
+        surface: 'map',
+        event_type: 'impression',
+        place_id: cluster.feature.id,
+        position: visiblePinIdsRef.current.indexOf(cluster.feature.id),
+        city_id: selectedCity?.id ?? null,
+        search_session_id: mapSessionIdRef.current,
+      })),
+    );
+  }, [
+    clusters,
+    mapRegion,
+    selectedCity?.id,
+    mapLoaded,
+    mapLoading,
+    mapError,
+    featuresContextKey,
+    currentFeatureContextKey,
+  ]);
+
   const handleRecenter = useCallback(() => {
     if (!userLocation) return;
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     const region = cityToRegion(userLocation.lat, userLocation.lng);
     programmaticMoveRef.current = true;
     setMapRegion(region);
     mapRef.current?.animateToRegion(region, 500);
   }, [userLocation]);
 
-  // Re-runs the exact request that just failed, instead of forcing the user
-  // to pan the map (which may not even be possible if they can't tell where
-  // real data exists) just to get another attempt.
   const handleRetryMap = useCallback(() => {
     if (viewMode === 'saved') {
       loadSavedPlaces();
@@ -658,19 +588,19 @@ export default function MapScreen() {
                 testID={`marker-cluster-${c.key}`}
                 coordinate={{ latitude: c.latitude, longitude: c.longitude }}
                 onPress={(e) => {
-                  // Without this, the same tap also bubbles to MapView's
-                  // own onPress (which nulls selectedFeature) -- a real,
-                  // confirmed bug: a marker tap could reveal (or, for a
-                  // cluster, start zooming into) then immediately undo
-                  // itself in the same gesture, looking like the tap did
-                  // nothing at all.
                   e.stopPropagation();
-                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                   const zoomed: Region = {
                     latitude: c.latitude,
                     longitude: c.longitude,
-                    latitudeDelta: Math.max(mapRegion.latitudeDelta / 2.5, CLUSTER_TAP_MIN_DELTA),
-                    longitudeDelta: Math.max(mapRegion.longitudeDelta / 2.5, CLUSTER_TAP_MIN_DELTA),
+                    latitudeDelta: Math.max(
+                      mapRegion.latitudeDelta / 2.5,
+                      CLUSTER_TAP_MIN_DELTA,
+                    ),
+                    longitudeDelta: Math.max(
+                      mapRegion.longitudeDelta / 2.5,
+                      CLUSTER_TAP_MIN_DELTA,
+                    ),
                   };
                   programmaticMoveRef.current = true;
                   setMapRegion(zoomed);
@@ -693,9 +623,8 @@ export default function MapScreen() {
               testID={`marker-${f.id}`}
               coordinate={{ latitude: f.coordinate.lat, longitude: f.coordinate.lng }}
               onPress={(e) => {
-                // See the cluster Marker's identical comment above.
                 e.stopPropagation();
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                 setSelectedFeature({
                   id: f.id,
                   name: f.name,
@@ -719,14 +648,18 @@ export default function MapScreen() {
         <View style={styles.cityStripScroll}>
           <CitySelectorStrip />
         </View>
-        {features.length > 0 && (
+        {activeFeatures.length > 0 && (
           <TouchableOpacity
             style={styles.filterBtn}
             onPress={() => setFilterVisible(true)}
             accessibilityLabel="Filter places"
             accessibilityRole="button"
           >
-            <Ionicons name="options-outline" size={20} color={hasActiveFilters(filters) ? Colors.primary : Colors.text} />
+            <Ionicons
+              name="options-outline"
+              size={20}
+              color={hasActiveFilters(filters) ? Colors.primary : Colors.text}
+            />
           </TouchableOpacity>
         )}
       </View>
@@ -745,40 +678,58 @@ export default function MapScreen() {
           accessibilityLabel="Retry loading places"
         >
           <Text style={styles.mapBannerText}>
-            {features.length > 0
+            {activeFeatures.length > 0
               ? 'Showing previously loaded places — tap to retry'
               : 'Could not load places — tap to retry'}
           </Text>
         </TouchableOpacity>
       )}
 
-      {mapLoaded && !mapLoading && !mapError && features.length === 0 && (
-        <View style={styles.mapBanner}>
-          <Text style={styles.mapBannerText}>
-            {viewMode === 'saved' ? "You haven't saved any places yet" : 'No places in this city yet'}
-          </Text>
-        </View>
-      )}
+      {mapLoaded &&
+        featuresContextKey === currentFeatureContextKey &&
+        !mapLoading &&
+        !mapError &&
+        activeFeatures.length === 0 && (
+          <View style={styles.mapBanner}>
+            <Text style={styles.mapBannerText}>
+              {viewMode === 'saved'
+                ? "You haven't saved any places yet"
+                : 'No places in this city yet'}
+            </Text>
+          </View>
+        )}
 
-      {mapLoaded && !mapLoading && !mapError && features.length > 0 && filteredFeatures.length === 0 && (
-        <TouchableOpacity
-          style={styles.mapBanner}
-          onPress={() => setFilters(EMPTY_FILTERS)}
-          accessibilityRole="button"
-          accessibilityLabel="Clear filters"
-        >
-          <Text style={styles.mapBannerText}>No matches for these filters — tap to clear</Text>
-        </TouchableOpacity>
-      )}
+      {mapLoaded &&
+        featuresContextKey === currentFeatureContextKey &&
+        !mapLoading &&
+        !mapError &&
+        activeFeatures.length > 0 &&
+        filteredFeatures.length === 0 && (
+          <TouchableOpacity
+            style={styles.mapBanner}
+            onPress={() => setFilters(EMPTY_FILTERS)}
+            accessibilityRole="button"
+            accessibilityLabel="Clear filters"
+          >
+            <Text style={styles.mapBannerText}>
+              No matches for these filters — tap to clear
+            </Text>
+          </TouchableOpacity>
+        )}
 
       {user && (
         <TouchableOpacity
-          style={[styles.savedToggleButton, viewMode === 'saved' && styles.savedToggleButtonActive]}
+          style={[
+            styles.savedToggleButton,
+            viewMode === 'saved' && styles.savedToggleButtonActive,
+          ]}
           onPress={() => {
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
             setViewMode((m) => (m === 'saved' ? 'city' : 'saved'));
           }}
-          accessibilityLabel={viewMode === 'saved' ? 'Show all places' : 'Show my saved places'}
+          accessibilityLabel={
+            viewMode === 'saved' ? 'Show all places' : 'Show my saved places'
+          }
           accessibilityRole="button"
         >
           <Ionicons
@@ -803,12 +754,7 @@ export default function MapScreen() {
       <MapBottomSheet
         feature={selectedFeature}
         onOpen={(id) => {
-          // The one real selection+navigation event for this surface --
-          // see the module-level comment on why a bare pin tap alone
-          // isn't separately logged. Position comes from the last
-          // *logged* impression batch, not an arbitrary lookup, so a
-          // click always ties back to a real "this was shown" event.
-          const position = lastImpressionIdsRef.current.indexOf(id);
+          const position = visiblePinIdsRef.current.indexOf(id);
           logRecommendationEvent({
             surface: 'map',
             event_type: 'click',
@@ -846,7 +792,13 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.background + 'EE',
   },
   cityStripScroll: { flex: 1 },
-  filterBtn: { padding: Spacing.sm, minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
+  filterBtn: {
+    padding: Spacing.sm,
+    minWidth: 44,
+    minHeight: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   mapBanner: {
     position: 'absolute',
     top: 60,

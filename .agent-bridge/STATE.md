@@ -1,113 +1,127 @@
 # Active agent state
 
-Status: ready-for-review
-Owner: Claude
-Branch: claude/phase5-video-media-transaction-integrity (PR to be opened
-against main)
-Base SHA: e7766c8 (main, post-Phase-4 squash merge -- PR #133)
-Commit SHA: ecf16d5
-Scope: Phase 5 of the canonical CRAVE_PHASES_3_TO_7_PRODUCTION_HARDENING_
-EXECUTION_SPEC.md -- Video/Media Transaction Integrity.
-Locked files: none -- handoff complete.
+Status: review-ready
+Owner: Codex
+Branch: codex/phase6-telemetry-location-async
+Base SHA: 9ce1da834483bf7792d616f12527b683507b44b8 (main, post-Phase-5 squash merge -- PR #134)
+Scope: Phase 6 of `CRAVE_PHASES_3_TO_7_PRODUCTION_HARDENING_EXECUTION_SPEC.md` -- Telemetry, Location & Async Truth.
+PR: #135
 
-## Outcome
+## Phase 6 result
 
-Preflight audit read `record-video/[placeId].tsx`, `videoQueueStore.ts`,
-`src/api/videos.ts`, the backend `videos.py` route, and
-`video_upload_service.py`. The backend upload transaction was already
-solid -- verified-healthy, left untouched:
+The Phase-6 implementation is complete and verified on the code candidate immediately before this handoff commit. No Phase-7 implementation is included.
 
-- `request_video_upload_slot`/`confirm_video_upload` already enforce
-  ownership (`uploaded_by`/caller mismatch -> 403), idempotency (a
-  `client_id` retry reuses the existing row + a freshly-signed URL,
-  with an `IntegrityError`-race fallback identical in shape to
-  Phase 4's ranking idempotency), a `status != PENDING` no-op guard
-  against re-queuing an already-processed video, and post-upload size
-  enforcement via `head_object` (a presigned PUT has no built-in cap).
-  `get_video_status` also checks ownership. All of this is already
-  covered by `test_video_upload_service.py` (12 tests: unsupported
-  content-type, unknown place/template, client_id dedupe + cross-user
-  forbidden, confirm ownership, no-op re-confirm, missing-upload,
-  oversized-upload).
+### Confirmed failures fixed
 
-Found and fixed three confirmed bugs, all frontend:
+1. **Feed / Decision Session exposure semantics**
+   - Removed retrieval-time impression logging.
+   - Feed places and Decision Session cards now share one FlashList viewability contract.
+   - Disabled Trending / Recommendations consumers perform zero hidden network work.
 
-- **P0 -- record first, discard silently after (confirmed, matches
-  the spec's exact "forbidden historical pattern")**:
-  `record-video/[placeId].tsx`'s `startRecording` called
-  `cameraRef.recordAsync(...)` -- a real, full video recording -- and
-  only checked `if (!placeId || !user?.id) return;` *after* it
-  completed, silently discarding a finished recording with zero
-  feedback if either was missing. Fixed with a precondition check
-  before the camera ever activates (toast + no-op if invalid), a
-  render-level guard before the camera UI even mounts (this screen's
-  one known entry point, `PlaceVideoGallery`, already gated on
-  sign-in before navigating here, but that guard lived in the caller,
-  not this route -- a deep link or any future entry point had zero
-  defense-in-depth), and a truthful toast (not a silent return) for the
-  narrow remaining race of signing out during the recording itself.
-- **Permanently-blocked permission had no Settings recovery** --
-  the permission-denied screen always showed "Allow Access" regardless
-  of `canAskAgain`; once the OS permanently denies (or ignores a
-  repeat request), that button silently no-ops forever. Now checks
-  `canAskAgain` and routes to `Linking.openSettings()` instead,
-  matching this app's own existing convention (`settings.tsx`'s
-  identical handling for notification permissions).
-- **Missing local file silently deleted the queue row** --
-  `videoQueueStore.ts`'s `syncOne` dropped a video's row entirely (no
-  user-facing signal at all) when its local file no longer existed
-  (OS storage cleared, etc.). Added a real `missing_local_file`
-  terminal `VideoSyncState` instead of erasing the row. Also excluded
-  both `failed` and the new `missing_local_file` from
-  `MAX_QUEUED_VIDEOS`'s active-queue count (neither will ever change
-  state again without an explicit delete, so counting them toward the
-  cap could otherwise permanently block new recordings once enough
-  accumulated) and let `deleteFailedVideo` clear either terminal state.
+2. **Map exposure + identity semantics**
+   - Fetched candidates are no longer treated as impressions.
+   - Only visible singleton pins inside the current viewport become impressions.
+   - Offscreen 1.6x prefetch-ring candidates and cluster-hidden children remain unexposed.
+   - Filtering happens before exposure.
+   - Click position is tied to the currently visible pin set.
+   - Loaded feature sets now carry an explicit `city:*` / `saved:<user>` context key so an old city's/account's pins cannot be rendered or relabeled during a context transition.
+   - Non-security analytics session IDs no longer use `Math.random()`; this resolved the CodeQL weak-randomness finding.
+
+3. **Craves async truth + exposure**
+   - Manual-added-place secondary retrieval has explicit loading/error/loaded-for-user truth.
+   - Secondary failure no longer collapses to `[]` or erases stale successful data.
+   - A true empty account is legal only after all required current-user resources have settled successfully.
+   - Saved, matched-share, and resolved-manual-place impressions now require actual row viewability.
+
+4. **Location freshness / permission lifecycle**
+   - Shared location now has an explicit 5-minute freshness policy.
+   - Foreground activation revalidates permission and refreshes stale granted coordinates.
+   - OS-level permission revocation is detected instead of leaving the session permanently `granted`.
+   - Add Spot distinguishes requestable denial from permanently blocked permission and offers Open Settings for the blocked case.
+
+5. **Recommendation learning-event durability**
+   - Impression/click observations remain best-effort telemetry.
+   - Confirmed save/unsave outcomes use a persisted AsyncStorage outbox with `client_event_id` dedupe.
+   - Durable events are account-owned and only flush under their owning authenticated account.
+   - Save/unsave mutations pass the user ID captured at mutation start, closing the race where Account A's request finishes after switching to Account B.
+   - Offline save/unsave retries preserve the same owner and client event ID through eventual confirmation.
+   - Explicit recovery flushes are awaitable; automatic failed durable sends retry after backoff.
+   - Rank remains backend-owned/transactional and was not duplicated into the client outbox.
+
+6. **Root error recovery**
+   - Root recovery now delegates Retry to Expo Router SDK55's route ErrorBoundary retry contract instead of merely clearing a local boolean boundary state.
+
+### Verified healthy / intentionally preserved
+
+- Search already used a 50% / 250ms FlashList viewability contract with per-query exposure dedupe; no Search rewrite was needed.
+- Phase 1-5 identity, ranking, video, authorization, and transactional contracts were preserved.
+- Standard `.github/workflows/ci.yml` is restored exactly to `main`; the temporary Jest diagnostics workflow used during convergence is not part of the final diff.
+
+## Regression coverage added or updated
+
+- `frontend/src/hooks/useLocation.test.ts`
+- `frontend/__tests__/add-spot.test.tsx`
+- `frontend/__tests__/feed.test.tsx`
+- `frontend/__tests__/map-instrumentation.test.tsx`
+- `frontend/__tests__/craves.test.tsx`
+- `frontend/__tests__/root-error-boundary.test.tsx`
+- `frontend/src/hooks/useTrending.test.tsx`
+- `frontend/src/hooks/useRecommendations.test.tsx`
+- `frontend/src/utils/recommendationEventQueue.test.ts`
+- `frontend/src/stores/cravesStore.test.ts`
 
 ## Verification
 
-- Frontend: `npx tsc --noEmit` clean. `npx jest` 375/375 passed, 37
-  suites (370 baseline + 5 new: 2 in `record-video.test.tsx`, 3 in
-  `videoQueueStore.test.ts`).
-- Backend: `python3 -m pytest -q` 1041 passed, 2 skipped -- unchanged
-  from Phase 4's baseline; no backend files touched.
+Final code candidate before this handoff commit (`85a120af215459c966c81e76e7651b5ed1054c13`):
 
-## Known gaps / risks
+- Frontend TypeScript: **PASS**
+- Frontend Jest: **396 / 396 PASS**, 39 suites
+- Backend SQLite/syntax/import/tests/migration-head gate: **PASS**
+- Backend real Postgres migration chain + downgrade/re-upgrade + tests: **PASS**
+- Conflict-marker guard: **PASS**
+- Dependency vulnerability scan job step: **PASS**
+- CodeQL: **PASS**
+- Open inline review threads: **0**
+- Prior CodeQL weak-randomness thread: **resolved**
 
-- **Real iOS/Android device testing was NOT performed** -- this
-  session runs in a Linux container with no simulator/device access.
-  The spec's Phase 5 gate explicitly requires real-device camera/mic/
-  permission verification ("Camera/video/location cannot be
-  simulator-only"); that requirement is unmet here and should be
-  treated as an open item before any release-readiness claim, not
-  silently assumed satisfied.
-- **No user-facing surface exists for the video queue at all** --
-  `retryFailedVideo`/`deleteFailedVideo` exist in the store but are
-  never called from any screen (verified: grepped every consumer).
-  A permanently-failed or missing-file video is now at least correctly
-  *tracked* (not silently erased) and no longer blocks new recordings,
-  but a user still has no in-app way to see or act on it. This is a
-  real product gap, not a code-level bug this phase's scope covers --
-  building that surface would be a new screen/feature, not a
-  transaction-integrity fix, so it's flagged here rather than built
-  speculatively.
-- Malformed-row recovery (a persisted `QueuedVideo` row missing a field
-  after a future schema change) was not defensively hardened -- no
-  concrete failure scenario exists yet against this codebase's stable,
-  unchanged `QueuedVideo` shape; flagged as a documented gap rather
-  than speculative code with nothing to verify it against.
-- Phases 6-7 (telemetry/location/async truth, performance/
-  accessibility/security/release certification) are untouched -- per
-  the spec's strict ordering, each is its own later phase on its own
-  fresh branch.
+Because this handoff update itself changes the PR head, CI/CodeQL must be rechecked on the final documentation head before merge. No code change is expected from that rerun unless a genuine new finding appears.
 
-## Next action
+## Residuals / manual verification
 
-Push this branch, open a narrow PR against main following the spec's
-required PR contract, request CodeRabbit review, hold to the same
-three gates Phases 1-4 used (CI green, review threads resolved, no
-scope creep) before merge -- explicitly NOT claiming the real-device
-gate as satisfied. After merge, Phase 6 (Telemetry, Location & Async
-Truth) is next per the spec's strict ordering -- not yet claimed, needs
-its own fresh preflight audit against whatever `main` looks like at
-that point.
+These are not represented as automated proof and remain release-level/device work for Phase 7:
+
+- Real-device foreground/background location behavior on current iOS and Android.
+- Permanently blocked permission -> Settings round trip on both platforms.
+- VoiceOver/TalkBack and Dynamic Type behavior.
+- Offline/process-restart durable-outbox behavior on a physical device.
+- Performance profiling and store privacy/release declarations.
+
+No unresolved Phase-6 P0/P1 code defect is currently known after automated verification. This is not a claim that the entire app is defect-free.
+
+## Files changed in Phase 6
+
+Primary production files:
+
+- `frontend/app/(tabs)/index.tsx`
+- `frontend/app/(tabs)/map.tsx`
+- `frontend/app/(tabs)/craves.tsx`
+- `frontend/app/add-spot.tsx`
+- `frontend/app/_layout.tsx`
+- `frontend/src/hooks/useLocation.ts`
+- `frontend/src/hooks/useTrending.ts`
+- `frontend/src/hooks/useRecommendations.ts`
+- `frontend/src/stores/cravesStore.ts`
+- `frontend/src/utils/recommendationEventQueue.ts`
+
+Plus the regression tests listed above and Phase-6 agent-bridge progress/handoff documentation.
+
+## Merge / next-phase gate
+
+1. Re-run CI + CodeQL on the final handoff head.
+2. Mark PR #135 ready for review.
+3. Re-read all current review threads/comments; treat new findings as hypotheses and verify before changes.
+4. If code changes, repeat full CI + CodeQL.
+5. Merge PR #135 only when final head is green and no actionable verified review finding remains.
+6. Pull/refetch updated `main` and record the Phase-6 merge SHA.
+7. Only then create a fresh Phase-7 branch (`codex/phase7-release-hardening`) from that exact merged `main` SHA.
+8. Do not stack Phase 7 on this branch.

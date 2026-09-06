@@ -4,54 +4,43 @@ import { useQuery } from '@tanstack/react-query';
 import { PlaceOut, fetchTrending } from '../api/places';
 import { useCityStore } from '../stores/cityStore';
 
-// Mirrors trending.py's own TRENDING_CACHE_TTL (5 min) -- the backend
-// response itself doesn't recompute more often than that, so caching it
-// client-side for any longer just serves a staler answer than the
-// backend would already give a fresh request, and any shorter just adds
-// pointless refetches of an unchanged response. Previously a hand-rolled
-// module-level cache with no TTL at all (persisted for the entire app
-// session until an explicit pull-to-refresh), the one list-backed hook in
-// the app not on React Query like every sibling screen (search/
-// leaderboard/friends-feed).
 const TRENDING_STALE_TIME = 5 * 60 * 1000;
 
-export function useTrending(): PlaceOut[] {
-  const [trending] = useTrendingWithRefresh();
+/**
+ * `enabled` lets a hidden/feature-flagged consumer keep hook ordering stable
+ * without performing network work. Search uses the default `true`; Feed
+ * passes its discovery-strip feature flag so a strip that is deliberately
+ * not rendered does not keep fetching behind the scenes.
+ */
+export function useTrending(enabled = true): PlaceOut[] {
+  const [trending] = useTrendingWithRefresh(enabled);
   return trending;
 }
 
-// Same data as useTrending(), plus a refreshing flag and a refresh()
-// function that bypasses the cache — needed to support pull-to-refresh
-// (search.tsx shows this list when no search is active).
-export function useTrendingWithRefresh(): [PlaceOut[], boolean, () => void] {
+export function useTrendingWithRefresh(enabled = true): [PlaceOut[], boolean, () => void] {
   const selectedCity = useCityStore((s) => s.selectedCity);
 
   const { data, isRefetching, refetch, error } = useQuery({
     queryKey: ['trending', selectedCity?.id],
     queryFn: () => fetchTrending(selectedCity!.id),
-    enabled: !!selectedCity,
+    enabled: enabled && !!selectedCity,
     staleTime: TRENDING_STALE_TIME,
   });
 
-  // Trending is non-critical -- fail silently for the user (no error UI
-  // for a nice-to-have row), but keep dev-only visibility into real bugs,
-  // same as this hook's own pre-React-Query behavior.
   useEffect(() => {
     if (__DEV__ && error) {
-      console.warn('[useTrending] fetchTrending_failed', (error as any)?.response?.status, (error as any)?.message);
+      const status = typeof error === 'object' && error !== null && 'response' in error
+        ? (error as { response?: { status?: number } }).response?.status
+        : undefined;
+      const message = error instanceof Error ? error.message : String(error);
+      console.warn('[useTrending] fetchTrending_failed', status, message);
     }
   }, [error]);
 
   const refresh = () => {
-    // `enabled: false` only gates react-query's *automatic* fetches --
-    // refetch() runs the queryFn regardless, so without this guard a
-    // pull-to-refresh with no city selected still called
-    // fetchTrending(selectedCity!.id) against a null selectedCity,
-    // throwing and putting this query into a real error state (plus a
-    // dev-only console.warn above) for what should just be a no-op.
-    if (!selectedCity) return;
-    refetch();
+    if (!enabled || !selectedCity) return;
+    void refetch();
   };
 
-  return [data ?? [], isRefetching, refresh];
+  return [enabled ? (data ?? []) : [], enabled && isRefetching, refresh];
 }

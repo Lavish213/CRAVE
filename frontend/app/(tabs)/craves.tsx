@@ -1,10 +1,5 @@
 // app/(tabs)/craves.tsx
-//
-// Renamed from hitlist.tsx — "Hitlist" was never this app's actual name for
-// this feature; the tab bar label was "Saves" and "Hitlist" was informal
-// drift. This screen (and the whole tab) is called Craves: bookmarked
-// places plus shared TikTok/Instagram/YouTube links working toward a match.
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   RefreshControl,
@@ -13,7 +8,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { FlashList } from '@shopify/flash-list';
+import { FlashList, ViewToken } from '@shopify/flash-list';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -28,20 +23,23 @@ import { PlaceCardCompact } from '../../src/components/PlaceCardCompact';
 import { EmptyState } from '../../src/components/EmptyState';
 import { ErrorState } from '../../src/components/ErrorState';
 import { getCraveItems, CraveItem, getMyPlaceSaves, PlaceSaveItem } from '../../src/api/crave';
+import { SavedPlace } from '../../src/api/saves';
 import { useAuthStore } from '../../src/stores/authStore';
 import { AuthSheet } from '../../src/components/AuthSheet';
 import { ShareLinkSheet } from '../../src/components/ShareLinkSheet';
 import { logRecommendationEvent, logRecommendationEvents } from '../../src/utils/recommendationEventQueue';
 
-// Recommendation Ledger, surface='craves'. This screen is a *return to
-// already-saved places*, not a discovery surface -- an impression/click
-// here is re-engagement with existing memory, not fresh taste evidence
-// the way a Feed/Search impression is. The surface tag itself carries
-// that distinction for any future consumption logic; save/unsave/rank
-// outcomes reuse the same certified idempotent path as every other
-// screen (cravesStore's addSave/removeSave, rankings.py's
-// record_rank_outcome) -- nothing new is added for those.
-const MAX_LOGGED_CRAVES_ITEMS = 20;
+const VIEWABILITY_CONFIG = { itemVisiblePercentThreshold: 50, minimumViewTime: 250 };
+
+type CravesRow =
+  | { kind: 'save'; item: SavedPlace; position: number }
+  | { kind: 'section'; section: 'craves' | 'added' }
+  | { kind: 'crave'; item: CraveItem; matchedPosition: number | null }
+  | { kind: 'place-save'; item: PlaceSaveItem; matchedPosition: number | null }
+  | { kind: 'craves-loading' }
+  | { kind: 'craves-error' }
+  | { kind: 'place-saves-loading' }
+  | { kind: 'place-saves-error' };
 
 export default function CravesScreen() {
   const router = useRouter();
@@ -53,33 +51,32 @@ export default function CravesScreen() {
   const [craves, setCraves] = useState<CraveItem[]>([]);
   const [cravesLoading, setCravesLoading] = useState(false);
   const [cravesError, setCravesError] = useState(false);
+  const [cravesLoadedForUserId, setCravesLoadedForUserId] = useState<string | null>(null);
   const [placeSaves, setPlaceSaves] = useState<PlaceSaveItem[]>([]);
+  const [placeSavesLoading, setPlaceSavesLoading] = useState(false);
+  const [placeSavesError, setPlaceSavesError] = useState(false);
+  const [placeSavesLoadedForUserId, setPlaceSavesLoadedForUserId] = useState<string | null>(null);
   const [authVisible, setAuthVisible] = useState(false);
   const [shareVisible, setShareVisible] = useState(false);
+  const [pullRefreshing, setPullRefreshing] = useState(false);
 
-  // Bumped every time the signed-in account changes — neither getCraveItems()
-  // nor getMyPlaceSaves() takes a userId (both rely on the ambient auth
-  // token), so without this guard a slow request started under the old
-  // account can resolve after the new account's sign-in and silently
-  // overwrite craves/placeSaves with the previous user's data.
-  //
-  // Also resets craves/placeSaves here (not inside loadCraves/loadPlaceSaves
-  // themselves, which are also called on pull-to-refresh and after sharing a
-  // link for the *same* account, where clearing first would just flash an
-  // empty list). Neither piece of state has a loading flag gating its
-  // section's visibility in the JSX below (unlike `savesLoading` for the
-  // main saves list) — without this, the previous account's craves/
-  // placeSaves would stay visibly attributed to the new account until its
-  // own fetch resolved.
   const accountGenerationRef = useRef(0);
+  const exposedRowsRef = useRef<Set<string>>(new Set());
+
   useEffect(() => {
     accountGenerationRef.current += 1;
+    exposedRowsRef.current = new Set();
     setCraves([]);
+    setCravesError(false);
+    setCravesLoadedForUserId(null);
     setPlaceSaves([]);
+    setPlaceSavesError(false);
+    setPlaceSavesLoadedForUserId(null);
   }, [user?.id]);
 
   const loadCraves = React.useCallback(() => {
     const myGeneration = accountGenerationRef.current;
+    const targetUserId = user?.id ?? null;
     setCravesLoading(true);
     setCravesError(false);
     return getCraveItems()
@@ -87,108 +84,190 @@ export default function CravesScreen() {
         if (myGeneration !== accountGenerationRef.current) return;
         if (__DEV__) console.log('[CRAVES] CRAVES_LOADED', { count: items.length });
         setCraves(items);
-        // Only matched shares are real place impressions -- an unmatched
-        // one has no place_id at all, isn't in the catalog to reason
-        // about yet. Position is local to this filtered list, matching
-        // the click event's position below.
-        const matched = items.filter((c) => c.matched_place_id);
-        if (matched.length > 0) {
-          logRecommendationEvents(
-            matched.slice(0, MAX_LOGGED_CRAVES_ITEMS).map((c, i) => ({
-              surface: 'craves',
-              event_type: 'impression',
-              place_id: c.matched_place_id!,
-              position: i,
-            })),
-          );
-        }
       })
-      .catch((err) => {
+      .catch((err: unknown) => {
         if (myGeneration !== accountGenerationRef.current) return;
-        if (__DEV__) console.log('[CRAVES] CRAVES_ERROR', err?.response?.status, err?.message);
+        if (__DEV__) {
+          const status = typeof err === 'object' && err !== null && 'response' in err
+            ? (err as { response?: { status?: number } }).response?.status
+            : undefined;
+          console.log('[CRAVES] CRAVES_ERROR', status, err instanceof Error ? err.message : String(err));
+        }
         setCravesError(true);
       })
       .finally(() => {
         if (myGeneration !== accountGenerationRef.current) return;
         setCravesLoading(false);
+        setCravesLoadedForUserId(targetUserId);
       });
-  }, []);
+  }, [user?.id]);
 
-  // "Just the name" adds — separate list from CraveItems (which come from
-  // shared links), fetched and shown alongside so a manual add doesn't
-  // vanish into a black hole after submitting.
   const loadPlaceSaves = React.useCallback(() => {
     const myGeneration = accountGenerationRef.current;
+    const targetUserId = user?.id ?? null;
+    setPlaceSavesLoading(true);
+    setPlaceSavesError(false);
     return getMyPlaceSaves()
       .then((items) => {
         if (myGeneration !== accountGenerationRef.current) return;
         setPlaceSaves(items);
-        // Same "only resolved place_ids are real impressions" treatment
-        // as loadCraves above.
-        const matched = items.filter((p) => p.place_id);
-        if (matched.length > 0) {
-          logRecommendationEvents(
-            matched.slice(0, MAX_LOGGED_CRAVES_ITEMS).map((p, i) => ({
-              surface: 'craves',
-              event_type: 'impression',
-              place_id: p.place_id!,
-              position: i,
-            })),
-          );
-        }
       })
-      .catch(() => {
+      .catch((err: unknown) => {
         if (myGeneration !== accountGenerationRef.current) return;
-        setPlaceSaves([]);
+        if (__DEV__) console.log('[CRAVES] PLACE_SAVES_ERROR', err instanceof Error ? err.message : String(err));
+        // Preserve last successful data. A failed request is not a
+        // successful empty response.
+        setPlaceSavesError(true);
+      })
+      .finally(() => {
+        if (myGeneration !== accountGenerationRef.current) return;
+        setPlaceSavesLoading(false);
+        setPlaceSavesLoadedForUserId(targetUserId);
       });
-  }, []);
-
-  // loadSaves() lives in cravesStore and doesn't return the fetched list
-  // (it mutates the store directly) -- read the fresh snapshot straight
-  // from the store right after it resolves rather than plumbing a new
-  // return value through just for this.
-  const logSavesImpression = React.useCallback(() => {
-    const current = useCravesStore.getState().saves;
-    if (current.length === 0) return;
-    logRecommendationEvents(
-      current.slice(0, MAX_LOGGED_CRAVES_ITEMS).map((p, i) => ({
-        surface: 'craves',
-        event_type: 'impression',
-        place_id: p.id,
-        position: i,
-        rank_percentile: p.rank_percentile,
-        city_id: p.city_id ?? null,
-      })),
-    );
-  }, []);
-
-  // Load backend saves whenever user changes
-  useEffect(() => {
-    if (!user) return;
-    loadSaves(user.id).then(logSavesImpression);
   }, [user?.id]);
 
-  // Load craves + manual place-saves whenever user changes
   useEffect(() => {
     if (!user) return;
-    loadCraves();
-    loadPlaceSaves();
+    void loadSaves(user.id);
+  }, [user?.id, loadSaves]);
+
+  useEffect(() => {
+    if (!user) return;
+    void loadCraves();
+    void loadPlaceSaves();
   }, [user?.id, loadCraves, loadPlaceSaves]);
 
-  const [pullRefreshing, setPullRefreshing] = useState(false);
   const handlePullRefresh = React.useCallback(async () => {
     if (!user) return;
     setPullRefreshing(true);
     try {
-      await Promise.all([loadSaves(user.id).then(logSavesImpression), loadCraves(), loadPlaceSaves()]);
+      await Promise.all([loadSaves(user.id), loadCraves(), loadPlaceSaves()]);
     } finally {
       setPullRefreshing(false);
     }
-  }, [user, loadSaves, loadCraves, loadPlaceSaves, logSavesImpression]);
+  }, [user, loadSaves, loadCraves, loadPlaceSaves]);
 
-  if (__DEV__) console.log('[CRAVES] RENDER', { user: !!user, saves: saves.length, savesLoading, savesError, craves: craves.length });
+  // Build all place-bearing sections into the FlashList data stream so the
+  // same actual viewability contract applies to Saves, matched shared Craves,
+  // and matched manual Added entries.
+  const rows = useMemo<CravesRow[]>(() => {
+    const next: CravesRow[] = saves.map((item, position) => ({ kind: 'save', item, position }));
 
-  // Not signed in
+    if (cravesLoading || (user?.id && cravesLoadedForUserId !== user.id)) {
+      next.push({ kind: 'section', section: 'craves' }, { kind: 'craves-loading' });
+    } else if (cravesError) {
+      next.push({ kind: 'section', section: 'craves' }, { kind: 'craves-error' });
+    } else if (craves.length > 0) {
+      next.push({ kind: 'section', section: 'craves' });
+      let matchedPosition = 0;
+      for (const item of craves) {
+        const position = item.matched_place_id ? matchedPosition++ : null;
+        next.push({ kind: 'crave', item, matchedPosition: position });
+      }
+    }
+
+    if (placeSavesLoading || (user?.id && placeSavesLoadedForUserId !== user.id)) {
+      next.push({ kind: 'section', section: 'added' }, { kind: 'place-saves-loading' });
+    } else if (placeSavesError && placeSaves.length === 0) {
+      next.push({ kind: 'section', section: 'added' }, { kind: 'place-saves-error' });
+    } else if (placeSaves.length > 0) {
+      next.push({ kind: 'section', section: 'added' });
+      let matchedPosition = 0;
+      for (const item of placeSaves) {
+        const position = item.place_id ? matchedPosition++ : null;
+        next.push({ kind: 'place-save', item, matchedPosition: position });
+      }
+      if (placeSavesError) next.push({ kind: 'place-saves-error' });
+    }
+
+    return next;
+  }, [
+    saves,
+    craves,
+    cravesLoading,
+    cravesError,
+    cravesLoadedForUserId,
+    placeSaves,
+    placeSavesLoading,
+    placeSavesError,
+    placeSavesLoadedForUserId,
+    user?.id,
+  ]);
+
+  const handleViewableItemsChangedRef = useRef<(
+    info: { viewableItems: ViewToken<CravesRow>[] }
+  ) => void>(() => {});
+
+  handleViewableItemsChangedRef.current = ({ viewableItems }) => {
+    const events: Parameters<typeof logRecommendationEvents>[0] = [];
+
+    for (const token of viewableItems) {
+      if (!token.isViewable || !token.item) continue;
+      const row = token.item;
+
+      if (row.kind === 'save') {
+        const key = `save:${row.item.id}`;
+        if (exposedRowsRef.current.has(key)) continue;
+        exposedRowsRef.current.add(key);
+        events.push({
+          surface: 'craves',
+          event_type: 'impression',
+          place_id: row.item.id,
+          position: row.position,
+          rank_percentile: row.item.rank_percentile,
+          city_id: row.item.city_id ?? null,
+        });
+        continue;
+      }
+
+      if (row.kind === 'crave' && row.item.matched_place_id && row.matchedPosition !== null) {
+        const key = `crave:${row.item.id}`;
+        if (exposedRowsRef.current.has(key)) continue;
+        exposedRowsRef.current.add(key);
+        events.push({
+          surface: 'craves',
+          event_type: 'impression',
+          place_id: row.item.matched_place_id,
+          position: row.matchedPosition,
+        });
+        continue;
+      }
+
+      if (row.kind === 'place-save' && row.item.place_id && row.matchedPosition !== null) {
+        const key = `place-save:${row.item.id}`;
+        if (exposedRowsRef.current.has(key)) continue;
+        exposedRowsRef.current.add(key);
+        events.push({
+          surface: 'craves',
+          event_type: 'impression',
+          place_id: row.item.place_id,
+          position: row.matchedPosition,
+        });
+      }
+    }
+
+    if (events.length > 0) logRecommendationEvents(events);
+  };
+
+  const onViewableItemsChanged = useRef((info: { viewableItems: ViewToken<CravesRow>[] }) => {
+    handleViewableItemsChangedRef.current(info);
+  }).current;
+
+  if (__DEV__) {
+    console.log('[CRAVES] RENDER', {
+      user: !!user,
+      saves: saves.length,
+      savesLoading,
+      savesError,
+      craves: craves.length,
+      cravesLoading,
+      cravesError,
+      placeSaves: placeSaves.length,
+      placeSavesLoading,
+      placeSavesError,
+    });
+  }
+
   if (!user) {
     return (
       <>
@@ -204,7 +283,6 @@ export default function CravesScreen() {
     );
   }
 
-  // Loading initial saves
   if (savesLoading && saves.length === 0) {
     return (
       <View style={styles.list}>
@@ -213,9 +291,6 @@ export default function CravesScreen() {
     );
   }
 
-  // Session expired/invalid — retrying the same request would just fail
-  // the same way again. Previously this fell through to the generic
-  // ErrorState below, showing an infinite "retry" loop with no way out.
   if (savesError === 'auth_required' && saves.length === 0) {
     return (
       <>
@@ -231,21 +306,15 @@ export default function CravesScreen() {
     );
   }
 
-  // Error loading saves (and no cached data)
   if (savesError && saves.length === 0) {
-    return (
-      <ErrorState
-        message={savesError}
-        onRetry={() => loadSaves(user.id)}
-      />
-    );
+    return <ErrorState message={savesError} onRetry={() => void loadSaves(user.id)} />;
   }
 
   const shareBtn = (
     <TouchableOpacity
       style={styles.shareBtn}
       onPress={() => {
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
         setShareVisible(true);
       }}
       accessibilityRole="button"
@@ -258,20 +327,24 @@ export default function CravesScreen() {
 
   const handleShareSubmitted = () => {
     toast("Got it — we'll match this to a place shortly.");
-    loadCraves();
-    loadPlaceSaves();
+    void loadCraves();
+    void loadPlaceSaves();
   };
 
-  // True empty -- not when craves failed to load. cravesError is already
-  // tracked and correctly rendered in the ListFooterComponent below, but
-  // this gate ran before that render was ever reached: a craves-fetch
-  // failure with zero saves/placeSaves fell into this branch and showed
-  // "Start your food memory" instead of the real error, indistinguishable
-  // from a genuinely empty account. Falling through now (rather than
-  // returning here) still shows an empty saves list correctly -- the
-  // FlashList's own ListFooterComponent surfaces the error, and its
-  // existing pull-to-refresh is the retry path.
-  if (saves.length === 0 && craves.length === 0 && placeSaves.length === 0 && !cravesLoading && !cravesError) {
+  const secondarySettledForCurrentUser =
+    cravesLoadedForUserId === user.id &&
+    placeSavesLoadedForUserId === user.id &&
+    !cravesLoading &&
+    !placeSavesLoading;
+
+  if (
+    saves.length === 0 &&
+    craves.length === 0 &&
+    placeSaves.length === 0 &&
+    secondarySettledForCurrentUser &&
+    !cravesError &&
+    !placeSavesError
+  ) {
     return (
       <>
         <EmptyState
@@ -290,18 +363,22 @@ export default function CravesScreen() {
     );
   }
 
-  // Position within each section's own impression batch above -- an
-  // unmatched item was never in that batch (no place_id to log), so it's
-  // excluded here too rather than given a position that would misalign
-  // with what was actually logged as "shown."
-  const matchedCraveIds = craves.filter((c) => c.matched_place_id).map((c) => c.id);
-  const matchedPlaceSaveIds = placeSaves.filter((p) => p.place_id).map((p) => p.id);
-
   return (
     <View style={styles.container}>
       <FlashList
-        data={saves}
-        keyExtractor={(p) => p.id}
+        data={rows}
+        keyExtractor={(row, index) => {
+          switch (row.kind) {
+            case 'save': return `save-${row.item.id}`;
+            case 'crave': return `crave-${row.item.id}`;
+            case 'place-save': return `place-save-${row.item.id}`;
+            case 'section': return `section-${row.section}`;
+            default: return `${row.kind}-${index}`;
+          }
+        }}
+        getItemType={(row) => row.kind}
+        viewabilityConfig={VIEWABILITY_CONFIG}
+        onViewableItemsChanged={onViewableItemsChanged}
         refreshControl={
           <RefreshControl
             refreshing={pullRefreshing}
@@ -309,50 +386,156 @@ export default function CravesScreen() {
             tintColor={Colors.primary}
           />
         }
-        renderItem={({ item, index }) => (
-          <View style={styles.rowSpacer}>
-            <PlaceCardCompact
-              place={item}
-              visited={item.visited}
-              hasNotes={!!item.notes}
-              onPress={() => {
-                logRecommendationEvent({
-                  surface: 'craves',
-                  event_type: 'click',
-                  place_id: item.id,
-                  position: index,
-                  rank_percentile: item.rank_percentile,
-                  city_id: item.city_id ?? null,
-                });
-                router.push(`/place/${item.id}`);
-              }}
-              onPressIn={() => prefetchPlace(item.id)}
-              rightAction={
-                <TouchableOpacity
-                  onPress={async () => {
-                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                    const err = await removeSave(item.id, user.id, {
+        renderItem={({ item: row }) => {
+          if (row.kind === 'save') {
+            return (
+              <View style={styles.rowSpacer}>
+                <PlaceCardCompact
+                  place={row.item}
+                  visited={row.item.visited}
+                  hasNotes={!!row.item.notes}
+                  onPress={() => {
+                    logRecommendationEvent({
                       surface: 'craves',
-                      rank_percentile: item.rank_percentile,
-                      city_id: item.city_id ?? null,
+                      event_type: 'click',
+                      place_id: row.item.id,
+                      position: row.position,
+                      rank_percentile: row.item.rank_percentile,
+                      city_id: row.item.city_id ?? null,
                     });
-                    if (err) {
-                      toast(err);
-                    } else {
-                      toast('Removed from Saves');
-                    }
+                    router.push(`/place/${row.item.id}`);
                   }}
-                  style={styles.removeBtn}
-                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                  accessibilityLabel={`Remove ${item.name} from saves`}
+                  onPressIn={() => prefetchPlace(row.item.id)}
+                  rightAction={
+                    <TouchableOpacity
+                      onPress={async () => {
+                        void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                        const err = await removeSave(row.item.id, user.id, {
+                          surface: 'craves',
+                          rank_percentile: row.item.rank_percentile,
+                          city_id: row.item.city_id ?? null,
+                        });
+                        toast(err ?? 'Removed from Saves');
+                      }}
+                      style={styles.removeBtn}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      accessibilityLabel={`Remove ${row.item.name} from saves`}
+                      accessibilityRole="button"
+                    >
+                      <Ionicons name="close" size={18} color={Colors.textSecondary} />
+                    </TouchableOpacity>
+                  }
+                />
+              </View>
+            );
+          }
+
+          if (row.kind === 'section') {
+            return (
+              <View style={styles.cravesHeader}>
+                <Text style={styles.cravesTitle}>{row.section === 'craves' ? 'Craves' : 'Added'}</Text>
+                <Text style={styles.cravesSub}>
+                  {row.section === 'craves'
+                    ? "Places you've craved, tracked by CRAVE"
+                    : 'Places you typed in by name'}
+                </Text>
+              </View>
+            );
+          }
+
+          if (row.kind === 'craves-loading' || row.kind === 'place-saves-loading') {
+            return <ActivityIndicator color={Colors.primary} style={styles.sectionSpinner} />;
+          }
+
+          if (row.kind === 'craves-error' || row.kind === 'place-saves-error') {
+            const isCravesError = row.kind === 'craves-error';
+            return (
+              <TouchableOpacity
+                style={styles.inlineError}
+                onPress={() => void (isCravesError ? loadCraves() : loadPlaceSaves())}
+                accessibilityRole="button"
+                accessibilityLabel={isCravesError ? 'Retry loading Craves' : 'Retry loading added places'}
+              >
+                <Text style={styles.cravesSub}>
+                  {isCravesError
+                    ? "Couldn't load Craves right now — tap to retry."
+                    : "Couldn't load added places right now — tap to retry."}
+                </Text>
+              </TouchableOpacity>
+            );
+          }
+
+          if (row.kind === 'crave') {
+            return (
+              <View style={styles.craveRow}>
+                {row.item.thumbnail_url ? (
+                  <Image
+                    source={withImageWidth(row.item.thumbnail_url, AVATAR_IMAGE_WIDTH)}
+                    style={styles.craveThumb}
+                    contentFit="cover"
+                    cachePolicy="memory-disk"
+                  />
+                ) : null}
+                <View style={styles.craveMeta}>
+                  <Text style={styles.craveName} numberOfLines={1}>
+                    {row.item.parsed_place_name ?? row.item.url}
+                  </Text>
+                  <Text style={row.item.matched_place_id ? styles.craveStatusMatched : styles.craveStatusPending}>
+                    {row.item.matched_place_id ? '● Matched' : 'Searching…'}
+                    {row.item.author_name ? `  ·  @${row.item.author_name}` : ''}
+                  </Text>
+                </View>
+                {row.item.matched_place_id ? (
+                  <TouchableOpacity
+                    style={styles.craveOpenBtn}
+                    onPress={() => {
+                      logRecommendationEvent({
+                        surface: 'craves',
+                        event_type: 'click',
+                        place_id: row.item.matched_place_id!,
+                        position: row.matchedPosition,
+                      });
+                      router.push(`/place/${row.item.matched_place_id!}`);
+                    }}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Open matched place for ${row.item.parsed_place_name ?? 'this place'}`}
+                  >
+                    <Text style={styles.craveViewBtn}>View →</Text>
+                  </TouchableOpacity>
+                ) : null}
+              </View>
+            );
+          }
+
+          return (
+            <View style={styles.craveRow}>
+              <View style={styles.craveMeta}>
+                <Text style={styles.craveName} numberOfLines={1}>{row.item.place_name}</Text>
+                <Text style={row.item.place_id ? styles.craveStatusMatched : styles.craveStatusPending}>
+                  {row.item.place_id ? '● Matched' : 'Searching…'}
+                </Text>
+              </View>
+              {row.item.place_id ? (
+                <TouchableOpacity
+                  style={styles.craveOpenBtn}
+                  onPress={() => {
+                    logRecommendationEvent({
+                      surface: 'craves',
+                      event_type: 'click',
+                      place_id: row.item.place_id!,
+                      position: row.matchedPosition,
+                    });
+                    router.push(`/place/${row.item.place_id!}`);
+                  }}
                   accessibilityRole="button"
+                  accessibilityLabel={`Open matched place for ${row.item.place_name}`}
                 >
-                  <Ionicons name="close" size={18} color={Colors.textSecondary} />
+                  <Text style={styles.craveViewBtn}>View →</Text>
                 </TouchableOpacity>
-              }
-            />
-          </View>
-        )}
+              ) : null}
+            </View>
+          );
+        }}
         contentContainerStyle={styles.list}
         ListHeaderComponent={
           <View style={styles.screenHeader}>
@@ -367,104 +550,6 @@ export default function CravesScreen() {
             {shareBtn}
           </View>
         }
-        ListFooterComponent={
-          <>
-            {cravesLoading ? (
-              <View style={styles.cravesSection}>
-                <ActivityIndicator color={Colors.primary} style={{ marginVertical: 16 }} />
-              </View>
-            ) : cravesError ? (
-              <View style={styles.cravesSection}>
-                <Text style={styles.cravesSub}>Couldn't load Craves right now.</Text>
-              </View>
-            ) : craves.length > 0 ? (
-              <View style={styles.cravesSection}>
-                <View style={styles.cravesHeader}>
-                  <Text style={styles.cravesTitle}>Craves</Text>
-                  <Text style={styles.cravesSub}>Places you've craved, tracked by CRAVE</Text>
-                </View>
-                {craves.map((item) => (
-                  <View key={item.id} style={styles.craveRow}>
-                    {item.thumbnail_url ? (
-                      <Image
-                        source={withImageWidth(item.thumbnail_url, AVATAR_IMAGE_WIDTH)}
-                        style={styles.craveThumb}
-                        contentFit="cover"
-                        cachePolicy="memory-disk"
-                      />
-                    ) : null}
-                    <View style={styles.craveMeta}>
-                      <Text style={styles.craveName} numberOfLines={1}>
-                        {item.parsed_place_name ?? item.url}
-                      </Text>
-                      <Text style={item.matched_place_id ? styles.craveStatusMatched : styles.craveStatusPending}>
-                        {item.matched_place_id ? '● Matched' : 'Searching…'}
-                        {item.author_name ? `  ·  @${item.author_name}` : ''}
-                      </Text>
-                    </View>
-                    {item.matched_place_id && (
-                      <TouchableOpacity
-                        style={styles.craveOpenBtn}
-                        onPress={() => {
-                          logRecommendationEvent({
-                            surface: 'craves',
-                            event_type: 'click',
-                            place_id: item.matched_place_id!,
-                            position: matchedCraveIds.indexOf(item.id),
-                          });
-                          router.push(`/place/${item.matched_place_id!}`);
-                        }}
-                        accessibilityRole="button"
-                        accessibilityLabel={`Open matched place for ${item.parsed_place_name ?? 'this place'}`}
-                      >
-                        <Text style={styles.craveViewBtn}>View →</Text>
-                      </TouchableOpacity>
-                    )}
-                  </View>
-                ))}
-              </View>
-            ) : null}
-
-            {placeSaves.length > 0 ? (
-              <View style={styles.cravesSection}>
-                <View style={styles.cravesHeader}>
-                  <Text style={styles.cravesTitle}>Added</Text>
-                  <Text style={styles.cravesSub}>Places you typed in by name</Text>
-                </View>
-                {placeSaves.map((item) => (
-                  <View key={item.id} style={styles.craveRow}>
-                    <View style={styles.craveMeta}>
-                      <Text style={styles.craveName} numberOfLines={1}>
-                        {item.place_name}
-                      </Text>
-                      <Text style={item.place_id ? styles.craveStatusMatched : styles.craveStatusPending}>
-                        {item.place_id ? '● Matched' : 'Searching…'}
-                      </Text>
-                    </View>
-                    {item.place_id && (
-                      <TouchableOpacity
-                        style={styles.craveOpenBtn}
-                        onPress={() => {
-                          logRecommendationEvent({
-                            surface: 'craves',
-                            event_type: 'click',
-                            place_id: item.place_id!,
-                            position: matchedPlaceSaveIds.indexOf(item.id),
-                          });
-                          router.push(`/place/${item.place_id!}`);
-                        }}
-                        accessibilityRole="button"
-                        accessibilityLabel={`Open matched place for ${item.place_name}`}
-                      >
-                        <Text style={styles.craveViewBtn}>View →</Text>
-                      </TouchableOpacity>
-                    )}
-                  </View>
-                ))}
-              </View>
-            ) : null}
-          </>
-        }
       />
       <ShareLinkSheet
         visible={shareVisible}
@@ -477,9 +562,6 @@ export default function CravesScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
-  // FlashList's contentContainerStyle doesn't reliably support `gap`
-  // (unlike FlatList) -- https://github.com/Shopify/flash-list/issues/2097 --
-  // so inter-row spacing is applied per-row via rowSpacer below instead.
   list: { padding: Spacing.md, paddingBottom: Spacing.xxl },
   rowSpacer: { marginBottom: Spacing.sm },
   screenHeader: {
@@ -488,28 +570,21 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingBottom: Spacing.md,
   },
-  screenHeaderLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
-  },
+  screenHeaderLeft: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
   shareBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
     paddingHorizontal: 12,
     paddingVertical: 8,
+    minHeight: 44,
     borderRadius: Radius.pill,
     borderWidth: 1,
     borderColor: Colors.border,
     backgroundColor: Colors.surface,
   },
   shareBtnText: { fontSize: 13, fontWeight: '700', color: Colors.primary },
-  screenTitle: {
-    fontSize: 22,
-    fontWeight: '800',
-    color: Colors.text,
-  },
+  screenTitle: { fontSize: 22, fontWeight: '800', color: Colors.text },
   countBadge: {
     backgroundColor: Colors.primary,
     borderRadius: Radius.full,
@@ -519,11 +594,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: Spacing.xs,
   },
-  countBadgeText: {
-    color: Colors.text,
-    fontSize: 11,
-    fontWeight: '800',
-  },
+  countBadgeText: { color: Colors.text, fontSize: 11, fontWeight: '800' },
   removeBtn: {
     padding: Spacing.sm,
     minWidth: 44,
@@ -531,20 +602,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  cravesSection: { paddingTop: Spacing.lg, paddingBottom: Spacing.sm },
-  cravesHeader: {
-    paddingTop: Spacing.lg,
-    paddingBottom: Spacing.sm,
-  },
-  cravesTitle: {
-    fontSize: 20,
-    fontWeight: '800',
-    color: Colors.text,
-  },
-  cravesSub: {
-    fontSize: 12,
-    color: Colors.textSecondary,
-    marginTop: Spacing.xs,
+  cravesHeader: { paddingTop: Spacing.lg, paddingBottom: Spacing.sm },
+  cravesTitle: { fontSize: 20, fontWeight: '800', color: Colors.text },
+  cravesSub: { fontSize: 12, color: Colors.textSecondary, marginTop: Spacing.xs },
+  sectionSpinner: { marginVertical: Spacing.lg },
+  inlineError: {
+    minHeight: 44,
+    justifyContent: 'center',
+    paddingVertical: Spacing.sm,
+    marginBottom: Spacing.sm,
   },
   craveRow: {
     flexDirection: 'row',
@@ -574,9 +640,5 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  craveViewBtn: {
-    color: Colors.primary,
-    fontSize: 13,
-    fontWeight: '700',
-  },
+  craveViewBtn: { color: Colors.primary, fontSize: 13, fontWeight: '700' },
 });

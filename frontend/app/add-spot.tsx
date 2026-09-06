@@ -3,15 +3,12 @@
 // GPS-based "find and add a new spot" flow. Gets a fresh, high-accuracy
 // location fix (not the cached session-level one from useLocation — the
 // user may have moved since app launch, and precision matters here since
-// we're matching against a 150m search radius), searches Google Places for
-// exactly that spot, and lets the user either jump straight to a place
-// CRAVE already has or confirm a new one. Confirming doesn't add the place
-// immediately — it's one signal toward the confidence threshold the
-// scheduler's discovery job checks every 5 minutes. See
-// backend/app/api/v1/routes/nearby.py for the full mechanism.
+// we're matching against a 150m search radius), searches nearby, and lets
+// the user open an existing CRAVE place or submit a new candidate signal.
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Linking,
   ScrollView,
   StyleSheet,
   Text,
@@ -28,7 +25,14 @@ import { useAuthStore } from '../src/stores/authStore';
 import { AuthSheet } from '../src/components/AuthSheet';
 import { NearbyCandidate, confirmNewSpot, searchNearby } from '../src/api/nearby';
 
-type LoadState = 'locating' | 'searching' | 'ready' | 'denied' | 'error' | 'unauthenticated';
+type LoadState =
+  | 'locating'
+  | 'searching'
+  | 'ready'
+  | 'denied'
+  | 'blocked'
+  | 'error'
+  | 'unauthenticated';
 
 export default function AddSpotScreen() {
   const router = useRouter();
@@ -42,38 +46,27 @@ export default function AddSpotScreen() {
   const [confirmedIds, setConfirmedIds] = useState<Set<string>>(new Set());
   const [authVisible, setAuthVisible] = useState(false);
 
-  // Bumped on every run() invocation so a stale in-flight run (e.g. one
-  // started before a sign-out lands mid-permission-request/location-fetch/
-  // searchNearby) can't clobber state a newer run already set — without
-  // this, an old closure's setState('ready') could overwrite a correctly
-  // set 'unauthenticated' after the user signed out mid-flight.
   const runIdRef = useRef(0);
 
   const run = useCallback(async () => {
     const myRunId = ++runIdRef.current;
 
-    // authStore.init() (RootLayout) resolves getSession() asynchronously —
-    // `user` reads null during that window even for a valid persisted
-    // session. Wait for hydration instead of treating that as signed out.
     if (authLoading) {
       setState('locating');
       return;
     }
 
-    // /api/v1/nearby/search requires a signed-in session (Google Places
-    // lookups cost real money per call) — this used to fire unconditionally
-    // on mount, so a signed-out user got a raw 401 AxiosError instead of a
-    // sign-in prompt.
     if (!user) {
       setState('unauthenticated');
       return;
     }
+
     setState('locating');
     try {
-      const { status } = await Location.requestForegroundPermissionsAsync();
+      const permission = await Location.requestForegroundPermissionsAsync();
       if (myRunId !== runIdRef.current) return;
-      if (status !== 'granted') {
-        setState('denied');
+      if (permission.status !== 'granted') {
+        setState(permission.canAskAgain === false ? 'blocked' : 'denied');
         return;
       }
 
@@ -92,22 +85,13 @@ export default function AddSpotScreen() {
       if (__DEV__) console.error('[ADD_SPOT ERROR]', err);
       setState('error');
     }
-  }, [user?.id, authLoading]);
+  }, [user, authLoading]);
 
   useEffect(() => {
-    run();
+    void run();
   }, [run]);
 
-  // Bumped every time the signed-in account changes — a handleConfirm call
-  // in flight when the account switches captures the generation it started
-  // under, so its completion/error/finally handlers can tell they're stale
-  // and skip touching confirmedIds/confirmingId for the new account.
   const accountGenerationRef = useRef(0);
-
-  // A signed-in user's confirmed-spot submissions are specific to that
-  // account — reset them on sign-out/account switch so the next session
-  // can't inherit "Submitted" state (and disabled buttons) from a
-  // different user, if this screen ever stays mounted across the change.
   useEffect(() => {
     accountGenerationRef.current += 1;
     setConfirmedIds(new Set());
@@ -123,7 +107,7 @@ export default function AddSpotScreen() {
     const key = candidate.external_id ?? candidate.name;
     setConfirmingId(key);
     try {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       await confirmNewSpot({
         external_id: candidate.external_id,
         name: candidate.name,
@@ -133,12 +117,12 @@ export default function AddSpotScreen() {
         category_hint: candidate.category_hint,
       });
       if (submittingGeneration !== accountGenerationRef.current) return;
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setConfirmedIds((prev) => new Set(prev).add(key));
       toast("Got it — added as a signal. It'll appear once confirmed by more activity.");
     } catch (err) {
       if (submittingGeneration !== accountGenerationRef.current) return;
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       toast(err instanceof Error ? err.message : 'Could not submit this spot');
     }
     if (submittingGeneration === accountGenerationRef.current) {
@@ -157,15 +141,29 @@ export default function AddSpotScreen() {
     );
   }
 
-  if (state === 'denied') {
+  if (state === 'denied' || state === 'blocked') {
+    const blocked = state === 'blocked';
     return (
       <View style={styles.centered}>
         <Ionicons name="location-outline" size={32} color={Colors.textSecondary} />
         <Text style={styles.statusText}>
-          Location access is needed to find spots near you.
+          {blocked
+            ? 'Location access is turned off for CRAVE. Enable it in Settings to find spots near you.'
+            : 'Location access is needed to find spots near you.'}
         </Text>
-        <TouchableOpacity style={styles.retryBtn} onPress={run}>
-          <Text style={styles.retryLabel}>Try again</Text>
+        <TouchableOpacity
+          style={styles.retryBtn}
+          onPress={() => {
+            if (blocked) {
+              void Linking.openSettings();
+            } else {
+              void run();
+            }
+          }}
+          accessibilityRole="button"
+          accessibilityLabel={blocked ? 'Open Settings' : 'Try location permission again'}
+        >
+          <Text style={styles.retryLabel}>{blocked ? 'Open Settings' : 'Try again'}</Text>
         </TouchableOpacity>
       </View>
     );
@@ -176,7 +174,12 @@ export default function AddSpotScreen() {
       <View style={styles.centered}>
         <Ionicons name="person-circle-outline" size={32} color={Colors.textSecondary} />
         <Text style={styles.statusText}>Sign in to add a new spot.</Text>
-        <TouchableOpacity style={styles.retryBtn} onPress={() => setAuthVisible(true)}>
+        <TouchableOpacity
+          style={styles.retryBtn}
+          onPress={() => setAuthVisible(true)}
+          accessibilityRole="button"
+          accessibilityLabel="Sign in"
+        >
           <Text style={styles.retryLabel}>Sign in</Text>
         </TouchableOpacity>
         <AuthSheet visible={authVisible} onClose={() => setAuthVisible(false)} reason="add-spot" />
@@ -189,7 +192,12 @@ export default function AddSpotScreen() {
       <View style={styles.centered}>
         <Ionicons name="alert-circle-outline" size={32} color={Colors.textSecondary} />
         <Text style={styles.statusText}>Couldn't search nearby spots.</Text>
-        <TouchableOpacity style={styles.retryBtn} onPress={run}>
+        <TouchableOpacity
+          style={styles.retryBtn}
+          onPress={() => void run()}
+          accessibilityRole="button"
+          accessibilityLabel="Retry nearby search"
+        >
           <Text style={styles.retryLabel}>Try again</Text>
         </TouchableOpacity>
       </View>
@@ -216,9 +224,7 @@ export default function AddSpotScreen() {
             <View key={key} style={styles.card}>
               <View style={styles.cardBody}>
                 <Text style={styles.cardName}>{candidate.name}</Text>
-                {candidate.address ? (
-                  <Text style={styles.cardAddress}>{candidate.address}</Text>
-                ) : null}
+                {candidate.address ? <Text style={styles.cardAddress}>{candidate.address}</Text> : null}
                 <Text style={styles.cardDistance}>{Math.round(candidate.distance_m)}m away</Text>
               </View>
 
@@ -235,7 +241,7 @@ export default function AddSpotScreen() {
               ) : (
                 <TouchableOpacity
                   style={[styles.actionBtn, isConfirmed && styles.actionBtnDone]}
-                  onPress={() => handleConfirm(candidate)}
+                  onPress={() => void handleConfirm(candidate)}
                   disabled={isConfirming || isConfirmed}
                   accessibilityRole="button"
                   accessibilityLabel={`Confirm this is ${candidate.name}`}
@@ -244,7 +250,7 @@ export default function AddSpotScreen() {
                     <ActivityIndicator size="small" color={Colors.text} />
                   ) : (
                     <Text style={[styles.actionLabel, isConfirmed && styles.actionLabelDone]}>
-                      {isConfirmed ? 'Submitted' : "This is it"}
+                      {isConfirmed ? 'Submitted' : 'This is it'}
                     </Text>
                   )}
                 </TouchableOpacity>
@@ -272,10 +278,13 @@ const styles = StyleSheet.create({
   retryBtn: {
     marginTop: Spacing.sm,
     paddingHorizontal: 18,
-    paddingVertical: 10,
-    borderRadius: 20,
+    paddingVertical: 12,
+    minHeight: 44,
+    borderRadius: 22,
     borderWidth: 1,
     borderColor: Colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   retryLabel: { color: Colors.text, fontWeight: '600', fontSize: 14 },
   title: { fontSize: 22, fontWeight: '800', color: Colors.text, marginBottom: 6 },
@@ -305,7 +314,7 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     borderWidth: 1,
     borderColor: Colors.border,
-    minHeight: 40,
+    minHeight: 44,
   },
   actionBtnDone: { borderColor: Colors.border, opacity: 0.6 },
   actionLabel: { fontSize: 13, fontWeight: '700', color: Colors.text },
