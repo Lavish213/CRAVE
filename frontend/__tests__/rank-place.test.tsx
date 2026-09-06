@@ -84,13 +84,22 @@ describe('RankPlaceScreen', () => {
     expect(await findByText('Sign in to rank places')).toBeTruthy();
   });
 
-  it('shows an error state whose retry goes back, when the place fails to load', async () => {
-    mockedFetchPlaceDetail.mockRejectedValue(new Error('network'));
+  it('actually retries the place fetch on error, instead of just navigating back', async () => {
+    // Confirmed release defect (docs/SCREEN_UX_FINDINGS_TRIAGE.md):
+    // this button previously called router.back() -- a misleading
+    // control that claimed to retry but didn't. It must re-fetch.
+    mockedFetchPlaceDetail.mockRejectedValueOnce(new Error('network'));
     const { findByText, findByLabelText } = render(<RankPlaceScreen />);
 
     expect(await findByText("Couldn't load this place.")).toBeTruthy();
+    expect(mockedFetchPlaceDetail).toHaveBeenCalledTimes(1);
+
+    mockedFetchPlaceDetail.mockResolvedValueOnce(makePlace('place-A', { name: 'Tasty Spot' }));
     fireEvent.press(await findByLabelText('Try again'));
-    expect(mockBack).toHaveBeenCalled();
+
+    expect(await findByText('Tasty Spot')).toBeTruthy();
+    expect(mockedFetchPlaceDetail).toHaveBeenCalledTimes(2);
+    expect(mockBack).not.toHaveBeenCalled();
   });
 
   it('goes straight to the done stage when a tier pick immediately ranks (nothing to compare against yet)', async () => {

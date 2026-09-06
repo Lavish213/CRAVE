@@ -145,6 +145,7 @@ export default function RecordVideoScreen() {
       if (elapsedTimerRef.current) clearInterval(elapsedTimerRef.current);
       setIsRecording(false);
       if (__DEV__) console.warn('[RecordVideoScreen] recordAsync_failed', err);
+      toast("Couldn't record that video. Try again.");
     }
   }, [isRecording, placeId, user?.id, selectedTemplateId, recordVideo, runSyncPass, router, toast]);
 

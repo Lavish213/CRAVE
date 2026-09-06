@@ -25,6 +25,13 @@ jest.mock('../src/api/social', () => ({
 jest.mock('expo-haptics', () => ({
   selectionAsync: jest.fn(),
 }));
+jest.mock('../src/components/AuthSheet', () => {
+  const { Text } = require('react-native');
+  return {
+    AuthSheet: ({ visible }: { visible: boolean }) =>
+      visible ? <Text testID="auth-sheet-visible">auth</Text> : null,
+  };
+});
 
 const mockedUseAuthStore = useAuthStore as unknown as jest.Mock;
 const mockedFetchLeaderboard = fetchLeaderboard as jest.MockedFunction<typeof fetchLeaderboard>;
@@ -93,6 +100,26 @@ describe('LeaderboardScreen', () => {
 
     fireEvent.press(await findByLabelText('Friends leaderboard'));
     expect(await findByText('No friends ranked yet')).toBeTruthy();
+  });
+
+  it('shows a sign-in prompt on the Friends tab when signed out, instead of a false "no friends ranked" empty state', async () => {
+    // Confirmed release defect (docs/SCREEN_UX_FINDINGS_TRIAGE.md): the
+    // friends query is disabled entirely while signed out, so it fell
+    // through to the generic empty-board copy -- misrepresenting "you're
+    // not signed in" as "the board is genuinely empty."
+    setAuth(null);
+    mockedFetchLeaderboard.mockResolvedValue([]);
+    const { findByText, findByLabelText, queryByText } = renderScreen();
+
+    await findByText('Nobody on the board yet');
+    fireEvent.press(await findByLabelText('Friends leaderboard'));
+
+    expect(await findByText('Sign in to see your friends board')).toBeTruthy();
+    expect(queryByText('No friends ranked yet')).toBeNull();
+    expect(mockedFetchLeaderboard).not.toHaveBeenCalledWith({ among: 'friends' });
+
+    fireEvent.press(await findByLabelText('Sign in'));
+    expect(await findByText('auth')).toBeTruthy();
   });
 
   it('shows an error state with retry when the fetch fails, not the empty state', async () => {

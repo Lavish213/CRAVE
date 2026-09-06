@@ -99,6 +99,19 @@ export default function RankPlaceScreen() {
   // the current placeId.
   const placeGenerationRef = useRef(0);
 
+  const loadPlace = useCallback((id: string, myGeneration: number) => {
+    setError(null);
+    fetchPlaceDetail(id)
+      .then((p) => {
+        if (myGeneration !== placeGenerationRef.current) return;
+        setPlace(p);
+      })
+      .catch(() => {
+        if (myGeneration !== placeGenerationRef.current) return;
+        setError("Couldn't load this place.");
+      });
+  }, []);
+
   useEffect(() => {
     if (!placeId) return;
     const myGeneration = ++placeGenerationRef.current;
@@ -118,16 +131,8 @@ export default function RankPlaceScreen() {
     setResult(null);
     setRound(0);
     setBeatOpponentName(null);
-    fetchPlaceDetail(placeId)
-      .then((p) => {
-        if (myGeneration !== placeGenerationRef.current) return;
-        setPlace(p);
-      })
-      .catch(() => {
-        if (myGeneration !== placeGenerationRef.current) return;
-        setError("Couldn't load this place.");
-      });
-  }, [placeId]);
+    loadPlace(placeId, myGeneration);
+  }, [placeId, loadPlace]);
 
   // The opponent id from the most recent comparison step -- kept
   // separately from the resolved `opponent` object so a failed detail
@@ -264,7 +269,15 @@ export default function RankPlaceScreen() {
   }
 
   if (error && stage === 'tier' && !place) {
-    return <ErrorState message={error} onRetry={() => router.back()} />;
+    return (
+      <ErrorState
+        message={error}
+        onRetry={() => {
+          if (!placeId) return;
+          loadPlace(placeId, placeGenerationRef.current);
+        }}
+      />
+    );
   }
 
   // place.id !== placeId (not just !place) — between a placeId change and

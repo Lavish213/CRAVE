@@ -176,6 +176,21 @@ describe('RecordVideoScreen', () => {
     expect(mockBack).not.toHaveBeenCalled();
   });
 
+  it('toasts an error when recordAsync itself throws, instead of silently resetting', async () => {
+    // Confirmed release defect (docs/SCREEN_UX_FINDINGS_TRIAGE.md): this
+    // was the one failure path in this file with no user-facing toast --
+    // a real recording failure produced zero feedback.
+    mockRecordAsync.mockRejectedValue(new Error('camera hardware error'));
+    const { getByLabelText } = render(<RecordVideoScreen />);
+
+    await act(async () => {
+      fireEvent.press(getByLabelText('Start recording'));
+    });
+
+    expect(mockToastShow).toHaveBeenCalledWith("Couldn't record that video. Try again.");
+    expect(mockRecordVideo).not.toHaveBeenCalled();
+  });
+
   it('saves the recording with the right contentType, syncs, toasts, and navigates back', async () => {
     mockRecordAsync.mockResolvedValue({ uri: 'file:///tmp/clip.mov' });
     const { getByLabelText } = render(<RecordVideoScreen />);
