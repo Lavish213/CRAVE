@@ -26,8 +26,10 @@ import { FilterSheet, FilterState, EMPTY_FILTERS, hasActiveFilters } from '../..
 // The bottom-sheet "open" action remains the single click point. A bare pin
 // tap is preview/engagement, not a full place-detail click, and a cluster tap
 // has no single place_id to attribute.
+let mapSessionSequence = 0;
 function _makeMapSessionId(): string {
-  return `map_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+  mapSessionSequence += 1;
+  return `map_${Date.now().toString(36)}_${mapSessionSequence.toString(36)}`;
 }
 
 const REGION_FETCH_DEBOUNCE_MS = 500;
@@ -82,17 +84,6 @@ function coverageRadiusKmForRegion(region: Region): number {
   const widthKm = region.longitudeDelta * 111.32 * Math.cos(latRad);
   const heightKm = region.latitudeDelta * 111.32;
   return Math.hypot(widthKm, heightKm) / 2;
-}
-
-function isCoordinateVisibleInRegion(lat: number, lng: number, region: Region): boolean {
-  const halfLat = region.latitudeDelta / 2;
-  const halfLng = region.longitudeDelta / 2;
-  return (
-    lat >= region.latitude - halfLat &&
-    lat <= region.latitude + halfLat &&
-    lng >= region.longitude - halfLng &&
-    lng <= region.longitude + halfLng
-  );
 }
 
 interface FetchCoverage {
@@ -213,6 +204,17 @@ export function buildClusters(
   });
 }
 
+function isCoordinateInsideRegion(latitude: number, longitude: number, region: Region): boolean {
+  const halfLat = region.latitudeDelta / 2;
+  const halfLng = region.longitudeDelta / 2;
+  return (
+    latitude >= region.latitude - halfLat &&
+    latitude <= region.latitude + halfLat &&
+    longitude >= region.longitude - halfLng &&
+    longitude <= region.longitude + halfLng
+  );
+}
+
 export default function MapScreen() {
   const { width: viewportWidth, height: viewportHeight } = useWindowDimensions();
   const router = useRouter();
@@ -233,29 +235,22 @@ export default function MapScreen() {
   const [mapLoading, setMapLoading] = useState(false);
   const [mapLoaded, setMapLoaded] = useState(false);
   const [mapError, setMapError] = useState(false);
-
   const requestIdRef = useRef(0);
   const lastFetchCoverageRef = useRef<FetchCoverage | null>(null);
 
   const mapSessionIdRef = useRef(_makeMapSessionId());
   const exposedMapIdsRef = useRef<Set<string>>(new Set());
   const visiblePinIdsRef = useRef<string[]>([]);
-  // Identifies which map session owns the currently loaded feature array.
-  // On a city/mode transition, old pins can remain in React state until the
-  // clearing effect commits; this prevents that old array from being logged
-  // under the newly minted session during the transition render.
-  const featuresSessionIdRef = useRef<string | null>(null);
-
   const isFirstSessionMintRef = useRef(true);
+
   useEffect(() => {
     if (isFirstSessionMintRef.current) {
       isFirstSessionMintRef.current = false;
       return;
     }
     mapSessionIdRef.current = _makeMapSessionId();
-    exposedMapIdsRef.current = new Set();
+    exposedMapIdsRef.current.clear();
     visiblePinIdsRef.current = [];
-    featuresSessionIdRef.current = null;
   }, [selectedCity?.id, viewMode]);
 
   const mapLat = selectedCity?.lat ?? userLocation?.lat ?? DEFAULT_REGION.latitude;
@@ -295,23 +290,20 @@ export default function MapScreen() {
                 : null,
             });
           }
-          featuresSessionIdRef.current = mapSessionIdRef.current;
           setFeatures(normalized);
           setMapLoaded(true);
           lastFetchCoverageRef.current = { lat, lng, radiusKm };
         })
-        .catch((err: unknown) => {
+        .catch((err) => {
           if (myRequestId !== requestIdRef.current) return;
           if (__DEV__) {
-            const status = typeof err === 'object' && err !== null && 'response' in err
-              ? (err as { response?: { status?: number; data?: unknown } }).response?.status
-              : undefined;
             console.log('[MAP] LOAD_FAILED', {
               lat,
               lng,
               radiusKm,
-              status,
-              message: err instanceof Error ? err.message : String(err),
+              status: err?.response?.status,
+              message: err?.message,
+              data: err?.response?.data,
             });
           }
           setMapError(true);
@@ -331,7 +323,8 @@ export default function MapScreen() {
       fetchDebounceRef.current = null;
     }
     lastFetchCoverageRef.current = null;
-    featuresSessionIdRef.current = null;
+    exposedMapIdsRef.current.clear();
+    visiblePinIdsRef.current = [];
     setFeatures([]);
     setMapLoaded(false);
     loadFeatures(mapLat, mapLng, prefetchRadiusKmForRegion(cityToRegion(mapLat, mapLng)));
@@ -353,7 +346,6 @@ export default function MapScreen() {
       .then((normalized) => {
         if (myRequestId !== requestIdRef.current) return;
         if (__DEV__) console.log('[MAP] SAVED_FEATURES_LOADED', { count: normalized.length });
-        featuresSessionIdRef.current = mapSessionIdRef.current;
         setFeatures(normalized);
         setMapLoaded(true);
         if (normalized.length === 1) {
@@ -374,15 +366,12 @@ export default function MapScreen() {
           });
         }
       })
-      .catch((err: unknown) => {
+      .catch((err) => {
         if (myRequestId !== requestIdRef.current) return;
         if (__DEV__) {
-          const status = typeof err === 'object' && err !== null && 'response' in err
-            ? (err as { response?: { status?: number } }).response?.status
-            : undefined;
           console.log('[MAP] SAVED_LOAD_FAILED', {
-            message: err instanceof Error ? err.message : String(err),
-            status,
+            message: err?.message,
+            status: err?.response?.status,
           });
         }
         setMapError(true);
@@ -399,7 +388,8 @@ export default function MapScreen() {
       setViewMode('city');
       return;
     }
-    featuresSessionIdRef.current = null;
+    exposedMapIdsRef.current.clear();
+    visiblePinIdsRef.current = [];
     setFeatures([]);
     setMapLoaded(false);
     loadSavedPlaces();
@@ -457,7 +447,11 @@ export default function MapScreen() {
           setMapError(false);
           return;
         }
-        loadFeatures(region.latitude, region.longitude, prefetchRadiusKmForRegion(region));
+        loadFeatures(
+          region.latitude,
+          region.longitude,
+          prefetchRadiusKmForRegion(region),
+        );
       }, REGION_FETCH_DEBOUNCE_MS);
     },
     [loadFeatures, viewMode],
@@ -477,11 +471,15 @@ export default function MapScreen() {
       if (
         filters.priceTiers.length > 0 &&
         (f.price_tier == null || !filters.priceTiers.includes(f.price_tier))
-      ) return false;
+      ) {
+        return false;
+      }
       if (
         filters.categories.length > 0 &&
         (!f.category || !filters.categories.includes(f.category))
-      ) return false;
+      ) {
+        return false;
+      }
       return true;
     });
   }, [features, filters]);
@@ -491,22 +489,16 @@ export default function MapScreen() {
     [filteredFeatures, mapRegion, viewportWidth, viewportHeight],
   );
 
-  // This is the Map equivalent of FlashList viewability: only a real
-  // singleton marker whose coordinate lies in the current viewport counts as
-  // exposed. The fetch's wider prefetch ring and all cluster children remain
-  // candidates. Dedupe is scoped to one city/view-mode interaction session.
   useEffect(() => {
-    if (featuresSessionIdRef.current !== mapSessionIdRef.current) {
-      visiblePinIdsRef.current = [];
-      return;
-    }
-
+    if (!mapLoaded || mapLoading || mapError) return;
     const visiblePins = clusters
-      .filter((cluster): cluster is ClusterPoint & { feature: NormalizedMapFeature } => (
-        cluster.count === 1 &&
-        cluster.feature !== undefined &&
-        isCoordinateVisibleInRegion(cluster.latitude, cluster.longitude, mapRegion)
-      ));
+      .filter(
+        (cluster): cluster is ClusterPoint & { feature: NormalizedMapFeature } =>
+          cluster.count === 1 &&
+          Boolean(cluster.feature) &&
+          isCoordinateInsideRegion(cluster.latitude, cluster.longitude, mapRegion),
+      )
+      .slice(0, 30);
 
     visiblePinIdsRef.current = visiblePins.map((cluster) => cluster.feature.id);
     const newlyExposed = visiblePins.filter(
@@ -525,7 +517,7 @@ export default function MapScreen() {
         search_session_id: mapSessionIdRef.current,
       })),
     );
-  }, [clusters, mapRegion, selectedCity?.id]);
+  }, [clusters, mapRegion, selectedCity?.id, mapLoaded, mapLoading, mapError]);
 
   const handleRecenter = useCallback(() => {
     if (!userLocation) return;
@@ -573,8 +565,14 @@ export default function MapScreen() {
                   const zoomed: Region = {
                     latitude: c.latitude,
                     longitude: c.longitude,
-                    latitudeDelta: Math.max(mapRegion.latitudeDelta / 2.5, CLUSTER_TAP_MIN_DELTA),
-                    longitudeDelta: Math.max(mapRegion.longitudeDelta / 2.5, CLUSTER_TAP_MIN_DELTA),
+                    latitudeDelta: Math.max(
+                      mapRegion.latitudeDelta / 2.5,
+                      CLUSTER_TAP_MIN_DELTA,
+                    ),
+                    longitudeDelta: Math.max(
+                      mapRegion.longitudeDelta / 2.5,
+                      CLUSTER_TAP_MIN_DELTA,
+                    ),
                   };
                   programmaticMoveRef.current = true;
                   setMapRegion(zoomed);
@@ -662,30 +660,43 @@ export default function MapScreen() {
       {mapLoaded && !mapLoading && !mapError && features.length === 0 && (
         <View style={styles.mapBanner}>
           <Text style={styles.mapBannerText}>
-            {viewMode === 'saved' ? "You haven't saved any places yet" : 'No places in this city yet'}
+            {viewMode === 'saved'
+              ? "You haven't saved any places yet"
+              : 'No places in this city yet'}
           </Text>
         </View>
       )}
 
-      {mapLoaded && !mapLoading && !mapError && features.length > 0 && filteredFeatures.length === 0 && (
-        <TouchableOpacity
-          style={styles.mapBanner}
-          onPress={() => setFilters(EMPTY_FILTERS)}
-          accessibilityRole="button"
-          accessibilityLabel="Clear filters"
-        >
-          <Text style={styles.mapBannerText}>No matches for these filters — tap to clear</Text>
-        </TouchableOpacity>
-      )}
+      {mapLoaded &&
+        !mapLoading &&
+        !mapError &&
+        features.length > 0 &&
+        filteredFeatures.length === 0 && (
+          <TouchableOpacity
+            style={styles.mapBanner}
+            onPress={() => setFilters(EMPTY_FILTERS)}
+            accessibilityRole="button"
+            accessibilityLabel="Clear filters"
+          >
+            <Text style={styles.mapBannerText}>
+              No matches for these filters — tap to clear
+            </Text>
+          </TouchableOpacity>
+        )}
 
       {user && (
         <TouchableOpacity
-          style={[styles.savedToggleButton, viewMode === 'saved' && styles.savedToggleButtonActive]}
+          style={[
+            styles.savedToggleButton,
+            viewMode === 'saved' && styles.savedToggleButtonActive,
+          ]}
           onPress={() => {
             void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
             setViewMode((m) => (m === 'saved' ? 'city' : 'saved'));
           }}
-          accessibilityLabel={viewMode === 'saved' ? 'Show all places' : 'Show my saved places'}
+          accessibilityLabel={
+            viewMode === 'saved' ? 'Show all places' : 'Show my saved places'
+          }
           accessibilityRole="button"
         >
           <Ionicons
