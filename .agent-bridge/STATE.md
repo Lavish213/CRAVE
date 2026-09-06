@@ -63,12 +63,19 @@ Two small docs-only items, not a reopened phase:
   still needs someone with Railway + Sentry dashboard access to
   actually run it — **Sentry production certification remains
   UNVERIFIED** until that happens and a successful event is recorded.
-- `docs/PRODUCTION_CREDENTIAL_LEAKAGE_AUDIT_2026-09-06.md` (PR #141) —
-  repo-scope audit for committed secrets / hardcoded credentials /
-  dev-value leakage into a production build. **Result: PASS.** See
-  that PR/doc for the full evidence; one dependency noted (not a
-  leak): `secret_key`'s placeholder-default safety is conditional on
-  Railway's `APP_ENV=prod` actually being set.
+- `docs/PRODUCTION_CREDENTIAL_LEAKAGE_AUDIT_2026-09-06.md` — repo-scope
+  audit for committed secrets / hardcoded credentials / dev-value
+  leakage into a production build. **Result: PASS.** No committed
+  `.env`/secret files (confirmed across full git history, not just the
+  current tree), no hardcoded API keys/tokens/DSNs/service-role
+  keys/DB URLs, `EXPO_PUBLIC_*` usage is limited to 4 vars that are all
+  legitimately public-safe by design, CI/EAS/GitHub Actions configs use
+  proper env-var/secrets-context indirection throughout. One dependency
+  noted, not a leak: `secret_key`'s insecure placeholder default is
+  caught by a hard-fail-on-boot check in `app/main.py`, but that check
+  only runs when `APP_ENV=prod` — so its safety is conditional on the
+  still-open production-infrastructure-verification step below, not
+  something this audit can close on its own.
 
 ## Product-design workstream (Claude, 2026-09-06) — separate from release certification
 
@@ -120,7 +127,6 @@ key restrictions, and confirming `APP_ENV=prod` specifically — the
 device certification, accessibility certification, and store
 compliance. Production credential leakage is the one item now fully
 closed: **PASS**, see above.
-
 Running in parallel, not blocking release certification: the product-
 design workstream above (screen inventory + UX/design audit filed;
 the actual screen-by-screen polish pass is the next step once that
