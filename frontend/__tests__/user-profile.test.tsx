@@ -88,6 +88,18 @@ describe('UserProfileScreen', () => {
     expect(await findByText('Profile not found')).toBeTruthy();
   });
 
+  it('does not describe a network/5xx failure on the profile fetch as a nonexistent account', async () => {
+    // Previously any non-404 error on fetchProfile (network failure,
+    // timeout, 500) collapsed into the exact same "Profile not found"
+    // EmptyState as a genuine 404, with no retry -- a transient
+    // infrastructure failure is not the same product truth, and unlike
+    // a real 404, it's retryable.
+    mockedFetchProfile.mockRejectedValue(new Error('network'));
+    const { findByText, queryByText } = render(<UserProfileScreen />);
+    expect(await findByText("Couldn't load this profile")).toBeTruthy();
+    expect(queryByText('Profile not found')).toBeNull();
+  });
+
   it('hides the follow button and options menu on your own profile', async () => {
     mockId = 'me';
     setMe('me');

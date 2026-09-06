@@ -19,6 +19,7 @@ from app.services.personal_ranking.ranking_service import RankingError
 from app.services.query.place_image_visibility_query import get_primary_image_urls_bulk
 from app.services.recommendations.recommendation_event_service import record_rank_outcome
 from app.services.social.activity_service import record_ranked_place
+from app.services.social.block_service import is_blocked
 
 router = APIRouter(prefix="/rankings", tags=["rankings"])
 
@@ -173,14 +174,27 @@ def get_my_rankings(
 def get_user_rankings(
     target_user_id: str,
     db: Session = Depends(get_db),
-    _user_id: str = Depends(get_current_user_id),
+    user_id: str = Depends(get_current_user_id),
 ):
-    """Someone else's ranked list — the thing a profile page is actually for."""
+    """
+    Someone else's ranked list — the thing a profile page is actually for.
+
+    Previously this only ever checked is_public, discarding the caller's
+    own identity entirely (the auth dependency existed but was never
+    read) -- which meant an owner viewing their own private profile via
+    this route got "profile not found" (see get_public_profile's
+    identical historical bug), and separately meant a blocked caller
+    could still pull the full ranked list directly against this route,
+    with the block only ever enforced client-side by the app's own UI.
+    Both are fixed the same way get_public_profile/taste were.
+    """
     profile = (
         db.query(UserProfile).filter(UserProfile.id == target_user_id).one_or_none()
     )
-    if not profile or not profile.is_public:
+    if not profile or (not profile.is_public and user_id != target_user_id):
         raise HTTPException(status_code=404, detail="profile not found")
+    if user_id != target_user_id and is_blocked(db, user_a=user_id, user_b=target_user_id):
+        raise HTTPException(status_code=403, detail="blocked")
 
     return {
         "rankings": _hydrate_rankings(db, ranking_service.list_user_rankings(db, target_user_id))

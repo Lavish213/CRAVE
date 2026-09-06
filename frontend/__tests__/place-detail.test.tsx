@@ -183,6 +183,31 @@ describe('PlaceDetailScreen — visual-pass regression coverage', () => {
 
     expect(await findByText("Couldn't load this place")).toBeTruthy();
   });
+
+  it('does not describe a failed menu fetch as "no menu on file", and offers a retry', async () => {
+    // Phase 3 confirmed bug: the menu fetch's .catch() reset menuItems to
+    // [] with no distinguishing flag, so a network/5xx failure rendered
+    // the exact same "Menu coming soon"/"No menu on file yet" copy a
+    // genuinely empty (200, items: []) menu gets -- the place itself
+    // (a separate resource) still loads fine and must stay usable.
+    mockedFetchPlaceDetail.mockResolvedValue(basePlace({ has_menu: true }));
+    mockedGetPlaceMenu.mockRejectedValue(new Error('network'));
+    const { findByText, findByLabelText, queryByText } = renderScreen();
+
+    await findByText('Nari');
+    expect(await findByText("Couldn't load the menu")).toBeTruthy();
+    expect(queryByText('Menu coming soon')).toBeNull();
+    expect(queryByText('No menu on file yet')).toBeNull();
+
+    mockedGetPlaceMenu.mockResolvedValue({
+      items: [{ id: 'm1', name: 'Pad Thai', description: null, price: null, category: null }],
+      lastVerifiedAt: null,
+    } as any);
+    const retryBtn = await findByLabelText('Retry loading the menu');
+    fireEvent.press(retryBtn);
+
+    expect(await findByText('Pad Thai')).toBeTruthy();
+  });
 });
 
 describe('PlaceDetailScreen — visited/notes memory (E2)', () => {

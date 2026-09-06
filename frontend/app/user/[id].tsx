@@ -51,6 +51,13 @@ export default function UserProfileScreen() {
   const [blocked, setBlocked] = useState(false);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
+  // Distinct from notFound -- a network failure/timeout/5xx on the primary
+  // profile fetch previously collapsed into the same "Profile not found"
+  // EmptyState as a genuine 404, with no retry affordance. A transient
+  // infrastructure failure is not the same product truth as "this account
+  // doesn't exist, or its list is private," and unlike that EmptyState,
+  // this is retryable.
+  const [profileError, setProfileError] = useState(false);
   const [busy, setBusy] = useState(false);
   const [blockBusy, setBlockBusy] = useState(false);
   const [rankingsError, setRankingsError] = useState(false);
@@ -96,6 +103,7 @@ export default function UserProfileScreen() {
       setFollowsMe(false);
       setBlocked(false);
       setNotFound(false);
+      setProfileError(false);
       setLoading(true);
     }
     // Marked as "attempted" here, before the fetch settles either way --
@@ -140,7 +148,15 @@ export default function UserProfileScreen() {
       }
     } catch (err: any) {
       if (myGeneration !== loadGenerationRef.current) return;
+      // A 404 here is real product truth ("this account doesn't exist, or
+      // its list is private" -- see get_public_profile's own is_public
+      // gate). Anything else (network failure, timeout, 5xx) is an
+      // infrastructure failure, not that truth, and must stay retryable
+      // rather than collapsing into the same "not found" copy with no way
+      // back -- this previously did exactly that, mislabeling a transient
+      // failure as a nonexistent/private account.
       if (err?.response?.status === 404) setNotFound(true);
+      else setProfileError(true);
     } finally {
       if (myGeneration === loadGenerationRef.current) setLoading(false);
     }
@@ -251,7 +267,7 @@ export default function UserProfileScreen() {
     );
   }
 
-  if (notFound || !profile) {
+  if (notFound) {
     return (
       <EmptyState
         icon="person-outline"
@@ -259,6 +275,14 @@ export default function UserProfileScreen() {
         body="This account doesn't exist, or its list is private."
       />
     );
+  }
+
+  // profileError (an explicit non-404 failure) and the !profile fallback
+  // (shouldn't happen given the two states above, but a defensive
+  // catch-all) get the same retryable treatment -- neither is the "not
+  // found" product truth above.
+  if (profileError || !profile) {
+    return <ErrorState message="Couldn't load this profile" onRetry={load} />;
   }
 
   return (
