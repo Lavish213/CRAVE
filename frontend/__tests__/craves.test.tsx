@@ -87,6 +87,23 @@ describe('CravesScreen — Recommendation Ledger instrumentation', () => {
     mockedGetMyPlaceSaves.mockResolvedValue([]);
   });
 
+  it('does not describe a failed craves request as an empty account, when saves and placeSaves are also empty', async () => {
+    // Confirmed real bug: cravesError is tracked and correctly rendered
+    // in the FlashList's own ListFooterComponent, but the top-level
+    // "true empty" gate never checked it -- a craves-fetch failure with
+    // zero saves/placeSaves rendered "Start your food memory" instead of
+    // the real error.
+    mockLoadSaves.mockImplementation(async () => {
+      mockStoreState = { ...mockStoreState, saves: [] };
+    });
+    mockedGetCraveItems.mockRejectedValue(new Error('network'));
+
+    const { findByText, queryByText } = renderScreen();
+
+    expect(await findByText("Couldn't load Craves right now.")).toBeTruthy();
+    expect(queryByText('Start your food memory')).toBeNull();
+  });
+
   it('logs one bounded, positioned impression batch for the Saves list on load', async () => {
     renderScreen();
 

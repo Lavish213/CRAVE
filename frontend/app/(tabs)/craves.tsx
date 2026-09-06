@@ -262,8 +262,16 @@ export default function CravesScreen() {
     loadPlaceSaves();
   };
 
-  // True empty
-  if (saves.length === 0 && craves.length === 0 && placeSaves.length === 0 && !cravesLoading) {
+  // True empty -- not when craves failed to load. cravesError is already
+  // tracked and correctly rendered in the ListFooterComponent below, but
+  // this gate ran before that render was ever reached: a craves-fetch
+  // failure with zero saves/placeSaves fell into this branch and showed
+  // "Start your food memory" instead of the real error, indistinguishable
+  // from a genuinely empty account. Falling through now (rather than
+  // returning here) still shows an empty saves list correctly -- the
+  // FlashList's own ListFooterComponent surfaces the error, and its
+  // existing pull-to-refresh is the retry path.
+  if (saves.length === 0 && craves.length === 0 && placeSaves.length === 0 && !cravesLoading && !cravesError) {
     return (
       <>
         <EmptyState

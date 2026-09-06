@@ -60,6 +60,49 @@ function renderScreen() {
   );
 }
 
+describe('SearchScreen — debounce, clear, and retry', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    useCityStore.setState({ selectedCity: SF_CITY, cities: [SF_CITY] });
+  });
+
+  it('cancels a pending debounce timer on clear, so a stale query never resurrects', async () => {
+    mockedSearchPlaces.mockResolvedValue([]);
+    const { getByLabelText, queryByLabelText } = renderScreen();
+
+    act(() => {
+      getByLabelText('Search input').props.onChangeText('pizza');
+    });
+    // Clear before the 350ms debounce timer fires -- previously left that
+    // timer alive, so it would call setDebouncedQuery('pizza') anyway and
+    // resurrect the just-cleared query.
+    fireEvent.press(getByLabelText('Clear search'));
+
+    // Give the (would-be) resurrected timer a chance to fire.
+    await new Promise((resolve) => setTimeout(resolve, 500));
+
+    expect(mockedSearchPlaces).not.toHaveBeenCalled();
+    expect(queryByLabelText('Clear search')).toBeNull(); // query box is empty again
+  });
+
+  it('retry button actually refetches the failed query, not a no-op', async () => {
+    mockedSearchPlaces.mockRejectedValueOnce(new Error('network'));
+    const { getByLabelText, findByText } = renderScreen();
+
+    act(() => {
+      getByLabelText('Search input').props.onChangeText('ramen');
+    });
+    await findByText("Couldn't search right now.");
+    expect(mockedSearchPlaces).toHaveBeenCalledTimes(1);
+
+    mockedSearchPlaces.mockResolvedValueOnce([makePlace('p0')]);
+    fireEvent.press(await findByText('Try again'));
+
+    await waitFor(() => expect(mockedSearchPlaces).toHaveBeenCalledTimes(2));
+    expect(await findByText('1 result')).toBeTruthy();
+  });
+});
+
 describe('SearchScreen — Recommendation Ledger instrumentation', () => {
   beforeEach(() => {
     jest.clearAllMocks();

@@ -66,6 +66,27 @@ describe('ProfileSetupScreen', () => {
     expect(getByLabelText('Continue').props.accessibilityState?.disabled).toBe(true);
   });
 
+  it('surfaces a real error (not idle) when the availability check itself fails, with a working retry', async () => {
+    // Confirmed real bug: a failed check previously collapsed to 'idle',
+    // indistinguishable from "haven't typed a valid username yet," with
+    // no retry path -- retyping the exact same text never reruns the
+    // debounce effect (its dependency is the text itself, unchanged
+    // value means no re-render).
+    mockedCheckUsernameAvailable.mockRejectedValueOnce(new Error('network'));
+    const { getByLabelText, findByText, queryByText } = render(<ProfileSetupScreen />);
+
+    fireEvent.changeText(getByLabelText('Username'), 'newhandle');
+    expect(await findByText("Couldn't check availability — tap to retry.")).toBeTruthy();
+    expect(queryByText('Letters, numbers and underscores. 3-20 characters.')).toBeNull();
+    expect(getByLabelText('Continue').props.accessibilityState?.disabled).not.toBe(false);
+
+    mockedCheckUsernameAvailable.mockResolvedValueOnce(true);
+    fireEvent.press(getByLabelText('Retry checking username availability'));
+
+    expect(await findByText('Available')).toBeTruthy();
+    expect(mockedCheckUsernameAvailable).toHaveBeenCalledTimes(2);
+  });
+
   it('does not let a slower, earlier check overwrite a later, faster one', async () => {
     let resolveSlow: (ok: boolean) => void;
     mockedCheckUsernameAvailable.mockImplementationOnce(

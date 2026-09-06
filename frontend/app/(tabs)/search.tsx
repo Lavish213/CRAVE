@@ -93,12 +93,12 @@ export default function SearchScreen() {
   // higher-rank_score places elsewhere) and in the final display order.
   const { data: searchData, isLoading: searchLoading, isError: searchError, refetch: refetchSearch, isRefetching: searchRefetching } = useQuery({
     queryKey: ['search', debouncedQuery, userLocation?.lat, userLocation?.lng],
-    queryFn: () => searchPlaces({
+    queryFn: ({ signal }) => searchPlaces({
       query: debouncedQuery,
       lat: userLocation?.lat,
       lng: userLocation?.lng,
       page_size: 30,
-    }),
+    }, signal),
     enabled: debouncedQuery.length >= 2,
     staleTime: 60 * 1000,  // 1 min
   });
@@ -173,6 +173,11 @@ export default function SearchScreen() {
   };
 
   const handleClear = () => {
+    // A pending debounce timer from text typed just before this tap would
+    // otherwise still fire 350ms later and resurrect the query this
+    // button just cleared -- setDebouncedQuery(stale text) overwriting
+    // the '' set right below it.
+    if (debounceRef.current) clearTimeout(debounceRef.current);
     setQuery('');
     setDebouncedQuery('');
   };
@@ -248,7 +253,7 @@ export default function SearchScreen() {
 
       {/* Error */}
       {searchError && !searchLoading && (
-        <ErrorState message="Couldn't search right now." onRetry={() => setDebouncedQuery(query)} />
+        <ErrorState message="Couldn't search right now." onRetry={() => refetchSearch()} />
       )}
 
       {/* Trending empty state */}

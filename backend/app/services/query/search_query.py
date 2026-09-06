@@ -4,8 +4,9 @@ from difflib import SequenceMatcher
 from typing import Optional, Tuple, List
 
 from sqlalchemy.orm import Session
-from sqlalchemy import case, select, func
+from sqlalchemy import case, exists, or_, select, func
 
+from app.db.models.category import Category
 from app.db.models.place import Place
 from app.db.models.place_categories import place_categories
 
@@ -108,6 +109,27 @@ def _fuzzy_fallback_search(
     return matched, len(scored)
 
 
+def _category_name_match(search_term: str):
+    """Correlated EXISTS, not a join -- a place with several matching
+    categories must still contribute exactly one row to the outer query,
+    same as it would for a plain name match. Typing a cuisine/category
+    name (e.g. "Italian", "sushi") previously matched nothing here unless
+    a place's own *name* happened to contain that word -- the category
+    taxonomy (Category.name, joined via place_categories) was never
+    searched at all.
+    """
+    return exists(
+        select(1)
+        .select_from(place_categories)
+        .join(Category, Category.id == place_categories.c.category_id)
+        .where(
+            place_categories.c.place_id == Place.id,
+            Category.is_active.is_(True),
+            Category.name.ilike(search_term),
+        )
+    )
+
+
 def search_places(
     db: Session,
     *,
@@ -133,7 +155,7 @@ def search_places(
 
     stmt = select(Place).where(
         Place.is_active.is_(True),
-        Place.name.ilike(search_term),
+        or_(Place.name.ilike(search_term), _category_name_match(search_term)),
     )
 
     if city_id:
