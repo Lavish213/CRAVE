@@ -131,6 +131,30 @@ describe('recommendation event queue', () => {
     );
   });
 
+  it('keeps the mutation owner when Account A finishes after the ambient session switched to B', async () => {
+    mockGetSession.mockResolvedValue({ data: { session: { user: { id: 'user-b' } } } });
+
+    logRecommendationEvent(
+      {
+        surface: 'feed',
+        event_type: 'save',
+        place_id: 'place-a',
+        client_event_id: 'save-a-race',
+      },
+      'user-a',
+    );
+    await settleAsyncWork();
+
+    expect(mockStorage.setItem).toHaveBeenCalledWith(
+      '@crave/recommendation-event-outbox/v1',
+      expect.stringContaining('"ownerUserId":"user-a"'),
+    );
+    expect(mockStorage.setItem).not.toHaveBeenCalledWith(
+      '@crave/recommendation-event-outbox/v1',
+      expect.stringContaining('"ownerUserId":"user-b"'),
+    );
+  });
+
   it('retains a durable save after send failure and retries it later', async () => {
     mockSend.mockRejectedValueOnce(new Error('offline')).mockResolvedValue(undefined);
 
