@@ -158,9 +158,6 @@ describe('recommendation event queue', () => {
   it('retains a durable save after send failure and retries it later', async () => {
     mockSend.mockRejectedValueOnce(new Error('offline')).mockResolvedValue(undefined);
 
-    // The mutation owner is known at the call site in production; passing it
-    // here removes ambient-session timing from the durability test and proves
-    // the actual owner-preserving path used by cravesStore.
     logRecommendationEvent({
       surface: 'feed',
       event_type: 'save',
@@ -169,11 +166,13 @@ describe('recommendation event queue', () => {
     }, 'user-a');
     await settleAsyncWork();
 
-    jest.advanceTimersByTime(4000);
-    await settleAsyncWork();
+    // Force the first delivery attempt and await the complete failure path,
+    // including scheduling the 15s durable retry. This avoids advancing the
+    // clock before the async outbox persistence/auth lookup has finished.
+    await flushRecommendationEvents();
     expect(mockSend).toHaveBeenCalledTimes(1);
 
-    jest.advanceTimersByTime(15_000);
+    await jest.advanceTimersByTimeAsync(15_000);
     await settleAsyncWork();
 
     expect(mockSend).toHaveBeenCalledTimes(2);
