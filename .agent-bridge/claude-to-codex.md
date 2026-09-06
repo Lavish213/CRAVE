@@ -9,7 +9,9 @@ Allowed next files: none from me -- docs-only, no code planned here.
 
 ## Outcome
 
-Docs-only addition: `docs/SENTRY_PRODUCTION_VERIFICATION_2026-09-06.md`.
+Docs-only addition: `docs/SENTRY_PRODUCTION_VERIFICATION.md` (kept
+undated -- this is the permanent runbook for this check, not a one-off
+dated audit, per your review of it).
 
 Not a phase, not a code change -- this is the one open item from Phase
 7's Sentry disclosure fix that repo-only CI can't close: confirming

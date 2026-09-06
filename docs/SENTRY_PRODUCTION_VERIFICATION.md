@@ -13,12 +13,19 @@ the backend's Sentry wiring is real: `backend/app/main.py` calls
 `sentry_sdk.init(dsn=settings.sentry_dsn, environment=settings.app_env,
 send_default_pii=False, ...)` whenever `SENTRY_DSN` is set, and its
 `global_exception_handler` calls `sentry_sdk.capture_exception(exc)` on
-every unhandled error.
+every unhandled error. This is the repo proof: the integration exists
+and is correctly conditional on configuration, not always-on.
 
 Confirming the code path exists is not the same as confirming it's
 *configured and actually delivering events* in the real production
-environment. That's the one thing left to check, and it's an infra
-check, not a code change.
+environment. The three proofs below close that gap: **infrastructure
+proof** (Proof 1 — the required env vars are actually set in
+production), **runtime trigger** (Proof 2 — a controlled event is
+actually sent), and **runtime proof** (Proof 3 — that event actually
+reaches Sentry, correctly tagged, with nothing sensitive in it). None
+of this is a code change; it's the permanent production-verification
+runbook for this integration, to be re-run whenever there's reason to
+doubt it (a Railway env change, a Sentry project migration, etc).
 
 ## Proof 1 — `SENTRY_DSN` is actually set in production
 
@@ -76,8 +83,12 @@ Confirm:
 - Its `environment` tag reads `prod`, not `dev`/`staging`.
 - Its "Request"/"User" context shows **no** email, name, IP, or the
   `x-debug-api-key` header value. `send_default_pii=False` is set
-  explicitly in `sentry_sdk.init()` — this step confirms that's
-  actually true in a live event, not just present in source.
+  explicitly in `sentry_sdk.init()`, which substantially reduces what
+  Sentry's integrations collect by default — but it is not a guarantee
+  that no header or secret can ever end up in an event (a value logged
+  or passed to `capture_exception` explicitly would still be captured).
+  This live-event inspection, not the config flag alone, is the
+  authoritative proof that nothing sensitive is actually present.
 
 **Pass:** event found, correctly tagged, no PII/secret fields visible
 in it.
