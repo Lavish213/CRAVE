@@ -76,13 +76,25 @@ export default function TasteProfileScreen() {
     const myGeneration = ++loadGenerationRef.current;
     const viewerId = me?.id ?? null;
     if (loadedForIdRef.current !== userId || loadedForViewerRef.current !== viewerId) {
+      // Identity-scoped: only wipe another identity's stale data, so a
+      // same-identity refocus/retry doesn't flash the skeleton over
+      // still-good data while it quietly re-fetches in the background.
       setProfile(null);
       setTaste(null);
       setBlocked(false);
-      setNotFound(false);
-      setAccessError(false);
       setLoading(true);
     }
+    // Outcome flags describe *this* attempt, not the identity pairing --
+    // they must reset on every attempt, including a same-identity retry
+    // from ErrorState's onRetry (accessError) or a plain refocus after a
+    // transient 404. Previously gated inside the block above: a retry
+    // that actually succeeded still rendered the stale error screen over
+    // the freshly-fetched, perfectly good data, since nothing ever
+    // cleared the flag for a same-identity attempt (confirmed by
+    // CodeRabbit; the identity-gated `!profile` catch-all doesn't save
+    // this, since profile/taste's own reset is correctly identity-gated).
+    setNotFound(false);
+    setAccessError(false);
     // Marked as "attempted" here, before the fetch settles either way --
     // same reasoning as user/[id].tsx's identical comment: the render-time
     // stale-gate below only needs to force the skeleton until an attempt

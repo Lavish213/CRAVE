@@ -100,6 +100,38 @@ describe('UserProfileScreen', () => {
     expect(queryByText('Profile not found')).toBeNull();
   });
 
+  it('routes a 401 from the route-level API-key gate (require_api_key) through the same retryable error, not a distinct auth state', async () => {
+    // require_api_key (a route dependency, separate from the optional
+    // viewer-identity dependency this route also takes) 401s with
+    // "Invalid API key" when API_KEY is configured and x-api-key is
+    // missing/wrong -- a real, reachable 401, just not through the
+    // viewer-auth path. No new state needed: it already falls into the
+    // same non-404 bucket as any other profile-fetch failure.
+    mockedFetchProfile.mockRejectedValue({ response: { status: 401, data: { detail: 'Invalid API key' } } });
+    const { findByText, queryByText } = render(<UserProfileScreen />);
+    expect(await findByText("Couldn't load this profile")).toBeTruthy();
+    expect(queryByText('Profile not found')).toBeNull();
+  });
+
+  it('recovers on retry after a transient profile-fetch failure, instead of staying stuck on the error', async () => {
+    // Confirmed by CodeRabbit: profileError was only ever cleared inside
+    // the identity-change reset block, so a same-identity retry (this
+    // screen's own onRetry={load}) that actually succeeded still
+    // rendered the stale ErrorState over the freshly-loaded, perfectly
+    // good data -- the flag never cleared for a same-identity attempt.
+    mockedFetchProfile.mockRejectedValueOnce(new Error('network'));
+    const { findByText, findByLabelText, queryByText } = render(<UserProfileScreen />);
+    expect(await findByText("Couldn't load this profile")).toBeTruthy();
+
+    mockedFetchProfile.mockResolvedValue(makeProfile());
+    await act(async () => {
+      fireEvent.press(await findByLabelText('Try again'));
+    });
+
+    expect(await findByText('Alice')).toBeTruthy();
+    expect(queryByText("Couldn't load this profile")).toBeNull();
+  });
+
   it('hides the follow button and options menu on your own profile', async () => {
     mockId = 'me';
     setMe('me');

@@ -84,6 +84,28 @@ describe('TasteProfileScreen', () => {
     expect(mockedFetchTasteProfile).not.toHaveBeenCalled();
   });
 
+  it('recovers on retry after a transient access-check failure, instead of staying stuck on the error', async () => {
+    // Confirmed by CodeRabbit: accessError was only ever cleared inside
+    // the identity-change reset block, so a same-identity retry (this
+    // screen's own onRetry={load}) that actually succeeded still
+    // rendered the stale ErrorState over the freshly-loaded, perfectly
+    // good data -- the flag never cleared for a same-identity attempt.
+    mockedFetchProfile.mockResolvedValue(makeProfile());
+    mockedFetchBlockStatus.mockRejectedValueOnce(new Error('network'));
+    mockedFetchTasteProfile.mockResolvedValue(makeTaste({ total_ranked: 12 }));
+
+    const { findByText, findByLabelText, queryByText } = render(<TasteProfileScreen />);
+    expect(await findByText("Couldn't verify profile access")).toBeTruthy();
+
+    mockedFetchBlockStatus.mockResolvedValue({ blocked: false });
+    await act(async () => {
+      fireEvent.press(await findByLabelText('Try again'));
+    });
+
+    expect(await findByText('12')).toBeTruthy();
+    expect(queryByText("Couldn't verify profile access")).toBeNull();
+  });
+
   it('shows a self-specific no-data message when viewing your own empty taste profile', async () => {
     mockUserId = 'me';
     setMe('me');

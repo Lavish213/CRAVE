@@ -97,15 +97,26 @@ export default function UserProfileScreen() {
     const myGeneration = ++loadGenerationRef.current;
     const viewerId = me?.id ?? null;
     if (loadedForIdRef.current !== id || loadedForViewerRef.current !== viewerId) {
+      // Identity-scoped: only wipe another identity's stale data, so a
+      // same-identity refocus/retry doesn't flash the skeleton over
+      // still-good data while it quietly re-fetches in the background.
       setProfile(null);
       setRankings([]);
       setFollowing(false);
       setFollowsMe(false);
       setBlocked(false);
-      setNotFound(false);
-      setProfileError(false);
       setLoading(true);
     }
+    // Outcome flags describe *this* attempt, not the identity pairing --
+    // they must reset on every attempt, including a same-identity retry
+    // from ErrorState's onRetry (profileError) or a plain refocus after a
+    // transient 404. Previously gated inside the block above: a retry
+    // that actually succeeded still rendered the stale error screen over
+    // the freshly-fetched, perfectly good data, since nothing ever
+    // cleared the flag for a same-identity attempt (confirmed by
+    // CodeRabbit).
+    setNotFound(false);
+    setProfileError(false);
     // Marked as "attempted" here, before the fetch settles either way --
     // not only on success. This id/viewer pairing has been *addressed* by
     // this generation regardless of outcome; the render-time stale-gate

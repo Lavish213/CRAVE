@@ -3,7 +3,9 @@
 Status: ready-for-review
 Owner: Claude
 Branch: claude/phase3-authorization-identity (PR to be opened against main)
-Base SHA: f4c2870 (main, post-Phase-2 merge -- PR #131)
+Base SHA: f4c2870 (main HEAD this branch forked from -- the Phase 3
+Feed/Map/Craves audit, PR #131, itself a no-op diff on top of eb55d10,
+the actual Phase 2 merge, PR #130)
 Commit SHA: ee1de97
 Scope: Phase 3 of the canonical CRAVE_PHASES_3_TO_7_PRODUCTION_HARDENING_
 EXECUTION_SPEC.md -- Authorization, Identity & Detail Integrity. This
@@ -82,11 +84,49 @@ requires before touching anything. Found and fixed:
   stays fully usable regardless -- this is a supplementary resource,
   per the spec's own framing).
 
+### CodeRabbit review findings (1st pass), all verified and fixed
+
+- **Real bug in this branch's own first draft** -- both new error flags
+  (`accessError` in taste-profile, `profileError` in user/[id]) were
+  cleared only inside the identity-change reset block, alongside
+  `profile`/`taste`/`loading`. A same-identity retry (the screen's own
+  `onRetry={load}`) that actually succeeded still rendered the stale
+  ErrorState over the freshly-fetched, perfectly good data, since
+  nothing ever cleared the flag for a same-identity attempt --
+  `notFound` had the identical latent defect (reachable via a plain
+  refocus after a transient 404, no retry button needed). Fixed by
+  splitting the block: `profile`/`taste`/`rankings`/`loading` stay
+  identity-gated (preserves the deliberate no-skeleton-flash-on-
+  same-identity-refocus behavior `user/[id].tsx` already had before
+  this phase), while the outcome flags (`notFound`/`accessError`/
+  `profileError`) now reset on every attempt. Deliberately did *not*
+  also make `loading` reset on every attempt (CodeRabbit's literal
+  suggested diff did) -- that would reintroduce a skeleton flash on
+  every ordinary same-identity refocus (e.g. navigating away and back),
+  a real regression traded for a "retry shows a spinner" nicety this
+  screen doesn't strictly need (the `!profile`/stale-content fallback
+  already covers the retry-in-flight window reasonably). Added retry-
+  recovery regression tests to both files' test suites.
+- **Handoff-record inaccuracy** -- both bridge files described `f4c2870`
+  as itself "the Phase 2 merge, PR #131" -- `f4c2870` is PR #131's own
+  commit (the Feed/Map/Craves audit, a no-op diff); the actual Phase 2
+  merge is `eb55d10`, PR #130. Corrected in both files.
+- **Handoff-record inaccuracy on the 401 claim** -- the "Known gaps"
+  note claiming a 401 isn't reachable on `GET /profile/{user_id}` was
+  wrong: `require_api_key`, a separate route-level dependency this
+  route also carries, does 401 ("Invalid API key") when `API_KEY` is
+  configured and `x-api-key` is missing/wrong -- just not via the
+  optional viewer-identity dependency I was reasoning about. Corrected
+  the note; added a dedicated regression test proving this specific
+  401 already routes through the existing `profileError` bucket
+  correctly, with no new state needed.
+
 ## Verification
 
-- Frontend: `npx tsc --noEmit` clean. `npx jest` 364/364 passed, 37
-  suites (360 baseline + 4 new: 1 in place-detail.test.tsx, 2 in
-  taste-profile.test.tsx, 1 in user-profile.test.tsx).
+- Frontend: `npx tsc --noEmit` clean. `npx jest` 367/367 passed, 37
+  suites (360 baseline + 7 new: 1 in place-detail.test.tsx, 3 in
+  taste-profile.test.tsx, 3 in user-profile.test.tsx -- includes the
+  CodeRabbit-driven retry-recovery and 401-routing tests).
 - Backend: `python3 -m pytest -q` 1041 passed, 2 skipped (1029 baseline
   + 12 new in test_social_routes_integration.py). Run locally against
   SQLite -- CI's "Backend (same suite, against real Postgres)" job is
@@ -117,11 +157,17 @@ requires before touching anything. Found and fixed:
   separate, later phases, each on its own fresh branch.
 - Did not add a distinct "401 auth behavior" state to `user/[id].tsx`
   as its own category (spec's User Profile error truth section lists
-  it alongside 404/privacy-block/network-5xx) -- `GET /profile/
-  {user_id}` doesn't require authentication at all (now takes an
-  *optional* viewer id only for the owner-bypass), so a 401 there is
-  not reachable in practice; folded into the general `profileError`
-  retryable-error bucket instead of building out an unreachable branch.
+  it alongside 404/privacy-block/network-5xx). Corrected per CodeRabbit:
+  a 401 *is* reachable here -- not via the optional viewer-identity
+  dependency (`get_current_user_id_optional`, which never raises), but
+  via `require_api_key`, a separate route-level dependency that 401s
+  with "Invalid API key" when `API_KEY` is configured and `x-api-key`
+  is missing/wrong. This already falls into the general `profileError`
+  retryable-error bucket like any other non-404 failure (now covered by
+  a dedicated regression test) rather than getting its own state --
+  there's nothing meaningfully different for this screen to do with a
+  401 here versus a 500, since the app itself doesn't manage the
+  `x-api-key` value as a user-facing credential.
 
 ## Next action
 
