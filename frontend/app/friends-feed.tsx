@@ -24,6 +24,7 @@ import { EmptyState } from '../src/components/EmptyState';
 import { ErrorState } from '../src/components/ErrorState';
 import { SkeletonRowList } from '../src/components/SkeletonCard';
 import { ActivityEvent, fetchFriendsFeed } from '../src/api/social';
+import { useAuthStore } from '../src/stores/authStore';
 import { formatScore, tierColor } from '../src/utils/rankScore';
 import { relativeTime } from '../src/utils/time';
 import { withImageWidth, AVATAR_IMAGE_WIDTH } from '../src/utils/imageUrl';
@@ -35,6 +36,7 @@ function actorName(event: ActivityEvent): string {
 
 export default function FriendsFeedScreen() {
   const router = useRouter();
+  const user = useAuthStore((s) => s.user);
   // Previously raw useState + useFocusEffect with no caching at all -- every
   // tab focus re-fetched from scratch, unlike every other list screen in the
   // app.
@@ -44,6 +46,11 @@ export default function FriendsFeedScreen() {
   // rendered identically to a genuinely empty feed -- fixed to let
   // react-query's isError surface instead, same fix as leaderboard.tsx's
   // identical pattern.
+  //
+  // Keyed by user.id -- this is the signed-in caller's own follow graph's
+  // activity. Without it, an account switch within this query's 2-minute
+  // staleTime (this screen doesn't remount on sign-in/out) would read back
+  // the previous account's cached feed until the next natural refetch.
   const {
     data: events = [],
     isLoading: loading,
@@ -51,17 +58,26 @@ export default function FriendsFeedScreen() {
     isRefetching: refreshing,
     refetch,
   } = useQuery({
-    queryKey: ['friends-feed'],
+    queryKey: ['friends-feed', user?.id],
     queryFn: () => fetchFriendsFeed(),
     staleTime: 2 * 60 * 1000,
+    enabled: !!user,
   });
 
   // Cached data shows instantly on refocus; this just revalidates quietly
   // in the background instead of resetting to a full loading state.
+  //
+  // Guarded on `user` here too, not just via the query's own `enabled` --
+  // react-query's `refetch()` is an explicit imperative trigger that runs
+  // the queryFn regardless of `enabled` (that flag only gates *automatic*
+  // fetches). Without this guard, a signed-out call (e.g. this effect
+  // re-firing right after sign-out, before this screen unmounts) would
+  // still issue a live request for this account-scoped feed.
   useFocusEffect(
     useCallback(() => {
+      if (!user) return;
       refetch();
-    }, [refetch]),
+    }, [user, refetch]),
   );
 
   if (loading) {
@@ -73,7 +89,7 @@ export default function FriendsFeedScreen() {
   }
 
   if (isError) {
-    return <ErrorState message="Couldn't load your friends feed" onRetry={() => refetch()} />;
+    return <ErrorState message="Couldn't load your friends feed" onRetry={() => user && refetch()} />;
   }
 
   if (events.length === 0) {
@@ -97,7 +113,7 @@ export default function FriendsFeedScreen() {
       refreshControl={
         <RefreshControl
           refreshing={refreshing}
-          onRefresh={() => refetch()}
+          onRefresh={() => user && refetch()}
           tintColor={Colors.primary}
         />
       }

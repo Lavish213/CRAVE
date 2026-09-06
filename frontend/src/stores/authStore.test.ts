@@ -21,6 +21,11 @@ jest.mock('../services/pushNotifications', () => ({
   unregisterCurrentDevice: (...args: unknown[]) => mockUnregisterCurrentDevice(...args),
 }));
 
+const mockQueryClientClear = jest.fn();
+jest.mock('../lib/queryClient', () => ({
+  queryClient: { clear: (...args: unknown[]) => mockQueryClientClear(...args) },
+}));
+
 const mockedSupabase = supabase as unknown as {
   auth: {
     getSession: jest.Mock;
@@ -40,6 +45,7 @@ beforeEach(() => {
   mockClearSaves.mockReset();
   mockUnregisterCurrentDevice.mockReset();
   mockUnregisterCurrentDevice.mockResolvedValue(undefined);
+  mockQueryClientClear.mockReset();
 });
 
 describe('useAuthStore.init', () => {
@@ -113,6 +119,20 @@ describe('useAuthStore.signOut', () => {
     await useAuthStore.getState().signOut();
 
     expect(mockClearSaves).toHaveBeenCalledTimes(1);
+  });
+
+  it('clears the shared React Query cache on sign-out', async () => {
+    // Hard account-boundary cleanup: any viewer-scoped query still cached
+    // for the outgoing account (whether or not its key carries user.id)
+    // must not be readable after this resolves. See queryClient.ts /
+    // this call's own comment for why per-key scoping is still needed on
+    // top of this, not instead of it.
+    mockedSupabase.auth.signOut.mockResolvedValue(undefined);
+    useAuthStore.setState({ user: { id: 'u1' } as any, loading: false });
+
+    await useAuthStore.getState().signOut();
+
+    expect(mockQueryClientClear).toHaveBeenCalledTimes(1);
   });
 
   it('unregisters this device\'s push token on sign-out', async () => {

@@ -182,6 +182,34 @@ describe('ProfileScreen', () => {
     expect(mockPush).toHaveBeenCalledWith('/place/p0');
   });
 
+  it('clears the previous account\'s data immediately on account switch, before the new account\'s fetch resolves', async () => {
+    // Distinct from the stale-response race below: this is the "nothing
+    // ever resets what's already on screen when a fresh load starts"
+    // gap -- `loading` previously only flipped back to false from the
+    // *first* load's own finally block, so a second load() (fired by a
+    // real account switch, not a remount) never showed the skeleton
+    // again and this screen kept rendering the outgoing account's
+    // profile/rankings with no loading indicator until the incoming
+    // account's fetch happened to resolve.
+    setAuthedUser({ id: 'user-A' });
+    mockedFetchMyRankings.mockResolvedValue([makeRanking('a-place', { name: 'A Place' })]);
+
+    const { rerender, findByText, queryByText } = render(<ProfileScreen />);
+    expect(await findByText('A Place')).toBeTruthy();
+
+    // Switch accounts; user-B's fetches are all still pending.
+    setAuthedUser({ id: 'user-B' });
+    mockedFetchMyProfile.mockImplementationOnce(() => new Promise(() => {}));
+    mockedFetchMyRankings.mockImplementationOnce(() => new Promise(() => {}));
+
+    rerender(<ProfileScreen />);
+
+    // Before user-B's fetch resolves, user-A's data must already be gone
+    // -- not still on screen with no loading indicator.
+    expect(queryByText('A Place')).toBeNull();
+    expect(queryByText('Alice')).toBeNull();
+  });
+
   it('does not let a stale response from a previous account overwrite the newly signed-in account\'s data', async () => {
     setAuthedUser({ id: 'user-A' });
     let resolveSlowA: (v: RankedPlace[]) => void;

@@ -15,7 +15,7 @@
 import { renderHook, waitFor } from '@testing-library/react-native';
 import { AppState } from 'react-native';
 
-import { useLocation, _resetLocationStateForTests } from './useLocation';
+import { useLocation, useLocationStatus, _resetLocationStateForTests } from './useLocation';
 
 jest.mock('expo-location', () => ({
   __esModule: true,
@@ -113,5 +113,95 @@ describe('useLocation', () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(Location.getForegroundPermissionsAsync).not.toHaveBeenCalled();
+  });
+});
+
+describe('useLocationStatus', () => {
+  beforeEach(() => {
+    _resetLocationStateForTests();
+    Location.requestForegroundPermissionsAsync.mockReset();
+    Location.getForegroundPermissionsAsync.mockReset();
+    Location.getCurrentPositionAsync.mockReset();
+  });
+
+  it('starts resolving, then reports granted with coords and a freshness timestamp', async () => {
+    Location.requestForegroundPermissionsAsync.mockResolvedValue({ status: 'granted' });
+    Location.getCurrentPositionAsync.mockResolvedValue({
+      coords: { latitude: 1, longitude: 2 },
+    });
+
+    const { result } = renderHook(() => useLocationStatus());
+    expect(result.current.status).toBe('resolving');
+    expect(result.current.coords).toBeNull();
+
+    await waitFor(() => expect(result.current.status).toBe('granted'));
+    expect(result.current.coords).toEqual({ lat: 1, lng: 2 });
+    expect(result.current.updatedAt).toEqual(expect.any(Number));
+  });
+
+  it('reports denied distinctly from unavailable', async () => {
+    Location.requestForegroundPermissionsAsync.mockResolvedValue({ status: 'denied' });
+
+    const { result } = renderHook(() => useLocationStatus());
+    await waitFor(() => expect(result.current.status).toBe('denied'));
+    expect(result.current.coords).toBeNull();
+  });
+
+  it('reports unavailable (not denied) when permission is granted but the GPS read fails', async () => {
+    Location.requestForegroundPermissionsAsync.mockResolvedValue({ status: 'granted' });
+    Location.getCurrentPositionAsync.mockRejectedValue(new Error('timeout'));
+
+    const { result } = renderHook(() => useLocationStatus());
+    await waitFor(() => expect(result.current.status).toBe('unavailable'));
+    expect(result.current.coords).toBeNull();
+  });
+
+  it('does not restart an in-flight initial request on a foreground transition', async () => {
+    // The permission dialog itself can trigger an AppState background/
+    // foreground transition on some platforms while the very first
+    // fetchLocation() call is still awaiting requestForegroundPermissionsAsync.
+    // A foreground recheck firing in that window must not tear down and
+    // restart the in-flight request.
+    let resolvePermission: (v: { status: string }) => void;
+    Location.requestForegroundPermissionsAsync.mockImplementationOnce(
+      () => new Promise((resolve) => { resolvePermission = resolve; }),
+    );
+
+    const { result } = renderHook(() => useLocationStatus());
+    expect(result.current.status).toBe('resolving');
+
+    triggerAppForeground();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    // Still exactly one call -- the foreground recheck did not start a
+    // second, redundant permission request racing the first.
+    expect(Location.requestForegroundPermissionsAsync).toHaveBeenCalledTimes(1);
+
+    Location.getCurrentPositionAsync.mockResolvedValue({
+      coords: { latitude: 5, longitude: 6 },
+    });
+    resolvePermission!({ status: 'granted' });
+
+    await waitFor(() => expect(result.current.status).toBe('granted'));
+    expect(result.current.coords).toEqual({ lat: 5, lng: 6 });
+  });
+
+  it('recovers denied -> Settings -> granted -> foreground into granted with fresh coords', async () => {
+    Location.requestForegroundPermissionsAsync.mockResolvedValue({ status: 'denied' });
+
+    const { result } = renderHook(() => useLocationStatus());
+    await waitFor(() => expect(result.current.status).toBe('denied'));
+
+    // User granted access from OS Settings and returned to the app.
+    Location.getForegroundPermissionsAsync.mockResolvedValue({ status: 'granted' });
+    Location.requestForegroundPermissionsAsync.mockResolvedValue({ status: 'granted' });
+    Location.getCurrentPositionAsync.mockResolvedValue({
+      coords: { latitude: 10, longitude: 20 },
+    });
+
+    triggerAppForeground();
+
+    await waitFor(() => expect(result.current.status).toBe('granted'));
+    expect(result.current.coords).toEqual({ lat: 10, lng: 20 });
   });
 });

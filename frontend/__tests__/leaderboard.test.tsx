@@ -5,7 +5,7 @@
 // navigation), and the conditional handle line (only shown when both a
 // display_name and username exist).
 import React from 'react';
-import { fireEvent, render } from '@testing-library/react-native';
+import { fireEvent, render, waitFor } from '@testing-library/react-native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import LeaderboardScreen from '../app/leaderboard';
 import { useAuthStore } from '../src/stores/authStore';
@@ -39,17 +39,36 @@ function makeRow(overrides: Partial<LeaderboardRow> = {}): LeaderboardRow {
 
 function renderScreen() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(
-    <QueryClientProvider client={client}>
-      <LeaderboardScreen />
-    </QueryClientProvider>,
-  );
+  return {
+    client,
+    ...render(
+      <QueryClientProvider client={client}>
+        <LeaderboardScreen />
+      </QueryClientProvider>,
+    ),
+  };
 }
 
 describe('LeaderboardScreen', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     setAuth({ id: 'me' });
+  });
+
+  it('scopes the friends-board cache key to the signed-in user, but leaves the global board key unscoped (shared, not viewer-dependent)', async () => {
+    // Key-shape assertion complementing queryClient.test.ts's real
+    // cache-boundary integration test (which uses myRankings as the
+    // primary case). Global deliberately does NOT carry user.id -- every
+    // viewer sees the same board, so scoping it would just fragment one
+    // shared cache entry into one per account for identical data (see
+    // leaderboard.tsx's own comment on the queryKey).
+    mockedFetchLeaderboard.mockResolvedValue([]);
+    const { client, findByLabelText } = renderScreen();
+    await findByLabelText('Global leaderboard');
+    expect(client.getQueryData(['leaderboard', 'global', null])).toEqual([]);
+
+    fireEvent.press(await findByLabelText('Friends leaderboard'));
+    await waitFor(() => expect(client.getQueryData(['leaderboard', 'friends', 'me'])).toEqual([]));
   });
 
   it('fetches the global scope by default, and switches to friends on toggle (but not on a re-press of the active scope)', async () => {

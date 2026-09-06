@@ -56,6 +56,15 @@ export default function LeaderboardScreen() {
   // board yet" is a lie when the request never actually succeeded. Now
   // lets react-query's isError surface instead, so the render below can
   // tell the two apart.
+  //
+  // scope === 'friends' is the signed-in caller's own follow graph, so it
+  // additionally needs user.id in the key -- without it, an account switch
+  // within this query's 2-minute staleTime would read back the previous
+  // account's cached friends board. scope === 'global' has no such
+  // dependency (every viewer sees the same board; "you" is highlighted
+  // below by comparing against the live `user` from the store, not from
+  // this cached response) -- adding user.id there would just fragment one
+  // shared cache entry into one per account for identical data.
   const {
     data: rows = [],
     isLoading: loading,
@@ -63,17 +72,27 @@ export default function LeaderboardScreen() {
     isRefetching: refreshing,
     refetch,
   } = useQuery({
-    queryKey: ['leaderboard', scope],
+    queryKey: ['leaderboard', scope, scope === 'friends' ? user?.id : null],
     queryFn: () => fetchLeaderboard({ among: scope }),
     staleTime: 2 * 60 * 1000,
+    // Global has no auth dependency; friends does, and must not fetch at
+    // all when signed out (matches friends-feed.tsx's identical guard).
+    enabled: scope !== 'friends' || !!user,
   });
+  const canFetch = scope !== 'friends' || !!user;
 
   // Cached data shows instantly on refocus; this just revalidates quietly
   // in the background instead of resetting to a full loading state.
+  //
+  // Guarded on `canFetch` here too, not just via the query's own
+  // `enabled` -- react-query's `refetch()` is an explicit imperative
+  // trigger that runs the queryFn regardless of `enabled` (that flag only
+  // gates *automatic* fetches).
   useFocusEffect(
     useCallback(() => {
+      if (!canFetch) return;
       refetch();
-    }, [refetch]),
+    }, [canFetch, refetch]),
   );
 
   const switchScope = (next: Scope) => {
@@ -106,7 +125,7 @@ export default function LeaderboardScreen() {
           <SkeletonRowList count={7} avatar />
         </View>
       ) : isError ? (
-        <ErrorState message="Couldn't load the leaderboard" onRetry={() => refetch()} />
+        <ErrorState message="Couldn't load the leaderboard" onRetry={() => canFetch && refetch()} />
       ) : rows.length === 0 ? (
         <EmptyState
           icon="trophy-outline"
@@ -125,7 +144,7 @@ export default function LeaderboardScreen() {
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
-              onRefresh={() => refetch()}
+              onRefresh={() => canFetch && refetch()}
               tintColor={Colors.primary}
             />
           }
