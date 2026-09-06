@@ -52,7 +52,7 @@ describe('useRecommendations', () => {
     );
 
     const { result, rerender } = renderHook(
-      ({ enabled }) => useRecommendations(enabled),
+      ({ enabled }: { enabled: boolean }) => useRecommendations(enabled),
       { initialProps: { enabled: true } },
     );
     expect(mockedFetchRecommendations).toHaveBeenCalledTimes(1);
