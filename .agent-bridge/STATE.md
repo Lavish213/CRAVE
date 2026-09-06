@@ -6,7 +6,7 @@ Branch: claude/phase3-authorization-identity (PR to be opened against main)
 Base SHA: f4c2870 (main HEAD this branch forked from -- the Phase 3
 Feed/Map/Craves audit, PR #131, itself a no-op diff on top of eb55d10,
 the actual Phase 2 merge, PR #130)
-Commit SHA: ee1de97
+Commit SHA: 7ffb8e5
 Scope: Phase 3 of the canonical CRAVE_PHASES_3_TO_7_PRODUCTION_HARDENING_
 EXECUTION_SPEC.md -- Authorization, Identity & Detail Integrity. This
 supersedes the earlier informal "Phase 3: main tabs" audit (PR #131,

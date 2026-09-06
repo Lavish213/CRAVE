@@ -3,8 +3,10 @@
 Status: ready-for-review
 Owner: Claude
 Branch: claude/phase3-authorization-identity (PR to be opened against main)
-Base SHA: f4c2870 (main, post-Phase-2 merge -- PR #131)
-Commit SHA: ee1de97
+Base SHA: f4c2870 (main HEAD this branch forked from -- the Phase 3
+Feed/Map/Craves audit, PR #131, itself a no-op diff on top of eb55d10,
+the actual Phase 2 merge, PR #130)
+Commit SHA: 7ffb8e5
 Allowed next files: none from me -- this branch is in review, no more
 code planned here unless CI/review findings require it.
 
@@ -65,10 +67,29 @@ checked and are already block-safe by construction (a block tears down
 any existing follow both directions; those surfaces are purely
 follow-graph-derived) -- verified-healthy, left untouched.
 
+CodeRabbit's first-pass review found one real functional bug in this
+branch's own first draft: `accessError`/`profileError`/`notFound` were
+only ever cleared inside the identity-change reset block (alongside
+`profile`/`taste`/`loading`), so a same-identity retry that actually
+succeeded still rendered the stale error screen over freshly-fetched
+good data. Fixed by splitting the block -- data/loading stay identity-
+gated (preserves the deliberate no-flash-on-same-identity-refocus
+behavior `user/[id].tsx` already had before this phase), outcome flags
+now clear on every attempt. Also corrected two handoff-record
+inaccuracies it caught: a mislabeled PR number (this file said `f4c2870`
+was itself "the Phase 2 merge, PR #131" -- it's PR #131's own no-op
+audit commit; the real Phase 2 merge is `eb55d10`, PR #130), and a
+wrong claim that a 401 can't reach `GET /profile/{user_id}` (it can,
+via the separate `require_api_key` route dependency, not the optional
+viewer-identity one) -- both fixed, the 401 claim backed by a new
+regression test proving it already routes through the existing
+`profileError` bucket correctly.
+
 ## Verification
 
-- Frontend: `npx tsc --noEmit` -> clean. `npx jest` -> 364/364 passed,
-  37 suites (360 baseline + 4 new).
+- Frontend: `npx tsc --noEmit` -> clean. `npx jest` -> 367/367 passed,
+  37 suites (360 baseline + 7 new -- includes the CodeRabbit-driven
+  retry-recovery and 401-routing tests).
 - Backend: `python3 -m pytest -q` -> 1041 passed, 2 skipped (1029
   baseline + 12 new in `test_social_routes_integration.py`), run
   locally against SQLite. CI's "Backend (same suite, against real
@@ -87,10 +108,11 @@ follow-graph-derived) -- verified-healthy, left untouched.
   verified block-safe by construction and already have their own
   service-level test coverage.
 - Did not build out a distinct "401 auth behavior" state for
-  `user/[id].tsx` -- `GET /profile/{user_id}` doesn't require
-  authentication at all (optional viewer id only, for the owner-bypass),
-  so a 401 there isn't reachable in practice; folded into the general
-  retryable-error bucket instead.
+  `user/[id].tsx` -- a 401 there (reachable via `require_api_key`, see
+  above) already falls into the general `profileError` retryable-error
+  bucket like any other non-404 failure; there's nothing meaningfully
+  different for this screen to do with it, since the app doesn't manage
+  `x-api-key` as a user-facing credential.
 - Phases 4-7 (ranking transaction integrity, video/media transaction
   integrity, telemetry/location/async truth, performance/accessibility/
   security/release certification) are untouched -- per the spec's
