@@ -4,7 +4,7 @@ Status: ready-for-review
 Owner: Claude
 Branch: claude/phase3-authorization-identity (PR to be opened against main)
 Base SHA: f4c2870 (main, post-Phase-2 merge -- PR #131)
-Commit SHA: (see next commit)
+Commit SHA: ee1de97
 Scope: Phase 3 of the canonical CRAVE_PHASES_3_TO_7_PRODUCTION_HARDENING_
 EXECUTION_SPEC.md -- Authorization, Identity & Detail Integrity. This
 supersedes the earlier informal "Phase 3: main tabs" audit (PR #131,
