@@ -235,6 +235,28 @@ describe('UserProfileScreen', () => {
     expect(mockPush).toHaveBeenCalledWith('/place/p0');
   });
 
+  it('clears the previous person\'s data immediately on an id change, before the new person\'s fetch resolves', async () => {
+    // Distinct from the stale-response test below: `loading` previously
+    // only ever flipped back to false from the *first* load's own finally
+    // block -- a second load() (a real id change while this screen
+    // instance is reused, not a remount) never set it back to true, so
+    // this screen fell through the `if (loading)` skeleton gate and kept
+    // rendering the *previous* person's profile/rankings with no loading
+    // indicator until the new person's fetch happened to resolve.
+    mockedFetchProfile.mockResolvedValue(makeProfile({ display_name: 'Alice' }));
+    mockedFetchUserRankings.mockResolvedValue([makeRanking('p0', { name: 'Old Person Place' })]);
+
+    const { rerender, findByText, queryByText } = render(<UserProfileScreen />);
+    expect(await findByText('Old Person Place')).toBeTruthy();
+
+    mockId = 'yet-another-user';
+    mockedFetchProfile.mockImplementationOnce(() => new Promise(() => {}));
+    rerender(<UserProfileScreen />);
+
+    expect(queryByText('Old Person Place')).toBeNull();
+    expect(queryByText('Alice')).toBeNull();
+  });
+
   it('does not let a stale response from a previous id render under the new route', async () => {
     let resolveOld: (p: Profile) => void;
     mockedFetchProfile.mockImplementationOnce(

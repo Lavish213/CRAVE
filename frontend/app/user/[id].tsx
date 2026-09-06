@@ -64,15 +64,35 @@ export default function UserProfileScreen() {
   // after the new one's and silently repaint this screen with the wrong
   // person's profile/rankings/follow state.
   const loadGenerationRef = useRef(0);
+  // Whose data this screen currently holds. `loading` previously only
+  // ever flipped back to false (from the first load's `finally`) -- a
+  // subsequent load() for a *different* id never set it back to true, so
+  // between navigating to a new id and that id's fetch resolving, this
+  // screen fell through the `if (loading)` skeleton gate entirely and
+  // rendered the *previous* person's profile/rankings/follow state with
+  // no loading indicator. The stale-response race above was already
+  // guarded; this is the separate "nothing resets the visible state when
+  // a fresh load starts" gap.
+  const loadedForIdRef = useRef<string | null>(null);
 
   const load = useCallback(async () => {
     if (!id) return;
     const myGeneration = ++loadGenerationRef.current;
+    if (loadedForIdRef.current !== id) {
+      setProfile(null);
+      setRankings([]);
+      setFollowing(false);
+      setFollowsMe(false);
+      setBlocked(false);
+      setNotFound(false);
+      setLoading(true);
+    }
     setRankingsError(false);
     setRelationshipError(false);
     try {
       const p = await fetchProfile(id);
       if (myGeneration !== loadGenerationRef.current) return;
+      loadedForIdRef.current = id;
       setProfile(p);
 
       const [r, status, blockStatus] = await Promise.all([

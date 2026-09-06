@@ -56,6 +56,15 @@ export default function LeaderboardScreen() {
   // board yet" is a lie when the request never actually succeeded. Now
   // lets react-query's isError surface instead, so the render below can
   // tell the two apart.
+  //
+  // scope === 'friends' is the signed-in caller's own follow graph, so it
+  // additionally needs user.id in the key -- without it, an account switch
+  // within this query's 2-minute staleTime would read back the previous
+  // account's cached friends board. scope === 'global' has no such
+  // dependency (every viewer sees the same board; "you" is highlighted
+  // below by comparing against the live `user` from the store, not from
+  // this cached response) -- adding user.id there would just fragment one
+  // shared cache entry into one per account for identical data.
   const {
     data: rows = [],
     isLoading: loading,
@@ -63,7 +72,7 @@ export default function LeaderboardScreen() {
     isRefetching: refreshing,
     refetch,
   } = useQuery({
-    queryKey: ['leaderboard', scope],
+    queryKey: ['leaderboard', scope, scope === 'friends' ? user?.id : null],
     queryFn: () => fetchLeaderboard({ among: scope }),
     staleTime: 2 * 60 * 1000,
   });

@@ -99,8 +99,17 @@ export default function PlaceDetailScreen() {
   // The whole ranked list rather than a per-place lookup: react-query
   // caches one copy across every place screen, so this costs a single
   // request per session instead of one per place opened.
+  //
+  // Keyed by user.id, not just 'myRankings' -- this response is the
+  // signed-in caller's own rankings. Without the id in the key, signing
+  // out and back in as a different account within this query's 60s
+  // staleTime (this screen doesn't remount on sign-in/out, it's already
+  // mounted) would read back the *previous* account's cached rankings
+  // until the next natural refetch, not just here but wherever the same
+  // key was cached — the account boundary would depend on the clock,
+  // not the account.
   const { data: myRankings } = useQuery({
-    queryKey: ['myRankings'],
+    queryKey: ['myRankings', user?.id],
     queryFn: fetchMyRankings,
     staleTime: 60 * 1000,
     enabled: !!user,

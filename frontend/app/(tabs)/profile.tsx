@@ -96,12 +96,35 @@ export default function ProfileScreen() {
   // account — same account-switch race already fixed in
   // craves.tsx/cravesStore.ts.
   const loadGenerationRef = useRef(0);
+  // Tracks whose data is currently sitting in state, independent of the
+  // stale-response race above. Guarding against out-of-order responses
+  // isn't enough on its own: this screen stays mounted across sign-out ->
+  // sign-in-as-a-different-account (it's a tab, never unmounted), and
+  // `loading` only ever flipped back to false from the *previous* load
+  // -- a fresh load() for a new account never set it back to true, so
+  // between the account switch and the new account's fetch resolving,
+  // this screen rendered the outgoing account's profile/rankings/counts
+  // with no loading indicator at all. Confirmed real, not theoretical.
+  const loadedForUserIdRef = useRef<string | null>(null);
 
   const load = useCallback(async () => {
     const myGeneration = ++loadGenerationRef.current;
     if (!user) {
+      loadedForUserIdRef.current = null;
       setLoading(false);
       return;
+    }
+    if (loadedForUserIdRef.current !== user.id) {
+      // A different account than whatever this screen last rendered --
+      // clear its data and show the loading gate immediately, rather than
+      // leaving the previous account's state on screen until the new
+      // fetch resolves.
+      setProfile(null);
+      setRankings([]);
+      setFollowingCount(0);
+      setFollowerCount(0);
+      setStreak(null);
+      setLoading(true);
     }
     setProfileError(false);
     setRankingsError(false);
@@ -119,6 +142,7 @@ export default function ProfileScreen() {
         fetchMyStreak().then((value) => ({ value, failed: false })).catch(() => ({ value: null, failed: true })),
       ]);
       if (myGeneration !== loadGenerationRef.current) return;
+      loadedForUserIdRef.current = user.id;
       setProfile(p.value);
       setRankings(r.value);
       setFollowingCount(following.value.length);
