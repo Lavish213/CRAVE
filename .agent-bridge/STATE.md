@@ -2,9 +2,9 @@
 
 Status: ready-for-review
 Owner: Claude
-Branch: claude/phase2-search-discovery
+Branch: claude/phase2-search-discovery (PR #130 open against main)
 Base SHA: 31f24d2 (main, post-Phase-1 merge)
-Commit SHA: 84c60b1
+Commit SHA: 2d22b93
 Scope: Phase 2 of the user-directed multi-phase frontend hardening
 program -- Search as a proper discovery system, plus the two Craves/
 Profile Setup bugs Phase 1 diagnosed but deliberately deferred (small,
