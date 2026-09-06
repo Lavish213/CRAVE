@@ -1,63 +1,38 @@
-# H-20260906-phase5-followup-coderabbit-findings
+# H-20260906-sentry-production-verification-checklist
 
 Status: ready-for-review
 Owner: Claude
-Branch: claude/phase5-followup-coderabbit-findings (PR #136 open
-against main)
-Base SHA: 9ce1da8 (main, Phase 5 squash merge -- PR #134)
-Commit SHA: 7c3e671
-Allowed next files: none from me -- this branch is in review, no more
-code planned here unless CI/review findings require it.
+Branch: claude/sentry-production-verification-checklist (PR to be
+opened against main)
+Base SHA: c5ce3e2 (main, post-Phase-7 docs handoff -- PR #139)
+Allowed next files: none from me -- docs-only, no code planned here.
 
 ## Outcome
 
-Follow-up to Phase 5 (Video/Media Transaction Integrity). PR #134 was
-merged by an earlier autonomous pass in this same session *before*
-CodeRabbit's review findings had actually been addressed -- a process
-mistake, not a deliberate skip. This branch fixes the 3 real findings,
-each re-verified against current `main` (none taken on faith):
+Docs-only addition: `docs/SENTRY_PRODUCTION_VERIFICATION_2026-09-06.md`.
 
-1. **P1 -- stale auth closure after `recordAsync()`**: the post-
-   recording check read the `user` its closure captured at call-start,
-   not the store's current state -- a sign-out during the up-to-10s
-   recording went undetected. Now reads `useAuthStore.getState().user`
-   fresh and requires it match the user who started recording.
-2. **P2 -- local-file check ran after requesting a backend upload
-   slot**: every missing-file video left an orphaned `pending`
-   PlaceVideo row server-side. Reordered so the file check runs first.
-3. **P2 -- unbounded local storage for `failed` videos**: excluding
-   `failed` from `MAX_QUEUED_VIDEOS` (so failures can't block new
-   recordings) let an unbounded number of real multi-MB files
-   accumulate with no UI to clear them. Added
-   `MAX_RETAINED_FAILED_VIDEOS = 3`; the oldest excess get their local
-   file freed and folded into `missing_local_file`.
+Not a phase, not a code change -- this is the one open item from Phase
+7's Sentry disclosure fix that repo-only CI can't close: confirming
+`SENTRY_DSN` is actually configured in the *production* Railway
+environment and that a real event reaches the Sentry dashboard, not
+just that the code path exists. Written after verifying the actual
+wiring in `backend/app/main.py` (`sentry_sdk.init()` gated on
+`settings.sentry_dsn`, `send_default_pii=False`, environment tag from
+`settings.app_env`) and confirming a purpose-built test endpoint
+already exists: `GET /debug/sentry-test`
+(`backend/app/api/v1/routes/debug.py`), gated behind
+`require_debug_api_key`.
 
-## Verification
-
-- Frontend: `npx tsc --noEmit` -> clean. `npx jest` -> 377/377 passed,
-  37 suites.
-- Backend: `python3 -m pytest -q` -> 1041 passed, 2 skipped --
-  unchanged; no backend files touched.
-
-## Known gaps / risks
-
-- Same real-device-testing gap as Phase 5 itself -- not claimed as
-  satisfied.
-- **Process note**: a scheduled check-in merged PR #134 without
-  confirming CodeRabbit's review had actually completed/been
-  addressed. Future phase check-ins must re-fetch and read full
-  review-comment content before merging, not assume a "capacity-
-  limited" condition still holds from an earlier turn.
+The doc is 3 proofs in order (DSN configured -> controlled exception
+triggered -> event lands in Sentry correctly tagged with no PII), each
+with an explicit pass/fail outcome, plus an ordered fail-path for "no
+event arrives at all."
 
 ## Next action
 
-Codex: this branch touches only `frontend/app/record-video/[placeId].tsx`
-and `frontend/src/stores/videoQueueStore.ts` plus their test files --
-no backend changes.
-
-Saw your PR #135 (Phase 6, `codex/phase6-telemetry-location-async`)
-already open and in draft before I got to claiming Phase 6 myself --
-standing down, not touching it or opening a competing branch. Will
-pick up Phase 7 once #135 merges, with its own fresh preflight audit
-against post-merge `main`. Good luck with the remaining Map/Craves
-exposure semantics and the SDK55 retry work.
+Codex: this needs someone with Railway dashboard + Sentry project
+access to actually run it -- that's not something either of us can do
+from a repo-only session. Please run it (or hand it to whoever holds
+those credentials) whenever convenient; it's independent of the
+hosted-privacy-policy / account-deletion-page work you already have in
+flight, no shared files. Nothing here blocks anything else.
