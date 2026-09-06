@@ -1,10 +1,19 @@
 // src/hooks/useTrending.ts
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { PlaceOut, fetchTrending } from '../api/places';
 import { useCityStore } from '../stores/cityStore';
 
-// module-level cache: city_id → places (persists for app session)
-const cache: Record<string, PlaceOut[]> = {};
+// Mirrors trending.py's own TRENDING_CACHE_TTL (5 min) -- the backend
+// response itself doesn't recompute more often than that, so caching it
+// client-side for any longer just serves a staler answer than the
+// backend would already give a fresh request, and any shorter just adds
+// pointless refetches of an unchanged response. Previously a hand-rolled
+// module-level cache with no TTL at all (persisted for the entire app
+// session until an explicit pull-to-refresh), the one list-backed hook in
+// the app not on React Query like every sibling screen (search/
+// leaderboard/friends-feed).
+const TRENDING_STALE_TIME = 5 * 60 * 1000;
 
 export function useTrending(): PlaceOut[] {
   const [trending] = useTrendingWithRefresh();
@@ -12,60 +21,30 @@ export function useTrending(): PlaceOut[] {
 }
 
 // Same data as useTrending(), plus a refreshing flag and a refresh()
-// function that bypasses the module-level cache — needed to support
-// pull-to-refresh (search.tsx shows this list when no search is active).
+// function that bypasses the cache — needed to support pull-to-refresh
+// (search.tsx shows this list when no search is active).
 export function useTrendingWithRefresh(): [PlaceOut[], boolean, () => void] {
   const selectedCity = useCityStore((s) => s.selectedCity);
-  const [trending, setTrending] = useState<PlaceOut[]>(
-    selectedCity ? (cache[selectedCity.id] ?? []) : []
-  );
-  const [refreshing, setRefreshing] = useState(false);
 
-  // Tracks the most recently *started* request by sequence number, not just
-  // cityId — two overlapping requests for the *same* city (e.g. refresh()
-  // fired twice quickly, or a cache-bypass racing a plain load) both pass a
-  // cityId-only check, so a slower of two same-city responses could still
-  // overwrite a newer one and leave `refreshing` clobbered. Incremented for
-  // both the cached and network paths.
-  const latestRequestRef = useRef(0);
+  const { data, isRefetching, refetch, error } = useQuery({
+    queryKey: ['trending', selectedCity?.id],
+    queryFn: () => fetchTrending(selectedCity!.id),
+    enabled: !!selectedCity,
+    staleTime: TRENDING_STALE_TIME,
+  });
 
-  const load = useCallback((cityId: string, { bypassCache }: { bypassCache: boolean }) => {
-    const requestId = ++latestRequestRef.current;
-    if (!bypassCache && cache[cityId]) {
-      setTrending(cache[cityId]);
-      setRefreshing(false);
-      return;
-    }
-    setRefreshing(true);
-    fetchTrending(cityId)
-      .then((data) => {
-        // Cache write stays unconditional — still correct data for a future
-        // switch back to this city, even if it's not the one showing now.
-        cache[cityId] = data;
-        if (requestId !== latestRequestRef.current) return;
-        setTrending(data);
-      })
-      .catch((err) => {
-        // Trending is non-critical — fail silently for the user (no error
-        // UI for a nice-to-have row), but previously this swallowed the
-        // error completely, including real bugs, with zero visibility.
-        if (__DEV__) console.warn('[useTrending] fetchTrending_failed', err?.response?.status, err?.message);
-      })
-      .finally(() => {
-        if (requestId !== latestRequestRef.current) return;
-        setRefreshing(false);
-      });
-  }, []);
-
+  // Trending is non-critical -- fail silently for the user (no error UI
+  // for a nice-to-have row), but keep dev-only visibility into real bugs,
+  // same as this hook's own pre-React-Query behavior.
   useEffect(() => {
-    if (!selectedCity) return;
-    load(selectedCity.id, { bypassCache: false });
-  }, [selectedCity?.id, load]);
+    if (__DEV__ && error) {
+      console.warn('[useTrending] fetchTrending_failed', (error as any)?.response?.status, (error as any)?.message);
+    }
+  }, [error]);
 
-  const refresh = useCallback(() => {
-    if (!selectedCity) return;
-    load(selectedCity.id, { bypassCache: true });
-  }, [selectedCity, load]);
+  const refresh = () => {
+    refetch();
+  };
 
-  return [trending, refreshing, refresh];
+  return [data ?? [], isRefetching, refresh];
 }
