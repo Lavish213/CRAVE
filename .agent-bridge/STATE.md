@@ -2,9 +2,11 @@
 
 Status: ready-for-review
 Owner: Claude
-Branch: claude/phase1-identity-isolation (PR #129 open against main)
+Branch: claude/phase1-identity-isolation (PR #129 open against main --
+CI green on head, all CodeRabbit findings fixed/resolved, cache-boundary
+test gap closed. Merge-ready; awaiting the human owner's merge decision.)
 Base SHA: 6e32ba4 (main)
-Commit SHA: bb3ac91
+Commit SHA: c9bbae8
 Scope: Phase 1 of an 8-phase frontend production-hardening program (user-
 directed) -- identity isolation only. Independent of PR #126, #127, #128
 (all still open, no file overlap). Merge before starting Phase 2 (Search)
