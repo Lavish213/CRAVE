@@ -60,6 +60,7 @@ from .user_profile import UserProfile
 from .user_follow import UserFollow
 from .user_block import UserBlock
 from .place_ranking import PlaceRanking
+from .visit_evidence import VisitEvidence
 from .activity_event import ActivityEvent
 from .user_streak import UserStreak
 
@@ -132,12 +133,19 @@ __all__ = [
     # Social / Identity
     "UserProfile",
     "UserFollow",
+    "UserBlock",
     "PlaceRanking",
+    "VisitEvidence",
     "ActivityEvent",
+    "UserStreak",
 
     # Moderation
     "ImageReport",
     "VideoReport",
+
+    # Video
+    "VideoTemplate",
+    "PlaceVideo",
 
     # Notifications
     "DevicePushToken",
