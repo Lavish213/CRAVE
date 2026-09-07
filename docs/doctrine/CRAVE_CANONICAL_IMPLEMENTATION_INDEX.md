@@ -28,10 +28,21 @@ Read in this order:
 18. `CRAVE_IMPLEMENTATION_MIGRATION_PLAN.md`
 19. `CRAVE_CODEX_IMPLEMENTATION_RULES_V2.md`
 20. `CRAVE_CODEX_READINESS_AUDIT.md`
+21. `CRAVE_CODEX_HANDOFF_STATE.md` for the concrete completed-wave baseline and next executable wave
 
 If two documents conflict, later explicitly approved canon supersedes older product/UI decisions while preserving traceability.
 
-## 3. Target V1 navigation
+## 3. Current implementation boundary
+Codex must treat the following as already completed baseline, not work to redo:
+- **Wave 0:** protected #146 release/regression baseline.
+- **Wave 1:** shared foundations from PR #170, including typography roles, Decision Strip, resumable auth gate, recommendation-context/privacy/evidence primitives.
+- **Wave 2:** visit-evidence persistence + Rank queue + Rank Home ownership + Profile handoff from PR #172.
+
+**Codex begins broad implementation at Migration Plan Wave 3 — navigation topology.**
+
+The handoff details and hard invariants are in `CRAVE_CODEX_HANDOFF_STATE.md`.
+
+## 4. Target V1 navigation
 Bottom tabs are exactly:
 - Feed
 - Search
@@ -46,7 +57,7 @@ Additional destinations:
 
 Any older document or code comment describing Map as a permanent tab, Rank as a Profile subpanel, or `friends-feed` as a final destination is **superseded for target V1**.
 
-## 4. Core product boundaries
+## 5. Core product boundaries
 - Decision confidence, not engagement.
 - Evidence integrity, not behavior mining.
 - Personal taste private by default.
@@ -59,7 +70,7 @@ Any older document or code comment describing Map as a permanent tab, Rank as a 
 - No autoplay vertical feed.
 - No comments/reposts/vanity counts.
 
-## 5. OPEN / DO NOT IMPLEMENT list
+## 6. OPEN / DO NOT IMPLEMENT list
 Unless a newer canonical decision explicitly promotes them:
 - visible social Rank beyond opt-in coarse highlights
 - taste-similarity people recommendation feed
@@ -72,10 +83,10 @@ Unless a newer canonical decision explicitly promotes them:
 - personal food-history map
 - full route-aware discovery
 
-## 6. Screen-contract rule
+## 7. Screen-contract rule
 A screen contract is the implementation authority for hierarchy, interactions, states, data dependencies, accessibility, and prohibited behavior. Current code is inspected and reused where correct but does not override the contract.
 
-## 7. Stale-document quarantine rule
+## 8. Stale-document quarantine rule
 The following artifact classes are informative only unless explicitly promoted:
 - design exploration logs
 - old mockup notes
@@ -87,17 +98,18 @@ The following artifact classes are informative only unless explicitly promoted:
 
 When Codex encounters one of these and it conflicts with canon, it must follow canon and update/remove stale references during the relevant migration.
 
-## 8. Promotion rule
+## 9. Promotion rule
 No execution brief may be considered complete if it contains a product, UX, data, provenance, accessibility, or implementation rule that exists only inside that brief. Reusable rules must be promoted into canonical documentation.
 
-## 9. Implementation start condition
-Codex should begin broad implementation only from a commit where:
+## 10. Implementation start condition
+Codex should begin broad implementation only from the final handoff commit where:
 - this canonical chain is present together;
 - #146 regression fixes or equivalent preserved fixes are present;
-- baseline frontend/backend checks are green or known failures are explicitly classified;
-- the target screen being implemented is GREEN or the task is explicitly an unblocker for a named YELLOW dependency.
+- Waves 1–2 are present and must be reused;
+- frontend/backend/Postgres/security checks are green;
+- the target screen is GREEN or the task is explicitly an unblocker for a named YELLOW implementation dependency.
 
-## 10. Escalation rule
+## 11. Escalation rule
 A technical unknown may be solved locally. A product/UX/data/privacy/evidence/permission/interaction unknown must be made visible rather than guessed.
 
 **The goal is not zero unknowns. It is zero invisible unknowns.**
