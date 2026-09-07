@@ -26,9 +26,11 @@ export interface DecisionStripProps {
 }
 
 const ROLE_LABELS: Record<DecisionRole, string> = {
-  best_fit: 'BEST FIT TONIGHT',
-  safe_bet: 'SAFE BET',
-  wildcard: 'WILDCARD',
+  // Keep the underlying role strings compatible with existing tests/callers;
+  // visual capitalization belongs to the renderer, not the API enum/copy.
+  best_fit: 'Best fit',
+  safe_bet: 'Safe bet',
+  wildcard: 'Wildcard',
 };
 
 function sourceLabel(source: DecisionStripSource, role?: DecisionRole): string | null {
@@ -69,7 +71,14 @@ export function DecisionStrip({
 
   return (
     <View style={[styles.container, density === 'compact' ? styles.compact : null, style]}>
-      {label ? <Text style={styles.reasonLabel}>{label}</Text> : null}
+      {label ? (
+        <View style={styles.labelRow}>
+          <Text style={styles.reasonLabel}>{label}</Text>
+          {source === 'decision_session' && role === 'best_fit' ? (
+            <Text style={styles.reasonLabel}> tonight</Text>
+          ) : null}
+        </View>
+      ) : null}
       {recommendationContext && reason ? (
         <Text style={density === 'compact' ? styles.reasonCompact : styles.reason}>{reason}</Text>
       ) : null}
@@ -92,6 +101,10 @@ const styles = StyleSheet.create({
   },
   compact: {
     gap: Spacing.xs,
+  },
+  labelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   reasonLabel: {
     ...Typography.micro,
