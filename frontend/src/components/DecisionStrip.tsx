@@ -68,10 +68,7 @@ export function DecisionStrip({
   }
 
   return (
-    <View
-      style={[styles.container, density === 'compact' ? styles.compact : null, style]}
-      accessibilityRole="summary"
-    >
+    <View style={[styles.container, density === 'compact' ? styles.compact : null, style]}>
       {label ? <Text style={styles.reasonLabel}>{label}</Text> : null}
       {recommendationContext && reason ? (
         <Text style={density === 'compact' ? styles.reasonCompact : styles.reason}>{reason}</Text>
@@ -94,7 +91,7 @@ const styles = StyleSheet.create({
     gap: Spacing.xs,
   },
   compact: {
-    gap: 2,
+    gap: Spacing.xs,
   },
   reasonLabel: {
     ...Typography.micro,
