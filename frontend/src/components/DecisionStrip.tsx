@@ -3,7 +3,7 @@ import { StyleSheet, Text, View, type ViewStyle } from 'react-native';
 import type { DecisionRole } from '../api/decisionSession';
 import { Colors, Spacing, Typography } from '../constants/colors';
 
-export type DecisionStripSource = 'decision_session' | 'discovery' | 'organic' | 'search';
+export type DecisionStripSource = 'decision_session' | 'discovery' | 'organic' | 'search' | 'craves';
 export type DecisionStripDensity = 'compact' | 'full';
 
 /**
@@ -56,7 +56,13 @@ function sourceLabel(
   role?: DecisionRole,
   searchReason?: SearchReasonRole,
 ): string | null {
-  if (source === 'decision_session') return role ? ROLE_LABELS[role] : null;
+  // Craves reuses Decision Session's exact role vocabulary, unlike Search --
+  // it is the literal same build_decision_session() engine run over the
+  // saved pool instead of a city/radius fetch (Craves Screen Contract §13:
+  // distinguished from Decision Session only by analytics `surface`, not by
+  // a different algorithm), so a fresh label set would be a distinction
+  // without a difference.
+  if (source === 'decision_session' || source === 'craves') return role ? ROLE_LABELS[role] : null;
   if (source === 'search') return searchReason ? SEARCH_REASON_LABELS[searchReason] : null;
   if (source === 'discovery') return 'WHY CRAVE SURFACED THIS';
   return null;

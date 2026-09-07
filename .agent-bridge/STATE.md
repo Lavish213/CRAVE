@@ -1,10 +1,39 @@
 # Active agent state
 
-Status: doctrine chain complete and certified; implementation Waves 0-4 merged; Wave 5 Search Screen Contract **COMPLETE** and certified (2026-09-07); Wave 5 contextual-Map plumbing **PARTIAL** (one open item, see below); Wave 6 (Craves intelligence) is next and **unclaimed** for implementation; a parallel Penpot design track (Feed/Decision Session, then Search, then Craves) may begin independently at Exploratory status per explicit user direction — design work does not wait on Wave 6 implementation, and Wave 6 does not wait on Penpot.
-Owner: none
-Branch: main
-Head SHA: 84d8db3 (`Merge pull request #193 from Lavish213/claude/wave5-search-contract-audit-fixes`)
+Status: doctrine chain complete and certified; implementation Waves 0-4 merged; Wave 5 Search Screen Contract **COMPLETE** and certified (2026-09-07); Wave 5 contextual-Map plumbing **PARTIAL** (one open item, see below); **Wave 6 (Craves intelligence) is claimed and in progress** (Claude, this session) against `docs/doctrine/CRAVE_SCREEN_CONTRACT_CRAVES.md`; a parallel Penpot design track (Feed/Decision Session, then Search, then Craves) may begin independently at Exploratory status per explicit user direction — design work does not wait on Wave 6 implementation, and Wave 6 does not wait on Penpot.
+Owner: Claude
+Branch: claude/wave6-craves-reasoned-subset (first of several sub-PRs)
+Head SHA: 1e07bec (`Merge pull request #212` — base this claim started from; will move as sub-PRs merge)
 Scope: `docs/doctrine/CRAVE_CANONICAL_IMPLEMENTATION_INDEX.md` — **START HERE**; `docs/doctrine/CRAVE_MASTER_CODEX_REMAINING_WORK.md` — **the current operational checklist**, read this before claiming any wave
+
+## Wave 6 — Craves intelligence, in progress (Claude)
+
+Plan, per `docs/doctrine/CRAVE_SCREEN_CONTRACT_CRAVES.md` (confirmed with
+the user: Craves' Reason Block reuses Decision Session's exact role
+vocabulary -- best_fit/safe_bet/wildcard -- since it's the literal same
+`build_decision_session()` engine over a different candidate set, not a
+conceptually distinct surface the way Search's own vocabulary was):
+
+1. **Backend + typed client (this sub-PR)**: `GET /api/v1/craves/reasoned`
+   -- candidate pool is native saves + manually-added entries
+   (HitlistSave) union matched imported/social CraveItems, minus any
+   place with existing VisitEvidence at any tier (contract §10's looser
+   graduation bar, not Rank Home's declared/verified-only one). Frontend
+   `fetchCravesReasoned()` + `DecisionStrip`'s new `'craves'` source.
+2. **Screen rebuild** (next): `craves.tsx` around the reasoned subset
+   first, collapse the three visual row styles to two evidence types,
+   add remove-confirmation (contract §17 acceptance criteria).
+3. **Automatic clustering** (cuisine/occasion/geography, contract §6) --
+   only once (2) is solid.
+4. **Contract correction**: §11's data-integrity notices assume an
+   operational-data mechanism ("the same as Place Detail uses") that
+   does not exist yet anywhere in the app (confirmed: Place Detail
+   itself has no `is_open`/hours field, deliberately, per its own code
+   comments) -- this is the same unbuilt foundation
+   `CRAVE_MASTER_CODEX_REMAINING_WORK.md` §3.6 lists as future work.
+   Reclassify via a doctrine correction (same treatment as the Search
+   contract's §17 offline-layer finding), not a fabricated
+   implementation.
 
 ## What this supersedes
 
