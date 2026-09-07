@@ -32,4 +32,14 @@ describe('searchPlaces', () => {
       signal: undefined,
     });
   });
+
+  it('falls back safely when an updated client reaches an older backend response', async () => {
+    const result = await searchPlaces({ query: 'ramen' });
+
+    expect(result.interpretation).toEqual(expect.objectContaining({
+      original_query: 'ramen',
+      lookup_query: 'ramen',
+      uncertain: false,
+    }));
+  });
 });

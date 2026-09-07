@@ -23,6 +23,7 @@ import { fetchMapGeoJSON } from '../src/api/map';
 import { useCityStore } from '../src/stores/cityStore';
 import { useAuthStore } from '../src/stores/authStore';
 import { fetchSavedPlacesGeoJSON } from '../src/api/map';
+import { useDiscoveryContextStore } from '../src/stores/discoveryContextStore';
 // Imported by relative path, not the package specifier — Jest substitutes
 // this same mock file for the 'react-native-maps' import inside map.tsx
 // automatically (manual __mocks__ dir), but tsc has no notion of that
@@ -57,7 +58,7 @@ jest.mock('../src/utils/recommendationEventQueue', () => ({
   logRecommendationEvents: jest.fn(),
 }));
 jest.mock('../src/hooks/useLocation', () => ({
-  useLocation: () => null, // no GPS — matches the repro (default/city fallback)
+  useLocationStatus: () => ({ status: 'denied', coords: null, updatedAt: null }),
 }));
 jest.mock('expo-haptics', () => ({
   impactAsync: jest.fn(),
@@ -89,6 +90,15 @@ const REAL_FEATURE = {
   has_video: false,
 };
 
+const SEARCH_PLACE = {
+  id: 'place-1', name: 'Boudin Sourdough', city_id: SF_CITY.id,
+  rank_score: 0.32, tier: 'solid' as const, rank_percentile: null,
+  distance_miles: null, category: 'Breakfast', categories: ['Breakfast'],
+  address: null, lat: 37.78, lng: -122.41, image: null,
+  primary_image_url: null, images: [], website: null, grubhub_url: null,
+  has_menu: false, has_video: false, price_tier: null,
+};
+
 describe('MapScreen — onMapReady / spurious first-region fix', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -100,6 +110,35 @@ describe('MapScreen — onMapReady / spurious first-region fix', () => {
     mockedUseAuthStore.mockImplementation((selector: (s: { user: unknown }) => unknown) =>
       selector({ user: null }),
     );
+    useDiscoveryContextStore.setState({ searchMapHandoff: null });
+  });
+
+  it('maps the exact Search result set without refetching or reranking it', async () => {
+    useDiscoveryContextStore.getState().setSearchMapHandoff({
+      query: 'ramen near me',
+      searchSessionId: 'search-parent-1',
+      scope: 'all',
+      interpretation: {
+        original_query: 'ramen near me', lookup_query: 'ramen', price_tier: null,
+        required_categories: [], hard_constraints: [], unsupported_hard_constraints: [],
+        context: ['near_me'], uncertain: false,
+      },
+      items: [
+        SEARCH_PLACE,
+        { ...SEARCH_PLACE, id: 'place-2', name: 'Second', lat: 37.79, lng: -122.42 },
+      ],
+    });
+
+    const { findByText } = render(<MapScreen />);
+    expect(await findByText(/Results for “ramen near me”/)).toBeTruthy();
+    expect(mockedFetch).not.toHaveBeenCalled();
+
+    act(() => mapViewProps.current.onMapReady());
+    const [coordinates] = fitToCoordinatesMock.mock.calls.at(-1)!;
+    expect(coordinates).toEqual([
+      { latitude: 37.78, longitude: -122.41 },
+      { latitude: 37.79, longitude: -122.42 },
+    ]);
   });
 
   it('ignores a spurious pre-ready onRegionChangeComplete instead of letting it clobber real results', async () => {
@@ -149,8 +188,8 @@ describe('MapScreen — onMapReady / spurious first-region fix', () => {
     expect(region.longitude).toBeCloseTo(SF_CITY.lng, 5);
   });
 
-  it('a genuine user pan after onMapReady still triggers a real, correctly-parameterized fetch', async () => {
-    render(<MapScreen />);
+  it('a genuine user pan waits for explicit Search this area before fetching', async () => {
+    const { getByLabelText } = render(<MapScreen />);
     await waitFor(() => expect(mockedFetch).toHaveBeenCalledTimes(1));
 
     // The real chronology from production: a spurious native settle event
@@ -195,7 +234,9 @@ describe('MapScreen — onMapReady / spurious first-region fix', () => {
       await new Promise((r) => setTimeout(r, 600));
     });
 
-    expect(mockedFetch).toHaveBeenCalledTimes(2);
+    expect(mockedFetch).toHaveBeenCalledTimes(1);
+    fireEvent.press(getByLabelText('Search this map area'));
+    await waitFor(() => expect(mockedFetch).toHaveBeenCalledTimes(2));
     const [, secondCallArgs] = mockedFetch.mock.calls.map((c) => c[0]);
     expect(secondCallArgs.lat).toBeCloseTo(37.9, 5);
     expect(secondCallArgs.lng).toBeCloseTo(-122.6, 5);
@@ -206,7 +247,7 @@ describe('MapScreen — onMapReady / spurious first-region fix', () => {
     mockedFetch.mockRejectedValueOnce(new Error('Request failed with status code 500'));
     mockedFetch.mockResolvedValueOnce([REAL_FEATURE]);
 
-    const { findByText } = render(<MapScreen />);
+    const { findByText, getByLabelText } = render(<MapScreen />);
 
     const banner = await findByText(/could not load places/i);
     expect(banner).toBeTruthy();
@@ -229,7 +270,7 @@ describe('MapScreen — onMapReady / spurious first-region fix', () => {
     mockedFetch.mockResolvedValueOnce([REAL_FEATURE]);
     mockedFetch.mockRejectedValueOnce(new Error('network unavailable'));
 
-    const { findByText } = render(<MapScreen />);
+    const { findByText, getByLabelText } = render(<MapScreen />);
     await waitFor(() => expect(mockedFetch).toHaveBeenCalledTimes(1));
 
     await act(async () => {
@@ -254,6 +295,8 @@ describe('MapScreen — onMapReady / spurious first-region fix', () => {
       });
       await new Promise((r) => setTimeout(r, 600));
     });
+
+    fireEvent.press(getByLabelText('Search this map area'));
 
     expect(await findByText(/showing previously loaded places/i)).toBeTruthy();
   });

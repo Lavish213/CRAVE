@@ -7,13 +7,14 @@ import * as Haptics from 'expo-haptics';
 import { fetchMapGeoJSON, fetchSavedPlacesGeoJSON, NormalizedMapFeature } from '../../src/api/map';
 import { useCityStore } from '../../src/stores/cityStore';
 import { useAuthStore } from '../../src/stores/authStore';
-import { useLocation } from '../../src/hooks/useLocation';
+import { useLocationStatus } from '../../src/hooks/useLocation';
 import { Colors, Radius, Shadows, Spacing } from '../../src/constants/colors';
 import { CitySelectorStrip } from '../../src/components/CitySelectorStrip';
 import { MapMarkerDot, MapClusterDot } from '../../src/components/MapMarker';
 import { MapBottomSheet } from '../../src/components/MapBottomSheet';
 import { logRecommendationEvent, logRecommendationEvents } from '../../src/utils/recommendationEventQueue';
 import { FilterSheet, FilterState, EMPTY_FILTERS, hasActiveFilters } from '../../src/components/FilterSheet';
+import { useDiscoveryContextStore } from '../../src/stores/discoveryContextStore';
 
 // Recommendation Ledger, surface='map'. A fetched feature is a candidate,
 // not an impression: the request deliberately covers 1.6x the visible
@@ -32,7 +33,6 @@ function _makeMapSessionId(): string {
   return `map_${Date.now().toString(36)}_${mapSessionSequence.toString(36)}`;
 }
 
-const REGION_FETCH_DEBOUNCE_MS = 500;
 const PREFETCH_RADIUS_MULTIPLIER = 1.6;
 const STREET_CLUSTER_RADIUS = 44;
 const NEIGHBORHOOD_CLUSTER_RADIUS = 56;
@@ -219,15 +219,17 @@ export default function MapScreen() {
   const { width: viewportWidth, height: viewportHeight } = useWindowDimensions();
   const router = useRouter();
   const selectedCity = useCityStore((s) => s.selectedCity);
-  const userLocation = useLocation();
+  const locationState = useLocationStatus();
+  const userLocation = locationState.coords;
   const user = useAuthStore((s) => s.user);
   const mapRef = useRef<MapView>(null);
 
-  const [viewMode, setViewMode] = useState<'city' | 'saved'>('city');
+  const searchMapHandoff = useDiscoveryContextStore((s) => s.searchMapHandoff);
+  const clearSearchMapHandoff = useDiscoveryContextStore((s) => s.clearSearchMapHandoff);
+  const [viewMode, setViewMode] = useState<'city' | 'saved' | 'search'>(searchMapHandoff ? 'search' : 'city');
   const [filterVisible, setFilterVisible] = useState(false);
   const [filters, setFilters] = useState<FilterState>(EMPTY_FILTERS);
   const programmaticMoveRef = useRef(false);
-  const fetchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hasHandledFirstRegionRef = useRef(false);
 
   const [features, setFeatures] = useState<NormalizedMapFeature[]>([]);
@@ -236,12 +238,15 @@ export default function MapScreen() {
   const [mapLoading, setMapLoading] = useState(false);
   const [mapLoaded, setMapLoaded] = useState(false);
   const [mapError, setMapError] = useState(false);
+  const [pendingSearchRegion, setPendingSearchRegion] = useState<Region | null>(null);
   const requestIdRef = useRef(0);
   const lastFetchCoverageRef = useRef<FetchCoverage | null>(null);
 
   const currentFeatureContextKey = viewMode === 'saved'
     ? `saved:${user?.id ?? 'signed-out'}`
-    : `city:${selectedCity?.id ?? 'nearby'}`;
+    : viewMode === 'search'
+      ? `search:${searchMapHandoff?.query ?? 'none'}:${searchMapHandoff?.scope ?? 'all'}`
+      : `city:${selectedCity?.id ?? 'nearby'}`;
   const activeFeatures = featuresContextKey === currentFeatureContextKey ? features : [];
 
   const mapSessionIdRef = useRef(_makeMapSessionId());
@@ -264,6 +269,25 @@ export default function MapScreen() {
   const initialRegion = cityToRegion(mapLat, mapLng);
   const [mapRegion, setMapRegion] = useState<Region>(initialRegion);
   const lastAttemptRef = useRef<FetchCoverage | null>(null);
+
+  const fitFeatures = useCallback((items: NormalizedMapFeature[], animated: boolean) => {
+    if (items.length === 0) return;
+    const coordinates = items.map((feature) => ({
+      latitude: feature.coordinate.lat,
+      longitude: feature.coordinate.lng,
+    }));
+    programmaticMoveRef.current = true;
+    if (coordinates.length === 1) {
+      const region = cityToRegion(coordinates[0].latitude, coordinates[0].longitude);
+      setMapRegion(region);
+      mapRef.current?.animateToRegion(region, animated ? 350 : 0);
+      return;
+    }
+    mapRef.current?.fitToCoordinates(coordinates, {
+      edgePadding: { top: 120, right: 60, bottom: 140, left: 60 },
+      animated,
+    });
+  }, []);
 
   const loadFeatures = useCallback(
     (lat: number, lng: number, radiusKm: number) => {
@@ -325,19 +349,58 @@ export default function MapScreen() {
   );
 
   useEffect(() => {
+    if (!searchMapHandoff) return;
+    const mapped = searchMapHandoff.items.flatMap<NormalizedMapFeature>((place) => {
+      if (place.lat == null || place.lng == null) return [];
+      const tier: NormalizedMapFeature['tier'] = place.tier === 'crave_pick'
+        ? 'elite'
+        : place.tier === 'gem'
+          ? 'trusted'
+          : place.tier === 'solid'
+            ? 'solid'
+            : 'default';
+      return [{
+        id: place.id,
+        name: place.name,
+        coordinate: { lat: place.lat, lng: place.lng },
+        tier,
+        rank_score: place.rank_score,
+        price_tier: place.price_tier,
+        image: place.image,
+        category: place.category,
+        has_menu: place.has_menu,
+        has_video: place.has_video,
+      }];
+    });
+    const contextKey = `search:${searchMapHandoff.query}:${searchMapHandoff.scope}`;
+    requestIdRef.current += 1;
+    setViewMode('search');
+    setFeatures(mapped);
+    setFeaturesContextKey(contextKey);
+    setMapLoaded(true);
+    setMapLoading(false);
+    setMapError(false);
+    fitFeatures(mapped, true);
+  }, [fitFeatures, searchMapHandoff]);
+
+  useEffect(() => {
     if (viewMode !== 'city') return;
-    if (fetchDebounceRef.current) {
-      clearTimeout(fetchDebounceRef.current);
-      fetchDebounceRef.current = null;
+    if (!selectedCity && !userLocation) {
+      setFeatures([]);
+      setFeaturesContextKey(null);
+      setMapLoaded(false);
+      setMapLoading(false);
+      return;
     }
     lastFetchCoverageRef.current = null;
+    setPendingSearchRegion(null);
     exposedMapIdsRef.current.clear();
     visiblePinIdsRef.current = [];
     setFeatures([]);
     setFeaturesContextKey(null);
     setMapLoaded(false);
     loadFeatures(mapLat, mapLng, prefetchRadiusKmForRegion(cityToRegion(mapLat, mapLng)));
-  }, [selectedCity?.id, mapLat, mapLng, loadFeatures, viewMode]);
+  }, [selectedCity?.id, mapLat, mapLng, loadFeatures, userLocation?.lat, userLocation?.lng, viewMode]);
 
   useEffect(() => {
     if (viewMode !== 'city') return;
@@ -408,17 +471,15 @@ export default function MapScreen() {
   }, [viewMode, user?.id, loadSavedPlaces]);
 
   const handleMapReady = useCallback(() => {
+    if (viewMode === 'search') {
+      fitFeatures(activeFeatures, false);
+      return;
+    }
     const region = cityToRegion(mapLat, mapLng);
     programmaticMoveRef.current = true;
     setMapRegion(region);
     mapRef.current?.animateToRegion(region, 300);
-  }, [mapLat, mapLng]);
-
-  useEffect(() => {
-    return () => {
-      if (fetchDebounceRef.current) clearTimeout(fetchDebounceRef.current);
-    };
-  }, []);
+  }, [activeFeatures, fitFeatures, mapLat, mapLng, viewMode]);
 
   const handleRegionChangeComplete = useCallback(
     (region: Region) => {
@@ -436,35 +497,14 @@ export default function MapScreen() {
 
       if (viewMode !== 'city') return;
 
-      if (fetchDebounceRef.current) clearTimeout(fetchDebounceRef.current);
-      fetchDebounceRef.current = setTimeout(() => {
-        const visibleRadiusKm = coverageRadiusKmForRegion(region);
-        if (
-          isCoveredByPriorFetch(
-            region.latitude,
-            region.longitude,
-            visibleRadiusKm,
-            lastFetchCoverageRef.current,
-          )
-        ) {
-          if (__DEV__) {
-            console.log('[MAP] SKIP_FETCH_ALREADY_COVERED', {
-              lat: region.latitude,
-              lng: region.longitude,
-              visibleRadiusKm,
-            });
-          }
-          requestIdRef.current += 1;
-          setMapLoading(false);
-          setMapError(false);
-          return;
-        }
-        loadFeatures(
-          region.latitude,
-          region.longitude,
-          prefetchRadiusKmForRegion(region),
-        );
-      }, REGION_FETCH_DEBOUNCE_MS);
+      const visibleRadiusKm = coverageRadiusKmForRegion(region);
+      if (isCoveredByPriorFetch(region.latitude, region.longitude, visibleRadiusKm, lastFetchCoverageRef.current)) {
+        setPendingSearchRegion(null);
+        return;
+      }
+      // Panning never silently changes the candidate universe. The user
+      // explicitly asks before a new viewport fetch replaces current pins.
+      setPendingSearchRegion(region);
     },
     [loadFeatures, viewMode],
   );
@@ -531,9 +571,15 @@ export default function MapScreen() {
         surface: 'map',
         event_type: 'impression',
         place_id: cluster.feature.id,
-        position: visiblePinIdsRef.current.indexOf(cluster.feature.id),
+        position: viewMode === 'search'
+          ? searchMapHandoff?.items.findIndex((item) => item.id === cluster.feature.id) ?? null
+          : visiblePinIdsRef.current.indexOf(cluster.feature.id),
         city_id: selectedCity?.id ?? null,
-        search_session_id: mapSessionIdRef.current,
+        query: viewMode === 'search' ? searchMapHandoff?.query : null,
+        search_session_id:
+          viewMode === 'search'
+            ? searchMapHandoff?.searchSessionId ?? mapSessionIdRef.current
+            : mapSessionIdRef.current,
       })),
     );
   }, [
@@ -545,6 +591,10 @@ export default function MapScreen() {
     mapError,
     featuresContextKey,
     currentFeatureContextKey,
+    searchMapHandoff?.items,
+    searchMapHandoff?.query,
+    searchMapHandoff?.searchSessionId,
+    viewMode,
   ]);
 
   const handleRecenter = useCallback(() => {
@@ -557,6 +607,7 @@ export default function MapScreen() {
   }, [userLocation]);
 
   const handleRetryMap = useCallback(() => {
+    if (viewMode === 'search') return;
     if (viewMode === 'saved') {
       loadSavedPlaces();
       return;
@@ -568,6 +619,13 @@ export default function MapScreen() {
       loadFeatures(mapLat, mapLng, prefetchRadiusKmForRegion(cityToRegion(mapLat, mapLng)));
     }
   }, [viewMode, loadSavedPlaces, loadFeatures, mapLat, mapLng]);
+
+  const handleSearchThisArea = useCallback(() => {
+    if (!pendingSearchRegion) return;
+    const region = pendingSearchRegion;
+    setPendingSearchRegion(null);
+    loadFeatures(region.latitude, region.longitude, prefetchRadiusKmForRegion(region));
+  }, [loadFeatures, pendingSearchRegion]);
 
   return (
     <View style={styles.container}>
@@ -664,9 +722,35 @@ export default function MapScreen() {
         )}
       </View>
 
+      {viewMode === 'search' && searchMapHandoff && (
+        <TouchableOpacity
+          style={[styles.mapBanner, styles.searchContextBanner]}
+          onPress={() => {
+            clearSearchMapHandoff();
+            setViewMode('city');
+          }}
+          accessibilityRole="button"
+          accessibilityLabel="Exit search results map"
+        >
+          <Text style={styles.searchContextText}>Results for “{searchMapHandoff.query}” · Exit</Text>
+        </TouchableOpacity>
+      )}
+
+      {viewMode === 'city' && pendingSearchRegion && !mapLoading && (
+        <TouchableOpacity style={[styles.mapBanner, styles.searchAreaButton]} onPress={handleSearchThisArea} accessibilityRole="button" accessibilityLabel="Search this map area">
+          <Text style={styles.searchAreaText}>Search this area</Text>
+        </TouchableOpacity>
+      )}
+
       {mapLoading && (
         <View style={styles.mapBanner}>
           <ActivityIndicator size="small" color={Colors.primary} />
+        </View>
+      )}
+
+      {viewMode === 'city' && !selectedCity && !userLocation && locationState.status !== 'resolving' && (
+        <View style={styles.mapBanner} accessibilityRole="text">
+          <Text style={styles.mapBannerText}>Choose an area above to explore places</Text>
         </View>
       )}
 
@@ -694,6 +778,8 @@ export default function MapScreen() {
             <Text style={styles.mapBannerText}>
               {viewMode === 'saved'
                 ? "You haven't saved any places yet"
+                : viewMode === 'search'
+                  ? 'No mapped places in these results'
                 : 'No places in this city yet'}
             </Text>
           </View>
@@ -725,6 +811,7 @@ export default function MapScreen() {
           ]}
           onPress={() => {
             void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            clearSearchMapHandoff();
             setViewMode((m) => (m === 'saved' ? 'city' : 'saved'));
           }}
           accessibilityLabel={
@@ -754,14 +841,20 @@ export default function MapScreen() {
       <MapBottomSheet
         feature={selectedFeature}
         onOpen={(id) => {
-          const position = visiblePinIdsRef.current.indexOf(id);
+          const position = viewMode === 'search'
+            ? searchMapHandoff?.items.findIndex((item) => item.id === id) ?? -1
+            : visiblePinIdsRef.current.indexOf(id);
           logRecommendationEvent({
             surface: 'map',
             event_type: 'click',
             place_id: id,
             position: position >= 0 ? position : null,
             city_id: selectedCity?.id ?? null,
-            search_session_id: mapSessionIdRef.current,
+            query: viewMode === 'search' ? searchMapHandoff?.query : null,
+            search_session_id:
+              viewMode === 'search'
+                ? searchMapHandoff?.searchSessionId ?? mapSessionIdRef.current
+                : mapSessionIdRef.current,
           });
           router.push(`/place/${id}`);
         }}
@@ -847,4 +940,8 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
   },
+  searchContextBanner: { top: 60, maxWidth: '88%' },
+  searchContextText: { color: Colors.text, fontSize: 13, fontWeight: '700' },
+  searchAreaButton: { top: 60, borderColor: Colors.primary },
+  searchAreaText: { color: Colors.primary, fontSize: 14, fontWeight: '800' },
 });

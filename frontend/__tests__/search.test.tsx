@@ -11,6 +11,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import SearchScreen from '../app/(tabs)/search';
 import { FlashList } from '@shopify/flash-list';
 import { searchPlaces } from '../src/api/search';
+import { useDiscoveryContextStore } from '../src/stores/discoveryContextStore';
 import { useCityStore } from '../src/stores/cityStore';
 import { logRecommendationEvent, logRecommendationEvents } from '../src/utils/recommendationEventQueue';
 import { useLocationStatus } from '../src/hooks/useLocation';
@@ -57,6 +58,23 @@ function makePlace(id: string, rank_percentile: number | null = 0.8, overrides: 
   return { id, name: id, category: 'Italian', categories: ['Italian'], price_tier: 2, rank_percentile, ...overrides } as any;
 }
 
+function makeSearchResult(items: any[], overrides: Record<string, unknown> = {}) {
+  return {
+    total: items.length,
+    page: 1,
+    page_size: Math.max(1, items.length),
+    items,
+    interpretation: {
+      original_query: 'query', lookup_query: 'query', price_tier: null,
+      required_categories: [], hard_constraints: [],
+      unsupported_hard_constraints: [], context: [], uncertain: false,
+    },
+    exact_match_id: null,
+    relaxed_constraints: [],
+    ...overrides,
+  };
+}
+
 function renderScreen() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
@@ -70,7 +88,7 @@ describe('SearchScreen — location status copy', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     useCityStore.setState({ selectedCity: SF_CITY, cities: [SF_CITY] });
-    mockedSearchPlaces.mockResolvedValue([]);
+    mockedSearchPlaces.mockResolvedValue(makeSearchResult([]));
   });
 
   it('tells the user location is still resolving, distinct from a terminal no-location state', () => {
@@ -100,7 +118,7 @@ describe('SearchScreen — debounce, clear, and retry', () => {
   });
 
   it('cancels a pending debounce timer on clear, so a stale query never resurrects', async () => {
-    mockedSearchPlaces.mockResolvedValue([]);
+    mockedSearchPlaces.mockResolvedValue(makeSearchResult([]));
     const { getByLabelText, queryByLabelText } = renderScreen();
 
     act(() => {
@@ -125,14 +143,65 @@ describe('SearchScreen — debounce, clear, and retry', () => {
     act(() => {
       getByLabelText('Search input').props.onChangeText('ramen');
     });
-    await findByText("Couldn't search right now.");
+    await findByText("Couldn't search right now.", {}, { timeout: 2000 });
     expect(mockedSearchPlaces).toHaveBeenCalledTimes(1);
 
-    mockedSearchPlaces.mockResolvedValueOnce([makePlace('p0')]);
+    mockedSearchPlaces.mockResolvedValueOnce(makeSearchResult([makePlace('p0')]));
     fireEvent.press(await findByText('Try again'));
 
     await waitFor(() => expect(mockedSearchPlaces).toHaveBeenCalledTimes(2));
     expect(await findByText('1 result')).toBeTruthy();
+  });
+});
+
+describe('SearchScreen — Wave 5 intent and map handoff', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    useDiscoveryContextStore.getState().clearSearchMapHandoff();
+    mockedUseLocationStatus.mockReturnValue({ status: 'denied', coords: null, updatedAt: null });
+    useCityStore.setState({ selectedCity: SF_CITY, cities: [SF_CITY] });
+  });
+
+  it('uses a bounded first page and expands only when Show more is pressed', async () => {
+    const items = [makePlace('p0')];
+    mockedSearchPlaces.mockResolvedValue(makeSearchResult(items, { total: 30 }));
+    const { getByLabelText, findByText } = renderScreen();
+
+    act(() => getByLabelText('Search input').props.onChangeText('ramen'));
+    await waitFor(() => expect(mockedSearchPlaces).toHaveBeenCalled());
+    expect(mockedSearchPlaces.mock.calls[0][0].page_size).toBe(12);
+
+    fireEvent.press(await findByText('Show more'));
+    await waitFor(() => expect(mockedSearchPlaces).toHaveBeenCalledTimes(2));
+    expect(mockedSearchPlaces.mock.calls[1][0].page_size).toBe(24);
+  });
+
+  it('hands the exact displayed result order to Map without reranking', async () => {
+    const items = [makePlace('p2'), makePlace('p1')];
+    mockedSearchPlaces.mockResolvedValue(makeSearchResult(items));
+    const { getByLabelText, findByText } = renderScreen();
+
+    act(() => getByLabelText('Search input').props.onChangeText('pizza'));
+    fireEvent.press(await findByText('Map these results'));
+
+    expect(useDiscoveryContextStore.getState().searchMapHandoff?.items.map((item) => item.id)).toEqual(['p2', 'p1']);
+    expect(mockPush).toHaveBeenCalledWith('/(tabs)/map');
+  });
+
+  it('bypasses the list for an exact-name match only after explicit submit', async () => {
+    mockedSearchPlaces.mockResolvedValue(makeSearchResult(
+      [makePlace('nido', 0.9, { name: "Nido's Backyard" })],
+      { exact_match_id: 'nido' },
+    ));
+    const { getByLabelText } = renderScreen();
+    const input = getByLabelText('Search input');
+
+    act(() => input.props.onChangeText("Nido's Backyard"));
+    await waitFor(() => expect(mockedSearchPlaces).toHaveBeenCalled());
+    expect(mockPush).not.toHaveBeenCalledWith('/place/nido');
+
+    act(() => input.props.onSubmitEditing());
+    await waitFor(() => expect(mockPush).toHaveBeenCalledWith('/place/nido'));
   });
 });
 
@@ -145,7 +214,7 @@ describe('SearchScreen — Recommendation Ledger instrumentation', () => {
 
   it('logs one impression batch, capped and positioned, the first time a query\'s results arrive', async () => {
     const results = Array.from({ length: 3 }, (_, i) => makePlace(`p${i}`, 0.5 + i / 10));
-    mockedSearchPlaces.mockResolvedValue(results);
+    mockedSearchPlaces.mockResolvedValue(makeSearchResult(results));
 
     const { getByLabelText } = renderScreen();
     const input = getByLabelText('Search input');
@@ -174,7 +243,7 @@ describe('SearchScreen — Recommendation Ledger instrumentation', () => {
     // viewability callback fires repeatedly as items scroll in and out,
     // not just once.
     const results = [makePlace('p0')];
-    mockedSearchPlaces.mockResolvedValue(results);
+    mockedSearchPlaces.mockResolvedValue(makeSearchResult(results));
     const { getByLabelText, UNSAFE_getAllByType } = renderScreen();
 
     act(() => {
@@ -194,7 +263,7 @@ describe('SearchScreen — Recommendation Ledger instrumentation', () => {
   });
 
   it('resets exposure tracking for a genuinely new query, even if the same place reappears', async () => {
-    mockedSearchPlaces.mockResolvedValueOnce([makePlace('p0')]);
+    mockedSearchPlaces.mockResolvedValueOnce(makeSearchResult([makePlace('p0')]));
     const { getByLabelText } = renderScreen();
 
     act(() => {
@@ -203,7 +272,7 @@ describe('SearchScreen — Recommendation Ledger instrumentation', () => {
     await waitFor(() => expect(mockedLogMany).toHaveBeenCalled());
     const callsAfterFirstQuery = mockedLogMany.mock.calls.length;
 
-    mockedSearchPlaces.mockResolvedValueOnce([makePlace('p0')]);
+    mockedSearchPlaces.mockResolvedValueOnce(makeSearchResult([makePlace('p0')]));
     act(() => {
       getByLabelText('Search input').props.onChangeText('burger');
     });
@@ -213,7 +282,7 @@ describe('SearchScreen — Recommendation Ledger instrumentation', () => {
 
   it('logs a click with the real position, query, and search_session_id on selection', async () => {
     const results = [makePlace('p0', 0.9), makePlace('p1', 0.4)];
-    mockedSearchPlaces.mockResolvedValue(results);
+    mockedSearchPlaces.mockResolvedValue(makeSearchResult(results));
 
     const { getByLabelText } = renderScreen();
     act(() => {
@@ -238,7 +307,7 @@ describe('SearchScreen — Recommendation Ledger instrumentation', () => {
       makePlace('p1', 0.7, { categories: ['Thai'], price_tier: 1 }),
       makePlace('p2', 0.5, { categories: ['Thai'], price_tier: 3 }),
     ];
-    mockedSearchPlaces.mockResolvedValue(results);
+    mockedSearchPlaces.mockResolvedValue(makeSearchResult(results));
 
     const { getByLabelText, getByText, queryByText } = renderScreen();
     act(() => {

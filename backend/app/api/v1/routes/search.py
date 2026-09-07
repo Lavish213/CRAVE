@@ -16,11 +16,12 @@ from app.services.cache.response_cache import response_cache
 from app.services.cache.cache_keys import search_cache_key
 from app.services.cache.cache_ttl import search_ttl
 
-from app.api.v1.schemas.search import SearchResponse
+from app.api.v1.schemas.search import SearchInterpretationOut, SearchResponse
 from app.api.v1.schemas.place_card import PlaceCardOut
 from app.services.query.place_image_visibility_query import get_primary_image_urls_bulk
 from app.services.query.place_video_visibility_query import get_has_video_bulk
 from app.services.query.rank_percentile_query import get_rank_percentiles
+from app.services.search.query_interpreter import interpret_search_query
 
 
 logger = logging.getLogger(__name__)
@@ -91,8 +92,23 @@ def search(
     city_id = _clean_str(city_id)  # may be None → global search
     category_id = _clean_str(category_id)
 
-    if not query:
-        return SearchResponse(total=0, page=page, page_size=page_size, items=[])
+    interpretation = interpret_search_query(query or "")
+    interpretation_out = SearchInterpretationOut(
+        original_query=interpretation.original_query,
+        lookup_query=interpretation.lookup_query,
+        price_tier=interpretation.price_tier,
+        required_categories=list(interpretation.required_categories),
+        hard_constraints=list(interpretation.hard_constraints),
+        unsupported_hard_constraints=list(interpretation.unsupported_hard_constraints),
+        context=list(interpretation.context),
+        uncertain=interpretation.uncertain,
+    )
+
+    if not query or interpretation.unsupported_hard_constraints:
+        return SearchResponse(
+            total=0, page=page, page_size=page_size, items=[],
+            interpretation=interpretation_out,
+        )
 
     # -----------------------------
     # Cache read (safe)
@@ -123,14 +139,16 @@ def search(
     try:
         results, total = execute_search(
             db,
-            query=query,
+            query=interpretation.lookup_query,
             city_id=city_id,
             category_id=category_id,
-            price_tier=price_tier,
+            # Explicit UI controls win over words inferred from free text.
+            price_tier=price_tier if price_tier is not None else interpretation.price_tier,
             lat=lat,
             lng=lng,
             limit=page_size,
             offset=offset,
+            required_category_names=interpretation.required_categories,
         )
     except Exception as exc:
         logger.exception(
@@ -140,6 +158,28 @@ def search(
             exc,
         )
         raise HTTPException(status_code=503, detail="Search temporarily unavailable") from exc
+
+    relaxed_constraints: List[str] = []
+    # Price is a soft heuristic. On a true zero-result page, retry without it
+    # and tell the client exactly what changed. Hard dietary filters remain.
+    if not results and interpretation.price_tier is not None and price_tier is None:
+        try:
+            results, total = execute_search(
+                db,
+                query=interpretation.lookup_query,
+                city_id=city_id,
+                category_id=category_id,
+                price_tier=price_tier,
+                lat=lat,
+                lng=lng,
+                limit=page_size,
+                offset=offset,
+                required_category_names=interpretation.required_categories,
+            )
+        except Exception as exc:
+            logger.exception("search_relaxation_failed query=%s error=%s", query, exc)
+            raise HTTPException(status_code=503, detail="Search temporarily unavailable") from exc
+        relaxed_constraints.append("price")
 
     # -----------------------------
     # Serialize (safe)
@@ -173,11 +213,22 @@ def search(
                 getattr(p, "id", None),
             )
 
+    exact_match_id = next(
+        (
+            item.id for item in items
+            if item.name.strip().casefold() == interpretation.lookup_query.casefold()
+        ),
+        None,
+    )
+
     response = SearchResponse(
         total=int(total or 0),
         page=page,
         page_size=page_size,
         items=items,
+        interpretation=interpretation_out,
+        exact_match_id=exact_match_id,
+        relaxed_constraints=relaxed_constraints,
     )
 
     logger.info(
