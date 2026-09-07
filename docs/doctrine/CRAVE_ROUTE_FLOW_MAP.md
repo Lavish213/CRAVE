@@ -188,15 +188,32 @@ showing a stale or silently-empty reasoned section.
 
 ### F5 — Visit/log → Rank queue → comparison → taste update
 
-Any one corroborating signal (Rank action, manual "I went," location,
-tagged post) is sufficient to queue a visit for ranking — never
-requires all signals, never graduates silently with none. Rank Home
-surfaces the queue; the comparison flow (existing, hardened mechanic)
-produces a placement or an honest tie/insufficient-data outcome, which
-becomes the system's highest-integrity taste signal. A queued item left
-unranked decays in priority rather than nagging or vanishing.
+Visit evidence has three tiers, per the Visit Evidence Contract (§1.3
+domain 3): **declared** (an explicit "I went"), **verified** (a Rank
+action itself, or a tagged native post with corroborating media),
+and **inferred** (location proximity alone, with no user confirmation).
+This tiering is not cosmetic — it's what keeps Rank's earlier locked
+rule intact: *a restaurant must have a declared/verified visit before
+it is Rank-comparison-eligible; ranking a place you haven't actually
+confirmed defeats Rank's whole purpose as a real comparative judgment.*
+An inferred-only signal (bare location) may therefore only surface a
+lightweight confirmation prompt ("Were you at X? Log this visit?") —
+it never silently queues a place for ranking or grants comparison
+eligibility on its own. Once confirmed, it becomes declared and queues
+normally. Craves' separate Want-to-Try→Tried graduation (§F4/Screen
+Registry §3.4) is intentionally looser — any one signal at any tier,
+including inferred-only, is sufficient there, since that's a lower-
+stakes state change, not an unlock of the taste-training mechanic
+itself. Rank Home surfaces the queue of declared/verified visits; the
+comparison flow (existing, hardened mechanic) produces a placement or
+an honest tie/insufficient-data outcome, which becomes the system's
+highest-integrity taste signal. A queued item left unranked decays in
+priority rather than nagging or vanishing.
 
-- **F5.1** Visit confirmed (any one signal) → enters Rank queue.
+- **F5.1** Visit evidence recorded → declared/verified evidence enters
+  the Rank queue directly; inferred-only evidence surfaces a
+  confirmation prompt first and only queues once confirmed (promoted
+  to declared).
 - **F5.2** Rank Home → tap queued item → Rank Comparison (existing
   tier→comparing→done flow, unchanged).
 - **F5.3** Comparison resolves (win/loss/tie/insufficient-data) → Rank
@@ -365,7 +382,7 @@ Auth → Offline → Analytics/evidence → Failure recovery.**
 
 | ID | Source | Trigger | Destination | State carried | Auth | Offline | Analytics/evidence | Failure recovery |
 |---|---|---|---|---|---|---|---|---|
-| F5.1 | Rank/manual/location/post | Any one signal | Rank queue | place, signal type(s), timestamp | required | queued locally, synced later | visit_confirmed w/ source | n/a |
+| F5.1 | Rank action/manual "I went"/tagged post (declared or verified) — or bare location (inferred) | Visit evidence recorded | Rank queue (declared/verified) or confirmation prompt (inferred-only) | place, evidence tier, signal(s), timestamp | required | queued locally, synced later | visit_evidence_recorded w/ tier (never conflate inferred with declared/verified) | inferred-only, unconfirmed → no queue entry, no comparison eligibility granted |
 | F5.2 | Rank Home | Tap queued item | Rank Comparison | signed comparison tokens (existing) | required | needs connectivity (existing constraint) | comparison_started | existing retry mechanic |
 | F5.3 | Rank Comparison | Winner picked / tie / haven't-been | Rank Home update or retry pair | comparison outcome, tie is real | required | outcome queued if dropped mid-flow | comparison_resolved w/ outcome type | pending, never silently discarded |
 | F5.4 | Rank Home | Left unranked | same screen, priority decays | factual visit record persists | required | n/a | optional light dismiss signal | n/a |
@@ -475,9 +492,15 @@ specific screen contract phrases them later:
     (Decision Session / Discovery / Search / Craves / organic) so the
     Decision Strip's framing is honest about why the user is there —
     never fabricated after the fact.
-12. Visit-detection for Rank/Craves-graduation (F5.1) accepts any one
-    corroborating signal. It never requires all signals, and it never
-    graduates a place with none.
+12. Visit evidence (F5.1) has three tiers — declared, verified,
+    inferred. Only declared or verified evidence makes a place
+    Rank-comparison-eligible; inferred-only evidence (e.g. bare
+    location proximity) may surface a confirmation prompt but must
+    never silently unlock Rank Comparison or enter the Rank queue
+    unconfirmed. Craves' Want-to-Try→Tried graduation is a separate,
+    looser case — any one signal at any tier, including inferred-only,
+    is sufficient there, since it's a lower-stakes state change, not a
+    bypass of Rank's stricter requirement.
 
 ---
 
