@@ -16,11 +16,12 @@ from app.services.cache.response_cache import response_cache
 from app.services.cache.cache_keys import search_cache_key
 from app.services.cache.cache_ttl import search_ttl
 
-from app.api.v1.schemas.search import SearchResponse
+from app.api.v1.schemas.search import SearchInterpretationOut, SearchResponse
 from app.api.v1.schemas.place_card import PlaceCardOut
 from app.services.query.place_image_visibility_query import get_primary_image_urls_bulk
 from app.services.query.place_video_visibility_query import get_has_video_bulk
 from app.services.query.rank_percentile_query import get_rank_percentiles
+from app.services.search.query_interpreter import interpret_search_query
 
 
 logger = logging.getLogger(__name__)
@@ -81,22 +82,31 @@ def search(
     _: None = Depends(rate_limit),
 ) -> SearchResponse:
 
-    # -----------------------------
-    # Normalize inputs
-    # -----------------------------
     page = _clamp_page(page)
     page_size = _clamp_page_size(page_size)
 
     query = _clean_str(query)
-    city_id = _clean_str(city_id)  # may be None → global search
+    city_id = _clean_str(city_id)
     category_id = _clean_str(category_id)
 
-    if not query:
-        return SearchResponse(total=0, page=page, page_size=page_size, items=[])
+    interpretation = interpret_search_query(query or "")
+    interpretation_out = SearchInterpretationOut(
+        original_query=interpretation.original_query,
+        lookup_query=interpretation.lookup_query,
+        price_tier=interpretation.price_tier,
+        required_categories=list(interpretation.required_categories),
+        hard_constraints=list(interpretation.hard_constraints),
+        unsupported_hard_constraints=list(interpretation.unsupported_hard_constraints),
+        context=list(interpretation.context),
+        uncertain=interpretation.uncertain,
+    )
 
-    # -----------------------------
-    # Cache read (safe)
-    # -----------------------------
+    if not query or interpretation.unsupported_hard_constraints:
+        return SearchResponse(
+            total=0, page=page, page_size=page_size, items=[],
+            interpretation=interpretation_out,
+        )
+
     cache_key = search_cache_key(
         query=query,
         city_id=city_id,
@@ -115,22 +125,20 @@ def search(
     except Exception as exc:
         logger.debug("search_cache_read_failed error=%s", exc)
 
-    # -----------------------------
-    # Query
-    # -----------------------------
     offset = (page - 1) * page_size
 
     try:
         results, total = execute_search(
             db,
-            query=query,
+            query=interpretation.lookup_query,
             city_id=city_id,
             category_id=category_id,
-            price_tier=price_tier,
+            price_tier=price_tier if price_tier is not None else interpretation.price_tier,
             lat=lat,
             lng=lng,
             limit=page_size,
             offset=offset,
+            required_category_names=interpretation.required_categories,
         )
     except Exception as exc:
         logger.exception(
@@ -141,10 +149,29 @@ def search(
         )
         raise HTTPException(status_code=503, detail="Search temporarily unavailable") from exc
 
-    # -----------------------------
-    # Serialize (safe)
-    # -----------------------------
-    # Bulk image lookup — one query for the entire result set
+    relaxed_constraints: List[str] = []
+    # Price is a soft heuristic. Relax it only when the filtered query has
+    # no matches at all. An empty later page with total > 0 is pagination,
+    # not evidence that the price constraint should be changed.
+    if total == 0 and interpretation.price_tier is not None and price_tier is None:
+        try:
+            results, total = execute_search(
+                db,
+                query=interpretation.lookup_query,
+                city_id=city_id,
+                category_id=category_id,
+                price_tier=price_tier,
+                lat=lat,
+                lng=lng,
+                limit=page_size,
+                offset=offset,
+                required_category_names=interpretation.required_categories,
+            )
+        except Exception as exc:
+            logger.exception("search_relaxation_failed query=%s error=%s", query, exc)
+            raise HTTPException(status_code=503, detail="Search temporarily unavailable") from exc
+        relaxed_constraints.append("price")
+
     place_ids = [getattr(p, "id", None) for p in results if getattr(p, "id", None)]
     image_urls = get_primary_image_urls_bulk(db, place_ids=place_ids)
     video_flags = get_has_video_bulk(db, place_ids=place_ids)
@@ -160,24 +187,33 @@ def search(
             p.primary_image = img
             p.has_video = video_flags.get(pid, False)
             p.rank_percentile = rank_percentiles.get(pid)
-            items.append(
-                PlaceCardOut.model_validate(p, from_attributes=True)
-            )
+            items.append(PlaceCardOut.model_validate(p, from_attributes=True))
         except Exception:
-            # Was logger.debug -- invisible at the app's default INFO level,
-            # so every search result silently vanishing produced zero
-            # server-side signal to diagnose from. logger.exception logs at
-            # ERROR with the full traceback.
             logger.exception(
                 "search_serialize_failed place_id=%s",
                 getattr(p, "id", None),
             )
+
+    # Retrieval may strip supported intent words from lookup_query. Exact-name
+    # navigation must compare against what the user actually typed so a place
+    # such as "Vegan Ramen House" can still be recognized exactly.
+    normalized_original_query = interpretation.original_query.strip().casefold()
+    exact_match_id = next(
+        (
+            item.id for item in items
+            if item.name.strip().casefold() == normalized_original_query
+        ),
+        None,
+    )
 
     response = SearchResponse(
         total=int(total or 0),
         page=page,
         page_size=page_size,
         items=items,
+        interpretation=interpretation_out,
+        exact_match_id=exact_match_id,
+        relaxed_constraints=relaxed_constraints,
     )
 
     logger.info(
@@ -185,9 +221,6 @@ def search(
         len(query) if query else 0, city_id, len(items), total,
     )
 
-    # -----------------------------
-    # Cache write (safe)
-    # -----------------------------
     try:
         response_cache.set(
             cache_key,

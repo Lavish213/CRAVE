@@ -5,6 +5,7 @@ import { fetchMapGeoJSON, fetchSavedPlacesGeoJSON } from '../src/api/map';
 import { useCityStore } from '../src/stores/cityStore';
 import { useAuthStore } from '../src/stores/authStore';
 import { logRecommendationEvent, logRecommendationEvents } from '../src/utils/recommendationEventQueue';
+import { useDiscoveryContextStore } from '../src/stores/discoveryContextStore';
 
 jest.mock('../src/api/map', () => ({
   fetchMapGeoJSON: jest.fn(),
@@ -12,7 +13,9 @@ jest.mock('../src/api/map', () => ({
 }));
 jest.mock('../src/stores/authStore', () => ({ useAuthStore: jest.fn() }));
 jest.mock('../src/api/cities', () => ({ fetchCities: jest.fn().mockResolvedValue([]) }));
-jest.mock('../src/hooks/useLocation', () => ({ useLocation: () => null }));
+jest.mock('../src/hooks/useLocation', () => ({
+  useLocationStatus: () => ({ status: 'denied', coords: null, updatedAt: null }),
+}));
 jest.mock('../src/utils/recommendationEventQueue', () => ({
   logRecommendationEvent: jest.fn(),
   logRecommendationEvents: jest.fn(),
@@ -66,6 +69,48 @@ describe('MapScreen — visible exposure instrumentation', () => {
     mockedUseAuthStore.mockImplementation((selector: (s: { user: unknown }) => unknown) =>
       selector({ user: null }),
     );
+    useDiscoveryContextStore.setState({ searchMapHandoff: null });
+  });
+
+  it('keeps Search query, session, and list position on mapped impressions', async () => {
+    useDiscoveryContextStore.getState().setSearchMapHandoff({
+      query: 'breakfast near me',
+      searchSessionId: 'search-parent-7',
+      scope: 'all',
+      interpretation: {
+        original_query: 'breakfast near me', lookup_query: 'breakfast', price_tier: null,
+        required_categories: [], hard_constraints: [], unsupported_hard_constraints: [],
+        context: ['near_me'], uncertain: false,
+      },
+      items: [{
+        id: 'place-first', name: 'First', city_id: SF_CITY.id, rank_score: 0.5,
+        tier: 'solid', rank_percentile: null, distance_miles: null,
+        category: 'Breakfast', categories: ['Breakfast'], address: null,
+        lat: 37.78, lng: -122.42, image: null, primary_image_url: null,
+        images: [], website: null, grubhub_url: null, has_menu: false,
+        has_video: false, price_tier: null,
+      }, {
+        id: 'place-solo', name: 'Boudin Sourdough', city_id: SF_CITY.id, rank_score: 0.32,
+        tier: 'solid', rank_percentile: null, distance_miles: null,
+        category: 'Breakfast', categories: ['Breakfast'], address: null,
+        lat: 37.7871, lng: -122.4075, image: null, primary_image_url: null,
+        images: [], website: null, grubhub_url: null, has_menu: false,
+        has_video: false, price_tier: null,
+      }],
+    });
+
+    render(<MapScreen />);
+    await waitFor(() => expect(mockedLogMany).toHaveBeenCalled());
+    const events = mockedLogMany.mock.calls.flatMap((call) => call[0]);
+    expect(events).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        place_id: 'place-solo',
+        position: 1,
+        query: 'breakfast near me',
+        search_session_id: 'search-parent-7',
+      }),
+    ]));
+    expect(mockedFetch).not.toHaveBeenCalled();
   });
 
   it('logs an impression only after a fetched feature is represented by a visible singleton pin', async () => {
