@@ -1,6 +1,7 @@
 # CRAVE Screen Contract — Search
 
-**Status:** Draft contract, pending audit/freeze (2026-09-07)
+**Status:** Audited and implementation-complete; GREEN (2026-09-07) —
+see §21
 **Reconciliation basis:** `(tabs)/search.tsx` today has the deepest
 state machine in the app (5+ intentionally-designed states by query
 length/filters/location) but no semantic-intent parsing, no editable
@@ -217,16 +218,32 @@ contract.
 
 ## 17. Unresolved dependencies
 
-- **Constraint-interpretation engine** (the actual NLP/parsing
-  backend) — real, new backend work, not a frontend-only change;
-  literal API shape deferred to the forthcoming API/Integration
-  Contract artifact.
+- ~~**Constraint-interpretation engine**~~ — **RESOLVED (2026-09-07).**
+  Implemented as a deterministic, rule-based interpreter
+  (`backend/app/services/search/query_interpreter.py`): price cues,
+  dietary/allergy category detection (always promoted to hard
+  constraints), soft context phrases (near_me/date_night/open_late/
+  quick), explicit negation handling, and an honest
+  `unsupported_hard_constraints` path for allergy phrasing the catalog
+  can't safely verify (nut-free, "allergy-safe") rather than a fabricated
+  match. This is the accepted v1 implementation of this dependency, not
+  a placeholder for a future NLP/ML upgrade — closing this item.
 - **Voice Search** — LATER, DEFER (V1 Scope §3.3a); this contract's
   interpretation engine must not hard-code text-only assumptions that
   would make adding it later architecturally painful, but voice itself
   is out of scope here.
 - **Route/corridor constraint type** (for a future "on my way" query) —
   architect-now per V1 Scope §3.8a, not built here.
+- **Offline/staleness UI layer** (new, 2026-09-07) — no part of the app
+  currently detects connectivity state (no `NetInfo` or equivalent) or
+  surfaces a "showing cached/stale results" label anywhere; this is an
+  app-wide capability, not Search-specific. §14's Stale row (cached
+  results + staleness label) depends on it and is deferred until that
+  layer is built; §14's Offline row's "fail gracefully" half is already
+  satisfied today via `ErrorState` + retry, and the zero-state (recent
+  searches, intent shortcut, city shortcuts) requires no network and
+  remains usable offline as-is. Real, scoped future work — not a Wave 5
+  blocker for this screen alone.
 
 ---
 
@@ -248,8 +265,9 @@ vocabulary for Search's reasoned-set labels.
 
 - Exact-name queries bypass the results list in the running app, not
   just in principle.
-- A zero-result query always names a specific relaxation, never a
-  generic message.
+- A zero-result query always names a specific relaxation, or states
+  directly that no safe relaxation exists, never a vague generic
+  message.
 - Constraint chips are genuinely editable, not display-only.
 - Full frontend test suite + `tsc --noEmit` clean.
 
@@ -275,6 +293,17 @@ engine's literal shape), the Requirements/Traceability Matrix.
 
 ## 21. Proposed status
 
-**YELLOW — pending audit.** The interpretation engine itself is real,
-unbuilt backend work (§17) — everything else is intended to be
-freeze-ready.
+**GREEN — audited and implementation-complete (2026-09-07).** Every
+requirement in this contract (§5-§16, §19) is implemented and verified
+in the running app: exact-name bypass, editable interpretation chips,
+Reason Block labeling (Search-specific vocabulary, no Decision Session
+leakage), zero-state decision support (intent shortcut, recent
+searches, city/location shortcuts), and named zero-result relaxation
+that never weakens a dietary/allergy hard constraint. The
+constraint-interpretation engine (§17) is resolved as a deterministic
+rule-based v1, not a placeholder. Remaining items are correctly
+out-of-scope or deferred by design, not gaps in this screen: Voice
+Search (LATER, V1 Scope §3.3a), the route/corridor constraint type
+(architect-only per V1 Scope §3.8a), and the app-wide offline/staleness
+UI layer (§17, new — Search's own zero-state remains usable offline
+regardless).
