@@ -5,6 +5,8 @@
 // a Place (or feeds it into the discovery-candidate pipeline if unmatched —
 // see backend/app/workers/share_parser_worker.py).
 import { client } from './client';
+import { normalizePlaceOut } from './normalize';
+import type { DecisionSessionResponse } from './decisionSession';
 
 export type SourceType = 'instagram' | 'tiktok' | 'youtube' | 'twitter' | 'web' | 'other';
 
@@ -98,4 +100,31 @@ export async function submitPlaceSave(
 export async function getMyPlaceSaves(): Promise<PlaceSaveItem[]> {
   const { data } = await client.get<{ items: PlaceSaveItem[]; total: number }>('/api/v1/hitlist/me');
   return Array.isArray(data?.items) ? data.items : [];
+}
+
+/**
+ * Craves Screen Contract §5/§6's "reasoned subset" -- the same
+ * build_decision_session() engine as Decision Session, scoped to this
+ * user's saved pool instead of a city/radius fetch. Reuses Decision
+ * Session's exact role vocabulary (best_fit/safe_bet/wildcard): this is
+ * the literal same computation over a different candidate set, not a
+ * conceptually distinct surface the way Search's own vocabulary is.
+ */
+export async function fetchCravesReasoned(opts?: {
+  lat?: number;
+  lng?: number;
+}): Promise<DecisionSessionResponse> {
+  const { data } = await client.get<DecisionSessionResponse>('/api/v1/craves/reasoned', {
+    params: { lat: opts?.lat, lng: opts?.lng },
+  });
+  if (!Array.isArray(data?.cards)) {
+    return { cards: [], degraded: true };
+  }
+  return {
+    cards: data.cards.map((card) => ({
+      ...card,
+      place: normalizePlaceOut(card.place),
+    })),
+    degraded: Boolean(data.degraded),
+  };
 }
