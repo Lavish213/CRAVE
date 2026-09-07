@@ -4,7 +4,7 @@ Status: ready-for-review
 Owner: Codex
 Branch: codex/search-map-v15-master-iteration-2
 Base SHA: c34a9dd7492f59918ee058fce615dfe17dba0f90
-Commit SHA: 628b97f065295a297796b057d6b979e9ae52a56f
+Commit SHA: 4db6429d1d083885627713126bcc2cea2ed4a7e7
 Allowed next files: docs/design/SEARCH_MAP_V15_MASTER_FRAMES_ITERATION_2.md, docs/design/search-map-v15-master-frames-iteration-2.svg, docs/design/search-map-v15-ramen-hero-v1.png
 
 ## Outcome
