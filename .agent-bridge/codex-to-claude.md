@@ -1,28 +1,32 @@
-# H-20260902-screen-coverage-brief
+# H-20260907-wave5-search-contextual-map
 
 Status: ready-for-review
 Owner: Codex
-Branch: codex/screen-journey-feed-detail-craves
-Base SHA: e6b7d9b3d803fdf36154b4fe2cecc56a5d47d06b
-Commit SHA: 89978f3
-Allowed next files: docs/CLAUDE_EXECUTION_BRIEF_SCREEN_AND_COVERAGE_2026-09-02.md, .agent-bridge/STATE.md, .agent-bridge/claude-to-codex.md
+Branch: codex/wave5-search-contextual-map
+Base SHA: 633a5ebedc43de0dde5a42394608c17928049d89
+Commit SHA: b037512
+Allowed next files: review only; fixes require ownership acknowledgement
 
 ## Outcome
 
-Added an executable brief for two deliberately separate tracks: the Feed → Place Detail → Save/Craves UI journey and bounded free-source menu/photo coverage. It records the historical baseline, existing canary commands, safety gates, measurable outcomes, stop conditions, and PR boundaries.
+Implemented the non-ambiguous Wave 5 Search + Contextual Map contract: conservative structured query interpretation; SQL-level supported dietary hard filters; fail-closed unsupported allergy terms; visible/removable constraints; bounded pagination; explicit exact-name bypass; signed-in Craves/Ranked narrowing; direct ordered Search-to-Map handoff; native-ready fitting; explicit Search-this-area; location-denied area choice; and parent Search attribution on Map.
 
 ## Verification
 
-- `git diff --check` → passed with no output before commit.
-- referenced-path existence loop covering every file/script named in the brief → passed with no `MISSING` output.
-- baseline cross-check against `CRAVE_STATUS.md` and canary constraints against `docs/POPULATION_RELEASE_PASS_2026-09-01.md`/`docs/SCHEDULER_WORKER_ROLLOUT.md` → counts, allowlist, disabled jobs, and prior 0/3 menu + 1/2 hidden-image evidence match.
+- `cd frontend && ./node_modules/.bin/tsc --noEmit` → passed.
+- Focused Search/Map/API Jest run → 4 suites, 35 tests passed; known existing Jest open-handle warning required interrupt after results.
+- Full frontend Jest run → 39 suites, 405 tests passed; same known open-handle warning after results.
+- Focused backend interpreter/query/cache run → 21 passed.
+- `cd backend && python3 -m compileall -q app` → passed.
+- `git diff --check` → passed.
 
 ## Known gaps / risks
 
-- Documentation only: no UI/backend code changed and no production job or canary ran.
-- Production counts are explicitly labeled historical until reproduced.
-- The branch name predates the user's pivot to a Claude brief; trust the declared diff scope, not the branch label.
+- Full backend suite was not run locally: only 335 MiB was free and installing the complete environment failed safely without changing repository files. CI must supply this proof.
+- Native Search/Map visual and gesture behavior needs device review.
+- “Best match for you,” “Safer pick,” and “Worth exploring” were not fabricated. Search is not yet user-personalized and current catalog data cannot support a food-safety implication. The gate is recorded in `docs/WAVE_5_SEARCH_CONTEXTUAL_MAP.md`.
+- Craves/Ranked scopes narrow the bounded Search pool (expanded to the 60-result cap); they are not separate unbounded server-side search universes.
 
 ## Next action
 
-Review and merge this documentation-only change. Then claim exactly one track on a fresh Claude branch; keep UI work, extractor changes, production canaries, image promotion, and scheduler expansion in separate PRs.
+Fetch `b037512`, inspect the diff, run the full backend suite/CI, and perform native Search/Map review. Resolve actionable findings before merge; Wave 6 stays gated until independent acceptance.
