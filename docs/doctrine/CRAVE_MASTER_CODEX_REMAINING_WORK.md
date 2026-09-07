@@ -32,10 +32,41 @@ to guess.
   Craves/Rank/Profile), Map off the tab bar, persistent `+` → capture-only
   `food-evidence` screen, Activity as a header route.
 - **Wave 4** — Feed / Decision Session hierarchy: merged to `main`.
+- **Wave 5 — Search Screen Contract (§3.2): COMPLETE (2026-09-07).**
+  Semantic Search + contextual Map originally merged as one commit
+  (`37bebcf`), then certified against
+  `docs/doctrine/CRAVE_SCREEN_CONTRACT_SEARCH.md` line-by-line across four
+  follow-up PRs: #190 (CodeQL `js/insecure-randomness` fix, `randomUUID()`
+  replacing `Math.random()` for the search-session id), #191 (Reason Block
+  labeling — "Best match for you / Safer pick / Worth exploring", no
+  Decision Session vocabulary leakage), #192 (zero-state decision support —
+  time-relevant intent shortcut, recent searches, city/location shortcuts;
+  and named zero-result relaxation that never weakens a dietary/allergy
+  hard constraint), #193 (44pt touch-target fixes; marked the
+  constraint-interpretation engine dependency resolved — it's a real,
+  live, deterministic rule-based interpreter, not a stub; corrected the
+  contract's status from YELLOW to GREEN). Full frontend suite and
+  `tsc --noEmit` clean on every merge; default CodeQL check (distinct from
+  the custom `Analyze` jobs) verified green on each PR, not just assumed
+  from the custom jobs. See `CRAVE_SCREEN_CONTRACT_SEARCH.md` §21 for the
+  certified status.
+- **Wave 5 — Contextual Map plumbing (§3.3): PARTIAL, not folded into the
+  above COMPLETE.** Everything in §3.3 is implemented and verified in
+  `MapScreenCore.tsx` except its last item: direct/city Map mode
+  (`backend/app/services/query/map_query.py::fetch_places_for_map`) still
+  orders candidates by a plain bounding-box-scoped `Place.rank_score`
+  query, not the shared per-user recommendation-context contract Feed/
+  Search use for personalized ranking (tier *labels* do already reuse the
+  same percentile snapshot as Feed/Search — only candidate
+  selection/ordering in this one mode does not). Search-handoff Map mode
+  is unaffected (it renders the exact Search candidate set, unreranked).
+  This is a real, pre-existing, explicitly tracked gap, not a new one —
+  do not fold it into "Wave 5 complete" until it's closed.
 
 Verified end-to-end against the current `main` head: backend
 `compileall`/import/`pytest` clean (1043 passed, 2 skipped), single Alembic
-head, frontend `tsc --noEmit` clean, `jest --ci` clean (426/426), conflict-
+head, frontend `tsc --noEmit` clean, `jest --ci` clean (46/46 suites,
+450/450 tests as of the Wave 5 Search certification above), conflict-
 marker guard clean.
 
 ## 3. Remaining implementation work
@@ -53,35 +84,49 @@ marker guard clean.
 These were explicitly identified as Feed implementation dependencies in
 the Readiness Audit.
 
-### 3.2 Wave 5 — Search backend + Search screen
-- Build semantic natural-language constraint interpretation.
-- Convert interpreted intent into the shared recommendation request/
+### 3.2 Wave 5 — Search backend + Search screen — **COMPLETE, see §2**
+All items below are implemented and certified against
+`CRAVE_SCREEN_CONTRACT_SEARCH.md` (now GREEN); kept here only as the
+historical scope record, not as open work:
+- Semantic natural-language constraint interpretation (deterministic
+  rule-based interpreter, `query_interpreter.py`).
+- Interpreted intent converted into the shared recommendation request/
   context contract.
-- Support editable constraint chips.
-- Implement exact restaurant-name bypass to Place Detail.
-- Return a small bounded result set.
-- Implement bounded "Show more."
-- Implement zero-result relaxation for soft constraints only.
-- Never relax allergies/dietary hard constraints silently.
-- Support Craves-scoped Search.
-- Support Rank-scoped Search.
-- Preserve the approved Search language: "Best match for you" / "Safer
-  pick" / "Worth exploring."
-- Add a proper uncertain-interpretation state instead of turning Search
-  into generic chat.
+- Editable constraint chips.
+- Exact restaurant-name bypass to Place Detail.
+- Small bounded result set + bounded "Show more."
+- Zero-result relaxation for soft constraints only; dietary/allergy hard
+  constraints never silently relaxed.
+- Craves-scoped and Rank-scoped Search.
+- Approved Search language preserved: "Best match for you" / "Safer
+  pick" / "Worth exploring" — no Decision Session vocabulary leakage
+  (tested).
+- Uncertain-interpretation state (`uncertain` flag + honest zero-result
+  messaging), not generic chat.
 
-### 3.3 Wave 5 — Search ↔ Contextual Map plumbing
-- Pass the exact Search candidate set to Map.
-- Map must not independently rerank that set.
-- Implement explicit "Search this area."
-- Do not automatically refetch just because the user pans.
-- Implement location-denied "Choose an area" fallback.
-- Maintain list/map parity.
-- Keep Map contextual rather than restoring it as a tab.
+### 3.3 Wave 5 — Search ↔ Contextual Map plumbing — **PARTIAL, see §2**
+All items below except the last are implemented and verified in
+`MapScreenCore.tsx`:
+- Pass the exact Search candidate set to Map. ✅
+- Map must not independently rerank that set. ✅
+- Implement explicit "Search this area." ✅
+- Do not automatically refetch just because the user pans. ✅
+- Implement location-denied "Choose an area" fallback. ✅
+- Maintain list/map parity. ✅
+- Keep Map contextual rather than restoring it as a tab. ✅ (Wave 3)
 - Preserve source attribution so Feed/Search/Craves/Decision Session map
-  launches remain distinguishable.
+  launches remain distinguishable. ✅
+
+**Still open:**
 - Direct Map mode still needs to use the shared recommendation context
-  instead of independent ranking.
+  instead of independent ranking — confirmed still true (2026-09-07):
+  `fetch_places_for_map` orders candidates by a plain bounding-box-scoped
+  `Place.rank_score`, not the personalized recommendation-context
+  contract Feed/Search use. Tier labels already reuse the same
+  percentile snapshot as Feed/Search; only candidate selection/ordering
+  in this one (non-Search-handoff) mode does not. Whoever picks this up
+  next should treat it as its own small, scoped fix, not a reason to
+  reopen the Search-screen half of Wave 5.
 
 ### 3.4 Wave 6 — Craves intelligence
 - Upgrade saved places from a stitched bookmarks screen into active
@@ -370,6 +415,12 @@ Maintain, for every old route (Map, `friends-feed`, `record-video`,
 - deletion condition
 
 ### 3.33 Offline/stale-state completion
+- Cross-reference: `CRAVE_SCREEN_CONTRACT_SEARCH.md` §17 tracks this same
+  app-wide connectivity/staleness-detection dependency (no `NetInfo` or
+  equivalent exists anywhere in the app yet) from the Search screen's
+  side — Search's own zero-state needs no network and is already usable
+  offline; only its "Stale" state-coverage row is blocked on this shared
+  dependency. Build the layer once here, not twice.
 - Saved Craves available offline where feasible.
 - Recent Place Detail cache.
 - Rank.
@@ -435,8 +486,10 @@ The Readiness Audit explicitly marks these OPEN / LATER / AUDIT REQUIRED.
 ## 5. Wave summary
 
 - Waves 0-4: done, merged.
-- Wave 5: Search + contextual Map.
-- Wave 6: Craves intelligence.
+- Wave 5: Search screen — **COMPLETE**; contextual Map plumbing —
+  **PARTIAL** (§3.3, one open item: direct-mode Map ranking source).
+- Wave 6: Craves intelligence — next implementation focus; does not
+  depend on Wave 5's one open Map item.
 - Wave 7: Place Detail + operational/dish/taste dependencies.
 - Wave 8: Posting/private logging.
 - Wave 9: Profile/Taste/Other Profile.
