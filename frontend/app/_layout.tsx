@@ -60,15 +60,6 @@ const eb = StyleSheet.create({
   },
 });
 
-/**
- * Expo Router route error boundary for the root layout.
- *
- * The previous class boundary only flipped its own `hasError` boolean to
- * false. A deterministic route/layout crash therefore rendered the exact
- * same broken tree again without asking the router to retry the failed route.
- * SDK55 exposes ErrorBoundaryProps.retry specifically for this recovery path;
- * use that framework-owned reset instead of maintaining a second error state.
- */
 export function ErrorBoundary({ retry }: ErrorBoundaryProps) {
   return (
     <View style={eb.container}>
@@ -182,6 +173,11 @@ export default function RootLayout() {
           }}
         >
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+          <Stack.Screen name="activity" options={{ title: 'Activity' }} />
+          <Stack.Screen
+            name="food-evidence"
+            options={{ title: 'Record a meal', presentation: 'modal' }}
+          />
           <Stack.Screen name="record-video/[placeId]" options={{ headerShown: false }} />
           <Stack.Screen name="place/[id]" options={{ title: '', animation: 'fade_from_bottom' }} />
           <Stack.Screen name="rank/[placeId]" options={{ title: 'Rank this place', animation: 'fade_from_bottom' }} />
