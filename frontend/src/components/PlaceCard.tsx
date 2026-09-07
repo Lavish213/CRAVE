@@ -234,9 +234,8 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   imageFallbackInitial: {
-    ...Typography.display,
+    ...Typography.headline,
     color: Colors.textSecondary,
-    fontWeight: '800',
   },
   imageFallbackCategory: {
     ...Typography.caption,
