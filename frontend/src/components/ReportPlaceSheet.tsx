@@ -53,9 +53,14 @@ export function ReportPlaceSheet({ visible, placeId, onClose, onReported }: Prop
     }
   };
 
+  const handleClose = () => {
+    setError(null);
+    onClose();
+  };
+
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <Pressable style={styles.backdrop} onPress={onClose} accessibilityLabel="Dismiss" />
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={handleClose}>
+      <Pressable style={styles.backdrop} onPress={handleClose} accessibilityLabel="Dismiss" />
       <View style={styles.sheet}>
         <View style={styles.grabber} />
 
@@ -89,7 +94,7 @@ export function ReportPlaceSheet({ visible, placeId, onClose, onReported }: Prop
 
         <TouchableOpacity
           style={styles.cancel}
-          onPress={onClose}
+          onPress={handleClose}
           accessibilityRole="button"
           accessibilityLabel="Cancel"
         >

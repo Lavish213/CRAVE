@@ -22,7 +22,7 @@ import logging
 from datetime import datetime, timezone
 from typing import List, Optional
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Query
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, Response
 from pydantic import BaseModel, Field
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
@@ -454,6 +454,7 @@ class PlaceReportRequest(BaseModel):
 )
 def report_place(
     place_id: str,
+    response: Response,
     payload: PlaceReportRequest = Body(...),
     db: Session = Depends(get_db),
     user_id: str = Depends(get_current_user_id),
@@ -476,8 +477,9 @@ def report_place(
         db.flush()
     except IntegrityError:
         # Already reported by this user -- idempotent, not an error worth
-        # showing them.
+        # showing them. No new row was created, so this isn't a 201.
         db.rollback()
+        response.status_code = 200
         return {"status": "already_reported"}
 
     db.commit()

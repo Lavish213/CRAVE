@@ -70,6 +70,19 @@ describe('ReportPlaceSheet', () => {
     expect(await findByText('Sign in to report an issue.')).toBeTruthy();
   });
 
+  it('clears a failed-request error on close, so reopening does not show it stale', async () => {
+    mockedReportPlace.mockRejectedValue({ response: { status: 500 } });
+    const { getByLabelText, findByText, queryByText } = render(
+      <ReportPlaceSheet visible placeId="place-1" onClose={jest.fn()} onReported={jest.fn()} />,
+    );
+
+    fireEvent.press(getByLabelText('Duplicate listing'));
+    expect(await findByText("Couldn't send that report. Try again.")).toBeTruthy();
+
+    fireEvent.press(getByLabelText('Cancel'));
+    expect(queryByText("Couldn't send that report. Try again.")).toBeNull();
+  });
+
   it('does nothing without a placeId', () => {
     const { getByLabelText } = render(
       <ReportPlaceSheet visible placeId={null} onClose={jest.fn()} onReported={jest.fn()} />,

@@ -95,6 +95,7 @@ def test_same_user_reporting_twice_is_idempotent(db, place):
     )
 
     assert first.status_code == 201
+    assert second.status_code == 200
     assert second.json()["status"] == "already_reported"
     assert db.query(PlaceReport).filter(PlaceReport.place_id == place.id).count() == 1
 
