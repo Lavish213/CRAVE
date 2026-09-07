@@ -3,7 +3,7 @@ import { render } from '@testing-library/react-native';
 import { DecisionStrip } from './DecisionStrip';
 
 describe('DecisionStrip', () => {
-  it('renders canonical Decision Session role copy without fit percentages', () => {
+  it('renders canonical Decision Session role treatment without fit percentages', () => {
     const { getByText, queryByText } = render(
       <DecisionStrip
         source="decision_session"
@@ -14,7 +14,8 @@ describe('DecisionStrip', () => {
       />,
     );
 
-    expect(getByText('BEST FIT TONIGHT')).toBeTruthy();
+    expect(getByText('Best fit')).toBeTruthy();
+    expect(getByText(' tonight')).toBeTruthy();
     expect(getByText('Strong fit')).toBeTruthy();
     expect(getByText('High confidence')).toBeTruthy();
     expect(queryByText(/%/)).toBeNull();
@@ -32,7 +33,8 @@ describe('DecisionStrip', () => {
       />,
     );
 
-    expect(queryByText('BEST FIT TONIGHT')).toBeNull();
+    expect(queryByText('Best fit')).toBeNull();
+    expect(queryByText(' tonight')).toBeNull();
     expect(queryByText('Should not render')).toBeNull();
     expect(queryByText('Strong fit')).toBeNull();
     expect(queryByText('High confidence')).toBeNull();
