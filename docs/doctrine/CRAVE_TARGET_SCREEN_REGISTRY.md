@@ -349,27 +349,30 @@ not something discovered mid-screen-contract).
 friend just ranked X" feed — explicitly not padded with algorithmic
 recommendations (per its own header comment). Currently reached only
 from Profile.
-**Target:** Its content/logic becomes Feed's small embedded social rail
-(V1 Scope §3.1/§3.2's social-section requirement). The standalone
-screen can survive as a "see all" deep view reached from that rail
-rather than disappearing outright — this keeps the chronological,
-un-padded behavior the current screen correctly implements, just
-relocates its entry point.
-**Target navigation placement:** No longer reached from Profile;
-reached from Feed's social rail instead (stack push, same as today,
-different origin).
-**Status:** MERGE (content migrates into Feed's rail; the route itself
-is a candidate to KEEP as a drill-in destination — flagged as a
-judgment call for the Route & Flow Map to confirm, not decided here)
+**Target:** Its useful job survives, but not as a standalone
+first-class destination — a dedicated friends feed risks recreating a
+social-network consumption surface CRAVE explicitly does not want.
+Native social evidence belongs contextually in Feed's embedded social
+rail and in Place Detail; social activity/notifications belong in
+Activity (§7.2). The route itself is kept only for migration/deep-link
+compatibility until those two surfaces exist, then removed.
+**Target navigation placement:** No longer reached from Profile once
+migrated; not a permanent destination anywhere.
+**Status:** **RESOLVED (2026-09-07) — MERGE / REMOVE AFTER MIGRATION.**
+Content and job migrate into Feed's social rail (F2/F7 area) and
+Activity; the route is temporary migration/deep-link scaffolding only,
+per `CRAVE_ROUTE_FLOW_MAP.md` §1's resolution of this judgment call —
+not left open.
 **V1 requirement:** Folds into V1 Scope §3.1's social-section
 requirement.
-**Major dependencies:** Feed (3.1) REBUILD.
+**Major dependencies:** Feed (3.1) REBUILD; Activity Inbox (7.2).
 **Governing canon:** Interview Feed/Discovery sections (social
 subordinate to discovery, personalized not chronological-only at the
-Feed-embedded level).
+Feed-embedded level); `CRAVE_ROUTE_FLOW_MAP.md` §1.
 **Codex readiness:** BLOCKED ON DEPENDENCY (depends on 3.1's rebuild
-defining the rail's exact data contract before this screen's fate is
-finalized).
+and 7.2's Activity Inbox both landing before this route can actually be
+removed — do not remove it prematurely and leave the migration
+half-finished).
 
 ### 5.4 Native Posting composer
 **Current path:** none. `record-video/[placeId].tsx` (§5.5) and
@@ -443,13 +446,23 @@ availability check, five validation states. Gates the profile tab.
 Does not currently collect dietary/allergy constraints, a novelty
 starting position, or the 3-5 known-restaurant reactions the cold-start
 approach requires.
-**Target:** Same username-claim mechanic, extended (same flow or an
-immediately-following step — exact split is a Route & Flow Map
-decision, not resolved here) to collect: dietary/allergy hard
-constraints, a novelty-dial starting position, and lightweight
-reactions to 3-5 self-identified known restaurants. Everything except
-dietary/allergy disclosure stays skippable.
-**Status:** REBUILD
+**Target:** **RESOLVED (2026-09-07) — REBUILD / SPLIT BY FUNCTION**, per
+`CRAVE_ROUTE_FLOW_MAP.md` §1: this is not one future onboarding page.
+Distinct responsibilities, not automatically bundled:
+- Pre-account value experience (browsing Feed/Discovery/Search
+  anonymously) needs no screen here at all — it's just Feed itself
+  (F1.1/F1.2 in the Flow Map), gated later, not part of this file.
+- Dietary/allergy hard constraints, a novelty-dial starting position,
+  and lightweight reactions to 3-5 self-identified known restaurants
+  are cold-start calibration — genuinely part of this flow, reusing
+  Rank Comparison's lightweight-reaction UI pattern rather than
+  reinventing one.
+- True identity setup (username claim — the screen's *current* entire
+  job) is account-completion, not cold-start calibration, and must not
+  be bloated by adding the calibration items into the same screen
+  indiscriminately — it may become an earlier or later step in the same
+  stack flow, but is tracked as a functionally distinct responsibility.
+**Status:** REBUILD / SPLIT BY FUNCTION
 **V1 requirement:** Dependency of V1 Scope's cold-start requirements
 (referenced under §3.1/§3.4/§3.5's dependency lists; cold-start itself
 doesn't have its own V1 Scope row — it's an onboarding capability those
@@ -457,10 +470,12 @@ rows depend on).
 **Major dependencies:** Rank Comparison's lightweight-reaction UI
 pattern (3.5) — reused here, not reinvented for onboarding.
 **Governing canon:** Bible §18 (as annotated — price/travel-willingness
-items superseded, rest of the calibration list unaffected).
-**Codex readiness:** BLOCKED ON DEPENDENCY (needs the Route & Flow Map
-to decide whether this is one extended screen or a short flow of
-steps).
+items superseded, rest of the calibration list unaffected);
+`CRAVE_ROUTE_FLOW_MAP.md` §1.
+**Codex readiness:** BLOCKED ON DEPENDENCY (the exact step ordering
+within the split is a screen-contract-level decision, made once the
+Data & State Map defines what the calibration step actually needs to
+persist).
 
 ### 6.2 `user/[id].tsx` — Other User Profile
 **Current purpose:** Someone else's ranked list plus a follow button.
