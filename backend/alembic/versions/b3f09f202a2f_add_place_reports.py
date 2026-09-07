@@ -1,7 +1,7 @@
 """add place_reports table
 
 Revision ID: b3f09f202a2f
-Revises: f6a7b8c9d0e1
+Revises: g7h8i9j0k1l2
 Create Date: 2026-09-02
 
 Backs app/db/models/place_report.py -- reactive moderation for the
@@ -18,7 +18,7 @@ import sqlalchemy as sa
 
 
 revision = "b3f09f202a2f"
-down_revision = "f6a7b8c9d0e1"
+down_revision = "g7h8i9j0k1l2"
 branch_labels = None
 depends_on = None
 
