@@ -17,17 +17,14 @@ import { fetchPlaces, PlaceOut } from '../../src/api/places';
 import { useCityStore } from '../../src/stores/cityStore';
 import { useCravesStore } from '../../src/stores/cravesStore';
 import { useToast } from '../../src/hooks/useToast';
-import { useTrending } from '../../src/hooks/useTrending';
 import { useRecommendations } from '../../src/hooks/useRecommendations';
 import { useLocation } from '../../src/hooks/useLocation';
 import { usePrefetchPlace } from '../../src/hooks/usePrefetchPlace';
 import { Colors, Spacing } from '../../src/constants/colors';
-import { getTierForPlace, TIERS, TierKey } from '../../src/utils/scoring';
+import { getTierForPlace } from '../../src/utils/scoring';
 import { logRecommendationEvent, logRecommendationEvents } from '../../src/utils/recommendationEventQueue';
 import { PlaceCard } from '../../src/components/PlaceCard';
-import { SectionHeader } from '../../src/components/SectionHeader';
 import { CitySelectorStrip } from '../../src/components/CitySelectorStrip';
-import { TrendingStrip } from '../../src/components/TrendingStrip';
 import { ErrorState } from '../../src/components/ErrorState';
 import { EmptyState } from '../../src/components/EmptyState';
 import { SkeletonFeed } from '../../src/components/SkeletonCard';
@@ -37,8 +34,8 @@ import { AuthSheet } from '../../src/components/AuthSheet';
 import { useDecisionSession } from '../../src/hooks/useDecisionSession';
 import { DecisionReasonCode, DecisionSessionCard } from '../../src/api/decisionSession';
 
-const SHOW_FEED_DISCOVERY_STRIPS = false;
 const VIEWABILITY_CONFIG = { itemVisiblePercentThreshold: 50, minimumViewTime: 250 };
+const DISCOVERY_LIMIT = 4;
 
 const DECISION_REASON_COPY: Record<DecisionReasonCode, string> = {
   top_ranked_in_area: 'Top pick near you',
@@ -53,29 +50,33 @@ function decisionReason(card: DecisionSessionCard): string | undefined {
   return reason ? DECISION_REASON_COPY[reason] : undefined;
 }
 
+type DiscoveryReason = 'taste_extension' | 'hole_in_wall' | 'from_craves';
+
+interface DiscoverySection {
+  reason: DiscoveryReason;
+  title: string;
+  subtitle: string;
+  places: PlaceOut[];
+}
+
 type FeedRow =
   | { kind: 'decision'; card: DecisionSessionCard; position: number }
-  | { kind: 'header'; tierKey: TierKey; count: number }
-  | { kind: 'place'; place: PlaceOut };
+  | { kind: 'discovery_header'; section: DiscoverySection }
+  | { kind: 'place'; place: PlaceOut; reason: DiscoveryReason; position: number };
 
-function buildFeedRows(places: PlaceOut[]): FeedRow[] {
-  const buckets: Record<TierKey, PlaceOut[]> = {
-    crave_pick: [],
-    gem: [],
-    solid: [],
-    new: [],
-  };
-  for (const p of places) buckets[getTierForPlace(p).key].push(p);
-
-  const order: TierKey[] = ['crave_pick', 'gem', 'solid', 'new'];
-  const rows: FeedRow[] = [];
-  for (const key of order) {
-    const section = buckets[key];
-    if (section.length === 0) continue;
-    rows.push({ kind: 'header', tierKey: key, count: section.length });
-    for (const place of section) rows.push({ kind: 'place', place });
+function uniquePlaces(
+  candidates: PlaceOut[],
+  excluded: Set<string>,
+  limit = DISCOVERY_LIMIT,
+): PlaceOut[] {
+  const result: PlaceOut[] = [];
+  for (const place of candidates) {
+    if (excluded.has(place.id)) continue;
+    excluded.add(place.id);
+    result.push(place);
+    if (result.length >= limit) break;
   }
-  return rows;
+  return result;
 }
 
 export default function FeedScreen() {
@@ -83,14 +84,12 @@ export default function FeedScreen() {
   const prefetchPlace = usePrefetchPlace();
   const selectedCity = useCityStore((s) => s.selectedCity);
   const initCities = useCityStore((s) => s.initCities);
-  const { addSave, removeSave, isSaved } = useCravesStore();
+  const { saves, addSave, removeSave, isSaved } = useCravesStore();
   const toast = useToast((s) => s.show);
+  const user = useAuthStore((s) => s.user);
 
   const userLocation = useLocation();
-  // Keep hook ordering stable while honoring the feature flag: hidden
-  // discovery strips must not keep fetching invisible data in background.
-  const trending = useTrending(SHOW_FEED_DISCOVERY_STRIPS);
-  const recommendations = useRecommendations(SHOW_FEED_DISCOVERY_STRIPS);
+  const recommendations = useRecommendations(Boolean(user));
   const decisionSession = useDecisionSession();
   const decisionCards = decisionSession.data?.cards ?? [];
 
@@ -98,7 +97,6 @@ export default function FeedScreen() {
   const [filters, setFilters] = useState<FilterState>(EMPTY_FILTERS);
   const radiusMiles = 20;
   const [authVisible, setAuthVisible] = useState(false);
-  const user = useAuthStore((s) => s.user);
   const feedOpacity = useRef(new Animated.Value(0)).current;
 
   const feedParams = useMemo(() => ({
@@ -133,10 +131,10 @@ export default function FeedScreen() {
     const seen = new Set<string>();
     const result: PlaceOut[] = [];
     for (const page of data?.pages ?? []) {
-      for (const p of page.items) {
-        if (seen.has(p.id)) continue;
-        seen.add(p.id);
-        result.push(p);
+      for (const place of page.items) {
+        if (seen.has(place.id)) continue;
+        seen.add(place.id);
+        result.push(place);
       }
     }
     return result;
@@ -159,8 +157,8 @@ export default function FeedScreen() {
 
   const availableCategories = useMemo(() => {
     const names = new Set<string>();
-    for (const p of places) {
-      for (const c of p.categories ?? []) names.add(c);
+    for (const place of places) {
+      for (const category of place.categories ?? []) names.add(category);
     }
     return Array.from(names);
   }, [places]);
@@ -185,7 +183,7 @@ export default function FeedScreen() {
 
   const handleRefresh = () => {
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    void refetch();
+    void Promise.all([refetch(), decisionSession.refetch()]);
   };
 
   const handleEndReached = () => {
@@ -194,42 +192,84 @@ export default function FeedScreen() {
 
   const filteredPlaces = useMemo(() => {
     if (!hasActiveFilters(filters)) return places;
-    return places.filter((p) => {
+    return places.filter((place) => {
       if (
         filters.priceTiers.length > 0 &&
-        (p.price_tier == null || !filters.priceTiers.includes(p.price_tier))
+        (place.price_tier == null || !filters.priceTiers.includes(place.price_tier))
       ) return false;
       if (
         filters.categories.length > 0 &&
-        !p.categories.some((c) => filters.categories.includes(c))
+        !place.categories.some((category) => filters.categories.includes(category))
       ) return false;
       return true;
     });
   }, [places, filters]);
 
-  const placeRows = useMemo(() => buildFeedRows(filteredPlaces), [filteredPlaces]);
-  const rows = useMemo<FeedRow[]>(() => [
-    ...decisionCards.map((card, position) => ({ kind: 'decision' as const, card, position })),
-    ...placeRows,
-  ], [decisionCards, placeRows]);
+  const discoverySections = useMemo<DiscoverySection[]>(() => {
+    const excluded = new Set(decisionCards.map((card) => card.place.id));
+    const sections: DiscoverySection[] = [];
 
-  // The position metric is defined among actual place cards, not section
-  // headers. Tier bucketing changes display order relative to raw API order,
-  // so derive positions from the rendered row stream rather than `places`.
-  const renderedPlacePositions = useMemo(() => {
-    const positions = new Map<string, number>();
-    let position = 0;
-    for (const row of placeRows) {
-      if (row.kind !== 'place') continue;
-      positions.set(row.place.id, position++);
+    if (user && recommendations.length > 0) {
+      const tasteExtension = uniquePlaces(recommendations, excluded);
+      if (tasteExtension.length > 0) {
+        sections.push({
+          reason: 'taste_extension',
+          title: 'MORE IN YOUR LANE',
+          subtitle: 'Taste-based options beyond tonight’s three answers.',
+          places: tasteExtension,
+        });
+      }
     }
-    return positions;
-  }, [placeRows]);
 
-  // Candidate retrieval is not an impression. A card must be at least 50%
-  // visible for 250ms. This same stream covers both normal Feed places and
-  // Decision Session cards, which previously logged all three as soon as
-  // their data arrived even when the user never saw them.
+    const holeInWall = uniquePlaces(
+      filteredPlaces.filter((place) => getTierForPlace(place).key === 'gem'),
+      excluded,
+    );
+    if (holeInWall.length > 0) {
+      sections.push({
+        reason: 'hole_in_wall',
+        title: 'HOLE-IN-THE-WALL',
+        subtitle: 'Strong local signal without turning popularity into the ranking.',
+        places: holeInWall,
+      });
+    }
+
+    const savedCandidates = saves.filter((saved) => !saved.visited);
+    const fromCraves = uniquePlaces(savedCandidates, excluded);
+    if (fromCraves.length > 0) {
+      sections.push({
+        reason: 'from_craves',
+        title: 'FROM YOUR CRAVES',
+        subtitle: 'Places you already wanted to try that still deserve a decision.',
+        places: fromCraves,
+      });
+    }
+
+    return sections;
+  }, [decisionCards, filteredPlaces, recommendations, saves, user]);
+
+  const rows = useMemo<FeedRow[]>(() => {
+    const result: FeedRow[] = decisionCards.map((card, position) => ({
+      kind: 'decision',
+      card,
+      position,
+    }));
+
+    let discoveryPosition = 0;
+    for (const section of discoverySections) {
+      result.push({ kind: 'discovery_header', section });
+      for (const place of section.places) {
+        result.push({
+          kind: 'place',
+          place,
+          reason: section.reason,
+          position: discoveryPosition++,
+        });
+      }
+    }
+    return result;
+  }, [decisionCards, discoverySections]);
+
   const exposedKeysRef = useRef<Set<string>>(new Set());
   useEffect(() => {
     exposedKeysRef.current = new Set();
@@ -247,14 +287,14 @@ export default function FeedScreen() {
       const row = token.item;
 
       if (row.kind === 'place') {
-        const exposureKey = `feed:${row.place.id}`;
+        const exposureKey = `feed:${row.reason}:${row.place.id}`;
         if (exposedKeysRef.current.has(exposureKey)) continue;
         exposedKeysRef.current.add(exposureKey);
         events.push({
           surface: 'feed',
           event_type: 'impression',
           place_id: row.place.id,
-          position: renderedPlacePositions.get(row.place.id) ?? null,
+          position: row.position,
           rank_percentile: row.place.rank_percentile,
           city_id: selectedCity?.id ?? null,
         });
@@ -284,6 +324,35 @@ export default function FeedScreen() {
     handleViewableItemsChangedRef.current(info);
   }).current;
 
+  const handleSave = async (
+    place: PlaceOut,
+    surface: 'feed' | 'decision_session',
+    position: number,
+  ) => {
+    if (!user) {
+      setAuthVisible(true);
+      return;
+    }
+
+    const saveMeta = {
+      surface,
+      position,
+      rank_percentile: place.rank_percentile,
+      city_id: selectedCity?.id ?? null,
+    };
+
+    if (isSaved(place.id)) {
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+      const err = await removeSave(place.id, user.id, saveMeta);
+      toast(err ?? 'Removed from Saves');
+      return;
+    }
+
+    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    const err = await addSave(place, user.id, saveMeta);
+    toast(err ?? 'Saved');
+  };
+
   const renderDecisionCard = (card: DecisionSessionCard, position: number) => (
     <View style={styles.rowSpacer}>
       <PlaceCard
@@ -303,30 +372,33 @@ export default function FeedScreen() {
           router.push(`/place/${card.place.id}`);
         }}
         onPressIn={() => prefetchPlace(card.place.id)}
-        onSave={async () => {
-          if (!user) {
-            setAuthVisible(true);
-            return;
-          }
-          const saveMeta = {
-            surface: 'decision_session' as const,
-            position,
-            rank_percentile: card.place.rank_percentile,
-            city_id: selectedCity?.id ?? null,
-          };
-          if (isSaved(card.place.id)) {
-            void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-            const err = await removeSave(card.place.id, user.id, saveMeta);
-            toast(err ?? 'Removed from Saves');
-          } else {
-            void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-            const err = await addSave(card.place, user.id, saveMeta);
-            toast(err ?? 'Saved');
-          }
-        }}
+        onSave={() => handleSave(card.place, 'decision_session', position)}
         saved={isSaved(card.place.id)}
         style={styles.decisionCard}
       />
+    </View>
+  );
+
+  const decisionHeader = (
+    <View style={styles.decisionSectionHeader}>
+      <Text style={styles.decisionEyebrow}>DECISION SESSION</Text>
+      <Text style={styles.decisionHeading}>What should I eat?</Text>
+      <Text style={styles.decisionSubheading}>
+        {decisionSession.data?.degraded
+          ? 'Confidence is lower right now, so these are the best answers CRAVE can support.'
+          : 'Three distinct answers, kept small so you can actually decide.'}
+      </Text>
+      {decisionSession.isError ? (
+        <TouchableOpacity
+          style={styles.decisionRetry}
+          onPress={() => void decisionSession.refetch()}
+          accessibilityRole="button"
+          accessibilityLabel="Retry Decision Session"
+        >
+          <Ionicons name="refresh" size={16} color={Colors.text} />
+          <Text style={styles.decisionRetryText}>Decision Session unavailable. Retry</Text>
+        </TouchableOpacity>
+      ) : null}
     </View>
   );
 
@@ -341,7 +413,7 @@ export default function FeedScreen() {
             void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
             setFilterVisible(true);
           }}
-          accessibilityLabel="Filter places"
+          accessibilityLabel="Filter discovery places"
           accessibilityRole="button"
         >
           <Ionicons
@@ -353,61 +425,45 @@ export default function FeedScreen() {
       </View>
 
       <CitySelectorStrip />
-      {SHOW_FEED_DISCOVERY_STRIPS && user ? (
-        <TrendingStrip
-          places={recommendations}
-          heading="RECOMMENDED FOR YOU"
-          onPress={(id) => router.push(`/place/${id}`)}
-          onPressIn={prefetchPlace}
-        />
-      ) : null}
-      {SHOW_FEED_DISCOVERY_STRIPS ? (
-        <TrendingStrip
-          places={trending}
-          onPress={(id) => router.push(`/place/${id}`)}
-          onPressIn={prefetchPlace}
-        />
-      ) : null}
 
       {!initialLoaded ? (
         <View style={styles.skeletonWrap}><SkeletonFeed count={4} /></View>
       ) : (
         <Animated.View style={[{ flex: 1 }, { opacity: feedOpacity }]}>
-          {isError ? (
+          {isError && decisionCards.length === 0 ? (
             <ErrorState message="Couldn't load places" onRetry={() => void refetch()} />
           ) : rows.length === 0 ? (
-            <EmptyState
-              icon="search-outline"
-              title="Nothing here yet"
-              body={selectedCity ? 'Try selecting a different city' : 'No places found'}
-            />
+            <View style={styles.emptyWrap}>
+              {decisionHeader}
+              <EmptyState
+                icon="search-outline"
+                title="No confident answer yet"
+                body={selectedCity
+                  ? 'Try a different city or use Search to tell CRAVE what you want.'
+                  : 'Choose an area or use Search to tell CRAVE what you want.'}
+              />
+            </View>
           ) : (
             <FlashList
               data={rows}
-              keyExtractor={(row, i) => {
-                if (row.kind === 'place') return row.place.id;
+              keyExtractor={(row) => {
+                if (row.kind === 'place') return `discovery-${row.reason}-${row.place.id}`;
                 if (row.kind === 'decision') return `decision-${row.card.role}-${row.card.place.id}`;
-                return `header-${row.tierKey}-${i}`;
+                return `discovery-header-${row.section.reason}`;
               }}
               getItemType={(row) => row.kind}
               renderItem={({ item: row }) => {
-                if (row.kind === 'decision') {
-                  return renderDecisionCard(row.card, row.position);
-                }
-                if (row.kind === 'header') {
-                  const tier = TIERS[row.tierKey];
+                if (row.kind === 'decision') return renderDecisionCard(row.card, row.position);
+
+                if (row.kind === 'discovery_header') {
                   return (
-                    <View style={styles.rowSpacer}>
-                      <SectionHeader
-                        label={tier.sectionLabel}
-                        subtext={tier.sectionSubtext}
-                        count={row.count}
-                      />
+                    <View style={styles.discoveryHeader}>
+                      <Text style={styles.discoveryHeading}>{row.section.title}</Text>
+                      <Text style={styles.discoverySubheading}>{row.section.subtitle}</Text>
                     </View>
                   );
                 }
 
-                const position = renderedPlacePositions.get(row.place.id) ?? null;
                 return (
                   <View style={styles.rowSpacer}>
                     <PlaceCard
@@ -417,34 +473,14 @@ export default function FeedScreen() {
                           surface: 'feed',
                           event_type: 'click',
                           place_id: row.place.id,
-                          position,
+                          position: row.position,
                           rank_percentile: row.place.rank_percentile,
                           city_id: selectedCity?.id ?? null,
                         });
                         router.push(`/place/${row.place.id}`);
                       }}
                       onPressIn={() => prefetchPlace(row.place.id)}
-                      onSave={async () => {
-                        if (!user) {
-                          setAuthVisible(true);
-                          return;
-                        }
-                        const saveMeta = {
-                          surface: 'feed' as const,
-                          position,
-                          rank_percentile: row.place.rank_percentile,
-                          city_id: selectedCity?.id ?? null,
-                        };
-                        if (isSaved(row.place.id)) {
-                          void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-                          const err = await removeSave(row.place.id, user.id, saveMeta);
-                          toast(err ?? 'Removed from Saves');
-                        } else {
-                          void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-                          const err = await addSave(row.place, user.id, saveMeta);
-                          toast(err ?? 'Saved');
-                        }
-                      }}
+                      onSave={() => handleSave(row.place, 'feed', row.position)}
                       saved={isSaved(row.place.id)}
                     />
                   </View>
@@ -462,16 +498,7 @@ export default function FeedScreen() {
                   tintColor={Colors.primary}
                 />
               }
-              ListHeaderComponent={
-                decisionCards.length > 0 ? (
-                  <View style={styles.decisionSectionHeader}>
-                    <Text style={styles.decisionHeading}>DECIDE NOW</Text>
-                    <Text style={styles.decisionSubheading}>
-                      Three different ways to answer what should I eat?
-                    </Text>
-                  </View>
-                ) : null
-              }
+              ListHeaderComponent={decisionHeader}
               ListFooterComponent={
                 isFetchingNextPage
                   ? <ActivityIndicator color={Colors.primary} style={styles.listFooter} />
@@ -502,20 +529,60 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
   list: { paddingHorizontal: Spacing.md, paddingBottom: Spacing.xxl },
   rowSpacer: { marginBottom: Spacing.md },
-  decisionSectionHeader: { paddingTop: Spacing.sm },
+  emptyWrap: { flex: 1, paddingHorizontal: Spacing.md },
+  decisionSectionHeader: {
+    paddingTop: Spacing.md,
+    paddingBottom: Spacing.lg,
+  },
+  decisionEyebrow: {
+    color: Colors.primary,
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 1.6,
+    marginBottom: Spacing.xs,
+  },
   decisionHeading: {
     color: Colors.text,
-    fontSize: 16,
+    fontSize: 28,
     fontWeight: '900',
-    letterSpacing: 1.5,
+    letterSpacing: -0.5,
     marginBottom: Spacing.xs,
   },
   decisionSubheading: {
     color: Colors.textSecondary,
+    fontSize: 14,
+    lineHeight: 20,
+    maxWidth: 420,
+  },
+  decisionRetry: {
+    minHeight: 44,
+    marginTop: Spacing.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+  },
+  decisionRetryText: {
+    color: Colors.text,
     fontSize: 13,
-    marginBottom: Spacing.md,
+    fontWeight: '700',
   },
   decisionCard: { marginBottom: 0 },
+  discoveryHeader: {
+    paddingTop: Spacing.lg,
+    paddingBottom: Spacing.sm,
+  },
+  discoveryHeading: {
+    color: Colors.text,
+    fontSize: 15,
+    fontWeight: '900',
+    letterSpacing: 1.2,
+  },
+  discoverySubheading: {
+    color: Colors.textSecondary,
+    fontSize: 13,
+    lineHeight: 18,
+    marginTop: 3,
+  },
   listFooter: { margin: Spacing.lg },
   skeletonWrap: { flex: 1, paddingHorizontal: 12, paddingTop: 10 },
   header: {
