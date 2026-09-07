@@ -93,7 +93,7 @@ describe('ProfileScreen', () => {
     const { findByText, findByLabelText, queryByText } = render(<ProfileScreen />);
     expect(await findByText('Alice')).toBeTruthy();
     expect(await findByText('@alice')).toBeTruthy();
-    expect(await findByText(/2 places ranked/)).toBeTruthy();
+    expect(await findByText("2 places ranked — you're building a taste")).toBeTruthy();
     expect(await findByText(/Rank 13 more places/)).toBeTruthy();
     expect(await findByLabelText('Open Rank')).toBeTruthy();
     expect(queryByText('Your list')).toBeNull();
