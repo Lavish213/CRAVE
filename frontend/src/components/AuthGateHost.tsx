@@ -1,5 +1,4 @@
-import React, { useCallback } from 'react';
-import { AuthSheet } from './AuthSheet';
+import React, { Suspense, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import { useToast } from '../hooks/useToast';
 import {
@@ -8,6 +7,14 @@ import {
   useAuthGateStore,
   type AuthGateReason,
 } from '../stores/authGateStore';
+
+// AuthSheet constructs OAuth helpers from Expo modules. Keep that dependency
+// out of the root-layout import path until the gate is actually visible; this
+// also avoids paying the OAuth module cost on ordinary app startup.
+const LazyAuthSheet = React.lazy(async () => {
+  const module = await import('./AuthSheet');
+  return { default: module.AuthSheet };
+});
 
 type AuthSheetReason = 'save' | 'craves' | 'profile' | 'add-spot' | 'default';
 
@@ -49,13 +56,17 @@ export function AuthGateHost() {
     }
   }, [toast]);
 
+  if (!visible) return null;
+
   return (
-    <AuthSheet
-      visible={visible}
-      reason={authSheetReason(pending?.reason)}
-      onClose={() => {
-        void handleClose();
-      }}
-    />
+    <Suspense fallback={null}>
+      <LazyAuthSheet
+        visible
+        reason={authSheetReason(pending?.reason)}
+        onClose={() => {
+          void handleClose();
+        }}
+      />
+    </Suspense>
   );
 }
