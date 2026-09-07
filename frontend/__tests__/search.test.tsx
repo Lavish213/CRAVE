@@ -124,16 +124,11 @@ describe('SearchScreen — debounce, clear, and retry', () => {
     act(() => {
       getByLabelText('Search input').props.onChangeText('pizza');
     });
-    // Clear before the 350ms debounce timer fires -- previously left that
-    // timer alive, so it would call setDebouncedQuery('pizza') anyway and
-    // resurrect the just-cleared query.
     fireEvent.press(getByLabelText('Clear search'));
-
-    // Give the (would-be) resurrected timer a chance to fire.
     await new Promise((resolve) => setTimeout(resolve, 500));
 
     expect(mockedSearchPlaces).not.toHaveBeenCalled();
-    expect(queryByLabelText('Clear search')).toBeNull(); // query box is empty again
+    expect(queryByLabelText('Clear search')).toBeNull();
   });
 
   it('retry button actually refetches the failed query, not a no-op', async () => {
@@ -169,11 +164,11 @@ describe('SearchScreen — Wave 5 intent and map handoff', () => {
 
     act(() => getByLabelText('Search input').props.onChangeText('ramen'));
     await waitFor(() => expect(mockedSearchPlaces).toHaveBeenCalled());
-    expect(mockedSearchPlaces.mock.calls[0][0].page_size).toBe(12);
+    expect(mockedSearchPlaces.mock.calls[0][0].page_size).toBe(8);
 
     fireEvent.press(await findByText('Show more'));
     await waitFor(() => expect(mockedSearchPlaces).toHaveBeenCalledTimes(2));
-    expect(mockedSearchPlaces.mock.calls[1][0].page_size).toBe(24);
+    expect(mockedSearchPlaces.mock.calls[1][0].page_size).toBe(16);
   });
 
   it('hands the exact displayed result order to Map without reranking', async () => {
@@ -223,8 +218,6 @@ describe('SearchScreen — Recommendation Ledger instrumentation', () => {
       input.props.onChangeText('pizza');
     });
 
-    // Real 350ms debounce timer -- waitFor's default timeout comfortably
-    // covers it without needing fake timers.
     await waitFor(() => expect(mockedSearchPlaces).toHaveBeenCalled(), { timeout: 2000 });
     await waitFor(() => expect(mockedLogMany).toHaveBeenCalledTimes(1));
 
@@ -239,9 +232,6 @@ describe('SearchScreen — Recommendation Ledger instrumentation', () => {
   });
 
   it('does not re-log a result already exposed for the current query when viewability fires again', async () => {
-    // Proves the exposure-tracking Set actually dedupes -- a real
-    // viewability callback fires repeatedly as items scroll in and out,
-    // not just once.
     const results = [makePlace('p0')];
     mockedSearchPlaces.mockResolvedValue(makeSearchResult(results));
     const { getByLabelText, UNSAFE_getAllByType } = renderScreen();
@@ -317,21 +307,15 @@ describe('SearchScreen — Recommendation Ledger instrumentation', () => {
 
     fireEvent.press(getByLabelText('Filter results'));
     fireEvent.press(getByLabelText('Thai'));
-    // Modal is real (not mocked) -- both matching rows render, p0 (Italian) doesn't.
     expect(getByLabelText(/^p1,/)).toBeTruthy();
     expect(getByLabelText(/^p2,/)).toBeTruthy();
     expect(() => getByLabelText(/^p0,/)).toThrow();
 
     fireEvent.press(getByLabelText(/^p1,/));
     expect(mockedLogOne).toHaveBeenCalledWith(
-      // p1 is index 1 in the real `results`, even though it's the first
-      // row in the filtered (Thai-only) view -- a click must tie back to
-      // the position actually logged in the impression batch above.
       expect.objectContaining({ place_id: 'p1', position: 1 }),
     );
 
-    // Narrow further to something with zero matches -- neither Thai place
-    // (p1=$, p2=$$$) has price_tier 2.
     fireEvent.press(getByLabelText('Price tier $$'));
     await waitFor(() => expect(getByText('No matches for these filters')).toBeTruthy());
 
