@@ -10,17 +10,20 @@ import { usePrefetchPlace } from '../hooks/usePrefetchPlace';
 import { searchPlaces } from '../api/search';
 import { useLocationStatus } from '../hooks/useLocation';
 import { PlaceOut } from '../api/places';
+import type { SearchInterpretation } from '../api/search';
 import { getTierForPlace } from '../utils/scoring';
 import { logRecommendationEvent, logRecommendationEvents } from '../utils/recommendationEventQueue';
 import { Colors, Radius, Spacing } from '../constants/colors';
 import { PlaceCardCompact } from '../components/PlaceCardCompact';
 import type { SearchReasonRole } from '../components/DecisionStrip';
+import { CitySelectorStrip } from '../components/CitySelectorStrip';
 import { SkeletonRowList } from '../components/SkeletonCard';
 import { ErrorState } from '../components/ErrorState';
 import { EmptyState } from '../components/EmptyState';
 import { FilterSheet, FilterState, EMPTY_FILTERS, hasActiveFilters } from '../components/FilterSheet';
 import { useAuthStore } from '../stores/authStore';
 import { useCravesStore } from '../stores/cravesStore';
+import { useRecentSearchesStore } from '../stores/recentSearchesStore';
 import { fetchMyRankings } from '../api/social';
 import { SearchScope, useDiscoveryContextStore } from '../stores/discoveryContextStore';
 
@@ -55,6 +58,82 @@ function searchReasonForResult(
   return 'worth_exploring';
 }
 
+/**
+ * Zero-state's time-relevant intent shortcut (Search Screen Contract §5/§6).
+ * Deliberately a plain time-of-day rule, not personalized or inferred from
+ * any user data -- "the smallest honest implementation," not invented
+ * backend intelligence. Each phrase is real interpretable intent (e.g.
+ * "Quick lunch" matches the interpreter's own `quick` context phrase), not
+ * decorative copy.
+ */
+export function intentShortcutForHour(hour: number): string {
+  if (hour >= 5 && hour < 11) return 'Breakfast nearby';
+  if (hour >= 11 && hour < 15) return 'Quick lunch';
+  if (hour >= 15 && hour < 17) return 'Afternoon coffee';
+  if (hour >= 17 && hour < 21) return 'Dinner tonight';
+  return 'Late-night eats';
+}
+
+interface ZeroResultInfo {
+  title: string;
+  body: string;
+  /** Present only when a specific, safe-to-relax constraint exists to
+   * offer removing. Absent (not a fabricated fallback) when none does. */
+  relaxKey?: string;
+  relaxLabel?: string;
+}
+
+/**
+ * Zero-result relaxation offer (Search Screen Contract §11). Names the
+ * smallest specific relaxation the interpreted query can actually justify
+ * -- never a generic "try broadening your search," and never a dietary/
+ * allergy hard constraint (contract §9/§16). When no safe relaxation
+ * exists, says so directly instead of implying one does.
+ */
+export function zeroResultInfo(
+  interpretation: SearchInterpretation | undefined,
+  priceWasRelaxed: boolean,
+): ZeroResultInfo {
+  if (!interpretation) {
+    return { title: 'No results', body: 'Nothing matched right now.' };
+  }
+
+  if (interpretation.unsupported_hard_constraints.length > 0) {
+    return {
+      title: 'No results shown',
+      body: "We can't verify this safely from what we know yet, so nothing is shown here -- that isn't something a different search would fix.",
+    };
+  }
+
+  // required_categories are always the dietary/allergy phrases the
+  // interpreter also records as hard_constraints (see query_interpreter.py)
+  // -- never offered here. context entries (near_me/date_night/open_late/
+  // quick) and an unrelaxed price tier are the only genuinely soft signals.
+  const hardSet = new Set(interpretation.hard_constraints);
+  const candidates: { key: string; label: string }[] = [];
+  if (interpretation.price_tier != null && !priceWasRelaxed) {
+    candidates.push({ key: 'price', label: `the ${'$'.repeat(interpretation.price_tier)} price filter` });
+  }
+  interpretation.context.forEach((key) => {
+    if (!hardSet.has(key)) candidates.push({ key, label: key.replace(/_/g, ' ') });
+  });
+
+  if (candidates.length > 0) {
+    const [target] = candidates;
+    return {
+      title: 'No results with these filters',
+      body: `No matches with ${target.label}.`,
+      relaxKey: target.key,
+      relaxLabel: target.label,
+    };
+  }
+
+  return {
+    title: 'No results',
+    body: `Nothing matched "${interpretation.lookup_query}" right now.`,
+  };
+}
+
 const VIEWABILITY_CONFIG = { itemVisiblePercentThreshold: 50, minimumViewTime: 250 };
 const DEFAULT_RESULT_LIMIT = 8;
 const RESULT_STEP = 8;
@@ -82,6 +161,9 @@ export default function SearchScreen() {
   const setSearchMapHandoff = useDiscoveryContextStore((state) => state.setSearchMapHandoff);
   const locationState = useLocationStatus();
   const userLocation = locationState.coords;
+  const recentQueries = useRecentSearchesStore((state) => state.queries);
+  const addRecentQuery = useRecentSearchesStore((state) => state.addQuery);
+  const intentShortcut = useMemo(() => intentShortcutForHour(new Date().getHours()), []);
 
   const [query, setQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
@@ -203,6 +285,19 @@ export default function SearchScreen() {
     handleChange(query.replace(pattern, ' ').replace(/\s+/g, ' ').trim());
   };
 
+  /** Zero-state shortcut tap (recent search or the time-relevant intent
+   * shortcut) -- a deliberate, explicit search, so it searches immediately
+   * rather than waiting out the normal debounce, and it's recorded like any
+   * other explicit search. */
+  const applyShortcut = (text: string) => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    searchSessionIdRef.current = makeSearchSessionId();
+    setQuery(text);
+    setSubmittedQuery(null);
+    setDebouncedQuery(text);
+    addRecentQuery(text);
+  };
+
   const priceWasRelaxed = Boolean(searchData?.relaxed_constraints.includes('price'));
 
   const showZeroState = query.length === 0 && !searchQuery.isLoading;
@@ -227,8 +322,14 @@ export default function SearchScreen() {
               onSubmitEditing={() => {
                 const submitted = query.trim();
                 if (!submitted) return;
+                // A pending debounce from onChangeText must not fire after
+                // this explicit submit already set debouncedQuery -- an
+                // identical late setDebouncedQuery is at best redundant,
+                // and firing after unmount is a real dangling-update bug.
+                if (debounceRef.current) clearTimeout(debounceRef.current);
                 setSubmittedQuery(submitted);
                 setDebouncedQuery(submitted);
+                addRecentQuery(submitted);
               }}
               autoCorrect={false}
               accessibilityLabel="Search input"
@@ -302,14 +403,55 @@ export default function SearchScreen() {
       {searchQuery.isError && !searchQuery.isLoading && <ErrorState message="Couldn't search right now." onRetry={() => searchQuery.refetch()} />}
 
       {showZeroState && (
-        <EmptyState
-          icon="search-outline"
-          title="What are you craving?"
-          body="Search a place, cuisine, dish, or intent like “quick ramen nearby.”"
-        />
+        <View style={styles.zeroState}>
+          <Text style={styles.zeroStateTitle}>What are you craving?</Text>
+          <TouchableOpacity
+            style={styles.shortcutChip}
+            onPress={() => applyShortcut(intentShortcut)}
+            accessibilityRole="button"
+            accessibilityLabel={`Search ${intentShortcut}`}
+          >
+            <Ionicons name="time-outline" size={14} color={Colors.primary} />
+            <Text style={styles.shortcutText}>{intentShortcut}</Text>
+          </TouchableOpacity>
+
+          {recentQueries.length > 0 && (
+            <>
+              <Text style={styles.zeroStateSectionLabel}>RECENT SEARCHES</Text>
+              <View style={styles.shortcutRow}>
+                {recentQueries.map((recent) => (
+                  <TouchableOpacity
+                    key={recent}
+                    style={styles.shortcutChip}
+                    onPress={() => applyShortcut(recent)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Search ${recent} again`}
+                  >
+                    <Ionicons name="time-outline" size={14} color={Colors.textSecondary} />
+                    <Text style={styles.shortcutText}>{recent}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </>
+          )}
+
+          <Text style={styles.zeroStateSectionLabel}>CITY</Text>
+          <CitySelectorStrip />
+        </View>
       )}
       {showBelowThreshold && <View style={styles.loadingRow}><Text style={styles.hintText}>Keep typing to search…</Text></View>}
-      {showNoResults && <EmptyState icon="search-outline" title="No results" body="Nothing matched. Try broader terms." />}
+      {showNoResults && (() => {
+        const info = zeroResultInfo(searchData?.interpretation, priceWasRelaxed);
+        return (
+          <EmptyState
+            icon="search-outline"
+            title={info.title}
+            body={info.body}
+            ctaLabel={info.relaxKey ? `Remove ${info.relaxLabel}` : undefined}
+            onCta={info.relaxKey ? () => removeInterpretedConstraint(info.relaxKey!) : undefined}
+          />
+        );
+      })()}
 
       {rankedScopeLoading && <View style={styles.list}><SkeletonRowList count={4} /></View>}
       {rankedScopeError && (
@@ -410,6 +552,12 @@ const styles = StyleSheet.create({
   rowSpacer: { marginBottom: Spacing.sm },
   loadingRow: { paddingVertical: 20, alignItems: 'center', gap: Spacing.sm },
   hintText: { color: Colors.textSecondary, fontSize: 13 },
+  zeroState: { paddingHorizontal: Spacing.md, paddingTop: Spacing.sm, gap: Spacing.xs },
+  zeroStateTitle: { color: Colors.text, fontSize: 17, fontWeight: '800', marginBottom: Spacing.xs },
+  zeroStateSectionLabel: { color: Colors.textSecondary, fontSize: 11, fontWeight: '700', textTransform: 'uppercase', marginTop: Spacing.sm, marginBottom: Spacing.xs },
+  shortcutRow: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.xs },
+  shortcutChip: { flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 40, paddingHorizontal: Spacing.md, borderRadius: Radius.full, borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.surface, alignSelf: 'flex-start' },
+  shortcutText: { color: Colors.text, fontSize: 13, fontWeight: '600' },
   interpretationPanel: { marginHorizontal: Spacing.md, marginBottom: Spacing.xs, padding: Spacing.sm, backgroundColor: Colors.surface, borderRadius: Radius.md, borderWidth: 1, borderColor: Colors.border },
   interpretationTitle: { color: Colors.primary, fontSize: 10, fontWeight: '800', letterSpacing: 1.2 },
   interpretationQuery: { color: Colors.text, fontSize: 13, fontWeight: '700', marginTop: 4 },
