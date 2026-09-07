@@ -77,18 +77,24 @@ describe('RankHomeScreen', () => {
     expect(mockPush).toHaveBeenCalledWith('/rank/queue-1');
   });
 
-  it('excludes disliked rows and hides exact position/score in the default Rank Home view', async () => {
+  it('derives Elite/Love/Good deterministically and excludes disliked rows', async () => {
     mockedRankings.mockResolvedValue([
-      { place_id: 'liked-1', name: 'Loved Place', tier: 'liked', rank_score: 9.4, note: null, tags: null, visited_at: null, primary_image_url: null, city_id: 'city-1' },
-      { place_id: 'fine-1', name: 'Fine Place', tier: 'fine', rank_score: 5.1, note: null, tags: null, visited_at: null, primary_image_url: null, city_id: 'city-1' },
+      { place_id: 'elite-1', name: 'Elite Place', tier: 'liked', rank_score: 8.31, note: null, tags: null, visited_at: null, primary_image_url: null, city_id: 'city-1' },
+      { place_id: 'love-1', name: 'Love Place', tier: 'liked', rank_score: 8.3, note: null, tags: null, visited_at: null, primary_image_url: null, city_id: 'city-1' },
+      { place_id: 'good-1', name: 'Good Place', tier: 'fine', rank_score: 5.1, note: null, tags: null, visited_at: null, primary_image_url: null, city_id: 'city-1' },
       { place_id: 'nope-1', name: 'Not For Me Place', tier: 'disliked', rank_score: 1.1, note: null, tags: null, visited_at: null, primary_image_url: null, city_id: 'city-1' },
     ]);
 
     const { findByText, queryByText } = renderScreen();
-    expect(await findByText('Loved Place')).toBeTruthy();
-    expect(await findByText('Fine Place')).toBeTruthy();
+    expect(await findByText('Elite')).toBeTruthy();
+    expect(await findByText('Love')).toBeTruthy();
+    expect(await findByText('Good')).toBeTruthy();
+    expect(await findByText('Elite Place')).toBeTruthy();
+    expect(await findByText('Love Place')).toBeTruthy();
+    expect(await findByText('Good Place')).toBeTruthy();
     expect(queryByText('Not For Me Place')).toBeNull();
-    expect(queryByText('9.4')).toBeNull();
+    expect(queryByText('8.31')).toBeNull();
+    expect(queryByText('8.3')).toBeNull();
     expect(queryByText('5.1')).toBeNull();
   });
 
