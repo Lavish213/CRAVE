@@ -7,6 +7,13 @@
 intelligence system should work, how decisions are made, and what is
 banned.
 
+**Partially superseded (2026-09-07):** see
+`CRAVE_CANON_RECONCILIATION_MAP.md` for the specific sections below
+whose navigation structure, recommendation-role naming, or cold-start
+calibration scope have been explicitly revised by later product
+decisions. Everywhere the map doesn't say otherwise, this document
+remains the authoritative base.
+
 ------------------------------------------------------------------------
 
 # 1. NORTH STAR
@@ -449,6 +456,11 @@ Useful candidate roles:
 
 These roles are more decision-friendly than a homogeneous list.
 
+**Naming superseded (2026-09-07):** the shipped API keeps `best_fit`
+as the role identifier; the user-facing/doctrine label is now **Best
+Fit**, not "Best Tonight." Canonical trio: Best Fit / Safe Bet /
+Wildcard. See `CRAVE_CANON_RECONCILIATION_MAP.md` entry #2.
+
 ------------------------------------------------------------------------
 
 # 14. RISK + CONFIDENCE
@@ -583,6 +595,14 @@ preference evidence.
 
 Do not make calibration feel like paperwork.
 
+**Partially superseded (2026-09-07):** the *price preference* and
+*travel willingness* items above are no longer directly calibrated at
+onboarding — both are learned purely behaviorally, since self-report is
+unreliable for each. The rest of this list (food comparisons,
+cuisine/dish winners, adventurous-vs-familiar starting position,
+ranking known restaurants) is unaffected. See
+`CRAVE_CANON_RECONCILIATION_MAP.md` entry #3.
+
 ------------------------------------------------------------------------
 
 # 19. CRAVES = PERSONAL FOOD MEMORY
@@ -683,6 +703,17 @@ where appropriate.
 ------------------------------------------------------------------------
 
 # 22. SCREEN SYSTEM
+
+**Navigation structure superseded (2026-09-07):** the five-screen
+system below (Feed / Map / Search / Craves / You) is no longer the
+canonical navigation architecture. Canon is now **Feed / Search /
+Craves / Rank / Profile** — Map is contextual-entry only (no
+top-level tab), and Rank is a first-class destination in its own
+right, not a sub-panel of You/Profile. The screen-purpose content
+below (what Feed/Search/Craves do, and Map's spatial-support
+principles in §23) is still valid and still governs those screens'
+behavior — only the tab assignment changes. See
+`CRAVE_CANON_RECONCILIATION_MAP.md` entry #1.
 
 ## 22.1 Feed --- "What should I eat?"
 
@@ -881,6 +912,12 @@ dominate early onboarding.
 
 The screen should teach users why ranking improves recommendations
 without sounding like homework.
+
+**Superseded (2026-09-07):** "rankings" above is no longer a sub-panel
+of this screen — Rank is its own top-level destination (see
+`CRAVE_CANON_RECONCILIATION_MAP.md` entry #1). This screen (Profile in
+current canon) still owns taste dimensions, friends/similarity,
+profile controls, corrections, and privacy/memory controls.
 
 ------------------------------------------------------------------------
 
@@ -1354,6 +1391,12 @@ These are not five disconnected products.
 
 All should use shared place identity, shared memory, shared discovery
 semantics, and shared ranking provenance.
+
+**Superseded (2026-09-07):** this section's five-way split (Feed/Map/
+Search/Craves/You) reflects the prior navigation architecture. Current
+canon is Feed/Search/Craves/Rank/Profile, with Map as a shared spatial
+projection entered contextually rather than a sixth/parallel top-level
+product. See `CRAVE_CANON_RECONCILIATION_MAP.md` entry #1.
 
 ------------------------------------------------------------------------
 

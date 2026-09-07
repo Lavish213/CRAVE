@@ -9,6 +9,12 @@ context, and outcomes into trustworthy food decisions.\
 an LLM that picks restaurants. It is a staged decision system with
 auditable evidence and independently evolvable components.
 
+**Partially superseded (2026-09-07):** see
+`CRAVE_CANON_RECONCILIATION_MAP.md` entry #2 — the recommendation-role
+label "Best Tonight" used in §4 and §14 below is superseded by "Best
+Fit" (the shipped API identifier `best_fit` is unchanged). Everything
+else in this document remains authoritative.
+
 ------------------------------------------------------------------------
 
 ## 1. Product Objective
@@ -298,6 +304,10 @@ TASTE / CONTEXT LEARNING
     |
     +--------------------> NEXT DECISION
 ```
+
+**Naming superseded (2026-09-07):** "BEST TONIGHT" in the diagram above
+is "BEST FIT" in current canon (API identifier `best_fit` unchanged).
+See `CRAVE_CANON_RECONCILIATION_MAP.md` entry #2.
 
 ------------------------------------------------------------------------
 
@@ -656,6 +666,10 @@ presentation.
 ------------------------------------------------------------------------
 
 ## 14. Safe Bet / Best Tonight / Wildcard
+
+**Naming superseded (2026-09-07):** "Best Tonight" throughout this
+section is "Best Fit" in current canon (API identifier `best_fit`
+unchanged). See `CRAVE_CANON_RECONCILIATION_MAP.md` entry #2.
 
 These are recommendation roles, not fixed rank positions.
 
