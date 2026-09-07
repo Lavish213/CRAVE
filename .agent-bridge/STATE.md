@@ -163,7 +163,13 @@ treating this as fully released, not just merged.
   exactly one bounded item in this file per `PROTOCOL.md` before running
   anything. Item 6 in that handoff (B1 steps 2/4) additionally needs its
   own scoping pass before it can be claimed at all — it has no cohort,
-  command, or rollback plan yet, unlike items 1/2/5.
+  command, or rollback plan yet, unlike items 1/2/5. A fuller,
+  self-contained execution version of this same plan -- exact commands,
+  operating rules, and untried source avenues beyond the six items
+  (municipal permit datasets, AllThePlaces, Foursquare gap-fill) -- now
+  lives in `docs/CLAUDE_EXECUTION_BRIEF_POPULATION_COVERAGE_2026-09-07.md`,
+  written for whichever Claude session (Codex or otherwise) first has
+  verified Railway/Supabase/Postgres access.
 
 ## Next action
 
