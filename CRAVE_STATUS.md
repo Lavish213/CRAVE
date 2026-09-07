@@ -27,7 +27,7 @@ starting a new status file.
 - `CRAVE_FRONTEND_GUIDE_FOR_AI_EDITORS.md` — **local-only, gitignored,
   never commit.** House rules for AI editors working in this frontend.
 
-Last updated: 2026-09-02 (Expo SDK 54→55 upgrade, code-level).
+Last updated: 2026-09-07 (Wave 5 Search + Contextual Map implementation).
 
 ---
 
@@ -42,7 +42,7 @@ Zustand, react-query, EAS builds. Auth: Supabase (JWKS, ES256).
 ## Test status
 
 Backend: **1018 passed, 2 skipped** (`cd backend && python -m pytest -q`).
-Frontend: **331 passed**, 34 suites (`cd frontend && npx jest`), `tsc
+Frontend: **405 passed**, 39 suites (`cd frontend && npx jest`), `tsc
 --noEmit` clean. An E2E Playwright smoke suite also exists (`frontend/e2e/`,
 3 journeys) — not part of the Jest count above, run separately via
 `npx playwright test`; see `frontend/e2e/README.md` for required env vars.
@@ -281,7 +281,13 @@ administrator bypass retained for the agreed small-fix lane.
   point beyond a small chip on Place Detail —
   by design (E3), not an oversight; see "Design invariants — don't relitigate these"
   below before proposing a Feed action or a video tab.
-- **Search is keyword matching**, no typo tolerance or intent parsing.
+- **Search now has a conservative intent layer**: typo-tolerant lookup,
+  editable price/dietary/context interpretation, hard-filtered supported
+  dietary constraints, explicit uncertainty for unsupported semantics,
+  bounded Show More, and direct result-set handoff to Map. Map preserves the
+  Search order and parent session, and panning requires an explicit **Search
+  this area** action. Personalized result labels remain gated on real
+  user-specific ranking evidence; see `docs/WAVE_5_SEARCH_CONTEXTUAL_MAP.md`.
 - **Category taxonomy is now real** (cuisine/venue/dietary/ownership/
   occasion/recognition, "The Pass" E8) and the Filter UI groups by it.
   What's still open: Option B (each type as its own persistent filter

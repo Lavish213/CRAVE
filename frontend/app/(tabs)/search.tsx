@@ -25,6 +25,10 @@ import { SkeletonRowList } from '../../src/components/SkeletonCard';
 import { ErrorState } from '../../src/components/ErrorState';
 import { EmptyState } from '../../src/components/EmptyState';
 import { FilterSheet, FilterState, EMPTY_FILTERS, hasActiveFilters } from '../../src/components/FilterSheet';
+import { useAuthStore } from '../../src/stores/authStore';
+import { useCravesStore } from '../../src/stores/cravesStore';
+import { fetchMyRankings } from '../../src/api/social';
+import { SearchScope, useDiscoveryContextStore } from '../../src/stores/discoveryContextStore';
 
 // Same pattern as client.ts's requestId / recommendationEventQueue's
 // module-level sessionId -- no external uuid dependency needed.
@@ -36,10 +40,29 @@ function _makeSearchSessionId(): string {
 // actually seen -- a fling-scroll a card flashes through doesn't log an
 // impression just because it technically entered the viewport.
 const VIEWABILITY_CONFIG = { itemVisiblePercentThreshold: 50, minimumViewTime: 250 };
+const DEFAULT_RESULT_LIMIT = 12;
+const RESULT_STEP = 12;
+const MAX_RESULT_LIMIT = 60;
+
+const CONSTRAINT_PATTERNS: Record<string, RegExp> = {
+  price: /\b(?:cheap|budget|inexpensive|splurge|expensive|fine\s+dining)\b/gi,
+  near_me: /\bnear\s+me\b/gi,
+  date_night: /\bdate\s+night\b/gi,
+  open_late: /\bopen\s+late\b/gi,
+  quick: /\bquick\s+(?:bite|lunch|dinner)\b/gi,
+  Vegan: /\bvegan\b/gi,
+  Vegetarian: /\bvegetarian\b/gi,
+  Halal: /\bhalal\b/gi,
+  Kosher: /\bkosher\b/gi,
+  'Gluten Free': /\bgluten[-\s]?free\b/gi,
+};
 
 export default function SearchScreen() {
   const router = useRouter();
   const prefetchPlace = usePrefetchPlace();
+  const user = useAuthStore((s) => s.user);
+  const saves = useCravesStore((s) => s.saves);
+  const setSearchMapHandoff = useDiscoveryContextStore((s) => s.setSearchMapHandoff);
   const selectedCity = useCityStore((s) => s.selectedCity);
   // useLocationStatus() (not the coords-or-null useLocation()) -- this
   // screen distinguishes "still resolving" from "denied/unavailable" in
@@ -54,6 +77,9 @@ export default function SearchScreen() {
   const [debouncedQuery, setDebouncedQuery] = useState('');
   const [filterVisible, setFilterVisible] = useState(false);
   const [filters, setFilters] = useState<FilterState>(EMPTY_FILTERS);
+  const [scope, setScope] = useState<SearchScope>('all');
+  const [resultLimit, setResultLimit] = useState(DEFAULT_RESULT_LIMIT);
+  const [submittedQuery, setSubmittedQuery] = useState<string | null>(null);
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -100,19 +126,42 @@ export default function SearchScreen() {
   // nearby match is never crowded out of the fetch window by unrelated,
   // higher-rank_score places elsewhere) and in the final display order.
   const { data: searchData, isLoading: searchLoading, isError: searchError, refetch: refetchSearch, isRefetching: searchRefetching } = useQuery({
-    queryKey: ['search', debouncedQuery, userLocation?.lat, userLocation?.lng],
+    queryKey: ['search', debouncedQuery, userLocation?.lat, userLocation?.lng, resultLimit],
     queryFn: ({ signal }) => searchPlaces({
       query: debouncedQuery,
       lat: userLocation?.lat,
       lng: userLocation?.lng,
-      page_size: 30,
+      page_size: resultLimit,
     }, signal),
     enabled: debouncedQuery.length >= 2,
     staleTime: 60 * 1000,  // 1 min
   });
 
-  const results = searchData ?? [];
+  const results = searchData?.items ?? [];
   const searched = debouncedQuery.length >= 2 && !searchLoading && searchData !== undefined;
+
+  const { data: rankings = [] } = useQuery({
+    queryKey: ['myRankings', 'search-scope'],
+    queryFn: fetchMyRankings,
+    enabled: Boolean(user) && scope === 'ranked',
+    staleTime: 60 * 1000,
+  });
+
+  useEffect(() => {
+    setResultLimit(DEFAULT_RESULT_LIMIT);
+    setScope('all');
+  }, [debouncedQuery]);
+
+  useEffect(() => {
+    if (
+      submittedQuery &&
+      submittedQuery === debouncedQuery &&
+      searchData?.exact_match_id
+    ) {
+      setSubmittedQuery(null);
+      router.push(`/place/${searchData.exact_match_id}`);
+    }
+  }, [debouncedQuery, router, searchData?.exact_match_id, submittedQuery]);
 
   // Recommendation Ledger: log an impression only once a result is
   // actually *exposed* (scrolled into view), not the instant the backend
@@ -169,13 +218,16 @@ export default function SearchScreen() {
   // impressions above are still logged against the full `results` (what
   // the search actually returned), matching Feed's identical precedent.
   const filteredResults = useMemo(() => {
-    if (!hasActiveFilters(filters)) return results;
+    const savedIds = new Set(saves.map((place) => place.id));
+    const rankedIds = new Set(rankings.map((ranking) => ranking.place_id));
     return results.filter((p) => {
+      if (scope === 'craves' && !savedIds.has(p.id)) return false;
+      if (scope === 'ranked' && !rankedIds.has(p.id)) return false;
       if (filters.priceTiers.length > 0 && (p.price_tier == null || !filters.priceTiers.includes(p.price_tier))) return false;
       if (filters.categories.length > 0 && !p.categories.some((c) => filters.categories.includes(c))) return false;
       return true;
     });
-  }, [results, filters]);
+  }, [results, filters, rankings, saves, scope]);
 
   const handleChange = (text: string) => {
     // A fresh query starting from an empty box begins a new search
@@ -190,6 +242,12 @@ export default function SearchScreen() {
       return;
     }
     debounceRef.current = setTimeout(() => setDebouncedQuery(text), 350);
+  };
+
+  const removeInterpretedConstraint = (key: string) => {
+    const pattern = CONSTRAINT_PATTERNS[key];
+    if (!pattern) return;
+    handleChange(query.replace(pattern, ' ').replace(/\s+/g, ' ').trim());
   };
 
   const handleClear = () => {
@@ -230,7 +288,10 @@ export default function SearchScreen() {
               value={query}
               onChangeText={handleChange}
               returnKeyType="search"
-              onSubmitEditing={() => setDebouncedQuery(query)}
+              onSubmitEditing={() => {
+                setSubmittedQuery(query.trim());
+                setDebouncedQuery(query.trim());
+              }}
               autoCorrect={false}
               accessibilityLabel="Search input"
             />
@@ -271,6 +332,48 @@ export default function SearchScreen() {
               : 'Searching everywhere'}
         </Text>
       </View>
+
+      {searched && searchData?.interpretation && (
+        <View style={styles.interpretationPanel}>
+          <Text style={styles.interpretationTitle}>
+            {searchData.interpretation.uncertain ? 'CHECK THIS SEARCH' : 'UNDERSTOOD'}
+          </Text>
+          <Text style={styles.interpretationQuery}>
+            Searching for {searchData.interpretation.lookup_query}
+          </Text>
+          <View style={styles.constraintRow}>
+            {searchData.interpretation.price_tier != null && (
+              <TouchableOpacity style={styles.constraintChip} onPress={() => removeInterpretedConstraint('price')} accessibilityLabel="Remove price constraint">
+                <Text style={styles.constraintText}>{'$'.repeat(searchData.interpretation.price_tier)} ×</Text>
+              </TouchableOpacity>
+            )}
+            {[...searchData.interpretation.required_categories, ...searchData.interpretation.context].map((key) => (
+              <TouchableOpacity key={key} style={styles.constraintChip} onPress={() => removeInterpretedConstraint(key)} accessibilityLabel={`Remove ${key.replace('_', ' ')} constraint`}>
+                <Text style={styles.constraintText}>{key.replace('_', ' ')} ×</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+          {searchData.interpretation.unsupported_hard_constraints.length > 0 && (
+            <Text style={styles.constraintWarning}>We can’t verify this allergy safely yet. No results were shown.</Text>
+          )}
+          {searchData.relaxed_constraints.includes('price') && (
+            <Text style={styles.relaxationText}>No exact budget matches — showing broader prices. Dietary constraints stayed enforced.</Text>
+          )}
+        </View>
+      )}
+
+      {searched && user && (
+        <View style={styles.scopeRow}>
+          {(['all', 'craves', 'ranked'] as SearchScope[]).map((value) => (
+            <TouchableOpacity key={value} style={[styles.scopeChip, scope === value && styles.scopeChipActive]} onPress={() => {
+              setScope(value);
+              if (value !== 'all') setResultLimit(MAX_RESULT_LIMIT);
+            }} accessibilityRole="button" accessibilityState={{ selected: scope === value }}>
+              <Text style={[styles.scopeText, scope === value && styles.scopeTextActive]}>{value === 'all' ? 'All' : value === 'craves' ? 'Craves' : 'Ranked'}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      )}
 
       {/* Loading -- matches search results' actual PlaceCardCompact row
           shape, same skeleton treatment as Feed/Craves/Profile/Leaderboard/
@@ -406,11 +509,35 @@ export default function SearchScreen() {
             />
           }
           ListHeaderComponent={
-            <Text style={styles.resultCount}>
-              {filteredResults.length} result{filteredResults.length !== 1 ? 's' : ''}
-              {filteredResults.length !== results.length ? ` of ${results.length}` : ''}
-            </Text>
+            <View style={styles.resultsHeader}>
+              <Text style={styles.resultCount}>
+                {filteredResults.length} result{filteredResults.length !== 1 ? 's' : ''}
+                {filteredResults.length !== results.length ? ` of ${results.length}` : ''}
+              </Text>
+              <TouchableOpacity
+                onPress={() => {
+                  if (!searchData) return;
+                  setSearchMapHandoff({
+                    query: debouncedQuery,
+                    searchSessionId: searchSessionIdRef.current,
+                    interpretation: searchData.interpretation,
+                    items: filteredResults,
+                    scope,
+                  });
+                  router.push('/(tabs)/map');
+                }}
+                accessibilityRole="button"
+                accessibilityLabel="Show these search results on map"
+              >
+                <Text style={styles.mapLink}>Map these results</Text>
+              </TouchableOpacity>
+            </View>
           }
+          ListFooterComponent={searchData && searchData.total > results.length && resultLimit < MAX_RESULT_LIMIT ? (
+            <TouchableOpacity style={styles.showMoreButton} onPress={() => setResultLimit((value) => Math.min(MAX_RESULT_LIMIT, value + RESULT_STEP))} accessibilityRole="button">
+              <Text style={styles.showMoreText}>Show more</Text>
+            </TouchableOpacity>
+          ) : null}
         />
       )}
 
@@ -468,4 +595,21 @@ const styles = StyleSheet.create({
     paddingBottom: Spacing.sm,
   },
   resultCount: { color: Colors.textSecondary, fontSize: 11, fontWeight: '700', textTransform: 'uppercase', paddingBottom: Spacing.sm },
+  interpretationPanel: { marginHorizontal: Spacing.md, marginBottom: Spacing.xs, padding: Spacing.sm, backgroundColor: Colors.surface, borderRadius: Radius.md, borderWidth: 1, borderColor: Colors.border },
+  interpretationTitle: { color: Colors.primary, fontSize: 10, fontWeight: '800', letterSpacing: 1.2 },
+  interpretationQuery: { color: Colors.text, fontSize: 13, fontWeight: '700', marginTop: 4 },
+  constraintRow: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.xs, marginTop: Spacing.xs },
+  constraintChip: { minHeight: 36, justifyContent: 'center', paddingHorizontal: Spacing.sm, borderRadius: Radius.full, backgroundColor: Colors.surfaceElevated },
+  constraintText: { color: Colors.textSecondary, fontSize: 12, fontWeight: '700', textTransform: 'capitalize' },
+  constraintWarning: { color: Colors.error, fontSize: 12, lineHeight: 17, marginTop: Spacing.xs },
+  relaxationText: { color: Colors.textSecondary, fontSize: 12, lineHeight: 17, marginTop: Spacing.xs },
+  scopeRow: { flexDirection: 'row', gap: Spacing.xs, paddingHorizontal: Spacing.md, paddingVertical: Spacing.xs },
+  scopeChip: { minHeight: 40, justifyContent: 'center', paddingHorizontal: Spacing.md, borderRadius: Radius.full, borderWidth: 1, borderColor: Colors.border },
+  scopeChipActive: { backgroundColor: Colors.primary, borderColor: Colors.primary },
+  scopeText: { color: Colors.textSecondary, fontSize: 13, fontWeight: '700' },
+  scopeTextActive: { color: Colors.background },
+  resultsHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingBottom: Spacing.sm },
+  mapLink: { color: Colors.primary, fontSize: 13, fontWeight: '800' },
+  showMoreButton: { minHeight: 48, alignItems: 'center', justifyContent: 'center', marginTop: Spacing.sm, borderRadius: Radius.md, borderWidth: 1, borderColor: Colors.primary },
+  showMoreText: { color: Colors.primary, fontSize: 14, fontWeight: '800' },
 });

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from difflib import SequenceMatcher
-from typing import Optional, Tuple, List
+from typing import Optional, Tuple, List, Sequence
 
 from sqlalchemy.orm import Session
 from sqlalchemy import case, exists, or_, select, func
@@ -65,6 +65,7 @@ def _fuzzy_fallback_search(
     city_id: Optional[str],
     category_id: Optional[str],
     price_tier: Optional[int],
+    required_category_names: Sequence[str],
     limit: int,
 ) -> Tuple[List[Place], int]:
     """Typo-tolerant fallback for when the exact name match finds nothing.
@@ -93,6 +94,11 @@ def _fuzzy_fallback_search(
 
     if price_tier is not None:
         candidates_stmt = candidates_stmt.where(Place.price_tier == price_tier)
+
+    for category_name in required_category_names:
+        candidates_stmt = candidates_stmt.where(
+            _category_name_match(category_name)
+        )
 
     candidates_stmt = (
         candidates_stmt.distinct()
@@ -151,6 +157,7 @@ def search_places(
     limit: int = DEFAULT_LIMIT,
     offset: int = 0,
     max_limit: int = MAX_LIMIT,
+    required_category_names: Sequence[str] = (),
 ) -> Tuple[List[Place], int]:
 
     limit = _clamp_limit(limit, max_limit)
@@ -183,6 +190,11 @@ def search_places(
     if price_tier is not None:
         stmt = stmt.where(Place.price_tier == price_tier)
 
+    # Each hard dietary category is an independent EXISTS clause. A place
+    # must prove every requested category; these filters are never relaxed.
+    for category_name in required_category_names:
+        stmt = stmt.where(_category_name_match(category_name))
+
     stmt = stmt.distinct()
 
     count_stmt = select(func.count()).select_from(stmt.subquery())
@@ -195,6 +207,7 @@ def search_places(
             city_id=city_id,
             category_id=category_id,
             price_tier=price_tier,
+            required_category_names=required_category_names,
             limit=limit,
         )
 

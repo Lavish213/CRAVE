@@ -197,3 +197,25 @@ def test_explicit_city_id_still_filters_when_provided(db):
 
     assert total == 1
     assert results[0].id == in_a.id
+
+
+def test_required_dietary_categories_are_hard_filters(db):
+    session, created = db
+    city = _make_city(session, created)
+    vegan = _make_category(session, created, name="Vegan")
+    proven = _make_place(session, created, city, name=f"{SEARCH_TERM} Proven")
+    unproven = _make_place(session, created, city, name=f"{SEARCH_TERM} Unproven")
+    session.execute(
+        place_categories.insert().values(place_id=proven.id, category_id=vegan.id)
+    )
+    session.commit()
+
+    results, total = search_places(
+        session,
+        query=SEARCH_TERM,
+        required_category_names=("Vegan",),
+    )
+
+    assert total == 1
+    assert [place.id for place in results] == [proven.id]
+    assert unproven.id not in {place.id for place in results}

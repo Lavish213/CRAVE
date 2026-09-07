@@ -1,8 +1,16 @@
 # Active agent state
 
-Status: merged — code hardening complete; external release-certification gates remain
-Owner: none
-Branch: main
+Status: claimed
+Owner: Codex
+Branch: codex/wave5-search-contextual-map
+Base SHA: 633a5ebedc43de0dde5a42394608c17928049d89
+Scope: Implement Wave 5 Search + Contextual Map from CRAVE_CODEX_IMPLEMENTATION.md after auditing current behavior and canon.
+Locked files: frontend/app/(tabs)/search.tsx, frontend/app/(tabs)/map.tsx, frontend/src/api/search.ts, related Search/Map components and tests, backend Search services/routes/schemas and tests, Wave 5 traceability docs.
+Verification plan: targeted frontend/backend tests, full Jest, frontend typecheck, backend full pytest/import checks, migration checks if schema changes, conflict guard, accessibility/state checks, and visual QA for changed screens.
+Next action: Audit current Wave 5 behavior and canon before implementation.
+
+## Previous completed program state
+
 Phase 7 PR: #138 — merged
 Phase 7 merge SHA: ee77d30279577cddfdcaaf1c54153bf0597a212f
 Superseded PR: #137 — closed unmerged; replaced by #138 on the same Phase-7 branch lineage

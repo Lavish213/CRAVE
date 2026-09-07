@@ -94,7 +94,9 @@ def search_cache_key(
     loc = f"{_round_grid(lat)}:{_round_grid(lng)}"
 
     return (
-        f"search:"
+        # v2 response includes structured interpretation metadata. Keep it
+        # isolated from legacy cached SearchResponse payloads.
+        f"search:v2:"
         f"{q}:"
         f"{city}:"
         f"{cat}:"

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Optional, Tuple, List
+from typing import Optional, Tuple, List, Sequence
 
 from sqlalchemy.orm import Session
 
@@ -44,6 +44,7 @@ def execute_search(
     lng: Optional[float] = None,
     limit: int = 20,
     offset: int = 0,
+    required_category_names: Sequence[str] = (),
 ) -> Tuple[List[Place], int]:
     """
     Execute a place search and apply post-query ranking.
@@ -67,6 +68,7 @@ def execute_search(
         limit=pool_limit,
         offset=0,
         max_limit=MAX_CANDIDATE_POOL,
+        required_category_names=required_category_names,
     )
 
     ranked = rank_search_results(list(candidates), query=query, lat=lat, lng=lng)
