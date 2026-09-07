@@ -12,8 +12,9 @@ import { useVideoQueueStore, setActiveUserForVideoSync } from '../src/stores/vid
 import { usePushNotifications } from '../src/hooks/usePushNotifications';
 import { pingStreak } from '../src/api/streak';
 import { isSupabaseConfigured } from '../src/lib/supabase';
-import { Colors, Spacing } from '../src/constants/colors';
+import { Colors, Spacing, Typography } from '../src/constants/colors';
 import { ToastContainer } from '../src/components/Toast';
+import { AuthGateHost } from '../src/components/AuthGateHost';
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -33,8 +34,17 @@ const eb = StyleSheet.create({
     backgroundColor: Colors.background,
     padding: Spacing.xl,
   },
-  title: { fontSize: 20, fontWeight: '800', color: Colors.text, marginBottom: Spacing.sm },
-  body: { fontSize: 14, color: Colors.textSecondary, textAlign: 'center', marginBottom: Spacing.lg },
+  title: {
+    ...Typography.title,
+    color: Colors.text,
+    marginBottom: Spacing.sm,
+  },
+  body: {
+    ...Typography.body,
+    color: Colors.textSecondary,
+    textAlign: 'center',
+    marginBottom: Spacing.lg,
+  },
   btn: {
     backgroundColor: Colors.primary,
     paddingHorizontal: Spacing.lg,
@@ -43,7 +53,11 @@ const eb = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  btnText: { color: Colors.text, fontWeight: '700', fontSize: 14 },
+  btnText: {
+    ...Typography.body,
+    color: Colors.text,
+    fontWeight: '700',
+  },
 });
 
 /**
@@ -181,6 +195,7 @@ export default function RootLayout() {
           <Stack.Screen name="legal/privacy" options={{ title: 'Privacy Policy' }} />
           <Stack.Screen name="legal/terms" options={{ title: 'Terms of Service' }} />
         </Stack>
+        <AuthGateHost />
         <ToastContainer />
       </View>
     </QueryClientProvider>

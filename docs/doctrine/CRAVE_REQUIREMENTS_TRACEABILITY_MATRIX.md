@@ -183,3 +183,23 @@ A feature cannot be marked implementation-complete until its row has:
 5. visual/accessibility QA where user-facing.
 
 If implementation introduces a durable requirement not represented here, promote it into canon before relying on it as precedent.
+
+## 19. Wave 1 implementation evidence
+Wave 1 shared foundations were implemented under Issue #169 / PR #170. This table makes the earlier requirement rows concrete without claiming downstream screens are complete.
+
+| Foundation requirement | Production implementation | Regression verification | Status |
+|---|---|---|---|
+| Canonical typography roles | `frontend/src/constants/colors.ts` (`Typography`) | protected frontend typecheck + full Jest suite | GREEN foundation |
+| Shared qualitative reasoning with confidence separate from fit | `frontend/src/components/DecisionStrip.tsx`; consumed by `frontend/src/components/PlaceCard.tsx` | `frontend/src/components/DecisionStrip.test.tsx`; existing Feed tests | GREEN foundation |
+| Shared recommendation request/context semantics | `frontend/src/api/recommendationContext.ts`; Decision Session adapter in `frontend/src/api/decisionSession.ts` | `frontend/src/api/recommendationContext.test.ts`; existing `decisionSession.test.ts` | GREEN foundation |
+| Hard/soft constraints remain distinct | `frontend/src/api/recommendationContext.ts` | `frontend/src/api/recommendationContext.test.ts` | GREEN foundation |
+| Declared/verified-only Rank eligibility | `frontend/src/types/evidence.ts` | `frontend/src/types/evidence.test.ts` | GREEN foundation |
+| Visit evidence does not imply preference | `frontend/src/types/evidence.ts` | `frontend/src/types/evidence.test.ts` | GREEN foundation |
+| Visibility / recommendation influence / factual retention remain independent | `frontend/src/types/privacyContracts.ts` | `frontend/src/types/privacyContracts.test.ts` | GREEN foundation |
+| Stateful action survives auth interruption and resumes after revalidation | `frontend/src/stores/authGateStore.ts`; `frontend/src/hooks/useAuthAction.ts`; `frontend/src/components/AuthGateHost.tsx`; root mount in `frontend/app/_layout.tsx` | `frontend/src/stores/authGateStore.test.ts`; root-layout regression suite | GREEN foundation |
+| Auth cancel does not execute pending stateful action | `frontend/src/stores/authGateStore.ts` | `frontend/src/stores/authGateStore.test.ts` | GREEN foundation |
+| Account boundary clears pending resume intent | `frontend/src/stores/authStore.ts` | auth-store regression suite + protected full Jest run | GREEN foundation |
+| Shared Activity event primitive exists without implementing the Activity screen early | `frontend/src/components/ActivityRow.tsx` | protected frontend typecheck/full Jest; Activity screen-specific tests remain Wave 10 | GREEN foundation |
+| #146 release-defect behaviors survive Wave 1 | unchanged Rank retry, record-video feedback, Leaderboard auth state, Settings danger-zone implementations | existing `rank-place`, `record-video`, `leaderboard`, and `settings` suites all pass in protected full Jest | GREEN preserved |
+
+Wave 1 GREEN means the reusable contract/primitives are implementation-ready. It does **not** promote any downstream YELLOW screen to GREEN until that screen's own contract, API dependency, state coverage, and visual/accessibility acceptance criteria are satisfied.

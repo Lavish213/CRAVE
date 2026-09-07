@@ -3,6 +3,7 @@ import { User } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import { queryClient } from '../lib/queryClient';
 import { useCravesStore } from './cravesStore';
+import { clearAuthGate } from './authGateStore';
 import { unregisterCurrentDevice } from '../services/pushNotifications';
 
 interface AuthStore {
@@ -29,6 +30,10 @@ export const useAuthStore = create<AuthStore>((set) => ({
   },
 
   signOut: async () => {
+    // A resume envelope is account-bound intent. It must never survive a
+    // deliberate sign-out and execute under a later account.
+    clearAuthGate();
+
     // Local sign-out must not be blocked by the remote call failing (a
     // network blip here previously meant `set({ user: null })` never ran
     // at all, so tapping "Sign Out" with a flaky connection silently did

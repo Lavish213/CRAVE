@@ -9,7 +9,8 @@ import { PlaceOut } from '../api/places';
 import { getTierForPlace, formatPrice, getBadges, percentileCaption, formatDistance } from '../utils/scoring';
 // formatPrice imported for fallback; normalized places already have place.price
 import { TierBadge } from './TierBadge';
-import { Colors, Spacing, Radius, Shadows } from '../constants/colors';
+import { DecisionStrip, type DecisionStripSource } from './DecisionStrip';
+import { Colors, Spacing, Radius, Shadows, Typography } from '../constants/colors';
 import { DecisionRole } from '../api/decisionSession';
 
 const SAVE_HIT_SLOP = { top: 8, bottom: 8, left: 8, right: 8 } as const;
@@ -25,15 +26,24 @@ interface Props {
   style?: ViewStyle;
   role?: DecisionRole;
   reasonCaption?: string;
+  reasonSource?: DecisionStripSource;
+  fitLabel?: string;
+  confidenceLabel?: string;
 }
 
-const ROLE_LABELS: Record<DecisionRole, string> = {
-  best_fit: 'Best fit',
-  safe_bet: 'Safe bet',
-  wildcard: 'Wildcard',
-};
-
-function PlaceCardImpl({ place, onPress, onPressIn, onSave, saved, style, role, reasonCaption }: Props) {
+function PlaceCardImpl({
+  place,
+  onPress,
+  onPressIn,
+  onSave,
+  saved,
+  style,
+  role,
+  reasonCaption,
+  reasonSource,
+  fitLabel,
+  confidenceLabel,
+}: Props) {
   const tier = getTierForPlace(place);
   const price = place.price ?? formatPrice(place);
   const badges = getBadges(place);
@@ -55,6 +65,8 @@ function PlaceCardImpl({ place, onPress, onPressIn, onSave, saved, style, role, 
   // where it means something (see percentileCaption).
   const percentileLabel = percentileCaption(tier, place.rank_percentile);
   const metaParts = [categoryLabel, price, distanceLabel].filter(Boolean);
+  const resolvedReasonSource = reasonSource ?? (role ? 'decision_session' : 'discovery');
+  const shouldRenderDecisionStrip = Boolean(role || reasonCaption || fitLabel || confidenceLabel);
 
   return (
     <View style={[styles.shadowWrap, style]}>
@@ -97,13 +109,7 @@ function PlaceCardImpl({ place, onPress, onPressIn, onSave, saved, style, role, 
           </View>
         )}
         <View style={styles.scrimBottom} />
-        {role ? (
-          <View style={styles.roleBadge}>
-            <Text style={styles.roleBadgeText}>{ROLE_LABELS[role]}</Text>
-          </View>
-        ) : (
-          <TierBadge tier={tier} style={styles.tierBadge} />
-        )}
+        <TierBadge tier={tier} style={styles.tierBadge} />
         <TouchableOpacity
           style={styles.saveBtn}
           onPress={handleSave}
@@ -120,7 +126,16 @@ function PlaceCardImpl({ place, onPress, onPressIn, onSave, saved, style, role, 
 
       <View style={styles.body}>
         <Text style={styles.name} numberOfLines={1}>{place.name}</Text>
-        {reasonCaption ? <Text style={styles.reasonCaption}>{reasonCaption}</Text> : null}
+        {shouldRenderDecisionStrip ? (
+          <DecisionStrip
+            source={resolvedReasonSource}
+            role={role}
+            reason={reasonCaption}
+            fitLabel={fitLabel}
+            confidenceLabel={confidenceLabel}
+            density="compact"
+          />
+        ) : null}
         {percentileLabel ? (
           <Text style={[styles.percentile, { color: tier.color }]}>{percentileLabel}</Text>
         ) : null}
@@ -177,16 +192,6 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.75)',
   },
   tierBadge: { position: 'absolute', top: Spacing.sm, left: Spacing.sm },
-  roleBadge: {
-    position: 'absolute',
-    top: Spacing.sm,
-    left: Spacing.sm,
-    paddingHorizontal: Spacing.sm,
-    paddingVertical: 5,
-    borderRadius: Radius.pill,
-    backgroundColor: Colors.primary,
-  },
-  roleBadgeText: { color: Colors.background, fontSize: 12, fontWeight: '800' },
   saveBtn: {
     position: 'absolute',
     top: 6,
@@ -196,10 +201,19 @@ const styles = StyleSheet.create({
     borderRadius: Radius.pill,
   },
   body: { padding: Spacing.lg, paddingTop: Spacing.md, gap: Spacing.xs },
-  name: { fontSize: 18, fontWeight: '800', color: Colors.text },
-  percentile: { fontSize: 12, fontWeight: '700' },
-  reasonCaption: { color: Colors.primary, fontSize: 13, fontWeight: '700' },
-  meta: { fontSize: 13, color: Colors.textSecondary },
+  name: {
+    ...Typography.subtitle,
+    color: Colors.text,
+    fontWeight: '800',
+  },
+  percentile: {
+    ...Typography.caption,
+    fontWeight: '700',
+  },
+  meta: {
+    ...Typography.caption,
+    color: Colors.textSecondary,
+  },
   badgeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 2 },
   chip: {
     paddingHorizontal: 8,
@@ -207,7 +221,10 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.border,
     borderRadius: Radius.pill,
   },
-  chipText: { fontSize: 12, color: Colors.textSecondary },
+  chipText: {
+    ...Typography.caption,
+    color: Colors.textSecondary,
+  },
   imageFallback: {
     width: '100%',
     height: IMAGE_HEIGHT,
@@ -217,15 +234,12 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   imageFallbackInitial: {
-    fontSize: 64,
-    fontWeight: '800',
+    ...Typography.headline,
     color: Colors.textSecondary,
-    lineHeight: 72,
   },
   imageFallbackCategory: {
-    fontSize: 13,
+    ...Typography.caption,
     color: Colors.textSecondary,
-    fontWeight: '500',
     textTransform: 'uppercase',
     letterSpacing: 1,
   },
