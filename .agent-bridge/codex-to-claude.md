@@ -1,28 +1,30 @@
-# H-20260902-screen-coverage-brief
+# H-20260907-search-map-master-iteration-2
 
 Status: ready-for-review
 Owner: Codex
-Branch: codex/screen-journey-feed-detail-craves
-Base SHA: e6b7d9b3d803fdf36154b4fe2cecc56a5d47d06b
-Commit SHA: 89978f3
-Allowed next files: docs/CLAUDE_EXECUTION_BRIEF_SCREEN_AND_COVERAGE_2026-09-02.md, .agent-bridge/STATE.md, .agent-bridge/claude-to-codex.md
+Branch: codex/search-map-v15-master-iteration-2
+Base SHA: c34a9dd7492f59918ee058fce615dfe17dba0f90
+Commit SHA: 4db6429d1d083885627713126bcc2cea2ed4a7e7
+Allowed next files: docs/design/SEARCH_MAP_V15_MASTER_FRAMES_ITERATION_2.md, docs/design/search-map-v15-master-frames-iteration-2.svg, docs/design/search-map-v15-ramen-hero-v1.png
 
 ## Outcome
 
-Added an executable brief for two deliberately separate tracks: the Feed → Place Detail → Save/Craves UI journey and bounded free-source menu/photo coverage. It records the historical baseline, existing canary commands, safety gates, measurable outcomes, stop conditions, and PR boundaries.
+Created one focused exploratory Search/Map master-frame iteration without propagating it across the full state inventory. The board now demonstrates an original photographic hero and a visible typography fallback, moves recommendation reasoning into editorial copy, neutralizes interpretation chips so accent is reserved for answer/blocker moments, and replaces the generic map card with a dark asymmetric CRAVE answer surface.
 
 ## Verification
 
-- `git diff --check` → passed with no output before commit.
-- referenced-path existence loop covering every file/script named in the brief → passed with no `MISSING` output.
-- baseline cross-check against `CRAVE_STATUS.md` and canary constraints against `docs/POPULATION_RELEASE_PASS_2026-09-01.md`/`docs/SCHEDULER_WORKER_ROLLOUT.md` → counts, allowlist, disabled jobs, and prior 0/3 menu + 1/2 hidden-image evidence match.
+- `xmllint --noout docs/design/search-map-v15-master-frames-iteration-2.svg` -> passed with no output.
+- `magick -background none search-map-v15-master-frames-iteration-2.svg /private/tmp/search-map-v15-master-frames-iteration-2-final.png` from `docs/design` -> rendered a 2200x1350 PNG; visually inspected all four frames and corrected explanatory-copy overflow.
+- `identify docs/design/search-map-v15-ramen-hero-v1.png` -> 1536x1024 PNG.
+- `rg` audit for exploratory/no-claim labeling, photo fallback, editorial reason, neutral interpretation labels, blocker treatment, and Map "Why here" content -> all required markers present.
+- `git diff --check` -> passed with no output.
 
 ## Known gaps / risks
 
-- Documentation only: no UI/backend code changed and no production job or canary ran.
-- Production counts are explicitly labeled historical until reproduced.
-- The branch name predates the user's pivot to a Claude brief; trust the declared diff scope, not the branch label.
+- Exploratory only: not Penpot-ready, componentized, threshold-approved, simulator-verified, or device-verified.
+- Generated ramen photography is an original concept asset, not approved production restaurant imagery or a shipped-content sourcing policy.
+- No state beyond the four master frames was propagated.
 
 ## Next action
 
-Review and merge this documentation-only change. Then claim exactly one track on a fresh Claude branch; keep UI work, extractor changes, production canaries, image promotion, and scheduler expansion in separate PRs.
+Human/design visual audit of this four-frame iteration. If its component language is approved, separately scope propagation across the complete state package.

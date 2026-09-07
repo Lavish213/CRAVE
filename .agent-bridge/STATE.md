@@ -1,10 +1,13 @@
 # Active agent state
 
-Status: doctrine chain complete and certified; implementation Waves 0-4 merged; Wave 5 Search Screen Contract **COMPLETE** and certified (2026-09-07); Wave 5 contextual-Map plumbing **PARTIAL** (one open item, see below); Wave 6 (Craves intelligence) is next and **unclaimed** for implementation; a parallel Penpot design track (Feed/Decision Session, then Search, then Craves) may begin independently at Exploratory status per explicit user direction — design work does not wait on Wave 6 implementation, and Wave 6 does not wait on Penpot.
-Owner: none
-Branch: main
-Head SHA: 84d8db3 (`Merge pull request #193 from Lavish213/claude/wave5-search-contract-audit-fixes`)
-Scope: `docs/doctrine/CRAVE_CANONICAL_IMPLEMENTATION_INDEX.md` — **START HERE**; `docs/doctrine/CRAVE_MASTER_CODEX_REMAINING_WORK.md` — **the current operational checklist**, read this before claiming any wave
+Status: ready-for-review
+Owner: Codex
+Branch: codex/search-map-v15-master-iteration-2
+Base SHA: c34a9dd7492f59918ee058fce615dfe17dba0f90
+Scope: One exploratory Search/Map V1.5 master-frame iteration addressing photography/fallback, editorial reasoning, calm constraint semantics, and a CRAVE-specific selected Map treatment. Do not propagate across the full state inventory.
+Locked files: docs/design/SEARCH_MAP_V15_MASTER_FRAMES_ITERATION_2.md, docs/design/search-map-v15-master-frames-iteration-2.svg, docs/design/search-map-v15-ramen-hero-v1.png, .agent-bridge/STATE.md, .agent-bridge/codex-to-claude.md
+Verification plan: Render and visually inspect the four master frames; verify a genuine raster food photograph and visible typography fallback; verify craving -> interpretation -> answer/blocker grammar; verify exploratory/no-propagation labeling; run SVG/XML and diff checks.
+Next action: Human/design visual audit of the four master frames before any full-state propagation.
 
 ## What this supersedes
 
