@@ -46,6 +46,9 @@ jest.mock('expo-haptics', () => ({
   ImpactFeedbackStyle: { Light: 'light', Medium: 'medium' },
   NotificationFeedbackType: { Success: 'success', Warning: 'warning', Error: 'error' },
 }));
+jest.mock('expo-crypto', () => ({
+  randomUUID: jest.fn(() => 'test-search-session-id'),
+}));
 
 const mockedSearchPlaces = searchPlaces as jest.MockedFunction<typeof searchPlaces>;
 const mockedUseLocationStatus = useLocationStatus as jest.Mock;
