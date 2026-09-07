@@ -1,12 +1,21 @@
 # H-20260907-population-coverage-canaries
 
-Status: information-only
+Status: information-only -- an inventory, not an execution authorization
 Owner: Claude (handoff) -> Codex (execution)
 Branch: none from me -- this is a task handoff, not a diff
-Base SHA: b213f55fd431dbf1670214795352021ba5e8b66e (main, current as of this
-handoff)
+Base SHA: c34a9dd7492f59918ee058fce615dfe17dba0f90 (main, current as of
+this update)
 Commit SHA: none
-Allowed next files: none from me on this topic
+Allowed next files: none from me further on this topic. This does
+**not** mean Codex has zero scope -- per `.agent-bridge/PROTOCOL.md`,
+Codex must claim exactly one bounded item below in `STATE.md` first
+(owner, a fresh branch off current `origin/main`, base SHA, the exact
+files/scripts that item touches, and a verification plan) before
+implementing or running anything. Do this from a clean worktree, not a
+stale local checkout -- an internal audit of this handoff found a local
+checkout on `claude/project-grade-systems-review-4ot7d0` sitting 321
+commits behind `origin/main` with uncommitted changes; never claim or
+execute from a checkout like that.
 
 ## Outcome
 
@@ -104,13 +113,19 @@ before acting on any of it** -- the counts below are historical from
   found and fixed once (a shared brand website across chain locations
   being treated as proof of identical physical location).
 
-### 6. B1 steps 2/4 -- real image fetch + hand-labeling
+### 6. B1 steps 2/4 -- real image fetch + hand-labeling -- **not execution-ready, needs scoping first**
 - Untouched since the brief was written. Needs production access to even
   start; no local/sandbox proxy exists for this one. No further detail
   to add beyond `CLAUDE_EXECUTION_BRIEF_SCREEN_AND_COVERAGE_2026-09-02.md`
   Phase C/Phase E's classification-vs-acquisition distinction --
   `run_phase3_image_backfill.py` is classification only, not a source of
   new images.
+- Unlike items 1/2/5, this is an umbrella item, not a runnable canary:
+  it has no exact cohort, no command, no acceptance criteria, and no
+  rollback plan. Do not claim this in `STATE.md` as-is -- first do a
+  short scoping pass (pick a cohort per Phase B's stratification list,
+  name the exact extraction method, define stop/rollback conditions)
+  and write that up as its own addition to this file, *then* claim it.
 
 ## Known gaps / risks
 - All six items above need Railway/Supabase production DB access this
@@ -124,14 +139,23 @@ before acting on any of it** -- the counts below are historical from
   track below -- fully independent lanes, no shared files.
 
 ## Next action
-Pick one item at a time, each as its own PR per
+Before executing anything: (1) work from a clean worktree checked out
+from current `origin/main`, not a stale local branch; (2) re-measure
+the relevant baseline read-only first (`menu_coverage_report.py` etc.)
+-- every count in this file is a historical 2026-09-02 snapshot, not
+current truth; (3) claim exactly one bounded item in `STATE.md` per
+`PROTOCOL.md` (owner, branch, base SHA, locked files, verification
+plan) before implementing or running any script.
+
+Then pick one item at a time, each as its own PR per
 `CLAUDE_EXECUTION_BRIEF_SCREEN_AND_COVERAGE_2026-09-02.md`'s "Required
 deliverables" list (baseline evidence, extractor fix, canary evidence,
 image promotion, and any scheduler expansion all stay in separate PRs).
 Item 1 (menu backlog canary) or item 5 (second-city Overture) are the
 most concretely actionable next steps; items 3/4 are blocked on either a
 real stuck-image/real-device scenario occurring or being deliberately
-staged, and item 6 needs its own scoping pass first.
+staged; item 6 is explicitly not claimable yet -- scope it first (see
+above).
 
 ---
 
