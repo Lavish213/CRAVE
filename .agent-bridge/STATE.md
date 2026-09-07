@@ -140,21 +140,35 @@ treating this as fully released, not just merged.
   per the locked workflow: define/approve each screen's purpose, layout,
   states, interactions, data, accessibility, and visual rules first,
   then implement without redesigning). Neither blocks the other.
-- Two old open PRs (#147 "Round 2 design exploration log", #145
-  "agent-bridge final housekeeping") still target a stale base far behind
-  current `main` and predate the doctrine merge — need a rebase-or-close
-  decision by whoever owns them. Not touched by this update; flagging only.
+- Four old open PRs, all Claude-authored, none Codex's responsibility,
+  all predating current `main` by enough commits to report dirty/unknown
+  merge state — need a rebase-or-close decision: #128 (place-issue
+  reporting — real, tested backend+migration+frontend feature, looks
+  genuinely mergeable after a rebase), #127 (camera-failure-toast +
+  dead-control cleanup, likely still valid), #147 (design log Round 2,
+  docs-only, likely still valid), #145 (STATE.md housekeeping — now
+  fully superseded by this session's own STATE.md rewrites, safe to
+  close). Not touched by this update; flagging only.
+- The production data-coverage lane (menu/image/Overture canaries,
+  scheduler reclaim/video proofs — needs Railway/Supabase access this
+  session doesn't have) is bundled in
+  `.agent-bridge/claude-to-codex.md`'s current top handoff
+  (H-20260907-population-coverage-canaries). Nothing has moved on it
+  since 2026-09-02 (checked); re-measure the baseline before acting on
+  any item in it.
 
 ## Next action
 
 Claim the next wave here before starting it — owner, branch, base SHA
 (must be current `main` or later), allowed files, and verification plan —
-per `.agent-bridge/PROTOCOL.md`. Start from
-`CRAVE_MASTER_CODEX_REMAINING_WORK.md` §3.4 (Wave 6 — Craves
-intelligence) for implementation, or §3.3's one remaining bullet
-(direct-mode Map ranking) if picking that up instead. The Penpot design
-track (Feed/Decision Session first) is a separate workflow, not tracked
-as a Codex implementation wave claim here.
+per `.agent-bridge/PROTOCOL.md`. Two independent lanes are open: product
+implementation (start from `CRAVE_MASTER_CODEX_REMAINING_WORK.md` §3.4 —
+Wave 6, Craves intelligence — or §3.3's one remaining bullet, direct-mode
+Map ranking) and production data-coverage (see
+`.agent-bridge/claude-to-codex.md`'s current handoff, needs Railway/
+Supabase access). The Penpot design track (Feed/Decision Session first)
+is a separate workflow, not tracked as a Codex implementation wave claim
+here.
 This repo moves fast between syncs (Waves 3 and 4 both landed within one
 afternoon) — re-check `git log origin/main` before assuming this file is
 current.
