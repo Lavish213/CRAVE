@@ -4,6 +4,7 @@ import { FlashList, ViewToken } from '@shopify/flash-list';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
+import { randomUUID } from 'expo-crypto';
 import { useCityStore } from '../stores/cityStore';
 import { usePrefetchPlace } from '../hooks/usePrefetchPlace';
 import { searchPlaces } from '../api/search';
@@ -22,7 +23,7 @@ import { fetchMyRankings } from '../api/social';
 import { SearchScope, useDiscoveryContextStore } from '../stores/discoveryContextStore';
 
 function makeSearchSessionId(): string {
-  return `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
+  return randomUUID();
 }
 
 const VIEWABILITY_CONFIG = { itemVisiblePercentThreshold: 50, minimumViewTime: 250 };
