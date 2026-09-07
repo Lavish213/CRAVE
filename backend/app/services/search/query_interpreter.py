@@ -36,10 +36,23 @@ _UNSUPPORTED_HARD: tuple[tuple[re.Pattern[str], str], ...] = (
 )
 
 _FOOD_FILLERS = re.compile(r"\b(?:food|restaurant|restaurants|place|places)\b", re.I)
+_NEGATION_PREFIX = re.compile(r"(?:\bnon[-\s]?|\bnot\s+)$", re.I)
 
 
 def _clean_query(value: str) -> str:
     return re.sub(r"\s+", " ", value).strip(" ,.-")
+
+
+def _is_negated(text: str, match: re.Match[str]) -> bool:
+    """Return True when a supported category term is explicitly negated.
+
+    Category extraction is a hard-filter operation. Treating `non-vegan` or
+    `not vegan` as positive Vegan evidence would invert the user's request, so
+    negated terms remain in lookup text and make the interpretation uncertain
+    instead of being converted into a positive category constraint.
+    """
+    prefix = text[max(0, match.start() - 8):match.start()]
+    return bool(_NEGATION_PREFIX.search(prefix))
 
 
 def interpret_search_query(query: str) -> SearchInterpretation:
@@ -57,6 +70,7 @@ def interpret_search_query(query: str) -> SearchInterpretation:
     contexts: list[str] = []
     hard: list[str] = []
     unsupported: list[str] = []
+    negated_category = False
 
     for pattern, key in _UNSUPPORTED_HARD:
         if pattern.search(remaining):
@@ -68,6 +82,9 @@ def interpret_search_query(query: str) -> SearchInterpretation:
     for pattern, kind, value in _PHRASES:
         match = pattern.search(remaining)
         if match:
+            if kind == "category" and _is_negated(remaining, match):
+                negated_category = True
+                continue
             matched_phrases.append((match.start(), pattern, kind, value))
 
     for _, pattern, kind, value in sorted(matched_phrases, key=lambda item: item[0]):
@@ -84,15 +101,11 @@ def interpret_search_query(query: str) -> SearchInterpretation:
     if not lookup:
         lookup = "restaurant"
 
-    # Context-only searches need a broad fallback and an honest uncertainty
-    # marker because occasion/open-now semantics are not yet fully indexed.
     meaningful = _clean_query(_FOOD_FILLERS.sub(" ", lookup))
-    # Occasion/time language is surfaced to the user but is not yet backed by
-    # reliable catalog fields. Mark it uncertain instead of pretending it was
-    # enforced. `near_me` is handled by request coordinates in the route.
     unenforced_contexts = {"date_night", "open_late", "quick"}
     uncertain = (
         bool(unsupported)
+        or negated_category
         or bool(unenforced_contexts.intersection(contexts))
         or (not meaningful and bool(contexts))
     )
