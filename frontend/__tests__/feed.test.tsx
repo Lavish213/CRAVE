@@ -1,6 +1,7 @@
-// Feed screen (app/(tabs)/index.tsx) — dedicated coverage for tier
-// bucketing, viewability-based Recommendation Ledger exposure, click/save
-// behavior, filtering, errors, and pagination de-duplication.
+// Feed screen (app/(tabs)/index.tsx) — dedicated coverage for the canonical
+// Decision Session hierarchy, reason-coded discovery, viewability-based
+// Recommendation Ledger exposure, click/save behavior, filtering, errors,
+// and pagination de-duplication.
 import React from 'react';
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -27,9 +28,6 @@ jest.mock('../src/api/cities', () => ({
 jest.mock('../src/hooks/useLocation', () => ({
   useLocation: () => null,
 }));
-jest.mock('../src/hooks/useTrending', () => ({
-  useTrending: () => [],
-}));
 jest.mock('../src/hooks/useRecommendations', () => ({
   useRecommendations: () => [],
 }));
@@ -47,6 +45,7 @@ const mockRemoveSave = jest.fn().mockResolvedValue(null);
 const mockIsSaved = jest.fn().mockReturnValue(false);
 jest.mock('../src/stores/cravesStore', () => {
   const hook: any = () => ({
+    saves: [],
     addSave: mockAddSave,
     removeSave: mockRemoveSave,
     isSaved: mockIsSaved,
@@ -76,6 +75,7 @@ const mockedUseAuthStore = useAuthStore as unknown as jest.Mock;
 const mockedLogOne = logRecommendationEvent as jest.Mock;
 const mockedLogMany = logRecommendationEvents as jest.Mock;
 const mockedUseDecisionSession = useDecisionSession as jest.Mock;
+const mockDecisionRefetch = jest.fn().mockResolvedValue(undefined);
 
 const SF_CITY = { id: 'city-sf', name: 'San Francisco', slug: 'san-francisco', lat: 37.7749, lng: -122.4194 };
 
@@ -84,7 +84,7 @@ function makePlace(id: string, rank_percentile: number, overrides: Partial<Place
     id, name: id, city_id: 'city-sf', rank_score: 0.3, tier: 'solid', rank_percentile,
     distance_miles: null, category: 'Italian', categories: ['Italian'], address: null,
     lat: null, lng: null, image: null, primary_image_url: null, images: [],
-    website: null, grubhub_url: null, has_menu: false, price_tier: 2,
+    website: null, grubhub_url: null, has_menu: false, has_video: false, price_tier: 2,
     ...overrides,
   } as PlaceOut;
 }
@@ -99,6 +99,15 @@ function decisionCard(
   reason_codes: DecisionSessionCard['reason_codes'],
 ): DecisionSessionCard {
   return { role, place: makePlace(id, 0.9), reason_codes };
+}
+
+function decisionState(cards: DecisionSessionCard[] = [], degraded = false) {
+  return {
+    data: { cards, degraded },
+    isLoading: false,
+    isError: false,
+    refetch: mockDecisionRefetch,
+  };
 }
 
 function renderScreen() {
@@ -118,15 +127,12 @@ describe('FeedScreen', () => {
     mockAddSave.mockResolvedValue(null);
     mockRemoveSave.mockResolvedValue(null);
     mockIsSaved.mockReturnValue(false);
+    mockDecisionRefetch.mockResolvedValue(undefined);
     useCityStore.setState({ selectedCity: SF_CITY, cities: [SF_CITY] });
     mockedUseAuthStore.mockImplementation((selector: (s: { user: unknown }) => unknown) =>
       selector({ user: null }),
     );
-    mockedUseDecisionSession.mockReturnValue({
-      data: { cards: [], degraded: false },
-      isLoading: false,
-      isError: false,
-    });
+    mockedUseDecisionSession.mockReturnValue(decisionState());
   });
 
   it.each([0, 1, 2, 3])('renders exactly %i decision cards without padding thin sessions', async (count) => {
@@ -135,37 +141,30 @@ describe('FeedScreen', () => {
       decisionCard('safe_bet', 'decision-safe', ['high_percentile']),
       decisionCard('wildcard', 'decision-wild', ['different_cuisine']),
     ].slice(0, count);
-    mockedUseDecisionSession.mockReturnValue({
-      data: { cards, degraded: count < 3 },
-      isLoading: false,
-      isError: false,
-    });
-    mockedFetchPlaces.mockResolvedValue(page([makePlace('feed-place', 0.5)]));
+    mockedUseDecisionSession.mockReturnValue(decisionState(cards, count < 3));
+    mockedFetchPlaces.mockResolvedValue(page([makePlace('feed-place', 0.85)]));
 
-    const { findByLabelText, queryByText, queryAllByText } = renderScreen();
-    await findByLabelText(/^feed-place,/);
-
-    if (count === 0) {
-      expect(queryByText('DECIDE NOW')).toBeNull();
-    } else {
-      expect(queryByText('DECIDE NOW')).toBeTruthy();
-    }
+    const { findByText, queryAllByText } = renderScreen();
+    expect(await findByText('What should I eat?')).toBeTruthy();
     expect(queryAllByText(/^(Best fit|Safe bet|Wildcard)$/)).toHaveLength(count);
   });
 
+  it('shows honest low-confidence copy for a degraded Decision Session', async () => {
+    mockedUseDecisionSession.mockReturnValue(decisionState([
+      decisionCard('best_fit', 'decision-best', ['top_ranked_in_area']),
+    ], true));
+    mockedFetchPlaces.mockResolvedValue(page([makePlace('feed-place', 0.85)]));
+
+    const { findByText } = renderScreen();
+    expect(await findByText(/Confidence is lower right now/)).toBeTruthy();
+  });
+
   it('logs decision impressions with role and position, then logs click before navigating', async () => {
-    mockedUseDecisionSession.mockReturnValue({
-      data: {
-        cards: [
-          decisionCard('best_fit', 'decision-best', ['top_ranked_in_area']),
-          decisionCard('wildcard', 'decision-wild', ['different_cuisine']),
-        ],
-        degraded: true,
-      },
-      isLoading: false,
-      isError: false,
-    });
-    mockedFetchPlaces.mockResolvedValue(page([makePlace('feed-place', 0.5)]));
+    mockedUseDecisionSession.mockReturnValue(decisionState([
+      decisionCard('best_fit', 'decision-best', ['top_ranked_in_area']),
+      decisionCard('wildcard', 'decision-wild', ['different_cuisine']),
+    ], true));
+    mockedFetchPlaces.mockResolvedValue(page([makePlace('feed-place', 0.85)]));
 
     const { findByLabelText } = renderScreen();
     const wildcard = await findByLabelText(/^decision-wild,/);
@@ -180,9 +179,6 @@ describe('FeedScreen', () => {
           surface: 'decision_session', event_type: 'impression', place_id: 'decision-wild',
           decision_role: 'wildcard', position: 1, rank_percentile: 0.9,
         }),
-        // All rows use the same FlashList viewability contract. If the first
-        // normal Feed card is visible in the same callback it belongs in the
-        // same exposure batch rather than being artificially split by source.
         expect.objectContaining({
           surface: 'feed', event_type: 'impression', place_id: 'feed-place', position: 0,
         }),
@@ -198,7 +194,7 @@ describe('FeedScreen', () => {
     expect(mockPush).toHaveBeenCalledWith('/place/decision-wild');
   });
 
-  it('buckets places into their tier sections and only renders sections that have places', async () => {
+  it('does not organize discovery by catalog tier headers and only surfaces the qualifying reason-coded rail', async () => {
     const places = [
       makePlace('crave1', 0.97),
       makePlace('gem1', 0.85),
@@ -206,16 +202,19 @@ describe('FeedScreen', () => {
     ];
     mockedFetchPlaces.mockResolvedValue(page(places));
 
-    const { findByText, queryByText } = renderScreen();
+    const { findByText, queryByText, findByLabelText, queryByLabelText } = renderScreen();
 
-    expect(await findByText('CRAVE Picks')).toBeTruthy();
-    expect(await findByText('Hidden Gems')).toBeTruthy();
-    expect(await findByText('Worth Knowing')).toBeTruthy();
-    expect(queryByText('Explore')).toBeNull();
+    expect(await findByText('HOLE-IN-THE-WALL')).toBeTruthy();
+    expect(await findByLabelText(/^gem1,/)).toBeTruthy();
+    expect(queryByLabelText(/^crave1,/)).toBeNull();
+    expect(queryByLabelText(/^solid1,/)).toBeNull();
+    expect(queryByText('CRAVE Picks')).toBeNull();
+    expect(queryByText('Hidden Gems')).toBeNull();
+    expect(queryByText('Worth Knowing')).toBeNull();
   });
 
-  it('logs one bounded impression batch for the first visible page, and does not re-log on an unrelated re-render', async () => {
-    const places = [makePlace('p0', 0.97), makePlace('p1', 0.5)];
+  it('logs one bounded impression batch for the first visible discovery set, and does not re-log on an unrelated re-render', async () => {
+    const places = [makePlace('p0', 0.85), makePlace('p1', 0.82)];
     mockedFetchPlaces.mockResolvedValue(page(places));
 
     const { getByLabelText } = renderScreen();
@@ -227,12 +226,12 @@ describe('FeedScreen', () => {
       expect.objectContaining({ surface: 'feed', event_type: 'impression', place_id: 'p1', position: 1, city_id: 'city-sf' }),
     ]);
 
-    fireEvent.press(getByLabelText('Filter places'));
+    fireEvent.press(getByLabelText('Filter discovery places'));
     expect(mockedLogMany).toHaveBeenCalledTimes(1);
   });
 
-  it('logs a click event on card press with the real rank percentile, then navigates', async () => {
-    const places = [makePlace('p0', 0.97)];
+  it('logs a click event on discovery card press with the real rank percentile, then navigates', async () => {
+    const places = [makePlace('p0', 0.85)];
     mockedFetchPlaces.mockResolvedValue(page(places));
 
     const { findByLabelText } = renderScreen();
@@ -241,14 +240,14 @@ describe('FeedScreen', () => {
 
     expect(mockedLogOne).toHaveBeenCalledWith(
       expect.objectContaining({
-        surface: 'feed', event_type: 'click', place_id: 'p0', rank_percentile: 0.97, city_id: 'city-sf',
+        surface: 'feed', event_type: 'click', place_id: 'p0', rank_percentile: 0.85, city_id: 'city-sf',
       }),
     );
     expect(mockPush).toHaveBeenCalledWith('/place/p0');
   });
 
   it('opens AuthSheet on save when signed out, without calling addSave', async () => {
-    mockedFetchPlaces.mockResolvedValue(page([makePlace('p0', 0.97)]));
+    mockedFetchPlaces.mockResolvedValue(page([makePlace('p0', 0.85)]));
 
     const { findByLabelText, findByTestId } = renderScreen();
     const saveBtn = await findByLabelText('Save p0');
@@ -262,7 +261,7 @@ describe('FeedScreen', () => {
     mockedUseAuthStore.mockImplementation((selector: (s: { user: unknown }) => unknown) =>
       selector({ user: { id: 'user-1' } }),
     );
-    mockedFetchPlaces.mockResolvedValue(page([makePlace('p0', 0.97)]));
+    mockedFetchPlaces.mockResolvedValue(page([makePlace('p0', 0.85)]));
 
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     const buildTree = () => (
@@ -278,7 +277,7 @@ describe('FeedScreen', () => {
     expect(mockAddSave).toHaveBeenCalledWith(
       expect.objectContaining({ id: 'p0' }),
       'user-1',
-      expect.objectContaining({ surface: 'feed', rank_percentile: 0.97, city_id: 'city-sf' }),
+      expect.objectContaining({ surface: 'feed', rank_percentile: 0.85, city_id: 'city-sf' }),
     );
 
     mockIsSaved.mockReturnValue(true);
@@ -290,9 +289,9 @@ describe('FeedScreen', () => {
     expect(mockRemoveSave).toHaveBeenCalledWith('p0', 'user-1', expect.objectContaining({ surface: 'feed' }));
   });
 
-  it('narrows rendered places by category filter without re-logging impressions', async () => {
+  it('narrows discovery by category filter without re-logging impressions', async () => {
     const places = [
-      makePlace('p0', 0.97, { categories: ['Italian'], price_tier: 2 }),
+      makePlace('p0', 0.86, { categories: ['Italian'], price_tier: 2 }),
       makePlace('p1', 0.85, { categories: ['Thai'], price_tier: 1 }),
     ];
     mockedFetchPlaces.mockResolvedValue(page(places));
@@ -301,7 +300,7 @@ describe('FeedScreen', () => {
     await findByLabelText(/^p0,/);
     await waitFor(() => expect(mockedLogMany).toHaveBeenCalledTimes(1));
 
-    fireEvent.press(getByLabelText('Filter places'));
+    fireEvent.press(getByLabelText('Filter discovery places'));
     fireEvent.press(getByLabelText('Thai'));
 
     await waitFor(() => expect(queryByLabelText(/^p0,/)).toBeNull());
@@ -311,7 +310,7 @@ describe('FeedScreen', () => {
 
   it('shows the error state and lets retry re-fetch', async () => {
     mockedFetchPlaces.mockRejectedValueOnce(new Error('network'));
-    mockedFetchPlaces.mockResolvedValueOnce(page([makePlace('p0', 0.97)]));
+    mockedFetchPlaces.mockResolvedValueOnce(page([makePlace('p0', 0.85)]));
 
     const { findByText, findByLabelText } = renderScreen();
     expect(await findByText("Couldn't load places")).toBeTruthy();
@@ -322,8 +321,8 @@ describe('FeedScreen', () => {
 
   it('de-duplicates a place id that reappears across page fetches (the pagination-shift regression)', async () => {
     mockedFetchPlaces
-      .mockResolvedValueOnce(page([makePlace('p0', 0.97), makePlace('p1', 0.5)], 3, 1, 'snapshot.2'))
-      .mockResolvedValueOnce(page([makePlace('p1', 0.5), makePlace('p2', 0.3)], 3, 2));
+      .mockResolvedValueOnce(page([makePlace('p0', 0.86), makePlace('p1', 0.85)], 3, 1, 'snapshot.2'))
+      .mockResolvedValueOnce(page([makePlace('p1', 0.85), makePlace('p2', 0.84)], 3, 2));
 
     const { findByLabelText, queryAllByLabelText, UNSAFE_getByType } = renderScreen();
     await findByLabelText(/^p0,/);
