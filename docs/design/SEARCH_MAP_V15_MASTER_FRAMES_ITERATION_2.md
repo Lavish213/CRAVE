@@ -1,8 +1,8 @@
 # Search / Map V1.5 Master Frames - Iteration 2
 
-Status date: September 7, 2026  
-Status: Exploratory visual direction, not implementation-ready  
-Prior grade target: 8.1/10 direction  
+Status date: September 7, 2026
+Status: Exploratory visual direction, not implementation-ready
+Prior grade target: 8.1/10 direction
 Purpose: Solve the four master-frame issues before propagating the visual system across all V1.5 states.
 
 ## Focus
