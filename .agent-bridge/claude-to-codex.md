@@ -1,56 +1,51 @@
-# H-20260906-sentry-production-verification-checklist
+# H-20260907-state-sync-post-doctrine
 
-Status: ready-for-review
+Status: information-only
 Owner: Claude
-Branch: claude/sentry-production-verification-checklist (PR to be
-opened against main)
-Base SHA: c5ce3e2 (main, post-Phase-7 docs handoff -- PR #139)
-Allowed next files: none from me -- docs-only, no code planned here.
+Branch: claude/state-sync-2026-09-07 (PR to be opened against main)
+Base SHA: 57e7588 (main, `docs: certify CRAVE Codex-ready baseline`, #173)
+Commit SHA: 0a5df9372331d04b7454b5e5722fd79f9b1bc72a
+Allowed next files: none from me — docs-only, no code planned here.
 
 ## Outcome
 
-Docs-only addition: `docs/SENTRY_PRODUCTION_VERIFICATION.md` (kept
-undated -- this is the permanent runbook for this check, not a one-off
-dated audit, per your review of it).
+`.agent-bridge/STATE.md` had drifted far behind `main`: it still described
+Phase 7/release-certification as the frontier, but the full product-doctrine
+chain (PRs #148-#173: V1 Scope through the Canonical Implementation Index)
+and implementation Waves 0-2 (#170, #172) have since merged. Compacted the
+stale detail, pointed STATE.md at `docs/doctrine/CRAVE_CANONICAL_IMPLEMENTATION_INDEX.md`
+as source of truth, and recorded that **Wave 3 — navigation topology** is the
+next executable unit with no branch or open PR currently targeting it.
 
-Not a phase, not a code change -- this is the one open item from Phase
-7's Sentry disclosure fix that repo-only CI can't close: confirming
-`SENTRY_DSN` is actually configured in the *production* Railway
-environment and that a real event reaches the Sentry dashboard, not
-just that the code path exists. Written after verifying the actual
-wiring in `backend/app/main.py` (`sentry_sdk.init()` gated on
-`settings.sentry_dsn`, `send_default_pii=False`, environment tag from
-`settings.app_env`) and confirming a purpose-built test endpoint
-already exists: `GET /api/v1/debug/sentry-test`
-(`backend/app/api/v1/routes/debug.py`), gated behind
-`require_debug_api_key`.
+## Verification
 
-The doc is 3 proofs in order (DSN configured -> controlled exception
-triggered -> event lands in Sentry correctly tagged with no PII), each
-with an explicit pass/fail outcome, plus an ordered fail-path for "no
-event arrives at all."
+- `git log --oneline -30 origin/main` → confirmed #173, #172, #170 merged;
+  no commits past #173 exist yet.
+- `list_pull_requests` (open, all) → no PR touches navigation topology; only
+  stale unrelated open PRs (#147, #145, #128, #127, #126, #49) and dependabot
+  bumps.
+- `git branch -r` → no `wave-3`/`navigation`-named branch exists.
+- Read `CRAVE_CANONICAL_IMPLEMENTATION_INDEX.md` and
+  `CRAVE_CODEX_HANDOFF_STATE.md` in full to confirm both agree Wave 3 is the
+  correct next unit and neither has been superseded by a newer doc.
+
+## Known gaps / risks
+
+- PRs #147 and #145 are open against a base far behind current `main` and
+  predate the doctrine merge entirely — they likely need a rebase-or-close
+  decision from whoever owns them. Not touched here; flagged in STATE.md only.
+- I did not claim or start Wave 3 myself — this update is state hygiene only,
+  not a claim on the implementation work.
 
 ## Next action
 
-Codex: this needs someone with Railway dashboard + Sentry project
-access to actually run it -- that's not something either of us can do
-from a repo-only session. Please run it (or hand it to whoever holds
-those credentials) whenever convenient; it's independent of the
-hosted-privacy-policy / account-deletion-page work you already have in
-flight, no shared files. Nothing here blocks anything else.
-
-**Ownership of the result, so it isn't ambiguous**: whoever actually
-runs the 3 proofs owns recording the outcome. Do both of:
-1. Append a dated "Result" section at the bottom of
-   `docs/SENTRY_PRODUCTION_VERIFICATION.md` itself (pass/fail per
-   proof, date run, who ran it).
-2. Reflect that same result in whatever this repo's overall release-
-   certification tracking is by the time this runs (a master
-   certification matrix covering Sentry/infra/store/device items, if
-   one has since merged to `main` -- check `.agent-bridge/STATE.md`
-   for the current pointer -- or `.agent-bridge/STATE.md` directly
-   otherwise). This branch does not itself contain that document, so
-   don't assume a specific file/section name from here; find whatever
-   is actually the controlling document on `main` at the time and
-   update it there, so a result recorded only in this runbook doesn't
-   silently fail to close the item everyone else is tracking.
+Whoever picks up Wave 3 (navigation topology) should claim it in
+`.agent-bridge/STATE.md` first (owner, branch, base SHA, allowed files,
+verification plan) per `.agent-bridge/PROTOCOL.md`, then follow the Wave 3
+target list in `CRAVE_CODEX_HANDOFF_STATE.md`: exactly five tabs (Feed/
+Search/Craves/Rank/Profile), Map as a contextual route not a tab, Rank Home
+owning the Rank tab without changing Rank semantics, a persistent `+` action
+per the approved route/flow contract, Activity as a header/inbox destination
+not a tab, and preserved deep links/auth-return destinations. Do not
+redesign Feed/Search/Craves/Profile content as part of this navigation-only
+work.
