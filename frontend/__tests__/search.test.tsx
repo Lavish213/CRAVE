@@ -203,6 +203,54 @@ describe('SearchScreen — Wave 5 intent and map handoff', () => {
   });
 });
 
+describe('SearchScreen — Reason Block labeling (Search Screen Contract §6)', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockedUseLocationStatus.mockReturnValue({ status: 'denied', coords: null, updatedAt: null });
+    useCityStore.setState({ selectedCity: SF_CITY, cities: [SF_CITY] });
+  });
+
+  it('labels the top result "Best match for you", a proven mid-tier result "Safer pick", and a thin-evidence result "Worth exploring"', async () => {
+    const items = [
+      makePlace('p0', 0.97), // crave_pick, position 0 -> best match
+      makePlace('p1', 0.5),  // solid, position 1 -> safer pick
+      makePlace('p2', 0.1),  // new, position 2 -> worth exploring
+    ];
+    mockedSearchPlaces.mockResolvedValue(makeSearchResult(items));
+    const { getByLabelText, findByText } = renderScreen();
+
+    act(() => getByLabelText('Search input').props.onChangeText('ramen'));
+
+    expect(await findByText('Best match for you')).toBeTruthy();
+    expect(await findByText('Safer pick')).toBeTruthy();
+    expect(await findByText('Worth exploring')).toBeTruthy();
+  });
+
+  it('never claims "Best match for you" for the top result when the query only matched after price was relaxed', async () => {
+    const items = [makePlace('p0', 0.97)]; // would otherwise qualify as best match
+    mockedSearchPlaces.mockResolvedValue(makeSearchResult(items, { relaxed_constraints: ['price'] }));
+    const { getByLabelText, findByText, queryByText } = renderScreen();
+
+    act(() => getByLabelText('Search input').props.onChangeText('splurge dinner'));
+
+    expect(await findByText('Safer pick')).toBeTruthy();
+    expect(queryByText('Best match for you')).toBeNull();
+  });
+
+  it('never renders Decision Session\'s vocabulary on Search results', async () => {
+    const items = [makePlace('p0', 0.97), makePlace('p1', 0.5), makePlace('p2', 0.1)];
+    mockedSearchPlaces.mockResolvedValue(makeSearchResult(items));
+    const { getByLabelText, findByText, queryByText } = renderScreen();
+
+    act(() => getByLabelText('Search input').props.onChangeText('ramen'));
+    await findByText('Best match for you');
+
+    expect(queryByText('Best fit')).toBeNull();
+    expect(queryByText('Safe bet')).toBeNull();
+    expect(queryByText('Wildcard')).toBeNull();
+  });
+});
+
 describe('SearchScreen — Recommendation Ledger instrumentation', () => {
   beforeEach(() => {
     jest.clearAllMocks();

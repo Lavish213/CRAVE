@@ -10,9 +10,11 @@ import { usePrefetchPlace } from '../hooks/usePrefetchPlace';
 import { searchPlaces } from '../api/search';
 import { useLocationStatus } from '../hooks/useLocation';
 import { PlaceOut } from '../api/places';
+import { getTierForPlace } from '../utils/scoring';
 import { logRecommendationEvent, logRecommendationEvents } from '../utils/recommendationEventQueue';
 import { Colors, Radius, Spacing } from '../constants/colors';
 import { PlaceCardCompact } from '../components/PlaceCardCompact';
+import type { SearchReasonRole } from '../components/DecisionStrip';
 import { SkeletonRowList } from '../components/SkeletonCard';
 import { ErrorState } from '../components/ErrorState';
 import { EmptyState } from '../components/EmptyState';
@@ -24,6 +26,33 @@ import { SearchScope, useDiscoveryContextStore } from '../stores/discoveryContex
 
 function makeSearchSessionId(): string {
   return randomUUID();
+}
+
+/**
+ * Search's Reason Block label (Search Screen Contract §6). Explains results
+ * in their existing order -- it never reranks them. Evidence-based only:
+ * derived from each place's own real catalog tier (the same signal already
+ * shown via TierBadge/percentileCaption elsewhere), never a fabricated
+ * personalized-fit claim.
+ *
+ * "Best match for you" is reserved for the single top-ranked result, and
+ * only when the search didn't need to relax what the user actually asked
+ * for -- claiming a top match after a compromise (e.g. a relaxed price
+ * constraint) would overstate the evidence.
+ */
+function searchReasonForResult(
+  place: PlaceOut,
+  position: number,
+  priceWasRelaxed: boolean,
+): SearchReasonRole {
+  const tier = getTierForPlace(place).key;
+  if (position === 0 && !priceWasRelaxed && (tier === 'crave_pick' || tier === 'gem')) {
+    return 'best_match';
+  }
+  if (tier === 'crave_pick' || tier === 'solid') {
+    return 'safer_pick';
+  }
+  return 'worth_exploring';
 }
 
 const VIEWABILITY_CONFIG = { itemVisiblePercentThreshold: 50, minimumViewTime: 250 };
@@ -174,6 +203,8 @@ export default function SearchScreen() {
     handleChange(query.replace(pattern, ' ').replace(/\s+/g, ' ').trim());
   };
 
+  const priceWasRelaxed = Boolean(searchData?.relaxed_constraints.includes('price'));
+
   const showZeroState = query.length === 0 && !searchQuery.isLoading;
   const showBelowThreshold = query.length > 0 && query.length < 2;
   const showNoResults = searched && results.length === 0 && !searchQuery.isError;
@@ -304,27 +335,31 @@ export default function SearchScreen() {
           keyExtractor={(place) => place.id}
           viewabilityConfig={VIEWABILITY_CONFIG}
           onViewableItemsChanged={onViewableItemsChanged}
-          renderItem={({ item }) => (
-            <View style={styles.rowSpacer}>
-              <PlaceCardCompact
-                place={item}
-                onPress={() => {
-                  logRecommendationEvent({
-                    surface: 'search',
-                    event_type: 'click',
-                    place_id: item.id,
-                    position: results.findIndex((place) => place.id === item.id),
-                    rank_percentile: item.rank_percentile,
-                    query: debouncedQuery,
-                    city_id: selectedCity?.id ?? null,
-                    search_session_id: searchSessionIdRef.current,
-                  });
-                  router.push(`/place/${item.id}`);
-                }}
-                onPressIn={() => prefetchPlace(item.id)}
-              />
-            </View>
-          )}
+          renderItem={({ item }) => {
+            const position = results.findIndex((place) => place.id === item.id);
+            return (
+              <View style={styles.rowSpacer}>
+                <PlaceCardCompact
+                  place={item}
+                  searchReason={searchReasonForResult(item, position, priceWasRelaxed)}
+                  onPress={() => {
+                    logRecommendationEvent({
+                      surface: 'search',
+                      event_type: 'click',
+                      place_id: item.id,
+                      position,
+                      rank_percentile: item.rank_percentile,
+                      query: debouncedQuery,
+                      city_id: selectedCity?.id ?? null,
+                      search_session_id: searchSessionIdRef.current,
+                    });
+                    router.push(`/place/${item.id}`);
+                  }}
+                  onPressIn={() => prefetchPlace(item.id)}
+                />
+              </View>
+            );
+          }}
           contentContainerStyle={styles.list}
           refreshControl={<RefreshControl refreshing={searchQuery.isRefetching} onRefresh={() => searchQuery.refetch()} tintColor={Colors.primary} />}
           ListHeaderComponent={(

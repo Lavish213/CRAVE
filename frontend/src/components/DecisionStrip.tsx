@@ -3,8 +3,17 @@ import { StyleSheet, Text, View, type ViewStyle } from 'react-native';
 import type { DecisionRole } from '../api/decisionSession';
 import { Colors, Spacing, Typography } from '../constants/colors';
 
-export type DecisionStripSource = 'decision_session' | 'discovery' | 'organic';
+export type DecisionStripSource = 'decision_session' | 'discovery' | 'organic' | 'search';
 export type DecisionStripDensity = 'compact' | 'full';
+
+/**
+ * Search's own reason vocabulary. Deliberately a separate type from
+ * DecisionRole ('best_fit' | 'safe_bet' | 'wildcard') -- Search and Decision
+ * Session are locked as conceptually separate surfaces (Search Screen
+ * Contract §6) and must never share a label, even though both render
+ * through this one component.
+ */
+export type SearchReasonRole = 'best_match' | 'safer_pick' | 'worth_exploring';
 
 export interface DecisionPracticalFacts {
   distance?: string | null;
@@ -15,6 +24,7 @@ export interface DecisionPracticalFacts {
 export interface DecisionStripProps {
   source: DecisionStripSource;
   role?: DecisionRole;
+  searchReason?: SearchReasonRole;
   reason?: string | null;
   /** Qualitative only: e.g. "Strong fit". Never pass a percentage. */
   fitLabel?: string | null;
@@ -33,8 +43,21 @@ const ROLE_LABELS: Record<DecisionRole, string> = {
   wildcard: 'Wildcard',
 };
 
-function sourceLabel(source: DecisionStripSource, role?: DecisionRole): string | null {
+// Search's own vocabulary (Search Screen Contract §6) -- must never match
+// ROLE_LABELS above, and Search must never pass a DecisionRole.
+const SEARCH_REASON_LABELS: Record<SearchReasonRole, string> = {
+  best_match: 'Best match for you',
+  safer_pick: 'Safer pick',
+  worth_exploring: 'Worth exploring',
+};
+
+function sourceLabel(
+  source: DecisionStripSource,
+  role?: DecisionRole,
+  searchReason?: SearchReasonRole,
+): string | null {
   if (source === 'decision_session') return role ? ROLE_LABELS[role] : null;
+  if (source === 'search') return searchReason ? SEARCH_REASON_LABELS[searchReason] : null;
   if (source === 'discovery') return 'WHY CRAVE SURFACED THIS';
   return null;
 }
@@ -42,6 +65,7 @@ function sourceLabel(source: DecisionStripSource, role?: DecisionRole): string |
 export function DecisionStrip({
   source,
   role,
+  searchReason,
   reason,
   fitLabel,
   confidenceLabel,
@@ -50,7 +74,7 @@ export function DecisionStrip({
   style,
 }: DecisionStripProps) {
   const recommendationContext = source !== 'organic';
-  const label = sourceLabel(source, role);
+  const label = sourceLabel(source, role, searchReason);
   const factParts = [
     practicalFacts?.distance,
     practicalFacts?.price,
