@@ -153,9 +153,17 @@ treating this as fully released, not just merged.
   scheduler reclaim/video proofs — needs Railway/Supabase access this
   session doesn't have) is bundled in
   `.agent-bridge/claude-to-codex.md`'s current top handoff
-  (H-20260907-population-coverage-canaries). Nothing has moved on it
-  since 2026-09-02 (checked); re-measure the baseline before acting on
-  any item in it.
+  (H-20260907-population-coverage-canaries). This is an **information-
+  only inventory, not execution authorization** — an internal audit of
+  it (2026-09-07) confirmed the document content is accurate but flagged
+  that whoever picks it up must: work from a clean worktree off current
+  `origin/main` (not a stale local checkout — one was found 321 commits
+  behind with uncommitted changes), re-measure the baseline read-only
+  first (every count is a historical 2026-09-02 snapshot), and claim
+  exactly one bounded item in this file per `PROTOCOL.md` before running
+  anything. Item 6 in that handoff (B1 steps 2/4) additionally needs its
+  own scoping pass before it can be claimed at all — it has no cohort,
+  command, or rollback plan yet, unlike items 1/2/5.
 
 ## Next action
 
