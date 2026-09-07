@@ -36,12 +36,14 @@ from app.api.v1.schemas.map import GeoJSONFeatureCollection
 from app.services.query.place_image_visibility_query import get_primary_image_urls_bulk
 from app.services.query.place_video_visibility_query import get_has_video_bulk
 from app.services.query.saved_places_map_query import get_saved_places_geojson
+from app.services.visit_evidence_service import retract_source, upsert_declared_source
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/saves", tags=["saves"])
 
 _DEDUP_PREFIX = "save"
+_VISIT_SOURCE = "save_memory"
 
 
 def _dedup_key(user_id: str, place_id: str) -> str:
@@ -168,6 +170,8 @@ def delete_save(
     if not save:
         raise HTTPException(status_code=404, detail="Save not found")
 
+    # Save deletion is not visit deletion. If the user previously declared a
+    # visit, that factual history remains even after the bookmark is removed.
     db.delete(save)
     db.commit()
 
@@ -280,6 +284,26 @@ def update_save_memory(
     if "visited" in fields:
         save.visited = bool(fields["visited"])
         save.visited_at = datetime.now(timezone.utc) if save.visited else None
+        if save.visited:
+            upsert_declared_source(
+                db,
+                user_id=user_id,
+                place_id=place_id,
+                source=_VISIT_SOURCE,
+                source_ref=save.id,
+                occurred_at=save.visited_at,
+            )
+        else:
+            # This is an explicit factual retraction of the save-memory source,
+            # not a recommendation-only correction. Other independent visit
+            # evidence for the same place is left untouched.
+            retract_source(
+                db,
+                user_id=user_id,
+                place_id=place_id,
+                source=_VISIT_SOURCE,
+                source_ref=save.id,
+            )
 
     if "notes" in fields:
         save.notes = fields["notes"]
@@ -318,4 +342,4 @@ def get_saved_places_map(
         "API_RESPONSE endpoint=/saves/map user_id=%s count=%s",
         user_id, len(result.get("features", [])),
     )
-    return GeoJSONFeatureCollection.model_validate(result)
+    return result
