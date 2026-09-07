@@ -53,6 +53,66 @@ export const Radius = {
   full: 9999,
 } as const;
 
+/**
+ * Canonical text roles from CRAVE_DESIGN_SYSTEM.md §2.
+ *
+ * New or edited text styles consume these roles rather than introducing raw
+ * font sizes. `display` remains reserved for genuine hero moments such as
+ * Rank's score reveal.
+ */
+export const Typography = {
+  micro: {
+    fontSize: 11,
+    fontWeight: '500' as const,
+    lineHeight: 14,
+    letterSpacing: 0,
+  },
+  caption: {
+    fontSize: 12,
+    fontWeight: '500' as const,
+    lineHeight: 16,
+    letterSpacing: 0,
+  },
+  body: {
+    fontSize: 14,
+    fontWeight: '400' as const,
+    lineHeight: 20,
+    letterSpacing: 0,
+  },
+  label: {
+    fontSize: 16,
+    fontWeight: '600' as const,
+    lineHeight: 22,
+    letterSpacing: 0,
+  },
+  subtitle: {
+    fontSize: 18,
+    fontWeight: '700' as const,
+    lineHeight: 24,
+    letterSpacing: 0,
+  },
+  title: {
+    fontSize: 22,
+    fontWeight: '800' as const,
+    lineHeight: 28,
+    letterSpacing: -0.2,
+  },
+  headline: {
+    fontSize: 26,
+    fontWeight: '900' as const,
+    lineHeight: 32,
+    letterSpacing: -0.3,
+  },
+  display: {
+    fontSize: 56,
+    fontWeight: '900' as const,
+    lineHeight: 60,
+    letterSpacing: -0.5,
+  },
+} as const;
+
+export type TypographyRole = keyof typeof Typography;
+
 // Elevation tiers — before this, every floating surface (map controls,
 // Toast, MapBottomSheet) hand-typed its own shadowColor/Opacity/Radius/
 // elevation with no shared logic, and cards (PlaceCard etc.) had no shadow
