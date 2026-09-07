@@ -7,6 +7,7 @@ import { PlaceOut } from '../api/places';
 import { getTierForPlace, formatPrice, getBadges, percentileCaption, formatDistance } from '../utils/scoring';
 // formatPrice imported for fallback; normalized places already have place.price
 import { TierBadge } from './TierBadge';
+import { DecisionStrip, type SearchReasonRole } from './DecisionStrip';
 import { Colors, Radius, Shadows } from '../constants/colors';
 
 interface Props {
@@ -23,9 +24,12 @@ interface Props {
    * docs/E2_E3_E10_PRODUCT_TRADEOFFS_2026-08-31.md. */
   visited?: boolean;
   hasNotes?: boolean;
+  /** Search-only Reason Block label (Search Screen Contract §6). Absent
+   * everywhere else this component is used (Craves/TrendingStrip). */
+  searchReason?: SearchReasonRole;
 }
 
-function PlaceCardCompactImpl({ place, onPress, onPressIn, rightAction, style, visited, hasNotes }: Props) {
+function PlaceCardCompactImpl({ place, onPress, onPressIn, rightAction, style, visited, hasNotes, searchReason }: Props) {
   const tier = getTierForPlace(place);
   const price = place.price ?? formatPrice(place);
   const badges = getBadges(place);
@@ -80,6 +84,9 @@ function PlaceCardCompactImpl({ place, onPress, onPressIn, rightAction, style, v
           ) : null}
         </View>
         <Text style={styles.name} numberOfLines={1}>{place.name}</Text>
+        {searchReason ? (
+          <DecisionStrip source="search" searchReason={searchReason} density="compact" />
+        ) : null}
         {percentileLabel ? (
           <Text style={[styles.percentile, { color: tier.color }]}>{percentileLabel}</Text>
         ) : null}
