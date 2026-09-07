@@ -42,3 +42,21 @@ def test_unenforced_time_context_is_visible_and_uncertain():
     assert result.lookup_query == "ramen"
     assert result.context == ("open_late",)
     assert result.uncertain is True
+
+
+def test_non_vegan_is_not_inverted_into_positive_vegan_filter():
+    result = interpret_search_query("non-vegan ramen")
+
+    assert result.lookup_query == "non-vegan ramen"
+    assert result.required_categories == ()
+    assert "vegan" not in result.hard_constraints
+    assert result.uncertain is True
+
+
+def test_not_vegan_is_not_inverted_into_positive_vegan_filter():
+    result = interpret_search_query("not vegan ramen")
+
+    assert result.lookup_query == "not vegan ramen"
+    assert result.required_categories == ()
+    assert "vegan" not in result.hard_constraints
+    assert result.uncertain is True
