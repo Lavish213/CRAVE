@@ -82,14 +82,11 @@ def search(
     _: None = Depends(rate_limit),
 ) -> SearchResponse:
 
-    # -----------------------------
-    # Normalize inputs
-    # -----------------------------
     page = _clamp_page(page)
     page_size = _clamp_page_size(page_size)
 
     query = _clean_str(query)
-    city_id = _clean_str(city_id)  # may be None → global search
+    city_id = _clean_str(city_id)
     category_id = _clean_str(category_id)
 
     interpretation = interpret_search_query(query or "")
@@ -110,9 +107,6 @@ def search(
             interpretation=interpretation_out,
         )
 
-    # -----------------------------
-    # Cache read (safe)
-    # -----------------------------
     cache_key = search_cache_key(
         query=query,
         city_id=city_id,
@@ -131,9 +125,6 @@ def search(
     except Exception as exc:
         logger.debug("search_cache_read_failed error=%s", exc)
 
-    # -----------------------------
-    # Query
-    # -----------------------------
     offset = (page - 1) * page_size
 
     try:
@@ -142,7 +133,6 @@ def search(
             query=interpretation.lookup_query,
             city_id=city_id,
             category_id=category_id,
-            # Explicit UI controls win over words inferred from free text.
             price_tier=price_tier if price_tier is not None else interpretation.price_tier,
             lat=lat,
             lng=lng,
@@ -160,9 +150,10 @@ def search(
         raise HTTPException(status_code=503, detail="Search temporarily unavailable") from exc
 
     relaxed_constraints: List[str] = []
-    # Price is a soft heuristic. On a true zero-result page, retry without it
-    # and tell the client exactly what changed. Hard dietary filters remain.
-    if not results and interpretation.price_tier is not None and price_tier is None:
+    # Price is a soft heuristic. Relax it only when the filtered query has
+    # no matches at all. An empty later page with total > 0 is pagination,
+    # not evidence that the price constraint should be changed.
+    if total == 0 and interpretation.price_tier is not None and price_tier is None:
         try:
             results, total = execute_search(
                 db,
@@ -181,10 +172,6 @@ def search(
             raise HTTPException(status_code=503, detail="Search temporarily unavailable") from exc
         relaxed_constraints.append("price")
 
-    # -----------------------------
-    # Serialize (safe)
-    # -----------------------------
-    # Bulk image lookup — one query for the entire result set
     place_ids = [getattr(p, "id", None) for p in results if getattr(p, "id", None)]
     image_urls = get_primary_image_urls_bulk(db, place_ids=place_ids)
     video_flags = get_has_video_bulk(db, place_ids=place_ids)
@@ -200,23 +187,21 @@ def search(
             p.primary_image = img
             p.has_video = video_flags.get(pid, False)
             p.rank_percentile = rank_percentiles.get(pid)
-            items.append(
-                PlaceCardOut.model_validate(p, from_attributes=True)
-            )
+            items.append(PlaceCardOut.model_validate(p, from_attributes=True))
         except Exception:
-            # Was logger.debug -- invisible at the app's default INFO level,
-            # so every search result silently vanishing produced zero
-            # server-side signal to diagnose from. logger.exception logs at
-            # ERROR with the full traceback.
             logger.exception(
                 "search_serialize_failed place_id=%s",
                 getattr(p, "id", None),
             )
 
+    # Retrieval may strip supported intent words from lookup_query. Exact-name
+    # navigation must compare against what the user actually typed so a place
+    # such as "Vegan Ramen House" can still be recognized exactly.
+    normalized_original_query = interpretation.original_query.strip().casefold()
     exact_match_id = next(
         (
             item.id for item in items
-            if item.name.strip().casefold() == interpretation.lookup_query.casefold()
+            if item.name.strip().casefold() == normalized_original_query
         ),
         None,
     )
@@ -236,9 +221,6 @@ def search(
         len(query) if query else 0, city_id, len(items), total,
     )
 
-    # -----------------------------
-    # Cache write (safe)
-    # -----------------------------
     try:
         response_cache.set(
             cache_key,
