@@ -29,6 +29,7 @@ Read in this order:
 19. `CRAVE_CODEX_IMPLEMENTATION_RULES_V2.md`
 20. `CRAVE_CODEX_READINESS_AUDIT.md`
 21. `CRAVE_CODEX_HANDOFF_STATE.md` for the concrete completed-wave baseline and next executable wave
+22. `CRAVE_MASTER_CODEX_REMAINING_WORK.md` — **the current operational checklist of exactly what remains**; check this before starting any task so scope is not re-derived from scratch
 
 If two documents conflict, later explicitly approved canon supersedes older product/UI decisions while preserving traceability.
 
@@ -37,10 +38,14 @@ Codex must treat the following as already completed baseline, not work to redo:
 - **Wave 0:** protected #146 release/regression baseline.
 - **Wave 1:** shared foundations from PR #170, including typography roles, Decision Strip, resumable auth gate, recommendation-context/privacy/evidence primitives.
 - **Wave 2:** visit-evidence persistence + Rank queue + Rank Home ownership + Profile handoff from PR #172.
+- **Wave 3:** navigation topology from PR #185 — five tabs (Feed/Search/Craves/Rank/Profile), Map off the tab bar but reachable contextually, persistent `+`, Activity as a header route.
+- **Wave 4:** Feed / Decision Session hierarchy.
 
-**Codex begins broad implementation at Migration Plan Wave 3 — navigation topology.**
+Verified end-to-end against the current `main` head (backend `pytest` 1043 passed/2 skipped, single Alembic head, frontend `tsc`/`jest --ci` clean, conflict-marker guard clean) — 2026-09-07.
 
-The handoff details and hard invariants are in `CRAVE_CODEX_HANDOFF_STATE.md`.
+**Codex begins broad implementation at Migration Plan Wave 5 — Search and contextual Map**, per the exact item breakdown in `CRAVE_MASTER_CODEX_REMAINING_WORK.md`.
+
+The handoff details and hard invariants are in `CRAVE_CODEX_HANDOFF_STATE.md`; the concrete remaining checklist is in `CRAVE_MASTER_CODEX_REMAINING_WORK.md`.
 
 ## 4. Target V1 navigation
 Bottom tabs are exactly:

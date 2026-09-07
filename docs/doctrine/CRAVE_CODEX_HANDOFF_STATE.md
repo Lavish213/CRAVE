@@ -38,20 +38,24 @@ Merged via PR #172. Broad implementation must reuse rather than reinterpret:
 - Rank Home presentation derives `Elite | Love | Good` using `CRAVE_RANK_PRESENTATION_MAPPING.md`
 - `disliked` remains negative evidence and is excluded from ordered Rank
 
+### Wave 3 — navigation topology
+Merged via PR #185 (`codex/wave-3-navigation-topology`). Broad implementation must reuse rather than redo:
+- exactly five tabs: Feed / Search / Craves / Rank / Profile
+- Map stays reachable at `/map`, removed from tab-bar ownership (kept inside `(tabs)/` with `href: null` rather than a literal app-root `Stack.Screen` — achieves the "not a tab" outcome; a future contract audit may still want the literal relocation)
+- persistent `+` opens `/food-evidence`, a capture-only entry surface (stops before publish/log commit — that's Wave 8's composer)
+- Activity is a header-icon route (`/activity`), not a tab
+- no recommendation/evidence semantics changed; no legacy routes removed; no unrelated screen redesign
+
+### Wave 4 — Feed / Decision Session hierarchy
+Merged (`feat: Wave 4 Feed and Decision Session hierarchy`). See `CRAVE_MASTER_CODEX_REMAINING_WORK.md` §3.1 for the specific Feed dependencies this wave left open (Craves rail sourcing, `friends-feed` social-evidence migration, durable context/reject/correction behavior needing backend state).
+
 ## Codex starting point
 
-Codex starts at **Migration Plan Wave 3 — navigation topology**. It must not redo Waves 0–2.
+Codex starts at **Migration Plan Wave 5 — Search and contextual Map**. It must not redo Waves 0–4.
 
-Wave 3 target:
-- exactly five tabs: Feed / Search / Craves / Rank / Profile
-- Map remains a reachable contextual route, not a tab
-- Rank Home becomes the Rank tab owner without changing Rank semantics
-- persistent `+` action is introduced according to the approved route/flow contract
-- Activity remains a header/inbox destination, not a tab
-- preserve deep links and auth return destinations during route ownership changes
-- do not redesign Feed/Search/Craves/Profile content as part of navigation-only work
+The exact, current, item-by-item remaining checklist — grouped by wave, cross-referenced to the Readiness Audit and API/Integration Contracts, with the explicitly-blocked list and the permanent Definition-of-Done regression gate — is **`CRAVE_MASTER_CODEX_REMAINING_WORK.md`**. Read that file for the concrete next action; this file only records what's already done.
 
-After Wave 3, continue the order in `CRAVE_IMPLEMENTATION_MIGRATION_PLAN.md`.
+Verified end-to-end against the current `main` head (2026-09-07): backend `compileall`/import/`pytest` clean (1043 passed, 2 skipped), single Alembic head, frontend `tsc --noEmit` and `jest --ci` clean (426/426), conflict-marker guard clean.
 
 ## Hard handoff invariants
 
