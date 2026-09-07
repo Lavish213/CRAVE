@@ -14,6 +14,9 @@ import { SkeletonRowList } from '../src/components/SkeletonCard';
 import { Colors, Spacing, Typography } from '../src/constants/colors';
 import { useAuthStore } from '../src/stores/authStore';
 import { requestAuthGate } from '../src/stores/authGateStore';
+import { RANK_HOME_TIER_LABELS, RankHomeTier, rankHomeTier } from '../src/utils/rankScore';
+
+const TIER_ORDER: RankHomeTier[] = ['elite', 'love', 'good'];
 
 export default function RankHomeScreen() {
   const router = useRouter();
@@ -53,9 +56,11 @@ export default function RankHomeScreen() {
   const refreshing = queueQuery.isFetching || rankingsQuery.isFetching;
   const queue = queueQuery.data ?? [];
   const rankings = rankingsQuery.data ?? [];
-  const visibleRankings = rankings.filter((item) => item.tier !== 'disliked');
-  const liked = visibleRankings.filter((item) => item.tier === 'liked');
-  const fine = visibleRankings.filter((item) => item.tier === 'fine');
+  const visibleRankings = rankings.filter((item) => rankHomeTier(item.tier, item.rank_score) !== null);
+  const groups = TIER_ORDER.map((tier) => ({
+    tier,
+    items: visibleRankings.filter((item) => rankHomeTier(item.tier, item.rank_score) === tier),
+  })).filter((group) => group.items.length > 0);
 
   const refresh = () => {
     void Promise.all([queueQuery.refetch(), rankingsQuery.refetch()]);
@@ -117,11 +122,13 @@ export default function RankHomeScreen() {
       ) : visibleRankings.length > 0 ? (
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Your ranked places</Text>
-          {liked.length > 0 ? (
-            <View style={styles.group}>
-              <Text style={styles.groupTitle}>Loved it</Text>
+          {groups.map((group) => (
+            <View style={styles.group} key={group.tier}>
+              <Text style={[styles.groupTitle, group.tier === 'elite' ? styles.eliteTitle : null]}>
+                {RANK_HOME_TIER_LABELS[group.tier]}
+              </Text>
               <View style={styles.list}>
-                {liked.map((item, index) => (
+                {group.items.map((item, index) => (
                   <RankedPlaceRow
                     key={item.place_id}
                     position={index + 1}
@@ -138,29 +145,7 @@ export default function RankHomeScreen() {
                 ))}
               </View>
             </View>
-          ) : null}
-          {fine.length > 0 ? (
-            <View style={styles.group}>
-              <Text style={styles.groupTitle}>It was fine</Text>
-              <View style={styles.list}>
-                {fine.map((item, index) => (
-                  <RankedPlaceRow
-                    key={item.place_id}
-                    position={index + 1}
-                    name={item.name ?? 'Unknown place'}
-                    imageUrl={item.primary_image_url}
-                    score={item.rank_score}
-                    tier={item.tier}
-                    note={item.note}
-                    showPosition={false}
-                    showScore={false}
-                    showTierLabel={false}
-                    onPress={() => router.push(`/place/${item.place_id}`)}
-                  />
-                ))}
-              </View>
-            </View>
-          ) : null}
+          ))}
         </View>
       ) : null}
 
@@ -191,6 +176,7 @@ const styles = StyleSheet.create({
   count: { ...Typography.caption, color: Colors.textSecondary },
   group: { gap: Spacing.sm },
   groupTitle: { ...Typography.label, color: Colors.textSecondary },
+  eliteTitle: { color: Colors.primary },
   list: { gap: Spacing.sm },
   explain: {
     minHeight: 48,
