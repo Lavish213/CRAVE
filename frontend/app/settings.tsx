@@ -272,7 +272,18 @@ export default function MoreScreen() {
               tint={Colors.error}
               onPress={handleSignOut}
             />
-            <Divider />
+          </View>
+
+          {/* Deliberately its own card, not a third row in ACCOUNT above --
+              Sign Out is reversible (sign back in any time); this isn't.
+              Both previously used the identical row template/tint, so
+              nothing distinguished an irreversible destructive action from
+              a reversible one until after it was already tapped. A
+              red-bordered "danger zone" card gives it real visual weight
+              before that point, on top of the two-step confirmation
+              (Alert -> Alert) handleDeleteAccount already does. */}
+          <Text style={[styles.sectionTitle, styles.dangerSectionTitle]}>DANGER ZONE</Text>
+          <View style={[styles.card, styles.dangerCard]}>
             <Row
               icon="trash-outline"
               label="Delete Account"
@@ -327,6 +338,8 @@ const styles = StyleSheet.create({
     borderColor: Colors.border,
     overflow: 'hidden',
   },
+  dangerSectionTitle: { color: Colors.error },
+  dangerCard: { borderColor: Colors.error, borderWidth: 1.5 },
   row: {
     flexDirection: 'row',
     alignItems: 'center',

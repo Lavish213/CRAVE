@@ -25,6 +25,7 @@ import { Colors, Radius, Spacing } from '../src/constants/colors';
 import { EmptyState } from '../src/components/EmptyState';
 import { ErrorState } from '../src/components/ErrorState';
 import { SkeletonRowList } from '../src/components/SkeletonCard';
+import { AuthSheet } from '../src/components/AuthSheet';
 import { LeaderboardRow, fetchLeaderboard } from '../src/api/social';
 import { withImageWidth, AVATAR_IMAGE_WIDTH } from '../src/utils/imageUrl';
 import { useAuthStore } from '../src/stores/authStore';
@@ -43,6 +44,7 @@ export default function LeaderboardScreen() {
   const user = useAuthStore((s) => s.user);
 
   const [scope, setScope] = useState<Scope>('global');
+  const [authVisible, setAuthVisible] = useState(false);
 
   // Previously raw useState + useFocusEffect with no caching at all -- every
   // tab focus (including just switching Global/Friends and back) re-fetched
@@ -120,7 +122,18 @@ export default function LeaderboardScreen() {
         ))}
       </View>
 
-      {loading ? (
+      {scope === 'friends' && !user ? (
+        <>
+          <EmptyState
+            icon="person-circle-outline"
+            title="Sign in to see your friends board"
+            body="Follow people who rank places to see how you stack up against them."
+            ctaLabel="Sign in"
+            onCta={() => setAuthVisible(true)}
+          />
+          <AuthSheet visible={authVisible} onClose={() => setAuthVisible(false)} reason="default" />
+        </>
+      ) : loading ? (
         <View style={styles.skeletonWrap}>
           <SkeletonRowList count={7} avatar />
         </View>
