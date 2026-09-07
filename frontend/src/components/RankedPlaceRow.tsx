@@ -1,15 +1,14 @@
 // src/components/RankedPlaceRow.tsx
 //
-// One row of a personal ranked list. The position number is the point of
-// the whole feature — a forced-rank list has no ties, so "#3" is a real
-// claim about this place relative to every other one, not a star rating
-// shared with fifty others.
+// One row of a personal ranked list. Existing exact-list consumers keep the
+// position/score treatment; Rank Home can reuse the same row in its default
+// qualitative view without exposing exact position until drill-down.
 import React from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
-import { Colors, Radius, Spacing } from '../constants/colors';
-import { RankTier, formatScore, tierColor } from '../utils/rankScore';
+import { Colors, Radius, Spacing, Typography } from '../constants/colors';
+import { RankTier, TIER_LABELS, formatScore, tierColor } from '../utils/rankScore';
 
 interface Props {
   position: number;
@@ -20,6 +19,9 @@ interface Props {
   note?: string | null;
   onPress?: () => void;
   rightAction?: React.ReactNode;
+  showPosition?: boolean;
+  showScore?: boolean;
+  showTierLabel?: boolean;
 }
 
 function RankedPlaceRowImpl({
@@ -31,10 +33,13 @@ function RankedPlaceRowImpl({
   note,
   onPress,
   rightAction,
+  showPosition = true,
+  showScore = true,
+  showTierLabel = false,
 }: Props) {
   const body = (
     <View style={styles.row}>
-      <Text style={styles.position}>{position}</Text>
+      {showPosition ? <Text style={styles.position}>{position}</Text> : null}
 
       {imageUrl ? (
         <Image
@@ -55,6 +60,7 @@ function RankedPlaceRowImpl({
         <Text style={styles.name} numberOfLines={1}>
           {name}
         </Text>
+        {showTierLabel ? <Text style={styles.tierLabel}>{TIER_LABELS[tier]}</Text> : null}
         {note ? (
           <Text style={styles.note} numberOfLines={1}>
             {note}
@@ -62,11 +68,13 @@ function RankedPlaceRowImpl({
         ) : null}
       </View>
 
-      <View style={[styles.scorePill, { borderColor: tierColor(tier) }]}>
-        <Text style={[styles.scoreText, { color: tierColor(tier) }]}>
-          {formatScore(score)}
-        </Text>
-      </View>
+      {showScore ? (
+        <View style={[styles.scorePill, { borderColor: tierColor(tier) }]}>
+          <Text style={[styles.scoreText, { color: tierColor(tier) }]}>
+            {formatScore(score)}
+          </Text>
+        </View>
+      ) : null}
 
       {rightAction}
     </View>
@@ -74,12 +82,16 @@ function RankedPlaceRowImpl({
 
   if (!onPress) return body;
 
+  const accessibilityLabel = showPosition
+    ? `${name}, ranked number ${position}${showScore ? `, scored ${formatScore(score)}` : ''}`
+    : `${name}, ${TIER_LABELS[tier]}`;
+
   return (
     <TouchableOpacity
       onPress={onPress}
       activeOpacity={0.75}
       accessibilityRole="button"
-      accessibilityLabel={`${name}, ranked number ${position}, scored ${formatScore(score)}`}
+      accessibilityLabel={accessibilityLabel}
     >
       {body}
     </TouchableOpacity>
@@ -103,8 +115,8 @@ const styles = StyleSheet.create({
     borderColor: Colors.border,
   },
   position: {
+    ...Typography.body,
     color: Colors.textSecondary,
-    fontSize: 15,
     fontWeight: '800',
     minWidth: 24,
     textAlign: 'center',
@@ -116,8 +128,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   meta: { flex: 1 },
-  name: { color: Colors.text, fontSize: 15, fontWeight: '700' },
-  note: { color: Colors.textSecondary, fontSize: 12, marginTop: 2 },
+  name: { ...Typography.body, color: Colors.text, fontWeight: '700' },
+  tierLabel: { ...Typography.caption, color: Colors.textSecondary, marginTop: 2 },
+  note: { ...Typography.caption, color: Colors.textSecondary, marginTop: 2 },
   scorePill: {
     paddingHorizontal: Spacing.sm,
     paddingVertical: 4,
@@ -126,5 +139,5 @@ const styles = StyleSheet.create({
     minWidth: 44,
     alignItems: 'center',
   },
-  scoreText: { fontSize: 14, fontWeight: '800' },
+  scoreText: { ...Typography.body, fontWeight: '800' },
 });

@@ -4,7 +4,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import List, Optional
 
-from fastapi import APIRouter, Body, Depends, HTTPException
+from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
 
@@ -13,6 +13,7 @@ from app.core.rate_limit import rate_limit
 from app.core.user_auth import get_current_user_id
 from app.db.session import get_db
 from app.db.models.place import Place
+from app.db.models.place_ranking import PlaceRanking
 from app.db.models.user_profile import UserProfile
 from app.services.personal_ranking import ranking_service
 from app.services.personal_ranking.ranking_service import RankingError
@@ -20,6 +21,7 @@ from app.services.query.place_image_visibility_query import get_primary_image_ur
 from app.services.recommendations.recommendation_event_service import record_rank_outcome
 from app.services.social.activity_service import record_ranked_place
 from app.services.social.block_service import is_blocked
+from app.services.visit_evidence_service import latest_rank_eligible_by_place
 
 router = APIRouter(prefix="/rankings", tags=["rankings"])
 
@@ -59,6 +61,20 @@ class RankedPlaceOut(RankingOut):
     name: Optional[str] = None
     primary_image_url: Optional[str] = None
     city_id: Optional[str] = None
+
+
+class RankQueueItemOut(BaseModel):
+    place_id: str
+    name: str
+    primary_image_url: Optional[str] = None
+    city_id: Optional[str] = None
+    visited_at: datetime
+    evidence_tier: str
+    evidence_source: str
+
+
+class RankQueueResponse(BaseModel):
+    items: List[RankQueueItemOut]
 
 
 def _hydrate_rankings(db: Session, rankings: list) -> List[RankedPlaceOut]:
@@ -160,6 +176,64 @@ def submit_comparison(
         db.commit()
 
     return _serialize_result(result)
+
+
+@router.get("/queue", response_model=RankQueueResponse, dependencies=[Depends(rate_limit), Depends(require_api_key)])
+def get_rank_queue(
+    limit: int = Query(30, ge=1, le=100),
+    db: Session = Depends(get_db),
+    user_id: str = Depends(get_current_user_id),
+) -> RankQueueResponse:
+    """
+    Unranked places with declared/verified visit evidence, newest first.
+
+    Inferred-only evidence is filtered in the shared visit-evidence service and
+    can never appear here. Multiple visits remain stored factually but collapse
+    to one queue row per place.
+    """
+    eligible = latest_rank_eligible_by_place(db, user_id=user_id, limit=max(limit * 2, limit))
+    if not eligible:
+        return RankQueueResponse(items=[])
+
+    place_ids = [row.place_id for row in eligible]
+    ranked_ids = {
+        place_id
+        for (place_id,) in db.query(PlaceRanking.place_id).filter(
+            PlaceRanking.user_id == user_id,
+            PlaceRanking.place_id.in_(place_ids),
+        ).all()
+    }
+    unranked = [row for row in eligible if row.place_id not in ranked_ids][:limit]
+    if not unranked:
+        return RankQueueResponse(items=[])
+
+    unranked_place_ids = [row.place_id for row in unranked]
+    places = {
+        place.id: place
+        for place in db.query(Place).filter(
+            Place.id.in_(unranked_place_ids),
+            Place.is_active.is_(True),
+        ).all()
+    }
+    image_urls = get_primary_image_urls_bulk(db, place_ids=list(places.keys()))
+
+    items: List[RankQueueItemOut] = []
+    for evidence in unranked:
+        place = places.get(evidence.place_id)
+        if not place:
+            continue
+        items.append(
+            RankQueueItemOut(
+                place_id=place.id,
+                name=place.name,
+                primary_image_url=image_urls.get(place.id),
+                city_id=place.city_id,
+                visited_at=evidence.occurred_at,
+                evidence_tier=evidence.tier,
+                evidence_source=evidence.source,
+            )
+        )
+    return RankQueueResponse(items=items)
 
 
 @router.get("/me", dependencies=[Depends(rate_limit), Depends(require_api_key)])

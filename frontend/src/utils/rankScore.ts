@@ -7,11 +7,18 @@
 import { Colors } from '../constants/colors';
 
 export type RankTier = 'liked' | 'fine' | 'disliked';
+export type RankHomeTier = 'elite' | 'love' | 'good';
 
 export const TIER_LABELS: Record<RankTier, string> = {
   liked: 'Loved it',
   fine: 'It was fine',
   disliked: "Didn't like it",
+};
+
+export const RANK_HOME_TIER_LABELS: Record<RankHomeTier, string> = {
+  elite: 'Elite',
+  love: 'Love',
+  good: 'Good',
 };
 
 /** The three choices, in the order they're offered when logging a visit. */
@@ -24,19 +31,27 @@ export const TIER_CHOICES: { tier: RankTier; label: string; icon: string }[] = [
 export function tierColor(tier: RankTier): string {
   if (tier === 'liked') return Colors.success;
   if (tier === 'fine') return Colors.warning;
-  // Was Colors.textMuted (~2-2.7:1 against every surface, fails WCAG AA
-  // outright) -- this return value is rendered as real text color at
-  // every call site (friends-feed/RankedPlaceRow's score text,
-  // rank/[placeId]'s done-tier label, place/[id]'s friend-rank tier and
-  // score dot, taste-profile's disliked-tier count, and the exported
-  // ShareRankCard image's tier badge) -- see
-  // ACCESSIBILITY_CONTRAST_AUDIT.md for the full trace.
   return Colors.textSecondary;
 }
 
 /** One decimal is the resolution people expect from a 0-10 score. */
 export function formatScore(score: number): string {
   return score.toFixed(1);
+}
+
+/**
+ * Rank Home's Elite/Love/Good labels are a presentation layer, not a
+ * rewrite of the ranking engine's persisted liked/fine/disliked evidence
+ * buckets. The existing liked score band is 6.6-10.0, so its exact
+ * midpoint (8.3) is the only deterministic split that introduces no new
+ * weighting assumption: above 8.3 is Elite, 6.6-8.3 is Love. The existing
+ * fine band is Good. Disliked is deliberately excluded from ordered Rank
+ * presentation and remains negative evidence only.
+ */
+export function rankHomeTier(tier: RankTier, score: number): RankHomeTier | null {
+  if (tier === 'disliked') return null;
+  if (tier === 'fine') return 'good';
+  return score > 8.3 ? 'elite' : 'love';
 }
 
 /**
@@ -64,11 +79,6 @@ export function rankedListHeadline(count: number): string {
   return `${count} places ranked. You *are* the guide.`;
 }
 
-/**
- * Beli gates recommendations until a user has ranked enough places for the
- * signal to mean anything — same threshold used here to decide whether to
- * nudge someone toward ranking more.
- */
 export const RECOMMENDATION_THRESHOLD = 15;
 
 export function recommendationProgress(count: number): {

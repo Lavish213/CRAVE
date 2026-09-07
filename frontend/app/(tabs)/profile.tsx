@@ -1,13 +1,7 @@
 // app/(tabs)/profile.tsx
 //
-// Your identity in the app: who you are, your ranked list, and the two
-// social surfaces (friends feed, leaderboard) hanging off it.
-//
-// Framing follows the Spotify-Wrapped lesson rather than a dashboard one:
-// the headline is a statement about the person ("42 places ranked. You
-// know this city.") instead of a bare metric, because that's the line
-// someone screenshots. Settings live behind the gear here rather than in
-// their own tab — the same place every comparable app puts them.
+// Identity-first Profile. Full personal ranking ownership lives in Rank Home;
+// Profile keeps only a compact status/link so state ownership is not split.
 import React, { useCallback, useRef, useState } from 'react';
 import {
   RefreshControl,
@@ -25,7 +19,6 @@ import { Colors, Radius, Spacing } from '../../src/constants/colors';
 import { EmptyState } from '../../src/components/EmptyState';
 import { ErrorState } from '../../src/components/ErrorState';
 import { AuthSheet } from '../../src/components/AuthSheet';
-import { RankedPlaceRow } from '../../src/components/RankedPlaceRow';
 import { SkeletonRowList } from '../../src/components/SkeletonCard';
 import { withImageWidth, AVATAR_IMAGE_WIDTH } from '../../src/utils/imageUrl';
 import { useAuthStore } from '../../src/stores/authStore';
@@ -66,7 +59,13 @@ function StatTile({
   );
   if (!onPress) return inner;
   return (
-    <TouchableOpacity onPress={onPress} activeOpacity={0.75} accessibilityRole="button" accessibilityLabel={`${value} ${label}`} style={{ flex: 1 }}>
+    <TouchableOpacity
+      onPress={onPress}
+      activeOpacity={0.75}
+      accessibilityRole="button"
+      accessibilityLabel={`${value} ${label}`}
+      style={{ flex: 1 }}
+    >
       {inner}
     </TouchableOpacity>
   );
@@ -90,21 +89,7 @@ export default function ProfileScreen() {
   const [followersError, setFollowersError] = useState(false);
   const [streakError, setStreakError] = useState(false);
 
-  // Signing out and back in as a different account while a previous
-  // load() is still in flight (or useFocusEffect re-firing mid-request)
-  // could otherwise let a stale response overwrite state for the new
-  // account — same account-switch race already fixed in
-  // craves.tsx/cravesStore.ts.
   const loadGenerationRef = useRef(0);
-  // Tracks whose data is currently sitting in state, independent of the
-  // stale-response race above. Guarding against out-of-order responses
-  // isn't enough on its own: this screen stays mounted across sign-out ->
-  // sign-in-as-a-different-account (it's a tab, never unmounted), and
-  // `loading` only ever flipped back to false from the *previous* load
-  // -- a fresh load() for a new account never set it back to true, so
-  // between the account switch and the new account's fetch resolving,
-  // this screen rendered the outgoing account's profile/rankings/counts
-  // with no loading indicator at all. Confirmed real, not theoretical.
   const loadedForUserIdRef = useRef<string | null>(null);
 
   const load = useCallback(async () => {
@@ -115,10 +100,6 @@ export default function ProfileScreen() {
       return;
     }
     if (loadedForUserIdRef.current !== user.id) {
-      // A different account than whatever this screen last rendered --
-      // clear its data and show the loading gate immediately, rather than
-      // leaving the previous account's state on screen until the new
-      // fetch resolves.
       setProfile(null);
       setRankings([]);
       setFollowingCount(0);
@@ -132,8 +113,6 @@ export default function ProfileScreen() {
     setFollowersError(false);
     setStreakError(false);
     try {
-      // Independent reads — one slow/failing call shouldn't blank the
-      // whole screen, so they settle individually rather than all-or-nothing.
       const [p, r, following, followers, s] = await Promise.all([
         fetchMyProfile().then((value) => ({ value, failed: false })).catch(() => ({ value: null, failed: true })),
         fetchMyRankings().then((value) => ({ value, failed: false })).catch(() => ({ value: [] as RankedPlace[], failed: true })),
@@ -158,8 +137,6 @@ export default function ProfileScreen() {
     }
   }, [user?.id]);
 
-  // Re-read on focus: coming back from the ranking flow should show the
-  // place that was just added, not a stale list.
   useFocusEffect(
     useCallback(() => {
       load();
@@ -180,8 +157,8 @@ export default function ProfileScreen() {
       <>
         <EmptyState
           icon="person-circle-outline"
-          title="Sign in to build your list"
-          body="Rank the places you've eaten, follow friends, and see how your taste stacks up."
+          title="Sign in to build your food identity"
+          body="Your profile is where CRAVE reflects what it has learned from your real choices."
           ctaLabel="Sign in"
           onCta={() => setAuthVisible(true)}
         />
@@ -190,13 +167,6 @@ export default function ProfileScreen() {
     );
   }
 
-  // Derived at render time, not just from `loading` -- `loading` only
-  // flips back to true from inside load(), which runs in an *effect*
-  // (useFocusEffect), one render after `user` itself has already changed.
-  // Gating on the ref directly closes that one-render gap: the instant
-  // `user` becomes a different account than whatever was last loaded,
-  // this is true immediately, in the same render, before load()'s effect
-  // has even had a chance to run.
   const isStaleForCurrentUser = loadedForUserIdRef.current !== user.id;
   if (loading || isStaleForCurrentUser) {
     return (
@@ -210,13 +180,12 @@ export default function ProfileScreen() {
     return <ErrorState message="Couldn't load your profile" onRetry={load} />;
   }
 
-  // Signed in but never picked a username — everything social keys off it.
   if (!profile) {
     return (
       <EmptyState
         icon="at-outline"
         title="Pick a username"
-        body="You need a handle before you can be followed or show up on a leaderboard."
+        body="Choose the identity people can use to find you. Your private taste data stays separate."
         ctaLabel="Choose username"
         onCta={() => router.push('/profile-setup')}
       />
@@ -269,7 +238,7 @@ export default function ProfileScreen() {
       </View>
 
       <View style={styles.statsRow}>
-        <StatTile value={rankingsError ? '—' : rankings.length} label="ranked" />
+        <StatTile value={rankingsError ? '—' : rankings.length} label="ranked" onPress={() => router.push('/rank-home')} />
         <StatTile value={followersError ? '—' : followerCount} label="followers" />
         <StatTile value={followingError ? '—' : followingCount} label="following" />
         {streak && streak.current_streak > 0 ? (
@@ -279,22 +248,38 @@ export default function ProfileScreen() {
         ) : null}
       </View>
 
-      {!rankingsError ? (
-        <Text style={styles.headline}>{rankedListHeadline(rankings.length)}</Text>
-      ) : null}
+      {!rankingsError ? <Text style={styles.headline}>{rankedListHeadline(rankings.length)}</Text> : null}
 
       {!rankingsError && !unlocked ? (
         <View style={styles.unlockCard}>
           <Ionicons name="sparkles-outline" size={18} color={Colors.primary} />
           <Text style={styles.unlockText}>
-            Rank {remaining} more {remaining === 1 ? 'place' : 'places'} for
-            recommendations tailored to your exact taste. Below{' '}
-            {RECOMMENDATION_THRESHOLD} rankings there isn't enough signal to
-            match you to anyone yet, so "Recommended for you" is showing
-            top-rated picks in the meantime.
+            Rank {remaining} more {remaining === 1 ? 'place' : 'places'} to give CRAVE a stronger read on your taste.
           </Text>
         </View>
       ) : null}
+
+      <TouchableOpacity
+        style={styles.rankCard}
+        onPress={() => router.push('/rank-home')}
+        accessibilityRole="button"
+        accessibilityLabel="Open Rank"
+      >
+        <View style={styles.rankIcon}>
+          <Ionicons name="podium-outline" size={22} color={Colors.primary} />
+        </View>
+        <View style={styles.rankMeta}>
+          <Text style={styles.rankTitle}>Rank</Text>
+          <Text style={styles.rankBody}>
+            {rankingsError
+              ? "Open your ranking workspace"
+              : rankings.length === 0
+                ? "Start ranking places you've actually tried"
+                : `${rankings.length} ${rankings.length === 1 ? 'place' : 'places'} ranked — manage comparisons in Rank`}
+          </Text>
+        </View>
+        <Ionicons name="chevron-forward" size={18} color={Colors.textSecondary} />
+      </TouchableOpacity>
 
       <View style={styles.linkRow}>
         <TouchableOpacity
@@ -315,7 +300,7 @@ export default function ProfileScreen() {
           <Ionicons name="trophy-outline" size={18} color={Colors.primary} />
           <Text style={styles.linkBtnText}>Leaderboard</Text>
         </TouchableOpacity>
-        {!rankingsError && rankings.length > 0 && user && (
+        {!rankingsError && rankings.length > 0 ? (
           <TouchableOpacity
             style={styles.linkBtn}
             onPress={() => router.push(`/taste-profile/${user.id}`)}
@@ -325,45 +310,8 @@ export default function ProfileScreen() {
             <Ionicons name="restaurant-outline" size={18} color={Colors.primary} />
             <Text style={styles.linkBtnText}>Taste Profile</Text>
           </TouchableOpacity>
-        )}
+        ) : null}
       </View>
-
-      <Text style={styles.sectionTitle}>Your list</Text>
-
-      {rankingsError ? (
-        <ErrorState message="Couldn't load your ranked places" onRetry={load} />
-      ) : rankings.length === 0 ? (
-        <View style={styles.emptyList}>
-          <Text style={styles.emptyListTitle}>Nothing ranked yet</Text>
-          <Text style={styles.emptyListBody}>
-            Open any place you've eaten at and tap "I ate here" — you'll compare
-            it against your other spots to place it exactly.
-          </Text>
-          <TouchableOpacity
-            style={styles.emptyCta}
-            onPress={() => router.push('/')}
-            accessibilityRole="button"
-            accessibilityLabel="Browse places"
-          >
-            <Text style={styles.emptyCtaText}>Browse places</Text>
-          </TouchableOpacity>
-        </View>
-      ) : (
-        <View style={styles.list}>
-          {rankings.map((r, i) => (
-            <RankedPlaceRow
-              key={r.place_id}
-              position={i + 1}
-              name={r.name ?? 'Unknown place'}
-              imageUrl={r.primary_image_url}
-              score={r.rank_score}
-              tier={r.tier}
-              note={r.note}
-              onPress={() => router.push(`/place/${r.place_id}`)}
-            />
-          ))}
-        </View>
-      )}
     </ScrollView>
   );
 }
@@ -371,7 +319,6 @@ export default function ProfileScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
   content: { padding: Spacing.lg, paddingBottom: Spacing.xxl, gap: Spacing.lg },
-
   header: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md },
   avatar: { width: 64, height: 64, borderRadius: Radius.full, backgroundColor: Colors.surfaceElevated },
   avatarFallback: { alignItems: 'center', justifyContent: 'center' },
@@ -381,7 +328,6 @@ const styles = StyleSheet.create({
   username: { color: Colors.textSecondary, fontSize: 14, marginTop: 1 },
   bio: { color: Colors.textSecondary, fontSize: 13, marginTop: Spacing.xs, lineHeight: 18 },
   gearBtn: { padding: Spacing.sm, minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
-
   statsRow: { flexDirection: 'row', gap: Spacing.sm },
   statTile: {
     flex: 1,
@@ -395,9 +341,7 @@ const styles = StyleSheet.create({
   statValueRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   statValue: { color: Colors.text, fontSize: 22, fontWeight: '800' },
   statLabel: { color: Colors.textSecondary, fontSize: 12, marginTop: 2 },
-
   headline: { color: Colors.text, fontSize: 17, fontWeight: '700', lineHeight: 23 },
-
   unlockCard: {
     flexDirection: 'row',
     gap: Spacing.sm,
@@ -408,7 +352,28 @@ const styles = StyleSheet.create({
     borderColor: Colors.border,
   },
   unlockText: { flex: 1, color: Colors.textSecondary, fontSize: 13, lineHeight: 19 },
-
+  rankCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+    padding: Spacing.md,
+    minHeight: 72,
+    backgroundColor: Colors.surface,
+    borderRadius: Radius.card,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  rankIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: Radius.full,
+    backgroundColor: Colors.surfaceElevated,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  rankMeta: { flex: 1, gap: 2 },
+  rankTitle: { color: Colors.text, fontSize: 16, fontWeight: '800' },
+  rankBody: { color: Colors.textSecondary, fontSize: 13, lineHeight: 18 },
   linkRow: { flexDirection: 'row', gap: Spacing.sm },
   linkBtn: {
     flex: 1,
@@ -424,34 +389,4 @@ const styles = StyleSheet.create({
     minHeight: 44,
   },
   linkBtnText: { color: Colors.primary, fontSize: 14, fontWeight: '700' },
-
-  sectionTitle: { color: Colors.text, fontSize: 18, fontWeight: '800' },
-  list: { gap: Spacing.sm },
-
-  emptyList: {
-    padding: Spacing.lg,
-    backgroundColor: Colors.surface,
-    borderRadius: Radius.card,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    alignItems: 'center',
-    gap: Spacing.sm,
-  },
-  emptyListTitle: { color: Colors.text, fontSize: 16, fontWeight: '700' },
-  emptyListBody: {
-    color: Colors.textSecondary,
-    fontSize: 13,
-    textAlign: 'center',
-    lineHeight: 19,
-  },
-  emptyCta: {
-    marginTop: Spacing.xs,
-    paddingHorizontal: Spacing.lg,
-    paddingVertical: 10,
-    borderRadius: Radius.pill,
-    backgroundColor: Colors.primary,
-    minHeight: 44,
-    justifyContent: 'center',
-  },
-  emptyCtaText: { color: '#FFFFFF', fontSize: 14, fontWeight: '700' },
 });
