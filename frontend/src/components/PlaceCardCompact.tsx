@@ -8,6 +8,7 @@ import { getTierForPlace, formatPrice, getBadges, percentileCaption, formatDista
 // formatPrice imported for fallback; normalized places already have place.price
 import { TierBadge } from './TierBadge';
 import { DecisionStrip, type SearchReasonRole } from './DecisionStrip';
+import type { DecisionRole } from '../api/decisionSession';
 import { Colors, Radius, Shadows } from '../constants/colors';
 
 interface Props {
@@ -27,9 +28,16 @@ interface Props {
   /** Search-only Reason Block label (Search Screen Contract §6). Absent
    * everywhere else this component is used (Craves/TrendingStrip). */
   searchReason?: SearchReasonRole;
+  /** Craves-only Reason Block role, for the "reasoned subset" section
+   * (Craves Screen Contract §5/§6). Reuses Decision Session's exact
+   * role vocabulary -- confirmed product decision, since this is the
+   * literal same build_decision_session() engine over the saved pool,
+   * not a conceptually distinct surface the way Search is. Absent for
+   * the full saved list below the reasoned subset. */
+  craveRole?: DecisionRole;
 }
 
-function PlaceCardCompactImpl({ place, onPress, onPressIn, rightAction, style, visited, hasNotes, searchReason }: Props) {
+function PlaceCardCompactImpl({ place, onPress, onPressIn, rightAction, style, visited, hasNotes, searchReason, craveRole }: Props) {
   const tier = getTierForPlace(place);
   const price = place.price ?? formatPrice(place);
   const badges = getBadges(place);
@@ -86,6 +94,9 @@ function PlaceCardCompactImpl({ place, onPress, onPressIn, rightAction, style, v
         <Text style={styles.name} numberOfLines={1}>{place.name}</Text>
         {searchReason ? (
           <DecisionStrip source="search" searchReason={searchReason} density="compact" />
+        ) : null}
+        {craveRole ? (
+          <DecisionStrip source="craves" role={craveRole} density="compact" />
         ) : null}
         {percentileLabel ? (
           <Text style={[styles.percentile, { color: tier.color }]}>{percentileLabel}</Text>

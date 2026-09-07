@@ -2,6 +2,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   RefreshControl,
   StyleSheet,
   Text,
@@ -15,11 +16,13 @@ import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { SkeletonRowList } from '../../src/components/SkeletonCard';
 import { useCravesStore } from '../../src/stores/cravesStore';
+import { useCravesReasoned } from '../../src/hooks/useCravesReasoned';
 import { useToast } from '../../src/hooks/useToast';
 import { Colors, Spacing, Radius } from '../../src/constants/colors';
 import { withImageWidth, AVATAR_IMAGE_WIDTH } from '../../src/utils/imageUrl';
 import { usePrefetchPlace } from '../../src/hooks/usePrefetchPlace';
 import { PlaceCardCompact } from '../../src/components/PlaceCardCompact';
+import type { DecisionSessionCard } from '../../src/api/decisionSession';
 import { EmptyState } from '../../src/components/EmptyState';
 import { ErrorState } from '../../src/components/ErrorState';
 import { getCraveItems, CraveItem, getMyPlaceSaves, PlaceSaveItem } from '../../src/api/crave';
@@ -32,6 +35,11 @@ import { logRecommendationEvent, logRecommendationEvents } from '../../src/utils
 const VIEWABILITY_CONFIG = { itemVisiblePercentThreshold: 50, minimumViewTime: 250 };
 
 type CravesRow =
+  | { kind: 'reasoned-header' }
+  | { kind: 'reasoned-loading' }
+  | { kind: 'reasoned-empty' }
+  | { kind: 'reasoned-card'; card: DecisionSessionCard; position: number }
+  | { kind: 'full-list-header' }
   | { kind: 'save'; item: SavedPlace; position: number }
   | { kind: 'section'; section: 'craves' | 'added' }
   | { kind: 'crave'; item: CraveItem; matchedPosition: number | null }
@@ -47,6 +55,7 @@ export default function CravesScreen() {
   const { saves, loading: savesLoading, error: savesError, loadSaves, removeSave } = useCravesStore();
   const toast = useToast((s) => s.show);
   const user = useAuthStore((s) => s.user);
+  const reasonedQuery = useCravesReasoned();
 
   const [craves, setCraves] = useState<CraveItem[]>([]);
   const [cravesLoading, setCravesLoading] = useState(false);
@@ -151,7 +160,28 @@ export default function CravesScreen() {
   // same actual viewability contract applies to Saves, matched shared Craves,
   // and matched manual Added entries.
   const rows = useMemo<CravesRow[]>(() => {
-    const next: CravesRow[] = saves.map((item, position) => ({ kind: 'save', item, position }));
+    const next: CravesRow[] = [];
+
+    // Craves Screen Contract §5/§6: the reasoned subset is the first
+    // viewport, not the full saved list -- this is "resolve saved intent",
+    // not a bookmark browser.
+    const hasAnySaved = saves.length > 0 || craves.length > 0 || placeSaves.length > 0;
+    if (reasonedQuery.isLoading && hasAnySaved) {
+      next.push({ kind: 'reasoned-header' }, { kind: 'reasoned-loading' });
+    } else if (reasonedQuery.data && reasonedQuery.data.cards.length > 0) {
+      next.push({ kind: 'reasoned-header' });
+      reasonedQuery.data.cards.forEach((card, position) => {
+        next.push({ kind: 'reasoned-card', card, position });
+      });
+    } else if (reasonedQuery.isSuccess && hasAnySaved) {
+      // Contract §12: honest "nothing fits right now," distinct from the
+      // true empty-saved-list state below -- never just blank.
+      next.push({ kind: 'reasoned-header' }, { kind: 'reasoned-empty' });
+    }
+
+    if (hasAnySaved) next.push({ kind: 'full-list-header' });
+
+    saves.forEach((item, position) => next.push({ kind: 'save', item, position }));
 
     if (cravesLoading || (user?.id && cravesLoadedForUserId !== user.id)) {
       next.push({ kind: 'section', section: 'craves' }, { kind: 'craves-loading' });
@@ -190,6 +220,9 @@ export default function CravesScreen() {
     placeSaves,
     placeSavesLoading,
     placeSavesError,
+    reasonedQuery.data,
+    reasonedQuery.isLoading,
+    reasonedQuery.isSuccess,
     placeSavesLoadedForUserId,
     user?.id,
   ]);
@@ -204,6 +237,22 @@ export default function CravesScreen() {
     for (const token of viewableItems) {
       if (!token.isViewable || !token.item) continue;
       const row = token.item;
+
+      if (row.kind === 'reasoned-card') {
+        const key = `reasoned:${row.card.place.id}`;
+        if (exposedRowsRef.current.has(key)) continue;
+        exposedRowsRef.current.add(key);
+        events.push({
+          surface: 'craves',
+          event_type: 'impression',
+          place_id: row.card.place.id,
+          position: row.position,
+          rank_percentile: row.card.place.rank_percentile,
+          city_id: row.card.place.city_id ?? null,
+          decision_role: row.card.role,
+        });
+        continue;
+      }
 
       if (row.kind === 'save') {
         const key = `save:${row.item.id}`;
@@ -387,6 +436,61 @@ export default function CravesScreen() {
           />
         }
         renderItem={({ item: row }) => {
+          if (row.kind === 'reasoned-header') {
+            return (
+              <View style={styles.cravesHeader}>
+                <Text style={styles.cravesTitle}>Try one of these</Text>
+                <Text style={styles.cravesSub}>From your saved places, right now</Text>
+              </View>
+            );
+          }
+
+          if (row.kind === 'reasoned-loading') {
+            return <View style={styles.list}><SkeletonRowList count={2} /></View>;
+          }
+
+          if (row.kind === 'reasoned-empty') {
+            return (
+              <View style={styles.reasonedEmpty}>
+                <Text style={styles.cravesSub}>
+                  Nothing in your Craves fits right now — try Search to find something new.
+                </Text>
+              </View>
+            );
+          }
+
+          if (row.kind === 'reasoned-card') {
+            return (
+              <View style={styles.rowSpacer}>
+                <PlaceCardCompact
+                  place={row.card.place}
+                  craveRole={row.card.role}
+                  onPress={() => {
+                    logRecommendationEvent({
+                      surface: 'craves',
+                      event_type: 'click',
+                      place_id: row.card.place.id,
+                      position: row.position,
+                      rank_percentile: row.card.place.rank_percentile,
+                      city_id: row.card.place.city_id ?? null,
+                      decision_role: row.card.role,
+                    });
+                    router.push(`/place/${row.card.place.id}`);
+                  }}
+                  onPressIn={() => prefetchPlace(row.card.place.id)}
+                />
+              </View>
+            );
+          }
+
+          if (row.kind === 'full-list-header') {
+            return (
+              <View style={styles.cravesHeader}>
+                <Text style={styles.cravesTitle}>All saves</Text>
+              </View>
+            );
+          }
+
           if (row.kind === 'save') {
             return (
               <View style={styles.rowSpacer}>
@@ -408,14 +512,32 @@ export default function CravesScreen() {
                   onPressIn={() => prefetchPlace(row.item.id)}
                   rightAction={
                     <TouchableOpacity
-                      onPress={async () => {
-                        void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                        const err = await removeSave(row.item.id, user.id, {
-                          surface: 'craves',
-                          rank_percentile: row.item.rank_percentile,
-                          city_id: row.item.city_id ?? null,
-                        });
-                        toast(err ?? 'Removed from Saves');
+                      onPress={() => {
+                        void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                        // Craves Screen Contract §17: remove now requires
+                        // confirmation -- there was previously no
+                        // confirmation step at all before this deleted a
+                        // save outright.
+                        Alert.alert(
+                          `Remove ${row.item.name}?`,
+                          "This removes it from your Craves. You can save it again anytime.",
+                          [
+                            { text: 'Cancel', style: 'cancel' },
+                            {
+                              text: 'Remove',
+                              style: 'destructive',
+                              onPress: async () => {
+                                void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                                const err = await removeSave(row.item.id, user.id, {
+                                  surface: 'craves',
+                                  rank_percentile: row.item.rank_percentile,
+                                  city_id: row.item.city_id ?? null,
+                                });
+                                toast(err ?? 'Removed from Saves');
+                              },
+                            },
+                          ],
+                        );
                       }}
                       style={styles.removeBtn}
                       hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -603,6 +725,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   cravesHeader: { paddingTop: Spacing.lg, paddingBottom: Spacing.sm },
+  reasonedEmpty: { paddingVertical: Spacing.sm, paddingBottom: Spacing.md },
   cravesTitle: { fontSize: 20, fontWeight: '800', color: Colors.text },
   cravesSub: { fontSize: 12, color: Colors.textSecondary, marginTop: Spacing.xs },
   sectionSpinner: { marginVertical: Spacing.lg },
