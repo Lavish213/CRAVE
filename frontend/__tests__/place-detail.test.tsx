@@ -16,6 +16,15 @@ import { getPlaceMenu } from '../src/api/menu';
 import { getCravesForPlace } from '../src/api/crave';
 import { fetchMyRankings, fetchFriendRankings } from '../src/api/social';
 
+// This screen now settles strictly more async work per render than when
+// this file's default 5000ms budget was set (Wave 7 added a third
+// react-query -- GET /place/{id}/relationship -- on top of the existing
+// place/myRankings queries and the menu/craves/friendRankings effects).
+// Seen timing out under CI's shared runners, not locally; widened rather
+// than guessed at, matching the same fix already applied to
+// search.test.tsx's CI-only retry-timeout flake this session.
+jest.setTimeout(15000);
+
 const mockRouterPush = jest.fn();
 jest.mock('expo-router', () => ({
   useLocalSearchParams: jest.fn(() => ({ id: 'place-1' })),
