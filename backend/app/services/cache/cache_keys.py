@@ -74,6 +74,7 @@ def search_cache_key(
     price_tier: Optional[int],
     lat: Optional[float] = None,
     lng: Optional[float] = None,
+    radius_miles: Optional[float] = None,
     page: int,
     page_size: int,
 ) -> str:
@@ -82,6 +83,7 @@ def search_cache_key(
     city = _norm(city_id)
     cat = _norm(category_id)
     price = price_tier if price_tier is not None else "all"
+    radius = radius_miles if radius_miles is not None else "all"
 
     # lat/lng must be part of the key: when supplied, search_query.py makes
     # distance the *primary* sort key (and, combined with LIMIT/OFFSET,
@@ -94,14 +96,16 @@ def search_cache_key(
     loc = f"{_round_grid(lat)}:{_round_grid(lng)}"
 
     return (
-        # v2 response includes structured interpretation metadata. Keep it
-        # isolated from legacy cached SearchResponse payloads.
-        f"search:v2:"
+        # v3 adds radius_miles -- without it, a radius-filtered result set
+        # and an unfiltered one for the same query/location/page would
+        # collide on the same key within the TTL window.
+        f"search:v3:"
         f"{q}:"
         f"{city}:"
         f"{cat}:"
         f"{price}:"
         f"{loc}:"
+        f"{radius}:"
         f"{page}:"
         f"{page_size}"
     )

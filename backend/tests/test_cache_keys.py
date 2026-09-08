@@ -73,6 +73,30 @@ def test_search_cache_key_different_grid_cell_does_not_collide():
     assert key_sf != key_oakland
 
 
+def test_search_cache_key_differs_between_no_radius_and_a_radius():
+    key_no_radius = search_cache_key(
+        query="pizza", city_id=None, category_id=None, price_tier=None,
+        lat=37.7749, lng=-122.4194, page=1, page_size=20,
+    )
+    key_with_radius = search_cache_key(
+        query="pizza", city_id=None, category_id=None, price_tier=None,
+        lat=37.7749, lng=-122.4194, radius_miles=5, page=1, page_size=20,
+    )
+    assert key_no_radius != key_with_radius
+
+
+def test_search_cache_key_differs_between_different_radius_values():
+    key_5mi = search_cache_key(
+        query="pizza", city_id=None, category_id=None, price_tier=None,
+        lat=37.7749, lng=-122.4194, radius_miles=5, page=1, page_size=20,
+    )
+    key_10mi = search_cache_key(
+        query="pizza", city_id=None, category_id=None, price_tier=None,
+        lat=37.7749, lng=-122.4194, radius_miles=10, page=1, page_size=20,
+    )
+    assert key_5mi != key_10mi
+
+
 def test_map_key_nearby_points_share_a_grid_cell():
     key_a = map_key(
         lat=37.7712, lng=-122.4192, radius_km=5, limit=250,
