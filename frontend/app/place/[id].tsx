@@ -392,11 +392,16 @@ export default function PlaceDetailScreen() {
   // A reason threaded from wherever this screen was navigated from
   // (Craves reasoned subset, Search, or Feed's Decision Session card --
   // contract §10's "one Reason Block renderer across three entry-source
-  // variants"). Only meaningful before a visit -- once visited, the
-  // relationship-status block below takes over and stops persuading.
-  const decisionStripSource = reasonSourceParam as DecisionStripSource | undefined;
+  // variants"), falling back to the persisted reason on the save itself
+  // (contract §13: "the original save/recommendation reason is
+  // remembered and shown, not regenerated fresh") for a return visit
+  // where no nav params carried it this time. Only meaningful before a
+  // visit -- once visited, the relationship-status block below takes
+  // over and stops persuading.
+  const decisionStripSource = (reasonSourceParam ?? savedEntry?.reason_source ?? relationship?.reason_source ?? undefined) as DecisionStripSource | undefined;
+  const decisionStripRole = reasonRoleParam ?? savedEntry?.reason_role ?? relationship?.reason_role ?? undefined;
   const hasThreadedReason =
-    !isVisited && !!decisionStripSource && !!reasonRoleParam;
+    !isVisited && !!decisionStripSource && !!decisionStripRole;
 
   // Group menu items by category
   const menuByCategory: Record<string, MenuItem[]> = {};
@@ -598,8 +603,8 @@ export default function PlaceDetailScreen() {
             <View style={styles.whyFits}>
               <DecisionStrip
                 source={decisionStripSource!}
-                role={decisionStripSource !== 'search' ? (reasonRoleParam as DecisionRole) : undefined}
-                searchReason={decisionStripSource === 'search' ? (reasonRoleParam as SearchReasonRole) : undefined}
+                role={decisionStripSource !== 'search' ? (decisionStripRole as DecisionRole) : undefined}
+                searchReason={decisionStripSource === 'search' ? (decisionStripRole as SearchReasonRole) : undefined}
                 practicalFacts={{ distance: distanceLabel, price: price ?? null }}
               />
             </View>
