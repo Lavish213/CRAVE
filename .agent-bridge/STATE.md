@@ -243,6 +243,46 @@ treating this as fully released, not just merged.
   written for whichever Claude session (Codex or otherwise) first has
   verified Railway/Supabase/Postgres access.
 
+## Search/Map V1.5 design-audit fixes (Claude, 2026-09-08) — standalone, not a wave claim
+
+User posted the Search/Map V1.5 "Supporting/Edge States" design board (16
+edge states SM-05 through SM-16 + 8 resilience/accessibility evidence
+cells) and asked for a backend-readiness audit against it. Findings,
+each verified against actual code (not the docs):
+
+- **Fixed, merged PR #225** (SHA `b7248f5`): share deep link
+  (`crave://place/{id}`) was entirely missing from the native share
+  payload despite the design promising one (SM-16). Partial by design —
+  works for a recipient who already has CRAVE installed; does nothing
+  for anyone else, since no web domain/universal-link infra exists yet
+  (confirmed: no `associatedDomains`/`intentFilters`, no CORS web origin
+  anywhere in backend config).
+- **Fixed, merged PR #226** (SHA `6219346`): `lat`/`lng` only ever
+  affected result *ordering*, never exclusion — a "within N miles"
+  filter (SM-05/SM-07/SM-14) had nothing enforcing it. Added optional
+  `radius_miles` to `GET /search`, filtered via exact haversine cut in
+  `execute_search()`, extended constraint-relaxation to cover radius
+  (same soft-preference standing as price), cache key bumped v2→v3.
+  Backend now fully ready for a radius control; **no frontend UI for it
+  exists yet** — a real, not-yet-scoped follow-up if the product wants
+  one surfaced.
+- **Not fixed, genuinely blocked on missing data — flagged to user,
+  awaiting a data-sourcing decision, do not silently build placeholder
+  schema for these:**
+  - `hours`/"Closed Place" state (SM-09): no `hours` column or
+    ingestion pipeline exists anywhere.
+  - Outdoor-seating / amenity attribute (SM-05/06/14): no amenity
+    model exists anywhere in the schema.
+  - Both need a real strategy (paid places API, scraping, manual
+    curation, OSM tags) before any schema/ingestion work is
+    justified — fabricating values or building unused columns would
+    just create a different kind of gap.
+
+Both PRs followed the same verification discipline as everything else
+in this file: `tsc --noEmit` / `python -m compileall` + `import
+app.main` clean, full frontend suite green, full backend suite (1090
+passed, 2 skipped) against a **freshly reset** local Postgres schema.
+
 ## Next action
 
 Claim the next wave here before starting it — owner, branch, base SHA
