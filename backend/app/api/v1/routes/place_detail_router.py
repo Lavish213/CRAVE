@@ -23,6 +23,8 @@ from app.services.cache.cache_ttl import place_detail_ttl
 from app.services.query.place_image_query import _to_proxy_url
 from app.services.query.place_image_visibility_query import get_public_gallery
 from app.services.social.friend_rankings_service import get_friend_rankings_for_place
+from app.db.models.hitlist_save import HitlistSave
+from app.services.visit_evidence_service import visit_evidence_for_place
 
 
 router = APIRouter(
@@ -226,3 +228,57 @@ def get_place_friend_rankings(
 
     rankings = get_friend_rankings_for_place(db, place_id=place_id, user_id=user_id)
     return {"rankings": rankings, "count": len(rankings)}
+
+
+@router.get(
+    "/{place_id}/relationship",
+    dependencies=[Depends(rate_limit), Depends(require_api_key)],
+)
+def get_place_relationship(
+    *,
+    place_id: str,
+    db: Session = Depends(get_db),
+    user_id: str = Depends(get_current_user_id),
+) -> dict:
+    """
+    This user's relationship to one place (Wave 7 -- Place Detail's four
+    relationship modes: never visited / considering tonight / visited-
+    not-regular / regular). Deliberately a separate endpoint, never
+    folded into GET /place/{place_id} -- that response is cached
+    globally by place_id alone (see place_detail_key above, and
+    get_place_friend_rankings' identical rationale just above this),
+    shared across every viewer; per-user data has no business in it.
+
+    reason_role/reason_source/visit_confirmation_count come from the
+    save itself (HitlistSave), since that's where a save's own history
+    lives; visit_evidence_tier comes from the broader VisitEvidence
+    record, which can exist even without a native save (e.g. a
+    matched imported Crave the user later confirmed visiting).
+    """
+    place_id = (place_id or "").strip()
+    if not place_id:
+        raise HTTPException(status_code=400, detail="Invalid place_id")
+
+    # Native saves are deterministically keyed "save:{user_id}:{place_id}"
+    # (see app/api/v1/routes/saves.py's _dedup_key) -- an exact match, not
+    # a prefix scan, since user_id and place_id are already both pinned.
+    save = (
+        db.query(HitlistSave)
+        .filter(
+            HitlistSave.user_id == user_id,
+            HitlistSave.dedup_key == f"save:{user_id}:{place_id}",
+        )
+        .one_or_none()
+    )
+    evidence = visit_evidence_for_place(db, user_id=user_id, place_id=place_id)
+
+    return {
+        "saved": save is not None,
+        "visited": bool(save.visited) if save else False,
+        "visited_at": save.visited_at if save else None,
+        "notes": save.notes if save else None,
+        "reason_role": save.reason_role if save else None,
+        "reason_source": save.reason_source if save else None,
+        "visit_confirmation_count": save.visit_confirmation_count if save else 0,
+        "visit_evidence_tier": evidence.tier if evidence else None,
+    }
