@@ -2,8 +2,8 @@
 
 Status: doctrine chain complete and certified; implementation Waves 0-4 merged; Wave 5 Search Screen Contract **COMPLETE** and certified (2026-09-07); Wave 5 contextual-Map plumbing **PARTIAL** (one open item, see below); **Wave 6 (Craves intelligence) is claimed and in progress** (Claude, this session) against `docs/doctrine/CRAVE_SCREEN_CONTRACT_CRAVES.md`; a parallel Penpot design track (Feed/Decision Session, then Search, then Craves) may begin independently at Exploratory status per explicit user direction — design work does not wait on Wave 6 implementation, and Wave 6 does not wait on Penpot.
 Owner: Claude
-Branch: claude/wave6-craves-reasoned-subset (first of several sub-PRs)
-Head SHA: 1e07bec (`Merge pull request #212` — base this claim started from; will move as sub-PRs merge)
+Branch: main (steps 1-2 merged; step 3 not yet started, no branch claimed)
+Head SHA: a73a5db (`Merge pull request #216` — current `origin/main`)
 Scope: `docs/doctrine/CRAVE_CANONICAL_IMPLEMENTATION_INDEX.md` — **START HERE**; `docs/doctrine/CRAVE_MASTER_CODEX_REMAINING_WORK.md` — **the current operational checklist**, read this before claiming any wave
 
 ## Wave 6 — Craves intelligence, in progress (Claude)
@@ -14,17 +14,26 @@ vocabulary -- best_fit/safe_bet/wildcard -- since it's the literal same
 `build_decision_session()` engine over a different candidate set, not a
 conceptually distinct surface the way Search's own vocabulary was):
 
-1. **Backend + typed client (this sub-PR)**: `GET /api/v1/craves/reasoned`
-   -- candidate pool is native saves + manually-added entries
+1. **Backend + typed client — MERGED (PR #215).** `GET /api/v1/craves/
+   reasoned` -- candidate pool is native saves + manually-added entries
    (HitlistSave) union matched imported/social CraveItems, minus any
    place with existing VisitEvidence at any tier (contract §10's looser
    graduation bar, not Rank Home's declared/verified-only one). Frontend
    `fetchCravesReasoned()` + `DecisionStrip`'s new `'craves'` source.
-2. **Screen rebuild** (next): `craves.tsx` around the reasoned subset
-   first, collapse the three visual row styles to two evidence types,
-   add remove-confirmation (contract §17 acceptance criteria).
+2. **Screen rebuild — MERGED (PR #216, SHA `a73a5db1cffd4a9c7d66100b644
+   cf22cea5ac245`).** `craves.tsx` now shows the reasoned subset first
+   ("Try one of these"), full saved list ("All saves") secondary; remove
+   now requires confirmation (contract §17). **Not fully done**: the
+   "Craves"/"Added" sections still render via their own bespoke row
+   style, not `PlaceCardCompact` -- those two endpoints (`/craves`,
+   `/hitlist/me`) only return a bare `matched_place_id`/`place_id`, not a
+   full resolved `PlaceOut` the way `/saves` does. Backend-side
+   evidence-type unification (contract §9, scoring) is done as of #215;
+   the *visual* unification of these two sections needs those two
+   endpoints extended first -- real, separate backend work, tracked
+   here, not silently called done.
 3. **Automatic clustering** (cuisine/occasion/geography, contract §6) --
-   only once (2) is solid.
+   next up, not yet started, now that (2) is merged and solid.
 4. **Contract correction**: §11's data-integrity notices assume an
    operational-data mechanism ("the same as Place Detail uses") that
    does not exist yet anywhere in the app (confirmed: Place Detail
