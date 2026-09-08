@@ -1,7 +1,11 @@
 import React from 'react';
+import { Alert } from 'react-native';
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import CravesScreen from '../app/(tabs)/craves';
-import { CraveItem, getCraveItems, getMyPlaceSaves, PlaceSaveItem } from '../src/api/crave';
+import {
+  CraveItem, getCraveItems, getMyPlaceSaves, PlaceSaveItem, fetchCravesReasoned,
+} from '../src/api/crave';
 import { SavedPlace } from '../src/api/saves';
 import { logRecommendationEvent, logRecommendationEvents } from '../src/utils/recommendationEventQueue';
 
@@ -63,8 +67,13 @@ jest.mock('../src/stores/cravesStore', () => {
   return { useCravesStore: hook };
 });
 
-jest.mock('../src/api/crave', () => ({ getCraveItems: jest.fn(), getMyPlaceSaves: jest.fn() }));
+jest.mock('../src/api/crave', () => ({
+  getCraveItems: jest.fn(),
+  getMyPlaceSaves: jest.fn(),
+  fetchCravesReasoned: jest.fn(),
+}));
 jest.mock('../src/hooks/usePrefetchPlace', () => ({ usePrefetchPlace: () => jest.fn() }));
+jest.mock('../src/hooks/useLocation', () => ({ useLocation: () => null }));
 jest.mock('../src/components/AuthSheet', () => ({ AuthSheet: () => null }));
 jest.mock('../src/utils/recommendationEventQueue', () => ({
   logRecommendationEvent: jest.fn(),
@@ -79,6 +88,7 @@ jest.mock('expo-haptics', () => ({
 
 const mockedGetCraveItems = getCraveItems as jest.MockedFunction<typeof getCraveItems>;
 const mockedGetMyPlaceSaves = getMyPlaceSaves as jest.MockedFunction<typeof getMyPlaceSaves>;
+const mockedFetchCravesReasoned = fetchCravesReasoned as jest.MockedFunction<typeof fetchCravesReasoned>;
 const mockedLogOne = logRecommendationEvent as jest.Mock;
 const mockedLogMany = logRecommendationEvents as jest.Mock;
 
@@ -88,7 +98,12 @@ const SAVED_PLACES = [
 ] as unknown as SavedPlace[];
 
 function renderScreen() {
-  return render(<CravesScreen />);
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(
+    <QueryClientProvider client={client}>
+      <CravesScreen />
+    </QueryClientProvider>,
+  );
 }
 
 function exposeAllRows() {
@@ -114,6 +129,24 @@ function makeCrave(overrides: Partial<CraveItem> = {}): CraveItem {
   };
 }
 
+function makeReasonedCard(overrides: { id?: string; name?: string; rank_percentile?: number; role?: 'best_fit' | 'safe_bet' | 'wildcard' } = {}) {
+  return {
+    place: {
+      id: overrides.id ?? 'r0', name: overrides.name ?? 'Reasoned Pick',
+      rank_percentile: overrides.rank_percentile ?? 0.95, city_id: 'city-sf',
+    } as unknown as import('../src/api/places').PlaceOut,
+    role: overrides.role ?? 'best_fit',
+    reason_codes: [],
+  };
+}
+
+function pressAlertButton(buttonText: string) {
+  const call = (Alert.alert as jest.Mock).mock.calls[(Alert.alert as jest.Mock).mock.calls.length - 1];
+  const buttons = call[2] as { text: string; onPress?: () => void }[];
+  const button = buttons.find((b) => b.text === buttonText);
+  button?.onPress?.();
+}
+
 function makePlaceSave(overrides: Partial<PlaceSaveItem> = {}): PlaceSaveItem {
   return {
     id: 'a0', place_name: 'Typed Place', source_platform: null, source_url: null,
@@ -137,6 +170,8 @@ describe('CravesScreen — async truth and exposure instrumentation', () => {
     });
     mockedGetCraveItems.mockResolvedValue([]);
     mockedGetMyPlaceSaves.mockResolvedValue([]);
+    mockedFetchCravesReasoned.mockResolvedValue({ cards: [], degraded: true });
+    jest.spyOn(Alert, 'alert').mockImplementation(() => {});
   });
 
   it('does not describe a failed Craves request as an empty account', async () => {
@@ -244,5 +279,63 @@ describe('CravesScreen — async truth and exposure instrumentation', () => {
     expect(mockedLogMany.mock.calls.flatMap((call) => call[0])).toContainEqual(
       expect.objectContaining({ place_id: 'added-place', position: 0 }),
     );
+  });
+
+  it('shows the reasoned subset first, above the full saved list (Craves Screen Contract §5/§6)', async () => {
+    mockedFetchCravesReasoned.mockResolvedValue({
+      cards: [makeReasonedCard()],
+      degraded: true,
+    });
+
+    const { findByText } = renderScreen();
+    expect(await findByText('Try one of these')).toBeTruthy();
+    expect(await findByText('Reasoned Pick')).toBeTruthy();
+    expect(await findByText('All saves')).toBeTruthy();
+  });
+
+  it('logs a reasoned-card click with its decision role', async () => {
+    mockedFetchCravesReasoned.mockResolvedValue({
+      cards: [makeReasonedCard()],
+      degraded: true,
+    });
+
+    const { findByLabelText } = renderScreen();
+    fireEvent.press(await findByLabelText('Reasoned Pick, Restaurant, CRAVE Pick'));
+
+    expect(mockedLogOne).toHaveBeenCalledWith(expect.objectContaining({
+      surface: 'craves', event_type: 'click', place_id: 'r0', position: 0, decision_role: 'best_fit',
+    }));
+    expect(mockPush).toHaveBeenCalledWith('/place/r0');
+  });
+
+  it('shows an honest "nothing fits right now" message when the reasoned subset is empty but saves exist', async () => {
+    mockedFetchCravesReasoned.mockResolvedValue({ cards: [], degraded: true });
+    const { findByText } = renderScreen();
+    expect(await findByText(/nothing in your craves fits right now/i)).toBeTruthy();
+  });
+
+  it('requires confirmation before removing a save (Craves Screen Contract §17)', async () => {
+    const { getByLabelText } = renderScreen();
+    await waitFor(() => expect(mockFlashListProps?.data.length).toBeGreaterThan(0));
+
+    fireEvent.press(getByLabelText('Remove p0 from saves'));
+    expect(mockRemoveSave).not.toHaveBeenCalled();
+    expect(Alert.alert).toHaveBeenCalledWith(
+      'Remove p0?',
+      expect.stringContaining('removes it from your Craves'),
+      expect.any(Array),
+    );
+
+    pressAlertButton('Remove');
+    await waitFor(() => expect(mockRemoveSave).toHaveBeenCalledWith('p0', 'user-1', expect.anything()));
+  });
+
+  it('does not remove a save when the confirmation is cancelled', async () => {
+    const { getByLabelText } = renderScreen();
+    await waitFor(() => expect(mockFlashListProps?.data.length).toBeGreaterThan(0));
+
+    fireEvent.press(getByLabelText('Remove p0 from saves'));
+    pressAlertButton('Cancel');
+    expect(mockRemoveSave).not.toHaveBeenCalled();
   });
 });
