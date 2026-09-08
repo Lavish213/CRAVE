@@ -15,11 +15,14 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { SkeletonRowList } from '../../src/components/SkeletonCard';
+import { SectionHeader } from '../../src/components/SectionHeader';
 import { useCravesStore } from '../../src/stores/cravesStore';
 import { useCravesReasoned } from '../../src/hooks/useCravesReasoned';
+import { useLocation } from '../../src/hooks/useLocation';
 import { useToast } from '../../src/hooks/useToast';
 import { Colors, Spacing, Radius } from '../../src/constants/colors';
 import { withImageWidth, AVATAR_IMAGE_WIDTH } from '../../src/utils/imageUrl';
+import { deriveCraveClusters, CraveCluster } from '../../src/utils/craveClusters';
 import { usePrefetchPlace } from '../../src/hooks/usePrefetchPlace';
 import { PlaceCardCompact } from '../../src/components/PlaceCardCompact';
 import type { DecisionSessionCard } from '../../src/api/decisionSession';
@@ -39,6 +42,8 @@ type CravesRow =
   | { kind: 'reasoned-loading' }
   | { kind: 'reasoned-empty' }
   | { kind: 'reasoned-card'; card: DecisionSessionCard; position: number }
+  | { kind: 'cluster-header'; cluster: CraveCluster }
+  | { kind: 'cluster-item'; cluster: CraveCluster; item: SavedPlace; position: number }
   | { kind: 'full-list-header' }
   | { kind: 'save'; item: SavedPlace; position: number }
   | { kind: 'section'; section: 'craves' | 'added' }
@@ -56,6 +61,7 @@ export default function CravesScreen() {
   const toast = useToast((s) => s.show);
   const user = useAuthStore((s) => s.user);
   const reasonedQuery = useCravesReasoned();
+  const location = useLocation();
 
   const [craves, setCraves] = useState<CraveItem[]>([]);
   const [cravesLoading, setCravesLoading] = useState(false);
@@ -156,6 +162,12 @@ export default function CravesScreen() {
     }
   }, [user, loadSaves, loadCraves, loadPlaceSaves]);
 
+  // Craves Screen Contract §6: cuisine/geography-derived clusters over the
+  // native saved pool ("Ramen," "Near Home," "Worth the Drive") -- purely
+  // client-side, present only once the pool is large/varied enough to
+  // cluster meaningfully (deriveCraveClusters returns [] otherwise).
+  const clusters = useMemo(() => deriveCraveClusters(saves, location), [saves, location]);
+
   // Build all place-bearing sections into the FlashList data stream so the
   // same actual viewability contract applies to Saves, matched shared Craves,
   // and matched manual Added entries.
@@ -177,6 +189,11 @@ export default function CravesScreen() {
       // Contract §12: honest "nothing fits right now," distinct from the
       // true empty-saved-list state below -- never just blank.
       next.push({ kind: 'reasoned-header' }, { kind: 'reasoned-empty' });
+    }
+
+    for (const cluster of clusters) {
+      next.push({ kind: 'cluster-header', cluster });
+      cluster.items.forEach((item, position) => next.push({ kind: 'cluster-item', cluster, item, position }));
     }
 
     if (hasAnySaved) next.push({ kind: 'full-list-header' });
@@ -213,6 +230,7 @@ export default function CravesScreen() {
     return next;
   }, [
     saves,
+    clusters,
     craves,
     cravesLoading,
     cravesError,
@@ -250,6 +268,21 @@ export default function CravesScreen() {
           rank_percentile: row.card.place.rank_percentile,
           city_id: row.card.place.city_id ?? null,
           decision_role: row.card.role,
+        });
+        continue;
+      }
+
+      if (row.kind === 'cluster-item') {
+        const key = `cluster:${row.cluster.id}:${row.item.id}`;
+        if (exposedRowsRef.current.has(key)) continue;
+        exposedRowsRef.current.add(key);
+        events.push({
+          surface: 'craves',
+          event_type: 'impression',
+          place_id: row.item.id,
+          position: row.position,
+          rank_percentile: row.item.rank_percentile,
+          city_id: row.item.city_id ?? null,
         });
         continue;
       }
@@ -422,6 +455,8 @@ export default function CravesScreen() {
             case 'crave': return `crave-${row.item.id}`;
             case 'place-save': return `place-save-${row.item.id}`;
             case 'section': return `section-${row.section}`;
+            case 'cluster-header': return `cluster-header-${row.cluster.id}`;
+            case 'cluster-item': return `cluster-item-${row.cluster.id}-${row.item.id}`;
             default: return `${row.kind}-${index}`;
           }
         }}
@@ -478,6 +513,40 @@ export default function CravesScreen() {
                     router.push(`/place/${row.card.place.id}`);
                   }}
                   onPressIn={() => prefetchPlace(row.card.place.id)}
+                />
+              </View>
+            );
+          }
+
+          if (row.kind === 'cluster-header') {
+            return (
+              <SectionHeader
+                label={row.cluster.label}
+                subtext={row.cluster.subtext}
+                count={row.cluster.items.length}
+              />
+            );
+          }
+
+          if (row.kind === 'cluster-item') {
+            return (
+              <View style={styles.rowSpacer}>
+                <PlaceCardCompact
+                  place={row.item}
+                  visited={row.item.visited}
+                  hasNotes={!!row.item.notes}
+                  onPress={() => {
+                    logRecommendationEvent({
+                      surface: 'craves',
+                      event_type: 'click',
+                      place_id: row.item.id,
+                      position: row.position,
+                      rank_percentile: row.item.rank_percentile,
+                      city_id: row.item.city_id ?? null,
+                    });
+                    router.push(`/place/${row.item.id}`);
+                  }}
+                  onPressIn={() => prefetchPlace(row.item.id)}
                 />
               </View>
             );

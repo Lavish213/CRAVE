@@ -73,7 +73,9 @@ jest.mock('../src/api/crave', () => ({
   fetchCravesReasoned: jest.fn(),
 }));
 jest.mock('../src/hooks/usePrefetchPlace', () => ({ usePrefetchPlace: () => jest.fn() }));
-jest.mock('../src/hooks/useLocation', () => ({ useLocation: () => null }));
+jest.mock('../src/hooks/useLocation', () => ({ useLocation: jest.fn(() => null) }));
+import { useLocation } from '../src/hooks/useLocation';
+const mockedUseLocation = useLocation as jest.Mock;
 jest.mock('../src/components/AuthSheet', () => ({ AuthSheet: () => null }));
 jest.mock('../src/utils/recommendationEventQueue', () => ({
   logRecommendationEvent: jest.fn(),
@@ -96,6 +98,14 @@ const SAVED_PLACES = [
   { id: 'p0', name: 'p0', rank_percentile: 0.9, city_id: 'city-sf', visited: false, visited_at: null, notes: null },
   { id: 'p1', name: 'p1', rank_percentile: 0.5, city_id: 'city-sf', visited: false, visited_at: null, notes: null },
 ] as unknown as SavedPlace[];
+
+function makeSavedPlace(overrides: Record<string, unknown> = {}): SavedPlace {
+  return {
+    id: 'cluster-place', name: 'Cluster Place', rank_percentile: 0.6, city_id: 'city-sf',
+    visited: false, visited_at: null, notes: null, category: null, lat: null, lng: null,
+    ...overrides,
+  } as unknown as SavedPlace;
+}
 
 function renderScreen() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -171,6 +181,7 @@ describe('CravesScreen — async truth and exposure instrumentation', () => {
     mockedGetCraveItems.mockResolvedValue([]);
     mockedGetMyPlaceSaves.mockResolvedValue([]);
     mockedFetchCravesReasoned.mockResolvedValue({ cards: [], degraded: true });
+    mockedUseLocation.mockReturnValue(null);
     jest.spyOn(Alert, 'alert').mockImplementation(() => {});
   });
 
@@ -337,5 +348,87 @@ describe('CravesScreen — async truth and exposure instrumentation', () => {
     fireEvent.press(getByLabelText('Remove p0 from saves'));
     pressAlertButton('Cancel');
     expect(mockRemoveSave).not.toHaveBeenCalled();
+  });
+
+  it('does not show automatic clusters for a small saved pool (Craves Screen Contract §6)', async () => {
+    const { findByText, queryByText } = renderScreen();
+    expect(await findByText('All saves')).toBeTruthy();
+    expect(queryByText('Ramen')).toBeNull();
+  });
+
+  it('clusters by cuisine once the saved pool is large and varied enough', async () => {
+    mockLoadSaves.mockImplementation(async () => {
+      mockStoreState = {
+        ...mockStoreState,
+        saves: [
+          makeSavedPlace({ id: 'ramen0', name: 'Ramen A', category: 'Ramen' }),
+          makeSavedPlace({ id: 'ramen1', name: 'Ramen B', category: 'Ramen' }),
+          makeSavedPlace({ id: 'ramen2', name: 'Ramen C', category: 'Ramen' }),
+          makeSavedPlace({ id: 'taco0', name: 'Taco A', category: 'Tacos' }),
+          makeSavedPlace({ id: 'taco1', name: 'Taco B', category: 'Tacos' }),
+          makeSavedPlace({ id: 'pizza0', name: 'Pizza A', category: 'Pizza' }),
+        ],
+      };
+    });
+
+    const { findByText, findAllByText } = renderScreen();
+    expect(await findByText('3 of your saves')).toBeTruthy();
+    // Appears twice by design: once in the cluster, once in the always-
+    // reachable full list below it (contract §6 -- clusters are curated
+    // views into the pool, not a filter on the exhaustive list).
+    expect((await findAllByText('Ramen A')).length).toBe(2);
+    expect(await findByText('All saves')).toBeTruthy();
+  });
+
+  it('logs a cluster-card impression and click with its own position', async () => {
+    mockLoadSaves.mockImplementation(async () => {
+      mockStoreState = {
+        ...mockStoreState,
+        saves: [
+          makeSavedPlace({ id: 'ramen0', name: 'Ramen A', category: 'Ramen' }),
+          makeSavedPlace({ id: 'ramen1', name: 'Ramen B', category: 'Ramen' }),
+          makeSavedPlace({ id: 'ramen2', name: 'Ramen C', category: 'Ramen' }),
+          makeSavedPlace({ id: 'taco0', name: 'Taco A', category: 'Tacos' }),
+          makeSavedPlace({ id: 'taco1', name: 'Taco B', category: 'Tacos' }),
+          makeSavedPlace({ id: 'pizza0', name: 'Pizza A', category: 'Pizza' }),
+        ],
+      };
+    });
+
+    const { findByText, getAllByLabelText } = renderScreen();
+    await findByText('3 of your saves');
+    exposeAllRows();
+
+    const allEvents = mockedLogMany.mock.calls.flatMap((call) => call[0]);
+    expect(allEvents).toContainEqual(expect.objectContaining({ place_id: 'ramen0', position: 0 }));
+
+    // The cluster's own card renders first, ahead of its duplicate in the
+    // full list below -- press that one to exercise the cluster's own
+    // (per-cluster, not global-list) position in the logged click.
+    fireEvent.press(getAllByLabelText('Ramen A, Ramen, Worth Knowing')[0]);
+    expect(mockedLogOne).toHaveBeenCalledWith(expect.objectContaining({
+      surface: 'craves', event_type: 'click', place_id: 'ramen0', position: 0,
+    }));
+  });
+
+  it('clusters "Near Home" saves once the user\'s location is known', async () => {
+    mockedUseLocation.mockReturnValue({ lat: 37.7749, lng: -122.4194 });
+    mockLoadSaves.mockImplementation(async () => {
+      mockStoreState = {
+        ...mockStoreState,
+        saves: [
+          makeSavedPlace({ id: 'near0', name: 'Near A', lat: 37.775, lng: -122.4194 }),
+          makeSavedPlace({ id: 'near1', name: 'Near B', lat: 37.7751, lng: -122.4194 }),
+          makeSavedPlace({ id: 'near2', name: 'Near C', lat: 37.7752, lng: -122.4194 }),
+          makeSavedPlace({ id: 'far0', name: 'Far A', lat: 37.7749, lng: -121.0 }),
+          makeSavedPlace({ id: 'far1', name: 'Far B', lat: 37.7749, lng: -121.0 }),
+          makeSavedPlace({ id: 'far2', name: 'Far C', lat: 37.7749, lng: -121.0 }),
+        ],
+      };
+    });
+
+    const { findByText } = renderScreen();
+    expect(await findByText('Near Home')).toBeTruthy();
+    expect(await findByText('Worth the Drive')).toBeTruthy();
   });
 });
