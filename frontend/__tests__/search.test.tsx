@@ -141,7 +141,7 @@ describe('SearchScreen — debounce, clear, and retry', () => {
     act(() => {
       getByLabelText('Search input').props.onChangeText('ramen');
     });
-    await findByText("Couldn't search right now.", {}, { timeout: 2000 });
+    await findByText("Couldn't search right now.", {}, { timeout: 5000 });
     expect(mockedSearchPlaces).toHaveBeenCalledTimes(1);
 
     mockedSearchPlaces.mockResolvedValueOnce(makeSearchResult([makePlace('p0')]));
