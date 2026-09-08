@@ -339,7 +339,7 @@ describe('SearchScreen — Recommendation Ledger instrumentation', () => {
         query: 'ramen', city_id: 'city-sf',
       }),
     );
-    expect(mockPush).toHaveBeenCalledWith('/place/p1');
+    expect(mockPush).toHaveBeenCalledWith('/place/p1?reason_role=safer_pick&reason_source=search');
   });
 
   it('narrows results by an active filter, keeps a filtered-in item\'s click position tied to its real position in the full results, and clears from the zero-match empty state', async () => {

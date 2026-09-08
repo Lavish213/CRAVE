@@ -26,6 +26,9 @@ function makeSave(overrides: Partial<SavedPlace> = {}): SavedPlace {
     visited: false,
     visited_at: null,
     notes: null,
+    reason_role: null,
+    reason_source: null,
+    visit_confirmation_count: 0,
     ...overrides,
   };
 }

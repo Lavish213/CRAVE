@@ -316,7 +316,7 @@ describe('CravesScreen — async truth and exposure instrumentation', () => {
     expect(mockedLogOne).toHaveBeenCalledWith(expect.objectContaining({
       surface: 'craves', event_type: 'click', place_id: 'r0', position: 0, decision_role: 'best_fit',
     }));
-    expect(mockPush).toHaveBeenCalledWith('/place/r0');
+    expect(mockPush).toHaveBeenCalledWith('/place/r0?reason_role=best_fit&reason_source=craves');
   });
 
   it('shows an honest "nothing fits right now" message when the reasoned subset is empty but saves exist', async () => {

@@ -80,6 +80,28 @@ export async function fetchPlaceDetail(placeId: string): Promise<PlaceOut> {
   return normalized;
 }
 
+export interface PlaceRelationship {
+  saved: boolean;
+  visited: boolean;
+  visited_at: string | null;
+  notes: string | null;
+  reason_role: string | null;
+  reason_source: string | null;
+  visit_confirmation_count: number;
+  visit_evidence_tier: 'declared' | 'verified' | 'inferred' | null;
+}
+
+/**
+ * Wave 7 -- Place Detail's relationship hierarchy. Deliberately a
+ * separate call from fetchPlaceDetail: GET /place/{id} is cached
+ * globally by place_id alone, so per-user data can't live in it (same
+ * reasoning as the existing GET /place/{id}/friends call).
+ */
+export async function fetchPlaceRelationship(placeId: string): Promise<PlaceRelationship> {
+  const { data } = await client.get<PlaceRelationship>(`/api/v1/place/${placeId}/relationship`);
+  return data;
+}
+
 export async function fetchTrending(cityId: string): Promise<PlaceOut[]> {
   const { data } = await client.get<{ items: PlaceOut[] }>('/api/v1/trending', {
     params: { city_id: cityId },

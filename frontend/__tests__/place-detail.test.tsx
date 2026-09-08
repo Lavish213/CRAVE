@@ -11,15 +11,25 @@ import React from 'react';
 import { render, waitFor, fireEvent } from '@testing-library/react-native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import PlaceDetailScreen from '../app/place/[id]';
-import { fetchPlaceDetail } from '../src/api/places';
+import { fetchPlaceDetail, fetchPlaceRelationship } from '../src/api/places';
 import { getPlaceMenu } from '../src/api/menu';
 import { getCravesForPlace } from '../src/api/crave';
 import { fetchMyRankings, fetchFriendRankings } from '../src/api/social';
 
+// This screen now settles strictly more async work per render than when
+// this file's default 5000ms budget was set (Wave 7 added a third
+// react-query -- GET /place/{id}/relationship -- on top of the existing
+// place/myRankings queries and the menu/craves/friendRankings effects).
+// Seen timing out under CI's shared runners, not locally; widened rather
+// than guessed at, matching the same fix already applied to
+// search.test.tsx's CI-only retry-timeout flake this session.
+jest.setTimeout(15000);
+
+const mockRouterPush = jest.fn();
 jest.mock('expo-router', () => ({
-  useLocalSearchParams: () => ({ id: 'place-1' }),
+  useLocalSearchParams: jest.fn(() => ({ id: 'place-1' })),
   useNavigation: () => ({ setOptions: jest.fn() }),
-  useRouter: () => ({ push: jest.fn() }),
+  useRouter: () => ({ push: mockRouterPush }),
 }));
 jest.mock('expo-haptics', () => ({
   impactAsync: jest.fn(),
@@ -27,7 +37,10 @@ jest.mock('expo-haptics', () => ({
   ImpactFeedbackStyle: { Light: 'light', Medium: 'medium' },
   NotificationFeedbackType: { Success: 'success', Warning: 'warning', Error: 'error' },
 }));
-jest.mock('../src/api/places', () => ({ fetchPlaceDetail: jest.fn() }));
+jest.mock('../src/api/places', () => ({
+  fetchPlaceDetail: jest.fn(),
+  fetchPlaceRelationship: jest.fn(),
+}));
 jest.mock('../src/api/menu', () => ({ getPlaceMenu: jest.fn() }));
 jest.mock('../src/api/crave', () => ({ getCravesForPlace: jest.fn() }));
 jest.mock('../src/api/social', () => ({
@@ -64,7 +77,9 @@ jest.mock('../src/components/ReportPlaceSheet', () => ({ ReportPlaceSheet: () =>
 jest.mock('../src/components/MenuSubmissionSheet', () => ({ MenuSubmissionSheet: () => null }));
 
 import { useAuthStore } from '../src/stores/authStore';
+import { useLocalSearchParams } from 'expo-router';
 const mockedUseAuthStore = useAuthStore as unknown as jest.Mock;
+const mockedUseLocalSearchParams = useLocalSearchParams as jest.Mock;
 const cravesStoreState = (jest.requireMock('../src/stores/cravesStore') as any).__state;
 
 // Stable reference across renders -- a fresh object literal returned from
@@ -74,8 +89,23 @@ const cravesStoreState = (jest.requireMock('../src/stores/cravesStore') as any).
 const mockAuthUser = { id: 'user-1' };
 
 const mockedFetchPlaceDetail = fetchPlaceDetail as jest.MockedFunction<typeof fetchPlaceDetail>;
+const mockedFetchPlaceRelationship = fetchPlaceRelationship as jest.MockedFunction<typeof fetchPlaceRelationship>;
 const mockedGetPlaceMenu = getPlaceMenu as jest.MockedFunction<typeof getPlaceMenu>;
 const mockedGetCravesForPlace = getCravesForPlace as jest.MockedFunction<typeof getCravesForPlace>;
+
+function baseRelationship(overrides: Partial<any> = {}) {
+  return {
+    saved: false,
+    visited: false,
+    visited_at: null,
+    notes: null,
+    reason_role: null,
+    reason_source: null,
+    visit_confirmation_count: 0,
+    visit_evidence_tier: null,
+    ...overrides,
+  } as any;
+}
 
 function basePlace(overrides: Partial<any> = {}) {
   return {
@@ -123,6 +153,8 @@ describe('PlaceDetailScreen — visual-pass regression coverage', () => {
     );
     mockedGetCravesForPlace.mockResolvedValue([]);
     mockedGetPlaceMenu.mockResolvedValue({ items: [], lastVerifiedAt: null } as any);
+    mockedFetchPlaceRelationship.mockResolvedValue(baseRelationship());
+    mockedUseLocalSearchParams.mockReturnValue({ id: 'place-1' });
   });
 
   it('renders identity as a header and "why this fits" with a real percentile', async () => {
@@ -221,6 +253,8 @@ describe('PlaceDetailScreen — visited/notes memory (E2)', () => {
     );
     mockedGetCravesForPlace.mockResolvedValue([]);
     mockedGetPlaceMenu.mockResolvedValue({ items: [], lastVerifiedAt: null } as any);
+    mockedFetchPlaceRelationship.mockResolvedValue(baseRelationship());
+    mockedUseLocalSearchParams.mockReturnValue({ id: 'place-1' });
   });
 
   it('does not render the visited/notes section for a place that is not saved', async () => {
@@ -293,5 +327,96 @@ describe('PlaceDetailScreen — visited/notes memory (E2)', () => {
     await waitFor(() =>
       expect(cravesStoreState.setSaveMemory).toHaveBeenCalledWith('place-1', { notes: null }),
     );
+  });
+});
+
+describe('PlaceDetailScreen — Wave 7 relationship hierarchy', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    cravesStoreState.isSaved.mockReturnValue(false);
+    cravesStoreState.saves = [];
+    mockedUseAuthStore.mockImplementation((selector: (s: { user: unknown }) => unknown) =>
+      selector({ user: mockAuthUser }),
+    );
+    mockedGetCravesForPlace.mockResolvedValue([]);
+    mockedGetPlaceMenu.mockResolvedValue({ items: [], lastVerifiedAt: null } as any);
+    mockedFetchPlaceRelationship.mockResolvedValue(baseRelationship());
+    mockedUseLocalSearchParams.mockReturnValue({ id: 'place-1' });
+  });
+
+  it('shows Directions as the primary CTA for an unvisited place with coordinates', async () => {
+    mockedFetchPlaceDetail.mockResolvedValue(basePlace());
+    const { findByLabelText, queryByLabelText } = renderScreen();
+
+    expect(await findByLabelText('Get directions')).toBeTruthy();
+    // Not duplicated in the decision-strip facts row once promoted to primary.
+    expect(queryByLabelText('Rank this place')).toBeNull();
+  });
+
+  it('falls back to a Save primary CTA for an unvisited place with no coordinates', async () => {
+    mockedFetchPlaceDetail.mockResolvedValue(basePlace({ lat: null, lng: null }));
+    const { findByLabelText, queryByLabelText } = renderScreen();
+
+    expect(await findByLabelText('Save for tonight')).toBeTruthy();
+    expect(queryByLabelText('Get directions')).toBeNull();
+  });
+
+  it('shows a relationship-status block and "Rank it" once visited, stopping the persuasive "why this fits"', async () => {
+    mockedFetchPlaceDetail.mockResolvedValue(basePlace());
+    cravesStoreState.saves = [{ ...basePlace(), visited: true, visited_at: '2026-09-01T00:00:00Z', notes: null, visit_confirmation_count: 1 }];
+    const { findByText, findByLabelText, queryByText } = renderScreen();
+
+    expect(await findByText('Already on your list of visits')).toBeTruthy();
+    expect(await findByLabelText('Rank this place')).toBeTruthy();
+    expect(queryByText(/top \d+% in San Francisco/)).toBeNull();
+  });
+
+  it('shows "regular" framing once the confirmed-visit count crosses the threshold', async () => {
+    mockedFetchPlaceDetail.mockResolvedValue(basePlace());
+    cravesStoreState.saves = [{ ...basePlace(), visited: true, visited_at: '2026-09-01T00:00:00Z', notes: null, visit_confirmation_count: 2 }];
+    const { findByText } = renderScreen();
+
+    expect(await findByText("You're a regular here")).toBeTruthy();
+    expect(await findByText('Confirmed 2 visits')).toBeTruthy();
+  });
+
+  it('renders the threaded reason via the shared DecisionStrip before a visit', async () => {
+    mockedUseLocalSearchParams.mockReturnValue({
+      id: 'place-1', reason_role: 'best_fit', reason_source: 'craves',
+    });
+    mockedFetchPlaceDetail.mockResolvedValue(basePlace());
+    const { findByText } = renderScreen();
+
+    expect(await findByText('Best fit')).toBeTruthy();
+  });
+
+  it('does not show the threaded reason once visited (stop persuading)', async () => {
+    mockedUseLocalSearchParams.mockReturnValue({
+      id: 'place-1', reason_role: 'best_fit', reason_source: 'craves',
+    });
+    mockedFetchPlaceDetail.mockResolvedValue(basePlace());
+    cravesStoreState.saves = [{ ...basePlace(), visited: true, visited_at: '2026-09-01T00:00:00Z', notes: null, visit_confirmation_count: 1 }];
+    const { findByText, queryByText } = renderScreen();
+
+    await findByText('Already on your list of visits');
+    expect(queryByText('Best fit')).toBeNull();
+  });
+
+  it('persists the threaded reason on the save itself when saving from a role-bearing arrival', async () => {
+    mockedUseLocalSearchParams.mockReturnValue({
+      id: 'place-1', reason_role: 'safe_bet', reason_source: 'search',
+    });
+    mockedFetchPlaceDetail.mockResolvedValue(basePlace());
+    cravesStoreState.addSave.mockResolvedValue(null);
+    const { findByLabelText, getByLabelText } = renderScreen();
+
+    await findByLabelText('Get directions');
+    fireEvent.press(getByLabelText('Save to Saves'));
+
+    await waitFor(() => expect(cravesStoreState.addSave).toHaveBeenCalled());
+    const [, , meta] = cravesStoreState.addSave.mock.calls[0];
+    expect(meta).toEqual(expect.objectContaining({
+      reason_role: 'safe_bet', reason_source: 'search',
+    }));
   });
 });

@@ -191,7 +191,7 @@ describe('FeedScreen', () => {
       surface: 'decision_session', event_type: 'click', place_id: 'decision-wild',
       decision_role: 'wildcard', position: 1, rank_percentile: 0.9,
     }));
-    expect(mockPush).toHaveBeenCalledWith('/place/decision-wild');
+    expect(mockPush).toHaveBeenCalledWith('/place/decision-wild?reason_role=wildcard&reason_source=decision_session');
   });
 
   it('does not organize discovery by catalog tier headers and only surfaces the qualifying reason-coded rail', async () => {

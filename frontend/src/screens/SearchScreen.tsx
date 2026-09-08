@@ -479,11 +479,12 @@ export default function SearchScreen() {
           onViewableItemsChanged={onViewableItemsChanged}
           renderItem={({ item }) => {
             const position = results.findIndex((place) => place.id === item.id);
+            const reason = searchReasonForResult(item, position, priceWasRelaxed);
             return (
               <View style={styles.rowSpacer}>
                 <PlaceCardCompact
                   place={item}
-                  searchReason={searchReasonForResult(item, position, priceWasRelaxed)}
+                  searchReason={reason}
                   onPress={() => {
                     logRecommendationEvent({
                       surface: 'search',
@@ -495,7 +496,11 @@ export default function SearchScreen() {
                       city_id: selectedCity?.id ?? null,
                       search_session_id: searchSessionIdRef.current,
                     });
-                    router.push(`/place/${item.id}`);
+                    router.push(
+                      reason
+                        ? `/place/${item.id}?reason_role=${reason}&reason_source=search`
+                        : `/place/${item.id}`,
+                    );
                   }}
                   onPressIn={() => prefetchPlace(item.id)}
                 />

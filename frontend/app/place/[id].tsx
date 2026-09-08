@@ -16,7 +16,9 @@ import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useQuery } from '@tanstack/react-query';
-import { fetchPlaceDetail, PlaceOut } from '../../src/api/places';
+import { fetchPlaceDetail, fetchPlaceRelationship, PlaceOut } from '../../src/api/places';
+import { DecisionStrip, DecisionStripSource, SearchReasonRole } from '../../src/components/DecisionStrip';
+import { DecisionRole } from '../../src/api/decisionSession';
 import { getPlaceMenu, MenuItem } from '../../src/api/menu';
 import { CraveItem, getCravesForPlace } from '../../src/api/crave';
 import { useCravesStore } from '../../src/stores/cravesStore';
@@ -78,8 +80,19 @@ function DetailSkeleton() {
   );
 }
 
+// Wave 7 relationship hierarchy: a real repeat-visit signal
+// (visit_confirmation_count, from HitlistSave) crossing this threshold
+// distinguishes "regular" from "visited-not-regular." Two confirmed
+// visits is a deliberate, stated choice -- documented here rather than
+// left as a magic number -- not a value derived from any data analysis
+// (no usage data exists yet to tune it against).
+const REGULAR_VISIT_THRESHOLD = 2;
+
+type RelationshipMode = 'never_visited' | 'considering' | 'visited_not_regular' | 'regular';
+
 export default function PlaceDetailScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, reason_role: reasonRoleParam, reason_source: reasonSourceParam } =
+    useLocalSearchParams<{ id: string; reason_role?: string; reason_source?: string }>();
   const navigation = useNavigation();
   const router = useRouter();
   const { addSave, removeSave, isSaved, saves, setSaveMemory } = useCravesStore();
@@ -116,6 +129,18 @@ export default function PlaceDetailScreen() {
     enabled: !!user,
   });
   const myRanking = myRankings?.find((r) => r.place_id === id);
+
+  // Wave 7 -- Place Detail's relationship hierarchy. Deliberately a
+  // separate query from the place itself: GET /place/{id} is cached
+  // globally by place_id alone, so per-user relationship data can't live
+  // in it (see GET /place/{id}/relationship's own docstring). Signed-out
+  // visitors get no relationship data -- never_visited framing only.
+  const { data: relationship } = useQuery({
+    queryKey: ['placeRelationship', id, user?.id],
+    queryFn: () => fetchPlaceRelationship(id!),
+    enabled: !!id && !!user,
+    staleTime: 30 * 1000,
+  });
 
   const [reportImageId, setReportImageId] = useState<string | null>(null);
   const [reportPlaceVisible, setReportPlaceVisible] = useState(false);
@@ -346,6 +371,33 @@ export default function PlaceDetailScreen() {
   // padding with a fake claim when there's genuinely nothing to show.
   const hasWhyFitsSignal = place.rank_percentile != null || topFriendRanking != null;
 
+  // Wave 7 -- the four relationship modes (contract §6.6/§19's state
+  // coverage). Prefer `savedEntry` (the existing, already-reactive Craves
+  // store -- the same value the visited/notes memory section below has
+  // always used) when it's loaded; fall back to the separate
+  // GET /place/{id}/relationship query only for a cold arrival where the
+  // store hasn't populated yet (e.g. a deep link straight into Place
+  // Detail). Two independent queries for the same underlying fact would
+  // otherwise be able to disagree.
+  const isVisited = savedEntry ? savedEntry.visited : (relationship?.visited ?? false);
+  const visitConfirmationCount = savedEntry
+    ? savedEntry.visit_confirmation_count
+    : (relationship?.visit_confirmation_count ?? 0);
+  const isSavedOrConsidering = !!savedEntry || !!relationship?.saved || !!reasonRoleParam;
+  const relationshipMode: RelationshipMode = isVisited
+    ? (visitConfirmationCount >= REGULAR_VISIT_THRESHOLD ? 'regular' : 'visited_not_regular')
+    : (isSavedOrConsidering ? 'considering' : 'never_visited');
+  const hasCoordinates = place.lat != null && place.lng != null;
+
+  // A reason threaded from wherever this screen was navigated from
+  // (Craves reasoned subset, Search, or Feed's Decision Session card --
+  // contract §10's "one Reason Block renderer across three entry-source
+  // variants"). Only meaningful before a visit -- once visited, the
+  // relationship-status block below takes over and stops persuading.
+  const decisionStripSource = reasonSourceParam as DecisionStripSource | undefined;
+  const hasThreadedReason =
+    !isVisited && !!decisionStripSource && !!reasonRoleParam;
+
   // Group menu items by category
   const menuByCategory: Record<string, MenuItem[]> = {};
   for (const item of previewMenu) {
@@ -360,6 +412,12 @@ export default function PlaceDetailScreen() {
       surface: 'place_detail' as const,
       rank_percentile: place.rank_percentile,
       city_id: place.city_id ?? null,
+      // Wave 7 relationship hierarchy -- if this screen was arrived at
+      // from a role-bearing card (Craves reasoned subset, Search, or
+      // Feed's Decision Session), persist that reason on the save
+      // itself. Only meaningful on the save path, never the remove path.
+      reason_role: reasonRoleParam,
+      reason_source: reasonSourceParam,
     };
     if (saved) {
       const err = await removeSave(place.id, user.id, saveMeta);
@@ -496,7 +554,10 @@ export default function PlaceDetailScreen() {
               <Text style={styles.decisionChip} importantForAccessibility="no">📍 {distanceLabel}</Text>
             </View>
           ) : null}
-          {place.lat && place.lng ? (
+          {/* Wave 7: once Directions is promoted to the primary CTA below
+              (unvisited + coordinates known), it's dropped from here --
+              the same action shouldn't appear twice on one screen. */}
+          {place.lat && place.lng && !(!isVisited && hasCoordinates) ? (
             <TouchableOpacity
               style={styles.decisionChipTouchable}
               hitSlop={{ top: 10, bottom: 10, left: 8, right: 8 }}
@@ -513,100 +574,187 @@ export default function PlaceDetailScreen() {
         </View>
       ) : null}
 
-      {/* "Why this fits" — the section that actually answers "why THIS
-          place," synthesized from signals CRAVE genuinely has today: the
-          catalog percentile (never phrased as personalization) and real
-          friend rankings. No taste-match %, no "you tend to like X" — no
-          user taste graph exists yet (Decision Intelligence doctrine
-          Gate 2). See CRAVE_PLACE_DETAIL_SPEC.md §3.3/§2. Suppressed
-          entirely (not shown half-empty) when there's no real signal
-          yet — see hasWhyFitsSignal above. */}
-      {hasWhyFitsSignal && (
-      <View style={styles.whyFits}>
-        <Text
-          style={[styles.whyFitsHeadline, { color: tier.color }]}
-          accessibilityRole="header"
-        >
-          {percentileHeadline}
-        </Text>
-        {topFriendRanking ? (
-          <Text style={styles.whyFitsFriends}>
-            {friendRankings.length === 1
-              ? `${topFriendRanking.username} ranked this ${formatScore(topFriendRanking.rank_score)}/10`
-              : `${friendRankings.length} friends ranked this — ${topFriendRanking.username} gave it ${formatScore(topFriendRanking.rank_score)}/10`}
+      {/* Wave 7 (Screen Contract §6.6): a relationship-status block once
+          visited, mutually exclusive with "Why this fits" -- stop
+          persuading the user to try somewhere they've already been. */}
+      {relationshipMode === 'visited_not_regular' || relationshipMode === 'regular' ? (
+        <View style={styles.whyFits}>
+          <Text style={[styles.whyFitsHeadline, { color: tier.color }]} accessibilityRole="header">
+            {relationshipMode === 'regular' ? "You're a regular here" : "Already on your list of visits"}
           </Text>
-        ) : null}
-        {friendRankings.length > 1 && (
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.socialRow}>
-            {friendRankings.map((r) => (
-              <TouchableOpacity
-                key={r.user_id}
-                style={styles.friendRankCard}
-                onPress={() => router.push(`/user/${r.user_id}`)}
-                accessibilityRole="link"
-                accessibilityLabel={`View ${r.username}'s profile — ranked ${TIER_LABELS[r.tier]}`}
-              >
-                {r.avatar_url ? (
-                  <Image
-                    source={withImageWidth(r.avatar_url, AVATAR_IMAGE_WIDTH)}
-                    style={styles.friendRankAvatar}
-                    contentFit="cover"
-                    cachePolicy="memory-disk"
-                  />
-                ) : (
-                  <View style={[styles.friendRankAvatar, styles.friendRankAvatarFallback]}>
-                    <Ionicons name="person" size={18} color={Colors.textSecondary} />
-                  </View>
-                )}
-                <Text style={styles.friendRankUsername} numberOfLines={1}>@{r.username}</Text>
-                <Text style={[styles.friendRankTier, { color: tierColor(r.tier) }]}>
-                  {TIER_LABELS[r.tier]}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-        )}
-      </View>
+          {relationshipMode === 'regular' ? (
+            <Text style={styles.whyFitsFriends}>
+              Confirmed {visitConfirmationCount} visits
+            </Text>
+          ) : null}
+        </View>
+      ) : (
+        <>
+          {/* Reason threaded from wherever this screen was opened from
+              (Craves reasoned subset, Search, or Feed's Decision Session
+              card) -- reuses the one shared Reason Block renderer
+              (contract §10) instead of a second bespoke component. */}
+          {hasThreadedReason ? (
+            <View style={styles.whyFits}>
+              <DecisionStrip
+                source={decisionStripSource!}
+                role={decisionStripSource !== 'search' ? (reasonRoleParam as DecisionRole) : undefined}
+                searchReason={decisionStripSource === 'search' ? (reasonRoleParam as SearchReasonRole) : undefined}
+                practicalFacts={{ distance: distanceLabel, price: price ?? null }}
+              />
+            </View>
+          ) : null}
+
+          {/* "Why this fits" — the section that actually answers "why THIS
+              place," synthesized from signals CRAVE genuinely has today: the
+              catalog percentile (never phrased as personalization) and real
+              friend rankings. No taste-match %, no "you tend to like X" — no
+              user taste graph exists yet (Decision Intelligence doctrine
+              Gate 2). See CRAVE_PLACE_DETAIL_SPEC.md §3.3/§2. Suppressed
+              entirely (not shown half-empty) when there's no real signal
+              yet — see hasWhyFitsSignal above. */}
+          {hasWhyFitsSignal && (
+          <View style={styles.whyFits}>
+            <Text
+              style={[styles.whyFitsHeadline, { color: tier.color }]}
+              accessibilityRole="header"
+            >
+              {percentileHeadline}
+            </Text>
+            {topFriendRanking ? (
+              <Text style={styles.whyFitsFriends}>
+                {friendRankings.length === 1
+                  ? `${topFriendRanking.username} ranked this ${formatScore(topFriendRanking.rank_score)}/10`
+                  : `${friendRankings.length} friends ranked this — ${topFriendRanking.username} gave it ${formatScore(topFriendRanking.rank_score)}/10`}
+              </Text>
+            ) : null}
+            {friendRankings.length > 1 && (
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.socialRow}>
+                {friendRankings.map((r) => (
+                  <TouchableOpacity
+                    key={r.user_id}
+                    style={styles.friendRankCard}
+                    onPress={() => router.push(`/user/${r.user_id}`)}
+                    accessibilityRole="link"
+                    accessibilityLabel={`View ${r.username}'s profile — ranked ${TIER_LABELS[r.tier]}`}
+                  >
+                    {r.avatar_url ? (
+                      <Image
+                        source={withImageWidth(r.avatar_url, AVATAR_IMAGE_WIDTH)}
+                        style={styles.friendRankAvatar}
+                        contentFit="cover"
+                        cachePolicy="memory-disk"
+                      />
+                    ) : (
+                      <View style={[styles.friendRankAvatar, styles.friendRankAvatarFallback]}>
+                        <Ionicons name="person" size={18} color={Colors.textSecondary} />
+                      </View>
+                    )}
+                    <Text style={styles.friendRankUsername} numberOfLines={1}>@{r.username}</Text>
+                    <Text style={[styles.friendRankTier, { color: tierColor(r.tier) }]}>
+                      {TIER_LABELS[r.tier]}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            )}
+          </View>
+          )}
+        </>
       )}
 
       {/* Primary CTA — deliberately one prominent action, visually distinct
           from the secondary row below it, rather than a fifth equal-weight
-          icon button nobody would find. Ranking is the thing this app wants
-          you to do; saving and sharing are supporting acts. */}
-      <TouchableOpacity
-        style={[styles.rankCta, myRanking ? styles.rankCtaRanked : null]}
-        onPress={() => {
-          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-          if (!user) {
-            toast('Sign in to rank places');
-            return;
+          icon button nobody would find.
+          Wave 7's adaptive ladder (Screen Contract §11), Reserve omitted
+          (no reservation integration exists, and full reservations/
+          ordering integration is permanently out of scope for V1 --
+          docs/CLAUDE_EXECUTION_BRIEF_WAVES_7_10_2026-09-08.md):
+            visited        -> existing rank CTA (ranking is still the
+                               thing this app wants once you've been)
+            not visited,
+            coordinates     -> Directions (the actual next physical step)
+            not visited,
+            no coordinates  -> Save */}
+      {!isVisited && hasCoordinates ? (
+        <TouchableOpacity
+          style={styles.rankCta}
+          onPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+            handleDirections();
+          }}
+          activeOpacity={0.85}
+          accessibilityRole="button"
+          accessibilityLabel="Get directions"
+        >
+          <Ionicons name="navigate" size={18} color="#FFFFFF" />
+          <Text style={styles.rankCtaText}>Get Directions</Text>
+        </TouchableOpacity>
+      ) : !isVisited ? (
+        <TouchableOpacity
+          style={[styles.rankCta, saved ? styles.rankCtaRanked : null]}
+          onPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+            if (!user) {
+              toast('Sign in to save places');
+              return;
+            }
+            handleSave();
+          }}
+          activeOpacity={0.85}
+          accessibilityRole="button"
+          // Distinct copy/label from the secondary action row's plain
+          // Save button below -- same underlying action (no distinct
+          // "save for tonight" backend behavior exists), but this is the
+          // contract's own next-step-in-the-ladder wording for a place
+          // with no coordinates to give directions to yet.
+          accessibilityLabel={saved ? 'Saved for tonight' : 'Save for tonight'}
+        >
+          <Ionicons
+            name={saved ? 'bookmark' : 'bookmark-outline'}
+            size={18}
+            color={saved ? Colors.text : '#FFFFFF'}
+          />
+          <Text style={saved ? styles.rankCtaRankedText : styles.rankCtaText}>
+            {saved ? 'Saved for tonight' : 'Save for tonight'}
+          </Text>
+        </TouchableOpacity>
+      ) : (
+        <TouchableOpacity
+          style={[styles.rankCta, myRanking ? styles.rankCtaRanked : null]}
+          onPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+            if (!user) {
+              toast('Sign in to rank places');
+              return;
+            }
+            router.push(`/rank/${place.id}`);
+          }}
+          activeOpacity={0.85}
+          accessibilityRole="button"
+          accessibilityLabel={
+            myRanking
+              ? `You ranked this ${formatScore(myRanking.rank_score)} out of 10`
+              : 'Rank this place'
           }
-          router.push(`/rank/${place.id}`);
-        }}
-        activeOpacity={0.85}
-        accessibilityRole="button"
-        accessibilityLabel={
-          myRanking
-            ? `You ranked this ${formatScore(myRanking.rank_score)} out of 10`
-            : 'I ate here — rank this place'
-        }
-      >
-        {myRanking ? (
-          <>
-            <View style={[styles.rankScoreDot, { borderColor: tierColor(myRanking.tier) }]}>
-              <Text style={[styles.rankScoreDotText, { color: tierColor(myRanking.tier) }]}>
-                {formatScore(myRanking.rank_score)}
-              </Text>
-            </View>
-            <Text style={styles.rankCtaRankedText}>Your score · tap to re-rank</Text>
-          </>
-        ) : (
-          <>
-            <Ionicons name="restaurant" size={18} color="#FFFFFF" />
-            <Text style={styles.rankCtaText}>I ate here</Text>
-          </>
-        )}
-      </TouchableOpacity>
+        >
+          {myRanking ? (
+            <>
+              <View style={[styles.rankScoreDot, { borderColor: tierColor(myRanking.tier) }]}>
+                <Text style={[styles.rankScoreDotText, { color: tierColor(myRanking.tier) }]}>
+                  {formatScore(myRanking.rank_score)}
+                </Text>
+              </View>
+              <Text style={styles.rankCtaRankedText}>Your score · tap to re-rank</Text>
+            </>
+          ) : (
+            <>
+              <Ionicons name="restaurant" size={18} color="#FFFFFF" />
+              <Text style={styles.rankCtaText}>Rank it</Text>
+            </>
+          )}
+        </TouchableOpacity>
+      )}
 
       {/* Action row */}
       <View style={styles.actions}>

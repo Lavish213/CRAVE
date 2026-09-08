@@ -32,7 +32,7 @@ import { FilterSheet, FilterState, EMPTY_FILTERS, hasActiveFilters } from '../..
 import { useAuthStore } from '../../src/stores/authStore';
 import { AuthSheet } from '../../src/components/AuthSheet';
 import { useDecisionSession } from '../../src/hooks/useDecisionSession';
-import { DecisionReasonCode, DecisionSessionCard } from '../../src/api/decisionSession';
+import { DecisionReasonCode, DecisionRole, DecisionSessionCard } from '../../src/api/decisionSession';
 
 const VIEWABILITY_CONFIG = { itemVisiblePercentThreshold: 50, minimumViewTime: 250 };
 const DISCOVERY_LIMIT = 4;
@@ -328,6 +328,7 @@ export default function FeedScreen() {
     place: PlaceOut,
     surface: 'feed' | 'decision_session',
     position: number,
+    role?: DecisionRole,
   ) => {
     if (!user) {
       setAuthVisible(true);
@@ -339,6 +340,12 @@ export default function FeedScreen() {
       position,
       rank_percentile: place.rank_percentile,
       city_id: selectedCity?.id ?? null,
+      // Wave 7 relationship hierarchy -- persists "why you saved this" on
+      // the save itself (docs/CLAUDE_EXECUTION_BRIEF_WAVES_7_10_2026-09-08.md).
+      // Only meaningful for a role-bearing Decision Session card, not the
+      // plain Feed row.
+      reason_role: role,
+      reason_source: role ? ('decision_session' as const) : undefined,
     };
 
     if (isSaved(place.id)) {
@@ -369,10 +376,10 @@ export default function FeedScreen() {
             city_id: selectedCity?.id ?? null,
             decision_role: card.role,
           });
-          router.push(`/place/${card.place.id}`);
+          router.push(`/place/${card.place.id}?reason_role=${card.role}&reason_source=decision_session`);
         }}
         onPressIn={() => prefetchPlace(card.place.id)}
-        onSave={() => handleSave(card.place, 'decision_session', position)}
+        onSave={() => handleSave(card.place, 'decision_session', position, card.role)}
         saved={isSaved(card.place.id)}
         style={styles.decisionCard}
       />
