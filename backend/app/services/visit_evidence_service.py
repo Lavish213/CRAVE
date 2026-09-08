@@ -76,6 +76,32 @@ def retract_source(
     )
 
 
+def visit_evidence_for_place(
+    db: Session,
+    *,
+    user_id: str,
+    place_id: str,
+) -> VisitEvidence | None:
+    """
+    The single most-recent visit-evidence record for one user/place pair,
+    across any tier and any source -- for Place Detail's relationship
+    hierarchy (Wave 7), which needs "has this user visited this place at
+    all, and how" for exactly one place, not a batch. Existing helpers
+    here are batch-oriented (craves.py's graduation query,
+    latest_rank_eligible_by_place's Rank Home queue) -- this fills the
+    single-place gap rather than making callers filter a batch result.
+    """
+    return (
+        db.query(VisitEvidence)
+        .filter(
+            VisitEvidence.user_id == user_id,
+            VisitEvidence.place_id == place_id,
+        )
+        .order_by(VisitEvidence.occurred_at.desc(), VisitEvidence.created_at.desc())
+        .first()
+    )
+
+
 def latest_rank_eligible_by_place(
     db: Session,
     *,

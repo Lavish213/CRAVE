@@ -60,6 +60,16 @@ class SaveRequest(BaseModel):
     # it from the request body was the app's core IDOR bug: any caller could
     # save/delete/list on behalf of any other user by passing their UUID.
     place_id: str = Field(..., min_length=1, max_length=36)
+    # Wave 7 relationship hierarchy (docs/CLAUDE_EXECUTION_BRIEF_WAVES_7_10_
+    # 2026-09-08.md): optionally record *why* this place was saved, from
+    # whichever recommendation surface the save happened on -- e.g.
+    # reason_role="best_fit", reason_source="craves". Both optional and
+    # independent of each other; a save with neither is still a normal,
+    # fully valid save (most saves won't come from a role-bearing card).
+    # Set once at creation, never overwritten by a later call -- see
+    # create_save below.
+    reason_role: Optional[str] = Field(default=None, max_length=32)
+    reason_source: Optional[str] = Field(default=None, max_length=32)
 
 
 class SaveMemoryRequest(BaseModel):
@@ -84,6 +94,10 @@ class SavedPlaceOut(PlaceOut):
     visited: bool = False
     visited_at: Optional[datetime] = None
     notes: Optional[str] = None
+    # Wave 7 relationship hierarchy -- see SaveRequest above.
+    reason_role: Optional[str] = None
+    reason_source: Optional[str] = None
+    visit_confirmation_count: int = 0
 
 
 class SavedPlacesResponse(BaseModel):
@@ -137,6 +151,8 @@ def create_save(
         place_id=payload.place_id,
         resolution_status="resolved",
         dedup_key=dedup,
+        reason_role=payload.reason_role,
+        reason_source=payload.reason_source,
     )
     db.add(save)
     db.commit()
@@ -241,6 +257,9 @@ def list_saves(
                     visited=save.visited,
                     visited_at=save.visited_at,
                     notes=save.notes,
+                    reason_role=save.reason_role,
+                    reason_source=save.reason_source,
+                    visit_confirmation_count=save.visit_confirmation_count,
                 )
             )
         except Exception as exc:
@@ -282,8 +301,16 @@ def update_save_memory(
     fields = payload.model_dump(exclude_unset=True)
 
     if "visited" in fields:
+        was_visited = save.visited
         save.visited = bool(fields["visited"])
         save.visited_at = datetime.now(timezone.utc) if save.visited else None
+        # Wave 7's "regular" relationship tier needs a genuine repeat-visit
+        # signal, not a fabricated one -- only count an actual False->True
+        # transition, never a redundant PATCH that re-sends visited=true
+        # for an already-visited save (which would double-count on every
+        # unrelated notes-only edit that happens to also resend `visited`).
+        if save.visited and not was_visited:
+            save.visit_confirmation_count += 1
         if save.visited:
             upsert_declared_source(
                 db,

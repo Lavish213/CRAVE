@@ -2,7 +2,7 @@
 from __future__ import annotations
 import uuid
 from datetime import datetime
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Index, String, Text, UniqueConstraint, text
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint, text
 from sqlalchemy.orm import Mapped, mapped_column
 from app.db.models.base import Base, TimestampMixin
 
@@ -51,3 +51,23 @@ class HitlistSave(Base, TimestampMixin):
         DateTime(timezone=True), nullable=True
     )
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # --------------------------------------------------
+    # RELATIONSHIP HIERARCHY (Wave 7) -- why this place was saved, and a
+    # real (not fabricated) repeat-visit signal. `reason_role`/
+    # `reason_source` are set once at save-creation time from whichever
+    # recommendation surface the user saved from (Decision Session/Craves
+    # reasoned subset role, or Search's own reason vocabulary) -- never
+    # overwritten afterward, since a save's original reason is a fact
+    # about when it happened, not a live-updating field.
+    # `visit_confirmation_count` increments only on the `visited`
+    # False->True transition (never on a redundant PATCH with `visited`
+    # already true), so it reflects genuine repeat confirmations rather
+    # than double-counting idempotent writes. See
+    # docs/CLAUDE_EXECUTION_BRIEF_WAVES_7_10_2026-09-08.md.
+    # --------------------------------------------------
+    reason_role: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    reason_source: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    visit_confirmation_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default=text("0")
+    )
