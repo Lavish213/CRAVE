@@ -62,8 +62,8 @@ def _make_city(db, created) -> City:
     return city
 
 
-def _make_place(db, created, city, *, name, rank_score, has_menu=False) -> Place:
-    place = Place(name=name, city_id=city.id, rank_score=rank_score)
+def _make_place(db, created, city, *, name, rank_score, has_menu=False, lat=None, lng=None) -> Place:
+    place = Place(name=name, city_id=city.id, rank_score=rank_score, lat=lat, lng=lng)
     place.has_menu = has_menu
     db.add(place)
     db.commit()
@@ -122,6 +122,75 @@ def test_pagination_slices_the_ranked_result_not_the_raw_sql_order(db):
     page2_ids = {p.id for p in page2}
     assert page1_ids.isdisjoint(page2_ids)
     assert len(page1_ids) + len(page2_ids) == 4
+
+
+def test_radius_miles_excludes_a_place_outside_the_requested_distance(db):
+    session, created = db
+    city = _make_city(session, created)
+    # City center is (37.8, -122.27). ~0.01 deg lat is ~1.1km (~0.7mi) --
+    # comfortably inside a 5mi radius. ~1.0 deg lat is ~111km (~69mi) --
+    # comfortably outside it.
+    near = _make_place(
+        session, created, city, name=f"{SEARCH_TERM} Near", rank_score=0.5,
+        lat=37.81, lng=-122.27,
+    )
+    far = _make_place(
+        session, created, city, name=f"{SEARCH_TERM} Far", rank_score=0.9,
+        lat=38.8, lng=-122.27,
+    )
+
+    results, total = execute_search(
+        session, query=SEARCH_TERM, lat=37.8, lng=-122.27, radius_miles=5,
+        limit=20, offset=0,
+    )
+
+    result_ids = {p.id for p in results}
+    assert near.id in result_ids
+    assert far.id not in result_ids
+    assert total == 1
+
+
+def test_radius_miles_excludes_a_place_with_no_coordinates(db):
+    session, created = db
+    city = _make_city(session, created)
+    located = _make_place(
+        session, created, city, name=f"{SEARCH_TERM} Located", rank_score=0.5,
+        lat=37.81, lng=-122.27,
+    )
+    _make_place(
+        session, created, city, name=f"{SEARCH_TERM} NoCoords", rank_score=0.9,
+        lat=None, lng=None,
+    )
+
+    results, total = execute_search(
+        session, query=SEARCH_TERM, lat=37.8, lng=-122.27, radius_miles=5,
+        limit=20, offset=0,
+    )
+
+    result_ids = {p.id for p in results}
+    assert result_ids == {located.id}
+    assert total == 1
+
+
+def test_radius_miles_is_ignored_without_lat_lng(db):
+    # execute_search itself doesn't enforce "radius requires lat/lng" --
+    # that guard lives in the route (search.py's effective_radius_miles).
+    # At this layer, no lat/lng means the filter's own guard condition
+    # (lat is not None and lng is not None) never fires, so nothing is
+    # excluded on coordinates alone.
+    session, created = db
+    city = _make_city(session, created)
+    place = _make_place(
+        session, created, city, name=SEARCH_TERM, rank_score=0.5,
+        lat=None, lng=None,
+    )
+
+    results, total = execute_search(
+        session, query=SEARCH_TERM, radius_miles=5, limit=20, offset=0,
+    )
+
+    assert total == 1
+    assert results[0].id == place.id
 
 
 def test_a_page_at_offset_beyond_100_is_not_silently_empty(db):

@@ -76,6 +76,10 @@ def search(
     price_tier: Optional[int] = Query(None, ge=1, le=4),
     lat: Optional[float] = Query(None, description="User latitude for proximity ranking"),
     lng: Optional[float] = Query(None, description="User longitude for proximity ranking"),
+    radius_miles: Optional[float] = Query(
+        None, gt=0, le=100,
+        description="Exclude results beyond this distance. Requires lat/lng; ignored otherwise.",
+    ),
     page: int = Query(DEFAULT_PAGE, ge=1),
     page_size: int = Query(DEFAULT_PAGE_SIZE, ge=1, le=MAX_PAGE_SIZE),
     db: Session = Depends(get_db),
@@ -107,6 +111,10 @@ def search(
             interpretation=interpretation_out,
         )
 
+    # A radius without a location to measure from is meaningless -- ignore
+    # it rather than silently filtering against a nonexistent point.
+    effective_radius_miles = radius_miles if (lat is not None and lng is not None) else None
+
     cache_key = search_cache_key(
         query=query,
         city_id=city_id,
@@ -114,6 +122,7 @@ def search(
         price_tier=price_tier,
         lat=lat,
         lng=lng,
+        radius_miles=effective_radius_miles,
         page=page,
         page_size=page_size,
     )
@@ -136,6 +145,7 @@ def search(
             price_tier=price_tier if price_tier is not None else interpretation.price_tier,
             lat=lat,
             lng=lng,
+            radius_miles=effective_radius_miles,
             limit=page_size,
             offset=offset,
             required_category_names=interpretation.required_categories,
@@ -150,6 +160,29 @@ def search(
         raise HTTPException(status_code=503, detail="Search temporarily unavailable") from exc
 
     relaxed_constraints: List[str] = []
+    # Radius is a soft (user-adjustable) preference, same standing as
+    # price below -- relax it only when the filtered query has no matches
+    # at all, never touching an actual hard constraint (dietary/allergy).
+    if total == 0 and effective_radius_miles is not None:
+        try:
+            results, total = execute_search(
+                db,
+                query=interpretation.lookup_query,
+                city_id=city_id,
+                category_id=category_id,
+                price_tier=price_tier if price_tier is not None else interpretation.price_tier,
+                lat=lat,
+                lng=lng,
+                radius_miles=None,
+                limit=page_size,
+                offset=offset,
+                required_category_names=interpretation.required_categories,
+            )
+        except Exception as exc:
+            logger.exception("search_relaxation_failed query=%s error=%s", query, exc)
+            raise HTTPException(status_code=503, detail="Search temporarily unavailable") from exc
+        relaxed_constraints.append("radius")
+
     # Price is a soft heuristic. Relax it only when the filtered query has
     # no matches at all. An empty later page with total > 0 is pagination,
     # not evidence that the price constraint should be changed.
@@ -163,6 +196,7 @@ def search(
                 price_tier=price_tier,
                 lat=lat,
                 lng=lng,
+                radius_miles=None,
                 limit=page_size,
                 offset=offset,
                 required_category_names=interpretation.required_categories,
@@ -171,6 +205,8 @@ def search(
             logger.exception("search_relaxation_failed query=%s error=%s", query, exc)
             raise HTTPException(status_code=503, detail="Search temporarily unavailable") from exc
         relaxed_constraints.append("price")
+        if effective_radius_miles is not None:
+            relaxed_constraints.append("radius")
 
     place_ids = [getattr(p, "id", None) for p in results if getattr(p, "id", None)]
     image_urls = get_primary_image_urls_bulk(db, place_ids=place_ids)
