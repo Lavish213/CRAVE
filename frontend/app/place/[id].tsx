@@ -3,6 +3,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Linking,
+  Platform,
   ScrollView,
   Share,
   StyleSheet,
@@ -299,8 +300,23 @@ export default function PlaceDetailScreen() {
   const handleShare = useCallback(() => {
     if (!place) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    // Deep link, not yet a universal link -- opens directly to this place
+    // for anyone who already has CRAVE installed (the common case for
+    // sharing with another CRAVE user); does nothing useful for someone
+    // without the app, since there's no web domain/hosting to fall back
+    // to yet (confirmed: no associatedDomains/intentFilters configured,
+    // no CORS web origin anywhere in backend config -- CRAVE is
+    // native-app-only today). A true universal link needs that domain
+    // stood up first; tracked as a real, separate infra dependency, not
+    // faked here with a link that would 404.
+    const deepLink = `crave://place/${place.id}`;
+    const cityLabel = place.address ? place.address.split(',').pop()?.trim() ?? 'your city' : 'your city';
     Share.share({
-      message: `${place.name} — ${place.category ?? 'Restaurant'} in ${place.address ? place.address.split(',').pop()?.trim() ?? 'your city' : 'your city'}. Found on CRAVE.`,
+      message: `${place.name} — ${place.category ?? 'Restaurant'} in ${cityLabel}. Found on CRAVE.\n${deepLink}`,
+      // iOS shares `url` as its own share-sheet item, independent of
+      // `message` -- Android's Share module only reads `message`/`title`,
+      // so the link above is embedded in the message text for both.
+      ...(Platform.OS === 'ios' ? { url: deepLink } : null),
     });
   }, [place]);
 

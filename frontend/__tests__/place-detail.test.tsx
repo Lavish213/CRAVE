@@ -8,6 +8,7 @@
 // moderation branching -- neither was touched by this pass, and both
 // already have their own established behavior from prior sessions.
 import React from 'react';
+import { Share } from 'react-native';
 import { render, waitFor, fireEvent } from '@testing-library/react-native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import PlaceDetailScreen from '../app/place/[id]';
@@ -26,9 +27,10 @@ import { fetchMyRankings, fetchFriendRankings } from '../src/api/social';
 jest.setTimeout(15000);
 
 const mockRouterPush = jest.fn();
+const mockSetOptions = jest.fn();
 jest.mock('expo-router', () => ({
   useLocalSearchParams: jest.fn(() => ({ id: 'place-1' })),
-  useNavigation: () => ({ setOptions: jest.fn() }),
+  useNavigation: () => ({ setOptions: mockSetOptions }),
   useRouter: () => ({ push: mockRouterPush }),
 }));
 jest.mock('expo-haptics', () => ({
@@ -431,6 +433,23 @@ describe('PlaceDetailScreen — Wave 7 relationship hierarchy', () => {
     const [, , meta] = cravesStoreState.addSave.mock.calls[0];
     expect(meta).toEqual(expect.objectContaining({
       reason_role: 'safe_bet', reason_source: 'search',
+    }));
+  });
+
+  it('includes a deep link to this place in the native share payload', async () => {
+    mockedFetchPlaceDetail.mockResolvedValue(basePlace());
+    const shareSpy = jest.spyOn(Share, 'share').mockResolvedValue({ action: 'sharedAction' } as any);
+
+    const { findByText } = renderScreen();
+    await findByText('Nari');
+
+    expect(mockSetOptions).toHaveBeenCalled();
+    const { headerRight } = mockSetOptions.mock.calls[mockSetOptions.mock.calls.length - 1][0];
+    const { getByLabelText } = render(headerRight());
+    fireEvent.press(getByLabelText('Share this place'));
+
+    expect(shareSpy).toHaveBeenCalledWith(expect.objectContaining({
+      message: expect.stringContaining('crave://place/place-1'),
     }));
   });
 });
