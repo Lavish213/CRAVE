@@ -2,7 +2,21 @@ from functools import lru_cache
 from typing import Literal
 from pathlib import Path
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# Railway (and most PaaS conventions generally) set APP_ENV=production /
+# APP_ENV=development, not this app's own dev/staging/prod vocabulary --
+# confirmed in production: a canary run crashed at Settings-load time
+# (pydantic ValidationError) before creating its job_runs row, on exactly
+# this mismatch. Normalizing common synonyms here is more robust than
+# requiring every deploy target's env var to match this app's internal
+# naming exactly; "prod"/"dev"/"staging" remain the only values used
+# anywhere else in this codebase (is_prod/is_dev/is_staging below).
+_APP_ENV_ALIASES = {
+    "production": "prod",
+    "development": "dev",
+}
 
 
 # ------------------------------------------------------------
@@ -38,6 +52,14 @@ class Settings(BaseSettings):
 
     app_name: str = "Lavish Backend"
     app_env: Literal["dev", "staging", "prod"] = "dev"
+
+    @field_validator("app_env", mode="before")
+    @classmethod
+    def _normalize_app_env(cls, value: object) -> object:
+        if isinstance(value, str):
+            normalized = value.strip().lower()
+            return _APP_ENV_ALIASES.get(normalized, normalized)
+        return value
 
     # 🔥 AUTO DERIVED (never manually toggle in prod)
     debug: bool = False
