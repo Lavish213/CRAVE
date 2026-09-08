@@ -134,6 +134,23 @@ recommend it — reading the place operational-data contract's
 freshness/provenance stamp (Data & State Map §6), the same mechanism
 Place Detail uses.
 
+**Status correction (2026-09-08): blocked, not deferred-and-forgotten.**
+This section assumes an operational-data mechanism ("the same as Place
+Detail uses") that does not exist anywhere in the app today — confirmed:
+`Place`/`PlaceOut` carries no `is_open`, hours, or freshness/provenance
+field at all, and Place Detail's own code deliberately omits an
+open/closed indicator for exactly that reason (no data to show it from).
+There is nothing for this section's inline notice to read. This is the
+same class of finding as the Search Screen Contract's §17 offline-layer
+correction: real, scoped future work — §3.6 of
+`CRAVE_MASTER_CODEX_REMAINING_WORK.md` ("Build trustworthy operational-
+data ingestion") — not a Craves-specific gap and not something to
+approximate with a fabricated staleness heuristic in the meantime. The
+rest of this contract's acceptance criteria (§17) do not depend on this
+section, so it does not block Wave 6; it blocks only until §3.6 lands
+app-wide, at which point this screen wires into it exactly as specified
+above with no further contract change needed.
+
 ---
 
 ## 12. State coverage table
@@ -259,8 +276,15 @@ dependency), the Requirements/Traceability Matrix.
 
 ## 19. Proposed status
 
-**GREEN candidate.** No named blocker gates this contract's core
-behavior — the recommendation request/context contract already exists
-at the product-data level (Data & State Map §2), and every other
-dependency is either already resolved (§9) or explicitly out of scope
-for V1 (§3.4a/§3.4b). Awaiting your audit to confirm.
+**GREEN.** Implemented (2026-09-08): reasoned subset + typed client
+(PR #215), screen rebuild around it with remove-confirmation and honest
+empty states (PR #216), automatic cuisine/geography clustering (PR #218).
+§11's data-integrity notice is the one exception, and is correctly
+excluded from this contract's own acceptance criteria (§17) — it is
+blocked on the app-wide operational-data foundation (§11's status
+correction above), not on anything specific to this screen. The one
+remaining tracked gap is cosmetic, not behavioral: the "Craves"/"Added"
+sections still render via their own bespoke row style rather than
+`PlaceCardCompact`, pending `/craves` and `/hitlist/me` returning full
+`PlaceOut` instead of bare IDs (backend work, not scoped to this
+contract).
