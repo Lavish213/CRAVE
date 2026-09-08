@@ -390,6 +390,20 @@ describe('PlaceDetailScreen — Wave 7 relationship hierarchy', () => {
     expect(await findByText('Best fit')).toBeTruthy();
   });
 
+  it('remembers and shows the persisted save reason on a later visit with no nav params (contract §13)', async () => {
+    // No reason_role/reason_source in the nav params this time -- this is
+    // a cold return visit, not the original role-bearing navigation.
+    mockedUseLocalSearchParams.mockReturnValue({ id: 'place-1' });
+    mockedFetchPlaceDetail.mockResolvedValue(basePlace());
+    cravesStoreState.saves = [{
+      ...basePlace(), visited: false, visited_at: null, notes: null,
+      reason_role: 'wildcard', reason_source: 'craves', visit_confirmation_count: 0,
+    }];
+    const { findByText } = renderScreen();
+
+    expect(await findByText('Wildcard')).toBeTruthy();
+  });
+
   it('does not show the threaded reason once visited (stop persuading)', async () => {
     mockedUseLocalSearchParams.mockReturnValue({
       id: 'place-1', reason_role: 'best_fit', reason_source: 'craves',

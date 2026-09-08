@@ -439,9 +439,29 @@ scope for V1.
   reaction counts.
 - **Decision Architecture Gate 2 (real user taste graph)** — blocks any
   Why This Fits copy implying personal cuisine/flavor preference beyond
-  catalog fact + friend-ranking + own past rank.
+  catalog fact + friend-ranking + own past rank. Also blocks §12's
+  four-action correction vocabulary (Not true / Doesn't matter to me /
+  Less of this / More of this) entirely — there is no taste evidence
+  record for a correction to write to yet. Not built as of Wave 7;
+  confirmed no such control exists anywhere in the app.
 - **`hours`/`is_open` ingestion** — blocks honest operational-status
   display; currently correctly omitted, not fabricated.
+- **Reservation-provider integration** — blocks §11's Reserve CTA rung
+  entirely; no such integration exists anywhere in the app, and full
+  reservations/ordering integration is permanently out of scope for V1
+  (`CRAVE_MASTER_CODEX_REMAINING_WORK.md` §4 — not a "not yet built"
+  item, a "never build for V1" item). §11's ladder is implemented
+  (Wave 7, PR #222) starting at Directions, Reserve omitted.
+- **Quick-Take Reaction control** ("How was it?") — §11/§14 both name a
+  distinct CTA/status state for "visited, not regular, no reaction yet"
+  gated on a reaction control that doesn't exist as a feature anywhere
+  in this app (no data model, no UI). Wave 7 (PR #222) goes straight
+  from "visited" to the existing "Rank it" CTA, collapsing this
+  intermediate state rather than fabricating a reaction control with
+  nothing behind it. Likely lands with the Native Posting/Private
+  Logging composer (Wave 8's "quick take" step,
+  `CRAVE_MASTER_CODEX_REMAINING_WORK.md` §3.11) — tracked there, not
+  invented here ahead of it.
 - **"Seen on social" placement** (OPEN) — this contract renders nothing
   for it; resolving the placement question doesn't require reopening
   this contract, just adding a new section once decided.
@@ -449,6 +469,31 @@ scope for V1.
   distinct, already-approved, narrower feature from the still-open
   **visible social Rank** question (V1 Scope §4.5) — this contract's
   friend-ranking content is not blocked by that open item.
+
+**Status correction (2026-09-08) — Wave 7 shipped (PRs #221, #222):**
+- Four relationship modes are real and distinct in the running app
+  (§6/§13-14): never-visited, considering (saved-unvisited or arrived
+  via a role-bearing card), visited-not-regular, regular. "Regular"'s
+  threshold is implemented at 2 confirmed visits, not this section's
+  own illustrative "10+" example — per this contract's own §14 wording
+  ("the exact number is a tuning detail, not a locked product number"),
+  this is a deliberate placeholder, not a deviation.
+- §13's "remembered, not regenerated" save reason is genuinely
+  persisted (`HitlistSave.reason_role`/`reason_source`, set once at
+  save-creation, read back on any later visit) and rendered through the
+  shared Decision Strip (§10) across all three entry-source variants
+  (Craves reasoned subset, Search, Feed's Decision Session card) — not
+  just shown ephemerally on the first navigation.
+- §14's relationship-status block is simplified relative to this
+  section's exact copy: it shows "Already on your list of visits" /
+  "You're a regular here" + a real confirmed-visit count, not the
+  "visited N days ago" timestamp framing or the reaction-status line
+  this section specifies (the latter depends on the Quick-Take Reaction
+  control above, which doesn't exist).
+- §11's CTA ladder is real for the states that don't depend on the two
+  items above: Directions (unvisited, coordinates known) → "Save for
+  tonight" (unvisited, no coordinates) → existing rank CTA once
+  visited, relabeled "Rank it" when unranked.
 
 ---
 
@@ -524,9 +569,17 @@ Matrix.
 
 ## 26. Proposed status
 
-**YELLOW — contract drafted, named blockers pending audit:** Dish
-Intelligence data model, Gate 2 taste graph, and `hours` ingestion are
-real, tracked, unresolved dependencies (§22) that gate specific
-sections rather than the whole contract. Everything else in this
-document is intended to be freeze-ready. Awaiting your audit before
-this becomes GREEN.
+**YELLOW — Wave 7 shipped, named blockers remain (2026-09-08).** The
+relationship-hierarchy core this contract exists to specify (§6, §11,
+§13-§14) is implemented and tested (PRs #221 backend, #222 frontend) —
+see §22's status correction for exactly what shipped and where it's
+intentionally simplified. Still blocked, unchanged: Dish Intelligence
+data model, Gate 2 taste graph (also now confirmed to block §12's
+correction vocabulary specifically, not just Why-This-Fits copy),
+`hours` ingestion, and the Quick-Take Reaction control (new finding,
+§22) — none fabricated in their absence. Reservation-provider
+integration is not "pending," it's permanently out of scope for V1
+(§4 of the master remaining-work doc) — §11's ladder is complete as
+specified once Reserve is correctly excluded. Awaiting audit before
+GREEN; the remaining named blockers gate specific sections, not the
+whole contract, same as before Wave 7.
