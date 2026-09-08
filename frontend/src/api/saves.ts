@@ -11,6 +11,11 @@ export interface SavedPlace extends PlaceOut {
   visited: boolean;
   visited_at: string | null;
   notes: string | null;
+  /** Wave 7 relationship hierarchy -- why this was saved, set once at
+   * save-creation time. See docs/CLAUDE_EXECUTION_BRIEF_WAVES_7_10_2026-09-08.md. */
+  reason_role: string | null;
+  reason_source: string | null;
+  visit_confirmation_count: number;
 }
 
 function normalizeSavedPlace(raw: unknown): SavedPlace {
@@ -21,6 +26,9 @@ function normalizeSavedPlace(raw: unknown): SavedPlace {
     visited: Boolean(r.visited),
     visited_at: typeof r.visited_at === 'string' ? r.visited_at : null,
     notes: typeof r.notes === 'string' ? r.notes : null,
+    reason_role: typeof r.reason_role === 'string' ? r.reason_role : null,
+    reason_source: typeof r.reason_source === 'string' ? r.reason_source : null,
+    visit_confirmation_count: typeof r.visit_confirmation_count === 'number' ? r.visit_confirmation_count : 0,
   };
 }
 
@@ -35,9 +43,19 @@ export async function fetchSaves(userId: string): Promise<SavedPlace[]> {
   return normalized;
 }
 
-export async function createSave(userId: string, placeId: string): Promise<void> {
+export interface SaveReason {
+  reason_role?: string | null;
+  reason_source?: string | null;
+}
+
+export async function createSave(userId: string, placeId: string, reason?: SaveReason): Promise<void> {
   if (__DEV__) console.log('[API] SAVE_CREATE', { userId, placeId });
-  await client.post('/api/v1/saves', { user_id: userId, place_id: placeId });
+  await client.post('/api/v1/saves', {
+    user_id: userId,
+    place_id: placeId,
+    reason_role: reason?.reason_role ?? undefined,
+    reason_source: reason?.reason_source ?? undefined,
+  });
 }
 
 export async function deleteSave(userId: string, placeId: string): Promise<void> {

@@ -31,7 +31,10 @@ jest.mock('../utils/recommendationEventQueue', () => ({
 }));
 
 function makePlace(id: string): SavedPlace {
-  return { id, name: id, visited: false, visited_at: null, notes: null } as unknown as SavedPlace;
+  return {
+    id, name: id, visited: false, visited_at: null, notes: null,
+    reason_role: null, reason_source: null, visit_confirmation_count: 0,
+  } as unknown as SavedPlace;
 }
 
 async function flush(): Promise<void> {
@@ -189,7 +192,7 @@ describe('cravesStore', () => {
       }});
       (savesApi.createSave as jest.Mock).mockResolvedValue(undefined);
       await useCravesStore.getState().flushPendingActions('userA');
-      expect(savesApi.createSave).toHaveBeenCalledWith('userA', 'p1');
+      expect(savesApi.createSave).toHaveBeenCalledWith('userA', 'p1', { reason_role: undefined, reason_source: undefined });
       expect(useCravesStore.getState().pendingSyncActions).toEqual({});
     });
 
@@ -261,7 +264,7 @@ describe('cravesStore', () => {
         }});
         (savesApi.createSave as jest.Mock).mockResolvedValue(undefined);
         await useCravesStore.getState().flushPendingActions('userA');
-        expect(savesApi.createSave).toHaveBeenCalledWith('userA', 'p1');
+        expect(savesApi.createSave).toHaveBeenCalledWith('userA', 'p1', { reason_role: undefined, reason_source: undefined });
         expect(useCravesStore.getState().pendingSyncActions).toEqual({});
       });
 
@@ -275,7 +278,7 @@ describe('cravesStore', () => {
         (savesApi.createSave as jest.Mock).mockResolvedValue(undefined);
         await useCravesStore.getState().flushPendingActions('userA');
         expect(savesApi.createSave).toHaveBeenCalledTimes(1);
-        expect(savesApi.createSave).toHaveBeenCalledWith('userA', 'p1');
+        expect(savesApi.createSave).toHaveBeenCalledWith('userA', 'p1', { reason_role: undefined, reason_source: undefined });
         expect(useCravesStore.getState().pendingSyncActions).toEqual({
           p2: { type: 'add', userId: 'userA', queuedAt: 2, attemptCount: 1, lastAttemptAt: now - 1_000 },
         });

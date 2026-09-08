@@ -21,6 +21,11 @@ export interface SaveEventMeta {
   rank_percentile?: number | null;
   city_id?: string | null;
   query?: string | null;
+  /** Wave 7 relationship hierarchy -- persisted on the save itself (not
+   * just logged as an analytics event) so Place Detail can later show
+   * "why you saved this." Only meaningful on addSave; ignored elsewhere. */
+  reason_role?: string | null;
+  reason_source?: string | null;
 }
 
 export interface PendingSyncAction {
@@ -259,11 +264,14 @@ export const useCravesStore = create<CravesStore>()(
           visited: false,
           visited_at: null,
           notes: null,
+          reason_role: meta?.reason_role ?? null,
+          reason_source: meta?.reason_source ?? null,
+          visit_confirmation_count: 0,
         };
         set({ saves: [optimisticEntry, ...prev] });
 
         try {
-          await createSave(userId, place.id);
+          await createSave(userId, place.id, { reason_role: meta?.reason_role, reason_source: meta?.reason_source });
           if (__DEV__) console.log('[CRAVES_STORE] addSave_ok', place.id);
           _logSaveOutcome('save', place.id, eventId, userId, meta);
           return null;
@@ -399,7 +407,7 @@ export const useCravesStore = create<CravesStore>()(
 
             try {
               if (action.type === 'add') {
-                await createSave(userId, placeId);
+                await createSave(userId, placeId, { reason_role: action.meta?.reason_role, reason_source: action.meta?.reason_source });
               } else {
                 try {
                   await deleteSave(userId, placeId);

@@ -510,7 +510,7 @@ export default function CravesScreen() {
                       city_id: row.card.place.city_id ?? null,
                       decision_role: row.card.role,
                     });
-                    router.push(`/place/${row.card.place.id}`);
+                    router.push(`/place/${row.card.place.id}?reason_role=${row.card.role}&reason_source=craves`);
                   }}
                   onPressIn={() => prefetchPlace(row.card.place.id)}
                 />
