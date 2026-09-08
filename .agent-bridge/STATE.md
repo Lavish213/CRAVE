@@ -1,48 +1,82 @@
 # Active agent state
 
-Status: doctrine chain complete and certified; implementation Waves 0-4 merged; Wave 5 Search Screen Contract **COMPLETE** and certified (2026-09-07); Wave 5 contextual-Map plumbing **PARTIAL** (one open item, see below); **Wave 6 (Craves intelligence) is claimed and in progress** (Claude, this session) against `docs/doctrine/CRAVE_SCREEN_CONTRACT_CRAVES.md`; a parallel Penpot design track (Feed/Decision Session, then Search, then Craves) may begin independently at Exploratory status per explicit user direction — design work does not wait on Wave 6 implementation, and Wave 6 does not wait on Penpot.
+Status: doctrine chain complete and certified; implementation Waves 0-4 merged; Wave 5 Search Screen Contract **COMPLETE** and certified (2026-09-07); Wave 5 contextual-Map plumbing **PARTIAL** (one open item, see below); **Wave 6 (Craves intelligence) COMPLETE** (all 4 steps merged, 2026-09-08); **Wave 7 (Place Detail relationship hierarchy) is claimed and in progress** (Claude, this session) against `docs/doctrine/CRAVE_SCREEN_CONTRACT_PLACE_DETAIL.md`; a parallel Penpot design track (Feed/Decision Session, then Search, then Craves) may begin independently at Exploratory status per explicit user direction — design work does not wait on implementation waves, and vice versa.
 Owner: Claude
-Branch: main (steps 1-2 merged; step 3 not yet started, no branch claimed)
-Head SHA: a73a5db (`Merge pull request #216` — current `origin/main`)
-Scope: `docs/doctrine/CRAVE_CANONICAL_IMPLEMENTATION_INDEX.md` — **START HERE**; `docs/doctrine/CRAVE_MASTER_CODEX_REMAINING_WORK.md` — **the current operational checklist**, read this before claiming any wave
+Branch: main (Wave 7 sub-PR 1 not yet branched)
+Head SHA: 9056b80 (`Merge pull request #219` — current `origin/main`)
+Scope: `docs/doctrine/CRAVE_CANONICAL_IMPLEMENTATION_INDEX.md` — **START HERE**; `docs/doctrine/CRAVE_MASTER_CODEX_REMAINING_WORK.md` — **the current operational checklist**, read this before claiming any wave; `docs/CLAUDE_EXECUTION_BRIEF_WAVES_7_10_2026-09-08.md` — self-contained Waves 7-10 brief with concrete buildable-now-vs-blocked findings already verified against current code, for any Claude session resuming this work
 
-## Wave 6 — Craves intelligence, in progress (Claude)
+## Wave 6 — Craves intelligence — COMPLETE
 
-Plan, per `docs/doctrine/CRAVE_SCREEN_CONTRACT_CRAVES.md` (confirmed with
-the user: Craves' Reason Block reuses Decision Session's exact role
-vocabulary -- best_fit/safe_bet/wildcard -- since it's the literal same
-`build_decision_session()` engine over a different candidate set, not a
-conceptually distinct surface the way Search's own vocabulary was):
+All 4 steps merged: (1) backend + typed client, PR #215; (2) screen
+rebuild around the reasoned subset, PR #216; (3) automatic cuisine/
+geography clustering, PR #218; (4) doctrine correction reclassifying
+contract §11 as blocked on §3.6 (operational-data ingestion, app-wide,
+not Craves-specific), PR #219. Contract status: **GREEN**. One tracked,
+non-blocking gap remains: the "Craves"/"Added" sections still render via
+their own bespoke row style, not `PlaceCardCompact`, pending `/craves`
+and `/hitlist/me` returning full `PlaceOut` instead of bare IDs.
 
-1. **Backend + typed client — MERGED (PR #215).** `GET /api/v1/craves/
-   reasoned` -- candidate pool is native saves + manually-added entries
-   (HitlistSave) union matched imported/social CraveItems, minus any
-   place with existing VisitEvidence at any tier (contract §10's looser
-   graduation bar, not Rank Home's declared/verified-only one). Frontend
-   `fetchCravesReasoned()` + `DecisionStrip`'s new `'craves'` source.
-2. **Screen rebuild — MERGED (PR #216, SHA `a73a5db1cffd4a9c7d66100b644
-   cf22cea5ac245`).** `craves.tsx` now shows the reasoned subset first
-   ("Try one of these"), full saved list ("All saves") secondary; remove
-   now requires confirmation (contract §17). **Not fully done**: the
-   "Craves"/"Added" sections still render via their own bespoke row
-   style, not `PlaceCardCompact` -- those two endpoints (`/craves`,
-   `/hitlist/me`) only return a bare `matched_place_id`/`place_id`, not a
-   full resolved `PlaceOut` the way `/saves` does. Backend-side
-   evidence-type unification (contract §9, scoring) is done as of #215;
-   the *visual* unification of these two sections needs those two
-   endpoints extended first -- real, separate backend work, tracked
-   here, not silently called done.
-3. **Automatic clustering** (cuisine/occasion/geography, contract §6) --
-   next up, not yet started, now that (2) is merged and solid.
-4. **Contract correction**: §11's data-integrity notices assume an
-   operational-data mechanism ("the same as Place Detail uses") that
-   does not exist yet anywhere in the app (confirmed: Place Detail
-   itself has no `is_open`/hours field, deliberately, per its own code
-   comments) -- this is the same unbuilt foundation
-   `CRAVE_MASTER_CODEX_REMAINING_WORK.md` §3.6 lists as future work.
-   Reclassify via a doctrine correction (same treatment as the Search
-   contract's §17 offline-layer finding), not a fabricated
-   implementation.
+## Wave 7 — Place Detail relationship hierarchy, in progress (Claude)
+
+Per `docs/doctrine/CRAVE_MASTER_CODEX_REMAINING_WORK.md` §3.5 and
+`docs/doctrine/CRAVE_SCREEN_CONTRACT_PLACE_DETAIL.md` (Draft, pending
+audit). Scoping research (read screen contract in full, old spec,
+current `app/place/[id].tsx` 1196 lines, VisitEvidence/HitlistSave/
+PlaceRanking models, nav call sites from craves/search/feed) found:
+
+**Buildable now, this session, no production access needed:**
+- Stop persuading after a confirmed visit -- `HitlistSave.visited`/
+  `VisitEvidence` already exist, just needs the conditional wired in.
+- Reuse the shared `DecisionStrip` component -- exists, used elsewhere
+  (Craves, Search, `PlaceCardCompact`), but Place Detail hand-rolls its
+  own `decisionStrip`/`whyFits` views instead of using it (lines 482-570).
+- Adaptive primary CTA ladder, minus Reserve (see blocked, below).
+- "Considering tonight" / "visited-not-regular" relationship detection
+  -- buildable from existing HitlistSave/VisitEvidence, needs wiring.
+- Remember why an unvisited place was saved/recommended -- genuinely
+  buildable (not blocked): needs a new nullable `reason_role`/
+  `reason_source` column on `HitlistSave` populated optionally at
+  save-creation time, since no such field or nav-param threading exists
+  today (`craves.tsx`/`SearchScreen.tsx`/`MapScreenCore.tsx` all call
+  bare `router.push('/place/${id}')`, discarding `decision_role`/
+  `craveRole`/`searchReason` at the point of navigation).
+- "Regular" tier: no visit-count/frequency field exists anywhere
+  (`VisitEvidence` dedups by `source_ref=save.id`, so repeated "I ate
+  here" toggles never create more than one row; `PlaceRanking` has a
+  unique `(user_id, place_id)` constraint, no revisit counter). A real,
+  additive counter (increment only on `visited` False→True transition)
+  is buildable now -- not fabricating a signal, adding a real one.
+- Correction action: photo/place reporting already fully built and
+  wired (`ReportPhotoSheet`, `ReportPlaceSheet` → `moderation.py`).
+- Preserving existing integrations through the refactor (guard refs,
+  moderation logic) -- care during the rebuild, not new work.
+
+**Genuinely blocked, not attempted:**
+- Reserve as a CTA rung -- no reservation-provider integration exists
+  anywhere in the app (OpenTable/Resy/etc.); this is a real external
+  integration dependency, not a data-modeling gap.
+- Why-This-Fits' 4-action taste-correction vocabulary (Not true /
+  Doesn't matter / Less / More) -- needs the Gate 2 taste graph
+  (`CRAVE_MASTER_CODEX_REMAINING_WORK.md` §3.8), which does not exist.
+  Contract §22/§12 already name this as an unresolved dependency.
+- Dish Intelligence-dependent menu personalization, real operational
+  open/closed status, media provenance (§3.6-3.10) -- pre-existing,
+  named blockers on Place Detail's overall contract status (YELLOW),
+  not Wave 7-specific and not attempted here.
+
+**Plan:**
+1. Backend groundwork: `visit_evidence_for_place()` helper,
+   `reason_role`/`reason_source` columns on `HitlistSave`, a real
+   revisit counter -- one PR, migration verified against local Postgres.
+2. Frontend: rebuild Place Detail's top-of-page around the four
+   relationship modes, swap in shared `DecisionStrip`, adaptive CTA
+   ladder, thread reason through navigation from craves/search/feed --
+   one PR, building on (1).
+3. Doctrine status update documenting the blocked items above precisely
+   (same treatment as the Search §17 and Craves §11 corrections), not
+   silently claiming Wave 7 "done" when Reserve and the taste-correction
+   vocabulary are real, out-of-reach dependencies.
 
 ## What this supersedes
 
