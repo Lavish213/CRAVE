@@ -36,6 +36,7 @@ interface PostingDraftStore {
   drafts: PostingDraft[];
   createDraftFromCapture: (opts: { ownerId: string; sourceUri: string; kind: DraftMediaKind; mimeType?: string; fileSize?: number; intent?: DraftIntent | null }) => Promise<PostingDraft>;
   setDraftPlace: (draftId: string, placeId: string) => void;
+  attachDraftToPlace: (draftId: string, placeId: string) => Promise<void>;
   setDraftCandidate: (draftId: string, candidateId: string, displayName: string) => void;
   setDraftIntent: (draftId: string, intent: DraftIntent) => void;
   setDraftReaction: (draftId: string, reaction: DraftReaction | null) => void;
@@ -60,6 +61,9 @@ export const usePostingDraftStore = create<PostingDraftStore>()(
         set({ drafts: [draft, ...get().drafts] }); return draft;
       },
       setDraftPlace: (id, placeId) => set({ drafts: get().drafts.map((d) => d.id === id ? touch(d, { restaurantRef: { type: 'place', placeId }, outcome: 'pending', lastError: null }) : d) }),
+      // Temporary source-compatibility alias for legacy add-spot callers.
+      // It now resolves identity only; it never uploads or destroys media.
+      attachDraftToPlace: async (id, placeId) => { get().setDraftPlace(id, placeId); },
       setDraftCandidate: (id, candidateId, displayName) => set({ drafts: get().drafts.map((d) => d.id === id ? touch(d, { restaurantRef: { type: 'candidate', candidateId, displayName }, outcome: 'awaiting_place', lastError: null }) : d) }),
       setDraftIntent: (id, intent) => set({ drafts: get().drafts.map((d) => d.id === id ? touch(d, { intent, visibility: intent === 'private_log' ? 'private' : d.intent === 'private_log' ? null : d.visibility }) : d) }),
       setDraftReaction: (id, reaction) => set({ drafts: get().drafts.map((d) => d.id === id ? touch(d, { reaction }) : d) }),
@@ -96,8 +100,7 @@ export const usePostingDraftStore = create<PostingDraftStore>()(
           drafts: (legacy.drafts ?? []).filter((d) => d.outcome !== 'attached').map((d): PostingDraft => ({
             id: d.id, ownerId: d.ownerId, localUri: d.localUri, kind: d.kind, mimeType: d.mimeType, fileSize: d.fileSize,
             restaurantRef: d.restaurantRef, intent: d.intent ?? null, reaction: d.reaction ?? null, caption: d.caption ?? '',
-            visibility: d.intent === 'private_log' ? 'private' : d.visibility ?? null, occurredAt: d.occurredAt ?? null,
-            uploadedMediaId: null,
+            visibility: d.intent === 'private_log' ? 'private' : d.visibility ?? null, occurredAt: d.occurredAt ?? null, uploadedMediaId: null,
             outcome: d.restaurantRef.type === 'candidate' ? 'awaiting_place' : d.outcome === 'failed' ? 'failed' : 'pending',
             lastError: d.lastError ?? null, createdAt: d.createdAt, updatedAt: d.updatedAt ?? d.createdAt,
           })),
