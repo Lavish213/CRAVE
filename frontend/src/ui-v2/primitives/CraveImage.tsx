@@ -8,7 +8,7 @@ export type CraveImageState = 'available' | 'missing' | 'failed';
 
 export interface CraveImageProps extends Omit<ImageProps, 'source' | 'style'> {
   source?: ImageProps['source'] | null;
-  style?: StyleProp<ViewStyle>;
+  style?: ImageProps['style'];
   accessibilityLabel?: string;
   fallbackLabel?: string;
   onStateChange?: (state: CraveImageState) => void;
@@ -21,6 +21,7 @@ export function CraveImage({
   fallbackLabel = 'Photo unavailable',
   onStateChange,
   onError,
+  onLoad,
   ...props
 }: CraveImageProps) {
   const [failed, setFailed] = useState(false);
@@ -29,7 +30,7 @@ export function CraveImage({
   if (state !== 'available') {
     return (
       <View
-        style={[styles.fallback, style]}
+        style={[styles.fallback, style as StyleProp<ViewStyle>]}
         accessible
         accessibilityRole="image"
         accessibilityLabel={accessibilityLabel ?? fallbackLabel}
@@ -54,7 +55,10 @@ export function CraveImage({
         onStateChange?.('failed');
         onError?.(event);
       }}
-      onLoad={() => onStateChange?.('available')}
+      onLoad={(event) => {
+        onStateChange?.('available');
+        onLoad?.(event);
+      }}
     />
   );
 }
