@@ -42,4 +42,13 @@ describe('searchPlaces', () => {
       uncertain: false,
     }));
   });
+
+  it('forwards radius_miles through to the request params', async () => {
+    await searchPlaces({ query: 'ramen', lat: 37.7749, lng: -122.4194, radius_miles: 3 });
+
+    expect(mockedGet).toHaveBeenCalledWith('/api/v1/search', {
+      params: { query: 'ramen', lat: 37.7749, lng: -122.4194, radius_miles: 3 },
+      signal: undefined,
+    });
+  });
 });

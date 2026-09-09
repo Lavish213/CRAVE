@@ -139,6 +139,16 @@ const DEFAULT_RESULT_LIMIT = 8;
 const RESULT_STEP = 8;
 const MAX_RESULT_LIMIT = 56;
 
+// Backend enforces radius_miles only when lat/lng are also present (see
+// search.py's effective_radius_miles) -- null here means "any distance,"
+// the same as never sending the param at all.
+const RADIUS_OPTIONS: { value: number | null; label: string }[] = [
+  { value: null, label: 'Any distance' },
+  { value: 1, label: '1 mi' },
+  { value: 3, label: '3 mi' },
+  { value: 10, label: '10 mi' },
+];
+
 const CONSTRAINT_PATTERNS: Record<string, RegExp> = {
   price: /\b(?:cheap|budget|inexpensive|splurge|expensive|fine\s+dining)\b/gi,
   near_me: /\bnear\s+me\b/gi,
@@ -170,6 +180,10 @@ export default function SearchScreen() {
   const [submittedQuery, setSubmittedQuery] = useState<string | null>(null);
   const [scope, setScope] = useState<SearchScope>('all');
   const [resultLimit, setResultLimit] = useState(DEFAULT_RESULT_LIMIT);
+  // Deliberately not reset on a new query alongside resultLimit/scope/
+  // filters below -- a distance preference reads as "how far am I
+  // willing to go today," not something tied to one specific search.
+  const [radiusMiles, setRadiusMiles] = useState<number | null>(null);
   const [filters, setFilters] = useState<FilterState>(EMPTY_FILTERS);
   const [filterVisible, setFilterVisible] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -187,12 +201,19 @@ export default function SearchScreen() {
     setFilters(EMPTY_FILTERS);
   }, [debouncedQuery]);
 
+  // Meaningless without a location to measure from -- same guard the
+  // backend route itself applies (search.py's effective_radius_miles) --
+  // so a stale radiusMiles picked before location resolved never gets
+  // silently sent as if it meant something.
+  const effectiveRadiusMiles = userLocation ? radiusMiles ?? undefined : undefined;
+
   const searchQuery = useQuery({
-    queryKey: ['search', debouncedQuery, userLocation?.lat, userLocation?.lng, resultLimit],
+    queryKey: ['search', debouncedQuery, userLocation?.lat, userLocation?.lng, effectiveRadiusMiles, resultLimit],
     queryFn: ({ signal }) => searchPlaces({
       query: debouncedQuery,
       lat: userLocation?.lat,
       lng: userLocation?.lng,
+      radius_miles: effectiveRadiusMiles,
       page_size: resultLimit,
     }, signal),
     enabled: debouncedQuery.length >= 2,
@@ -377,6 +398,26 @@ export default function SearchScreen() {
           {searchData.relaxed_constraints.includes('price') && (
             <Text style={styles.relaxationText}>No exact budget matches — showing broader prices. Dietary constraints stayed enforced.</Text>
           )}
+          {searchData.relaxed_constraints.includes('radius') && (
+            <Text style={styles.relaxationText}>Nothing within {radiusMiles} mi — showing farther matches too.</Text>
+          )}
+        </View>
+      )}
+
+      {searched && userLocation && (
+        <View style={styles.scopeRow}>
+          {RADIUS_OPTIONS.map(({ value, label }) => (
+            <TouchableOpacity
+              key={label}
+              style={[styles.scopeChip, radiusMiles === value && styles.scopeChipActive]}
+              onPress={() => setRadiusMiles(value)}
+              accessibilityRole="button"
+              accessibilityLabel={`Distance: ${label}`}
+              accessibilityState={{ selected: radiusMiles === value }}
+            >
+              <Text style={[styles.scopeText, radiusMiles === value && styles.scopeTextActive]}>{label}</Text>
+            </TouchableOpacity>
+          ))}
         </View>
       )}
 
