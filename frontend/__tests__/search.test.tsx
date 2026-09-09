@@ -399,7 +399,11 @@ describe('SearchScreen — Recommendation Ledger instrumentation', () => {
 
     fireEvent.press(getByLabelText('Filter results'));
     fireEvent.press(getByLabelText('Thai'));
-    expect(getByLabelText(/^p1,/)).toBeTruthy();
+    // Activating a filter now also widens the fetch (page_size -> the
+    // backend's max) so a real match outside the small default page
+    // doesn't read as "no matches" -- that's a real refetch, not just a
+    // client-side re-filter, so this has to actually wait for it.
+    await waitFor(() => expect(getByLabelText(/^p1,/)).toBeTruthy());
     expect(getByLabelText(/^p2,/)).toBeTruthy();
     expect(() => getByLabelText(/^p0,/)).toThrow();
 

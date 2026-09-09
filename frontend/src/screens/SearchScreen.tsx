@@ -139,6 +139,14 @@ const DEFAULT_RESULT_LIMIT = 8;
 const RESULT_STEP = 8;
 const MAX_RESULT_LIMIT = 56;
 
+// Matches the backend's own MAX_PAGE_SIZE (search.py) -- FilterSheet's
+// price/category filters are applied client-side against whatever page
+// was already fetched, so while a filter is active this requests the
+// backend's full allowed page instead of the small Show-more-ratcheted
+// window, so a real match outside that smaller window doesn't read as
+// "no matches for these filters."
+const SEARCH_MAX_PAGE_SIZE = 100;
+
 // Backend enforces radius_miles only when lat/lng are also present (see
 // search.py's effective_radius_miles) -- null here means "any distance,"
 // the same as never sending the param at all.
@@ -207,14 +215,21 @@ export default function SearchScreen() {
   // silently sent as if it meant something.
   const effectiveRadiusMiles = userLocation ? radiusMiles ?? undefined : undefined;
 
+  const filtersActive = hasActiveFilters(filters);
+  // See SEARCH_MAX_PAGE_SIZE's own comment -- resultLimit's Show-more
+  // ratchet only matters for the unfiltered view; while a filter is
+  // active this asks for everything the backend will hand back in one
+  // page instead.
+  const effectivePageSize = filtersActive ? SEARCH_MAX_PAGE_SIZE : resultLimit;
+
   const searchQuery = useQuery({
-    queryKey: ['search', debouncedQuery, userLocation?.lat, userLocation?.lng, effectiveRadiusMiles, resultLimit],
+    queryKey: ['search', debouncedQuery, userLocation?.lat, userLocation?.lng, effectiveRadiusMiles, effectivePageSize],
     queryFn: ({ signal }) => searchPlaces({
       query: debouncedQuery,
       lat: userLocation?.lat,
       lng: userLocation?.lng,
       radius_miles: effectiveRadiusMiles,
-      page_size: resultLimit,
+      page_size: effectivePageSize,
     }, signal),
     enabled: debouncedQuery.length >= 2,
     staleTime: 60_000,
@@ -572,7 +587,7 @@ export default function SearchScreen() {
               </TouchableOpacity>
             </View>
           )}
-          ListFooterComponent={searchData && searchData.total > results.length && resultLimit < MAX_RESULT_LIMIT ? (
+          ListFooterComponent={searchData && searchData.total > results.length && resultLimit < MAX_RESULT_LIMIT && !filtersActive ? (
             <TouchableOpacity style={styles.showMoreButton} onPress={() => setResultLimit((value) => Math.min(MAX_RESULT_LIMIT, value + RESULT_STEP))} accessibilityRole="button">
               <Text style={styles.showMoreText}>Show more</Text>
             </TouchableOpacity>

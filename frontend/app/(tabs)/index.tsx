@@ -270,6 +270,22 @@ export default function FeedScreen() {
     return result;
   }, [decisionCards, discoverySections]);
 
+  // An active filter can narrow the currently-loaded cursor pages down to
+  // zero rows -- without this, that read as a genuine "no matches" dead
+  // end: the FlashList below (the only thing wired to onEndReached) isn't
+  // rendered when rows.length is 0, so nothing would ever trigger
+  // fetchNextPage again even though hasNextPage may still be true and a
+  // real match may simply be sitting on a page not fetched yet. Keeps
+  // pulling the next page via the same cursor mechanism handleEndReached
+  // already uses -- no page_size/query-key change, so no extra impression-
+  // logging churn -- until a match appears or the feed genuinely runs out.
+  const isCatchingUpForFilter = hasActiveFilters(filters) && rows.length === 0 && hasNextPage;
+  useEffect(() => {
+    if (isCatchingUpForFilter && !isFetchingNextPage) {
+      void fetchNextPage();
+    }
+  }, [isCatchingUpForFilter, isFetchingNextPage, fetchNextPage]);
+
   const exposedKeysRef = useRef<Set<string>>(new Set());
   useEffect(() => {
     exposedKeysRef.current = new Set();
@@ -439,6 +455,8 @@ export default function FeedScreen() {
         <Animated.View style={[{ flex: 1 }, { opacity: feedOpacity }]}>
           {isError && decisionCards.length === 0 ? (
             <ErrorState message="Couldn't load places" onRetry={() => void refetch()} />
+          ) : isCatchingUpForFilter ? (
+            <View style={styles.skeletonWrap}><SkeletonFeed count={4} /></View>
           ) : rows.length === 0 ? (
             <View style={styles.emptyWrap}>
               {decisionHeader}

@@ -40,6 +40,13 @@ const CITY_CLUSTER_RADIUS_MIN = 64;
 const CITY_CLUSTER_RADIUS_MAX = 84;
 const CLUSTER_TAP_MIN_DELTA = 0.0004;
 
+// Matches the backend's own MAX_LIMIT (app/services/query/map_query.py) --
+// price/category filters below are applied client-side against whatever
+// was already fetched at the default limit (250), so a filter that only
+// matches something outside that window would otherwise read as "no
+// matches" even though real matches exist just beyond it.
+const MAX_MAP_FETCH_LIMIT = 1000;
+
 const TIER_COLORS: Record<string, string> = {
   elite: Colors.tierCravePick,
   trusted: Colors.tierGem,
@@ -290,7 +297,12 @@ export default function MapScreen() {
   }, []);
 
   const loadFeatures = useCallback(
-    (lat: number, lng: number, radiusKm: number) => {
+    // widen: true fetches at the backend's own max limit instead of its
+    // default (see MAX_MAP_FETCH_LIMIT below) -- only ever passed by the
+    // dedicated effect that refetches once a filter becomes active, so
+    // every existing call site here keeps its original (unwidened)
+    // behavior untouched.
+    (lat: number, lng: number, radiusKm: number, widen: boolean = false) => {
       const myRequestId = ++requestIdRef.current;
       const requestContextKey = `city:${selectedCity?.id ?? 'nearby'}`;
       lastAttemptRef.current = { lat, lng, radiusKm };
@@ -301,6 +313,7 @@ export default function MapScreen() {
         lat,
         lng,
         radius_km: radiusKm,
+        ...(widen ? { limit: MAX_MAP_FETCH_LIMIT } : {}),
       })
         .then((normalized) => {
           if (myRequestId !== requestIdRef.current) return;
@@ -347,6 +360,23 @@ export default function MapScreen() {
     },
     [selectedCity?.id],
   );
+
+  // Re-fetch at the wider limit the moment a filter first becomes active
+  // (not on every subsequent filter tweak while already active -- only the
+  // false -> true transition, tracked via the ref below). Reuses
+  // lastAttemptRef -- the same coordinates/radius the map is already
+  // showing -- rather than recomputing a region. Never narrows back down
+  // when filters clear; the already-fetched wider set just keeps being
+  // filtered client-side as before, same as this screen already does.
+  const filtersWereActiveRef = useRef(false);
+  useEffect(() => {
+    const active = hasActiveFilters(filters);
+    if (active && !filtersWereActiveRef.current) {
+      const attempt = lastAttemptRef.current;
+      if (attempt) loadFeatures(attempt.lat, attempt.lng, attempt.radiusKm, true);
+    }
+    filtersWereActiveRef.current = active;
+  }, [filters, loadFeatures]);
 
   useEffect(() => {
     if (!searchMapHandoff) return;

@@ -9,6 +9,9 @@ export async function fetchMapGeoJSON(params: {
   lng: number;
   radius_km?: number;
   category_id?: string;
+  /** Backend already supports up to MAX_LIMIT (1000); omitted here uses
+   * its own default (250). See MapScreenCore's widen-on-filter effect. */
+  limit?: number;
 }): Promise<NormalizedMapFeature[]> {
   const { data } = await client.get('/api/v1/map/geojson', { params });
   if (__DEV__) console.log('[API] MAP_RAW', { type: (data as any)?.type, feature_count: (data as any)?.features?.length, sample_coords: (data as any)?.features?.[0]?.geometry?.coordinates });
