@@ -1,10 +1,15 @@
 // src/components/MapMarker.tsx
 import React from 'react';
-import { StyleSheet, Text, View } from 'react-native';
-import { Colors } from '../constants/colors';
+import { CraveMapPin } from '../ui-v2/components';
 
 interface Props {
-  color: string;
+  /**
+   * Legacy compatibility prop. UI V2 no longer uses arbitrary tier colors for
+   * ordinary map pins; presentation is semantic (normal / selected / closed /
+   * cluster). Keep this prop until MapScreenCore is fully migrated so callers
+   * do not need a broad synchronized rewrite.
+   */
+  color?: string;
   size?: number;
 }
 
@@ -12,68 +17,24 @@ interface ClusterProps {
   count: number;
 }
 
+/**
+ * Compatibility bridge for the legacy MapScreenCore call site.
+ *
+ * Cluster styling is now owned by CraveMapPin so map density no longer creates
+ * a second visual language beside UI V2.
+ */
 export function MapClusterDot({ count }: ClusterProps) {
-  // Scale up slightly for larger clusters so dense areas read as "bigger",
-  // capped so it never overwhelms the map.
-  const size = Math.min(52, 32 + Math.log2(count) * 4);
-
-  return (
-    <View
-      style={[
-        clusterStyles.outer,
-        { width: size, height: size, borderRadius: size / 2 },
-      ]}
-    >
-      <Text style={clusterStyles.count}>{count > 99 ? '99+' : count}</Text>
-    </View>
-  );
+  return <CraveMapPin clusterCount={count} />;
 }
 
-const clusterStyles = StyleSheet.create({
-  outer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: Colors.primary,
-    borderWidth: 2,
-    borderColor: 'rgba(255,255,255,0.9)',
-  },
-  count: {
-    color: '#FFFFFF',
-    fontWeight: '700',
-    fontSize: 13,
-  },
-});
-
-export function MapMarkerDot({ color, size = 14 }: Props) {
-  return (
-    <View style={[
-      styles.outer,
-      {
-        borderColor: color,
-        width: size + 8,
-        height: size + 8,
-        borderRadius: (size + 8) / 2,
-      },
-    ]}>
-      <View style={[
-        styles.inner,
-        {
-          backgroundColor: color,
-          width: size,
-          height: size,
-          borderRadius: size / 2,
-        },
-      ]} />
-    </View>
-  );
+/**
+ * Compatibility bridge for the legacy MapScreenCore call site.
+ *
+ * `color` and `size` are intentionally ignored. Ranking tiers must not create
+ * a rainbow of recommendation pins; normal pin appearance is owned by the
+ * semantic UI V2 component. This adapter can be deleted once MapScreenCore
+ * renders CraveMapPin directly.
+ */
+export function MapMarkerDot(_props: Props) {
+  return <CraveMapPin />;
 }
-
-const styles = StyleSheet.create({
-  outer: {
-    borderWidth: 2,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(0,0,0,0.3)',
-  },
-  inner: {},
-});
