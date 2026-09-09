@@ -266,22 +266,36 @@ each verified against actual code (not the docs):
   Backend now fully ready for a radius control; **no frontend UI for it
   exists yet** — a real, not-yet-scoped follow-up if the product wants
   one surfaced.
-- **Not fixed, genuinely blocked on missing data — flagged to user,
-  awaiting a data-sourcing decision, do not silently build placeholder
-  schema for these:**
-  - `hours`/"Closed Place" state (SM-09): no `hours` column or
-    ingestion pipeline exists anywhere.
-  - Outdoor-seating / amenity attribute (SM-05/06/14): no amenity
-    model exists anywhere in the schema.
-  - Both need a real strategy (paid places API, scraping, manual
-    curation, OSM tags) before any schema/ingestion work is
-    justified — fabricating values or building unused columns would
-    just create a different kind of gap.
+- **Fixed, merged PR #229** (SHA `df92429`): `hours`/"Closed Place"
+  (SM-09) and outdoor-seating (SM-05/06/14) were reported above as
+  blocked on missing data — on closer look, they weren't. OSM's
+  Overpass fetch (`osm_overpass.py`) has always stored every tag on a
+  node verbatim in `discovery_candidates.raw_payload`, including
+  `opening_hours` and `outdoor_seating`, at zero extra ingestion cost;
+  nothing downstream ever read those two keys. `promote_service_v2.py`
+  now turns them into `PlaceClaim`s (OSM source only) through the
+  existing claims/truth-resolver pipeline (new `PlaceTruth` rows, zero
+  schema change). New `app/services/hours/opening_hours_service.py`
+  (via free/open `opening_hours_py`) + `app/services/geo/
+  timezone_lookup.py` (free/offline `timezonefinder`, needed because
+  OSM's syntax carries no timezone of its own) compute a live open/
+  closed/unknown answer — never a guessed or stale status.
+  `GET /place/{id}` now returns `hours_status`/`hours_next_change`/
+  `hours_raw`/`outdoor_seating`; Place Detail's decision strip renders
+  real chips for both. `scripts/backfill_osm_hours_and_seating.py`
+  retroactively claims these fields for already-promoted OSM places —
+  pure re-read of already-stored `raw_payload`, no re-scrape, idempotent
+  — **still needs someone with Railway/Postgres access to actually run
+  it once** against production. Ruled out Google Places/Yelp/Foursquare
+  deliberately: all need a new account/API key only the user can
+  authorize, and Google's ToS additionally forbids long-term caching of
+  place data — OSM had neither problem and was already half-wired here.
 
-Both PRs followed the same verification discipline as everything else
-in this file: `tsc --noEmit` / `python -m compileall` + `import
-app.main` clean, full frontend suite green, full backend suite (1090
-passed, 2 skipped) against a **freshly reset** local Postgres schema.
+All four PRs followed the same verification discipline as everything
+else in this file: `tsc --noEmit` / `python -m compileall` + `import
+app.main` clean, full frontend suite green (48/48 suites, 486/486 tests
+by the final PR), full backend suite (1110 passed, 2 skipped by the
+final PR) against a **freshly reset** local Postgres schema.
 
 ## Next action
 
