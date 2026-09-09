@@ -156,3 +156,14 @@ sentry-sdk[fastapi]>=2.0.0
 # see the Playwright-binary note below.
 pdfminer.six>=20260107
 playwright>=1.62.0
+
+# Hours/outdoor-seating data sourcing (app/services/hours/opening_hours_service.py,
+# app/services/geo/timezone_lookup.py) -- both free, offline, no API key.
+# opening_hours_py parses OSM's own opening_hours mini-DSL (a Rust-backed
+# binding) into a real open/closed/unknown answer instead of just storing
+# the raw string; timezonefinder resolves a place's lat/lng to the IANA
+# timezone its opening_hours string's wall-clock times are actually in --
+# OSM's syntax carries no timezone of its own, so this is the piece that
+# makes "is it open right now" answerable rather than just parseable.
+opening_hours_py>=2.1.4
+timezonefinder>=8.3.0
