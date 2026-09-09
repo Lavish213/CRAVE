@@ -65,6 +65,34 @@ describe('TasteProfileScreen', () => {
     expect(await findByText('Profile not found')).toBeTruthy();
   });
 
+  it('shows a retryable error, not "Profile not found", on a non-404 profile fetch failure', async () => {
+    // Previously any error here (network failure, timeout, 5xx) was
+    // treated identically to a genuine 404 -- a transient infrastructure
+    // failure misrepresented as "this account doesn't exist, or its list
+    // is private," with no way to retry. Same distinction user/[id].tsx
+    // already makes via its own profileError.
+    mockedFetchProfile.mockRejectedValue(new Error('network'));
+    const { findByText, queryByText } = render(<TasteProfileScreen />);
+    expect(await findByText("Couldn't load this profile")).toBeTruthy();
+    expect(queryByText('Profile not found')).toBeNull();
+  });
+
+  it('recovers on retry after a transient profile-fetch failure', async () => {
+    mockedFetchProfile.mockRejectedValueOnce(new Error('network'));
+    mockedFetchTasteProfile.mockResolvedValue(makeTaste({ total_ranked: 12 }));
+
+    const { findByText, findByLabelText, queryByText } = render(<TasteProfileScreen />);
+    expect(await findByText("Couldn't load this profile")).toBeTruthy();
+
+    mockedFetchProfile.mockResolvedValue(makeProfile());
+    await act(async () => {
+      fireEvent.press(await findByLabelText('Try again'));
+    });
+
+    expect(await findByText('12')).toBeTruthy();
+    expect(queryByText("Couldn't load this profile")).toBeNull();
+  });
+
   it('shows a blocked message without ever fetching the taste profile', async () => {
     mockedFetchProfile.mockResolvedValue(makeProfile({ username: 'blockedguy' }));
     mockedFetchBlockStatus.mockResolvedValue({ blocked: true });
@@ -176,9 +204,9 @@ describe('TasteProfileScreen', () => {
     // The confirmed Phase 3 bug: A's taste profile loads and renders in
     // full. Navigating to B succeeds on the *profile* fetch (so the
     // header correctly updates to B) but B's own taste fetch then fails
-    // (network error, 5xx) -- the catch block only ever handles a 404, so
-    // `taste` was previously left holding A's stale data untouched, which
-    // then rendered in full under B's now-correct header.
+    // (network error, 5xx) -- `taste` was previously left holding A's
+    // stale data untouched, which then rendered in full under B's now-
+    // correct header.
     mockedFetchProfile.mockResolvedValue(makeProfile({ username: 'alice', display_name: 'Alice' }));
     mockedFetchTasteProfile.mockResolvedValue(makeTaste({ total_ranked: 12 }));
 
@@ -193,14 +221,29 @@ describe('TasteProfileScreen', () => {
 
     // Alice's stale total_ranked=12 must not still be showing once bob's
     // profile has loaded -- taste gets reset, not left holding alice's
-    // data, so this correctly falls through to the same "nothing to show
-    // yet" state a real empty taste profile would (a real fetch failure
-    // here is a smaller, separate gap from the one this test covers:
-    // stale cross-identity data must never render, whatever the resulting
-    // empty/error copy).
-    expect(await findByText("@bob hasn't ranked anything yet.")).toBeTruthy();
+    // data. bob's own taste fetch genuinely failed, so this now surfaces
+    // as a retryable error rather than either alice's stale data or a
+    // false "hasn't ranked anything yet" empty state.
+    expect(await findByText("Couldn't load taste profile")).toBeTruthy();
     expect(queryByText('12')).toBeNull();
-    expect(queryByText("Alice's Taste Profile")).toBeNull();
+    expect(queryByText("@bob hasn't ranked anything yet.")).toBeNull();
+  });
+
+  it('shows a retryable error instead of a false "no taste profile yet" empty state when the taste fetch fails', async () => {
+    mockedFetchProfile.mockResolvedValue(makeProfile({ username: 'alice' }));
+    mockedFetchTasteProfile.mockRejectedValueOnce(new Error('network'));
+
+    const { findByText, findByLabelText, queryByText } = render(<TasteProfileScreen />);
+    expect(await findByText("Couldn't load taste profile")).toBeTruthy();
+    expect(queryByText("@alice hasn't ranked anything yet.")).toBeNull();
+
+    mockedFetchTasteProfile.mockResolvedValue(makeTaste({ total_ranked: 12 }));
+    await act(async () => {
+      fireEvent.press(await findByLabelText('Try again'));
+    });
+
+    expect(await findByText('12')).toBeTruthy();
+    expect(queryByText("Couldn't load taste profile")).toBeNull();
   });
 
   it('reloads when the viewer switches accounts even though the profile being viewed stays the same', async () => {

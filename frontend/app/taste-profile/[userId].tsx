@@ -44,6 +44,16 @@ export default function TasteProfileScreen() {
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [accessError, setAccessError] = useState(false);
+  // Distinct from notFound -- a network failure/timeout/5xx on the
+  // profile fetch previously collapsed into the same "Profile not found"
+  // EmptyState as a genuine 404, with no retry affordance. Same fix as
+  // user/[id].tsx's identical profileError.
+  const [profileError, setProfileError] = useState(false);
+  // Distinct from "no taste profile yet" -- a failed fetchTasteProfile
+  // call (network error, 5xx) previously left `taste` at null with
+  // nothing to tell it apart from a real empty profile, so it rendered
+  // the same "hasn't ranked anything yet" copy with no way to retry.
+  const [tasteError, setTasteError] = useState(false);
 
   // expo-router can reuse this screen instance across a param change (e.g.
   // tapping from one person's taste profile into another's) -- without a
@@ -95,6 +105,8 @@ export default function TasteProfileScreen() {
     // this, since profile/taste's own reset is correctly identity-gated).
     setNotFound(false);
     setAccessError(false);
+    setProfileError(false);
+    setTasteError(false);
     // Marked as "attempted" here, before the fetch settles either way --
     // same reasoning as user/[id].tsx's identical comment: the render-time
     // stale-gate below only needs to force the skeleton until an attempt
@@ -104,6 +116,9 @@ export default function TasteProfileScreen() {
     loadedForIdRef.current = userId;
     loadedForViewerRef.current = viewerId;
     try {
+      // Only fetchProfile is left to reject into the outer catch below --
+      // fetchBlockStatus already resolves to null on failure so its own
+      // outcome is checked explicitly instead, same as user/[id].tsx.
       const [p, blockStatus] = await Promise.all([
         fetchProfile(userId),
         isSelf ? Promise.resolve({ blocked: false }) : fetchBlockStatus(userId).catch(() => null),
@@ -116,13 +131,22 @@ export default function TasteProfileScreen() {
       }
       setBlocked(blockStatus.blocked);
       if (!blockStatus.blocked) {
-        const taste = await fetchTasteProfile(userId);
+        const taste = await fetchTasteProfile(userId).catch(() => null);
         if (myGeneration !== loadGenerationRef.current) return;
-        setTaste(taste);
+        if (taste === null) {
+          setTasteError(true);
+        } else {
+          setTaste(taste);
+        }
       }
     } catch (err: any) {
       if (myGeneration !== loadGenerationRef.current) return;
+      // A 404 here is real product truth (this account doesn't exist, or
+      // its list is private -- see get_public_profile's own is_public
+      // gate). Anything else is an infrastructure failure and must stay
+      // retryable, same distinction user/[id].tsx already makes.
       if (err?.response?.status === 404) setNotFound(true);
+      else setProfileError(true);
     } finally {
       if (myGeneration === loadGenerationRef.current) setLoading(false);
     }
@@ -152,7 +176,7 @@ export default function TasteProfileScreen() {
     );
   }
 
-  if (notFound || !profile) {
+  if (notFound) {
     return (
       <EmptyState
         icon="person-outline"
@@ -160,6 +184,14 @@ export default function TasteProfileScreen() {
         body="This account doesn't exist, or its list is private."
       />
     );
+  }
+
+  // profileError (an explicit non-404 failure) and the !profile fallback
+  // (shouldn't happen given the two states above, but a defensive
+  // catch-all) get the same retryable treatment -- neither is the "not
+  // found" product truth above.
+  if (profileError || !profile) {
+    return <ErrorState message="Couldn't load this profile" onRetry={load} />;
   }
 
   if (accessError) {
@@ -174,6 +206,10 @@ export default function TasteProfileScreen() {
         body={`You've blocked @${profile.username}.`}
       />
     );
+  }
+
+  if (tasteError) {
+    return <ErrorState message="Couldn't load taste profile" onRetry={load} />;
   }
 
   if (!taste || taste.total_ranked === 0) {
