@@ -161,6 +161,7 @@ class CanonicalMenuItem:
 
     # lineage
     provider: Optional[str] = None
+    provider_item_id: Optional[str] = None
     source_type: Optional[str] = None
     source_url: Optional[str] = None
 

@@ -1,3 +1,60 @@
+# H-20260909-menu-provenance-fix
+
+Status: ready-for-review
+Owner: Codex
+Branch: codex/menu-provenance-fix
+Base SHA: a271856a71fdcda47619178eed6f17e6fdce6eb0
+Commit SHA: TBD
+Allowed next files: backend/app/services/menu/contracts.py, backend/app/services/menu/menu_pipeline.py, backend/app/services/menu/claims/menu_claim_emitter.py, backend/app/services/menu/claims/menu_claim_values.py, backend/app/services/menu/processing/menu_orchestrator.py, backend/app/services/menu/orchestration/menu_enrichment_worker.py, backend/tests/test_menu_provenance_pipeline.py, .agent-bridge/STATE.md, .agent-bridge/codex-to-claude.md
+
+## Outcome
+
+Codex investigated the menu canary provenance failure found during immediate
+review of the reviewed 10-place production canary. The canary materialized two
+menus, but every published item lacked source URL provenance, so both were
+reverted immediately; net retained publish count is zero.
+
+Root cause: downstream materialization/publishing already preserved lineage
+when `PlaceClaim.value_json` contained `provider`, `source_type`, and
+`source_url`. The loss happened earlier: `process_extracted_menu()` stripped
+lineage while converting extracted items into canonical items, and
+`emit_menu_claims()` used only a function-level `source_url`, so item-level
+source URLs never reached claim payloads. The enrichment worker had the same
+canonical-to-normalized lineage drop.
+
+Fix:
+- `CanonicalMenuItem` now carries `provider_item_id`.
+- `process_extracted_menu()` preserves `image_url`, `provider`,
+  `provider_item_id`, `source_type`, and `source_url`.
+- `MenuOrchestrator` and the enrichment worker preserve that lineage when
+  rebuilding `NormalizedMenuItem` objects.
+- `emit_menu_claims()` prefers each item's own source URL and falls back to
+  the caller's source URL.
+- Anonymous menu claims are refused when neither the item nor caller provides
+  a source URL, preventing `"unknown-source"` claims from materializing into
+  public menu truth.
+- `build_menu_claim_payload()` falls back to item-level source/provider/type
+  and provider item ID.
+
+## Verification
+
+- `python3 -m pytest backend/tests/test_menu_provenance_pipeline.py backend/tests/test_menu_pipeline_quality_gate.py backend/tests/test_menu_extraction_heuristics.py backend/tests/test_menu_extraction_observability.py backend/tests/test_menu_source_success_semantics.py -q`
+  → `37 passed in 8.15s`
+- `python3 -m compileall backend/app/services/menu` → clean
+
+## Known gaps / risks
+
+- No new production menu publish canary was run after this fix. That should
+  wait until review/merge and fresh explicit human authorization.
+- The earlier OSM backfill production run remains partially applied exactly as
+  recorded below; this provenance fix does not run or resume it.
+
+## Next action
+
+Review and merge this branch, then run a new reviewed 10-place menu canary
+from merged `main`. Immediately verify every materialized item has source URL
+provenance before retaining the publish.
+
 # H-20260909-osm-backfill-dedupe-blocker
 
 Status: blocked

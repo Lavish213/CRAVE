@@ -517,6 +517,7 @@ class MenuOrchestrator:
                 db=db,
                 place_id=place_id,
                 items=normalized_items,
+                source_url=_probe_url,
                 source=f"menu_orchestrator:{_source_provider or 'unknown'}",
                 confidence=_confidence,
                 weight=1.0,
@@ -819,6 +820,7 @@ class MenuOrchestrator:
                     fingerprint=fingerprint,
                     image_url=self._get(item, "image_url"),
                     provider=self._get(item, "provider"),
+                    provider_item_id=self._get(item, "provider_item_id"),
                     source_type=self._get(item, "source_type"),
                     source_url=self._get(item, "source_url"),
                 )

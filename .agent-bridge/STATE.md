@@ -1,10 +1,47 @@
 # Active agent state
 
-Status: blocked
+Status: ready-for-review
 Owner: Codex
-Branch: codex/osm-backfill-dedupe-claims
-Head SHA: bc92ea7 (`fix: dedupe osm backfill claims`)
-Scope: OSM hours/outdoor-seating production backfill execution from clean `origin/main`, plus the duplicate-claim script fix found by the real production run.
+Branch: codex/menu-provenance-fix
+Head SHA: a271856 (`Merge pull request #243 from Lavish213/codex/osm-backfill-dedupe-claims`)
+Scope: repair the menu canary provenance loss found during the 10-place production canary review. Locked files: `backend/app/services/menu/menu_pipeline.py`, `backend/app/services/menu/claims/menu_claim_emitter.py`, `backend/app/services/menu/claims/menu_claim_values.py`, `backend/tests/test_menu_provenance_pipeline.py`, `.agent-bridge/STATE.md`, `.agent-bridge/codex-to-claude.md`.
+
+## Active task — menu provenance repair
+
+The 10-place menu backlog canary was run with a reviewed place list. It
+materialized two menus, but immediate review found every published item missing
+source URL provenance, which violates the population execution brief and the
+menu provenance contract. Both published menus were reverted immediately; net
+retained publish count is zero.
+
+Investigation on clean `origin/main` found the downstream truth/publisher path
+can preserve provenance when `PlaceClaim.value_json` includes it. The leak is
+upstream: `process_extracted_menu()` strips item `provider`, `source_type`, and
+`source_url` while converting extracted items into canonical items, and
+`emit_menu_claims()` builds keys/payloads from only the function-level
+`source_url` instead of each normalized item's source URL. The fix must preserve
+item-level lineage through canonicalization and claim emission, with regression
+tests at that seam.
+
+Fix on this branch:
+- `CanonicalMenuItem` now carries `provider_item_id`.
+- `process_extracted_menu()` preserves item `image_url`, `provider`,
+  `provider_item_id`, `source_type`, and `source_url`.
+- The scheduler/orchestrator and enrichment worker preserve that lineage when
+  rebuilding `NormalizedMenuItem` objects.
+- `emit_menu_claims()` uses the item source URL first, falls back to the
+  caller source URL, and refuses anonymous menu claims when no provenance URL
+  exists.
+- `build_menu_claim_payload()` falls back to item-level lineage fields.
+
+Verification:
+- `python3 -m pytest backend/tests/test_menu_provenance_pipeline.py backend/tests/test_menu_pipeline_quality_gate.py backend/tests/test_menu_extraction_heuristics.py backend/tests/test_menu_extraction_observability.py backend/tests/test_menu_source_success_semantics.py -q`
+  → `37 passed in 8.15s`
+- `python3 -m compileall backend/app/services/menu` → clean
+
+Next action: review/merge this provenance fix, then run a fresh reviewed
+10-place menu canary from merged `main` with explicit human authorization. Do
+not run another production `--run` menu canary from this unmerged branch.
 
 ## Active blocker — OSM backfill production run
 
