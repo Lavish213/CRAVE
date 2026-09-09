@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import json
 import logging
+import re
 from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional
 from urllib.parse import urljoin, urlparse
@@ -21,8 +23,21 @@ UTC = timezone.utc
 
 REQUEST_TIMEOUT = 6
 MAX_WEBSITE_IMAGES = 30
-MIN_IMAGE_LENGTH = 60
 FETCH_CACHE_HOURS = 24
+
+_IMAGE_META_PROPERTIES = {
+    "og:image",
+    "og:image:url",
+    "og:image:secure_url",
+    "twitter:image",
+    "twitter:image:src",
+}
+_STRUCTURED_IMAGE_KEYS = {"image", "photo", "photos", "primaryImageOfPage", "thumbnailUrl"}
+_STRUCTURED_IMAGE_URL_KEYS = {"contentUrl", "url", "thumbnailUrl"}
+_NON_IMAGE_SUFFIXES = {
+    ".css", ".js", ".json", ".html", ".htm", ".pdf", ".xml", ".zip",
+}
+_CSS_URL_RE = re.compile(r"url\(\s*['\"]?([^)'\"]+)['\"]?\s*\)", re.IGNORECASE)
 
 
 def _utcnow() -> datetime:
@@ -228,7 +243,11 @@ class WebsiteImageExtractor:
 
         candidates: List[dict] = []
         candidates.extend(self._extract_meta_images(soup, base_url))
+        candidates.extend(self._extract_link_images(soup, base_url))
+        candidates.extend(self._extract_jsonld_images(soup, base_url))
         candidates.extend(self._extract_img_tags(soup, base_url))
+        candidates.extend(self._extract_picture_sources(soup, base_url))
+        candidates.extend(self._extract_inline_background_images(soup, base_url))
 
         return self._filter_images(candidates)
 
@@ -250,7 +269,7 @@ class WebsiteImageExtractor:
 
             prop = meta.get("property") or meta.get("name")
 
-            if prop not in {"og:image", "twitter:image"}:
+            if str(prop or "").lower() not in _IMAGE_META_PROPERTIES:
                 continue
 
             url = meta.get("content")
@@ -266,6 +285,89 @@ class WebsiteImageExtractor:
             )
 
         return images
+
+    def _extract_link_images(self, soup: BeautifulSoup, base_url: str) -> List[dict]:
+        images: List[dict] = []
+        for tag in soup.find_all("link"):
+            rel = {str(value).lower() for value in (tag.get("rel") or [])}
+            is_image_preload = "preload" in rel and str(tag.get("as") or "").lower() == "image"
+            if "image_src" not in rel and not is_image_preload:
+                continue
+            url = tag.get("href") or tag.get("imagesrcset")
+            if url:
+                images.append(self._build_candidate(urljoin(base_url, self._best_srcset_url(url)), "link_tag"))
+        return images
+
+    def _extract_jsonld_images(self, soup: BeautifulSoup, base_url: str) -> List[dict]:
+        images: List[dict] = []
+
+        def add_value(value, *, context: str = "json_ld") -> None:
+            if isinstance(value, str):
+                images.append(self._build_candidate(urljoin(base_url, value), context))
+                return
+            if isinstance(value, list):
+                for item in value:
+                    add_value(item, context=context)
+                return
+            if not isinstance(value, dict):
+                return
+            for key in _STRUCTURED_IMAGE_URL_KEYS:
+                url = value.get(key)
+                if isinstance(url, str):
+                    candidate = self._build_candidate(urljoin(base_url, url), context)
+                    candidate["width"] = self._numeric_dimension(value.get("width"))
+                    candidate["height"] = self._numeric_dimension(value.get("height"))
+                    images.append(candidate)
+                    break
+
+        def walk(value) -> None:
+            if isinstance(value, list):
+                for item in value:
+                    walk(item)
+                return
+            if not isinstance(value, dict):
+                return
+            for key, child in value.items():
+                if key in _STRUCTURED_IMAGE_KEYS:
+                    add_value(child)
+                elif key != "logo":
+                    walk(child)
+
+        for tag in soup.find_all("script", attrs={"type": "application/ld+json"}):
+            try:
+                walk(json.loads(tag.string or tag.get_text() or ""))
+            except (TypeError, ValueError, json.JSONDecodeError):
+                continue
+        return images
+
+    @staticmethod
+    def _numeric_dimension(value):
+        if isinstance(value, dict):
+            value = value.get("value")
+        try:
+            return int(value) if value is not None else None
+        except (TypeError, ValueError):
+            return None
+
+    @staticmethod
+    def _best_srcset_url(srcset: str) -> str:
+        candidates = []
+        for index, part in enumerate(srcset.split(",")):
+            tokens = part.strip().split()
+            if not tokens:
+                continue
+            score = float(index)
+            if len(tokens) > 1:
+                descriptor = tokens[-1].lower()
+                try:
+                    if descriptor.endswith("w"):
+                        score = float(descriptor[:-1])
+                    elif descriptor.endswith("x"):
+                        score = float(descriptor[:-1]) * 10000
+                except ValueError:
+                    pass
+            candidates.append((score, tokens[0]))
+        return max(candidates, default=(0, ""), key=lambda item: item[0])[1]
 
     def _extract_img_tags(
         self,
@@ -283,10 +385,10 @@ class WebsiteImageExtractor:
             # gallery where the real image only lives in one of these
             # attributes until JS swaps it in (src is a 1x1 placeholder).
             src = (
-                tag.get("src")
-                or tag.get("data-src")
+                tag.get("data-src")
                 or tag.get("data-lazy-src")
                 or tag.get("data-original")
+                or tag.get("src")
             )
 
             if not src:
@@ -295,7 +397,7 @@ class WebsiteImageExtractor:
                     # First candidate is good enough here -- _filter_images
                     # and the downstream scorer decide real quality, this
                     # step only needs *a* usable URL.
-                    src = srcset.split(",")[0].strip().split(" ")[0].strip()
+                    src = self._best_srcset_url(srcset)
 
             if not src:
                 continue
@@ -309,6 +411,24 @@ class WebsiteImageExtractor:
                 )
             )
 
+        return images
+
+    def _extract_picture_sources(self, soup: BeautifulSoup, base_url: str) -> List[dict]:
+        images: List[dict] = []
+        for tag in soup.select("picture source[srcset], picture source[data-srcset]"):
+            src = self._best_srcset_url(tag.get("srcset") or tag.get("data-srcset") or "")
+            if src:
+                images.append(self._build_candidate(urljoin(base_url, src), "picture_source"))
+        return images
+
+    def _extract_inline_background_images(self, soup: BeautifulSoup, base_url: str) -> List[dict]:
+        images: List[dict] = []
+        for tag in soup.select("[style]"):
+            style = str(tag.get("style") or "")
+            if "background" not in style.lower():
+                continue
+            for url in _CSS_URL_RE.findall(style):
+                images.append(self._build_candidate(urljoin(base_url, url), "inline_background"))
         return images
 
     # ---------------------------------------------------------
@@ -354,12 +474,15 @@ class WebsiteImageExtractor:
 
             seen.add(url)
 
-            if len(url) < MIN_IMAGE_LENGTH:
-                continue
-
             parsed = urlparse(url)
 
+            if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+                continue
+
             path = parsed.path.lower()
+
+            if any(path.endswith(suffix) for suffix in _NON_IMAGE_SUFFIXES):
+                continue
 
             if any(
                 x in path
