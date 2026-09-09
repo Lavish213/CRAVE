@@ -73,11 +73,9 @@ record the outcome per your own item 1's "Required deliverables" (see
 ## Outcome
 
 The human user (repo owner) has **explicitly approved** running the real
-ten-place production menu backlog canary
-(`backend/scripts/run_menu_backlog_canary.py --run --confirm-count 10`)
-that was reported as passed-preview-but-stopped, pending approval,
-because it publishes extracted menu data immediately with no automatic
-rollback.
+ten-place production menu backlog canary that was reported as
+passed-preview-but-stopped, pending approval, because it publishes
+extracted menu data immediately with no automatic rollback.
 
 Exact approval given, verbatim intent: approve running it, on the
 condition that **all 10 outcomes get reviewed immediately after
@@ -86,6 +84,26 @@ posture already established for every other canary in this handoff
 thread (cross-venue contamination, missing provenance, low-quality
 publish, paid-provider traffic, or more rows touched than reviewed all
 still mean stop, not proceed).
+
+**Correction, 2026-09-09 (caught by Codex, verified against current
+`main`):** the command this entry originally gave --
+`run_menu_backlog_canary.py --run --confirm-count 10` -- was wrong and
+incomplete. The script (`_read_place_ids_from_args`) hard-requires
+`--place-ids` or `--place-ids-file`; it never selects places on its own
+by design (see its own module docstring). More importantly, **the
+concrete 10-place cohort itself was never actually chosen or recorded
+anywhere durable in this repo** -- no committed file, no STATE.md/
+DECISIONS.md entry lists real place IDs. The human's approval covers
+proceeding with Phase D of `docs/CLAUDE_EXECUTION_BRIEF_SCREEN_AND_
+COVERAGE_2026-09-02.md` in principle, not a specific already-reviewed
+list -- that list still needs to be produced. Phase D step 1 ("Choose
+at most 10 reviewed targets from the strongest sandbox cohorts") is
+Phase B/C sandbox work against the live backlog that hasn't happened
+yet, or happened previously without its output being persisted anywhere
+this handoff thread can point to. Don't skip that step by inventing 10
+place IDs to satisfy the command's syntax -- the whole point of this
+tool is that the list is manually reviewed before either the preview or
+the real run.
 
 ## Known gaps / risks
 
@@ -115,15 +133,40 @@ still mean stop, not proceed).
 
 ## Next action
 
-Run the approved ten-place canary now. Review every one of the 10
-outcomes immediately after publish (not on a delay) and manually revert
-any row that shows cross-venue contamination, missing provenance, a
-low-quality publish, or paid-provider traffic -- exactly the stop
-conditions this handoff thread has used throughout. Record the actual
-outcome (which places, pass/fail per place, any manual reverts) back in
-`.agent-bridge/STATE.md` or `DECISIONS.md` so this run has a durable
-record, matching this repo's own convention for closed-out canaries
-(see the Oakland Overture canary's own write-up as the template).
+Do not skip straight to `--run`. In order:
+
+1. **Choose the cohort first** (Phase D step 1): query the live menu
+   backlog, pick at most 10 reviewed targets from the strongest sandbox
+   cohorts (active entity, no existing menu row, known source shape),
+   and record exact place ID, name, address, website, selection reason,
+   and existing menu/image counts for each -- same bar as Phase B.
+2. Write those IDs to a place-ids file, then preview only (no `--run`):
+   ```
+   cd backend
+   python scripts/run_menu_backlog_canary.py --place-ids-file <your-file>
+   ```
+3. Review the preview's exact count, active-entity status, existing-menu
+   state, source URL, and failure history per place.
+4. Only then execute, with `--confirm-count` set to the exact number of
+   IDs in the file (not a fixed "10" -- if you review 7 and drop 3, pass
+   7):
+   ```
+   python scripts/run_menu_backlog_canary.py --place-ids-file <your-file> \
+     --run --confirm-count <N>
+   ```
+5. Review every one of the outcomes immediately after publish (not on a
+   delay) and manually revert any row that shows cross-venue
+   contamination, missing provenance, a low-quality publish, or
+   paid-provider traffic -- exactly the stop conditions this handoff
+   thread has used throughout.
+6. Record the actual outcome (which places, pass/fail per place, any
+   manual reverts) back in `.agent-bridge/STATE.md` or `DECISIONS.md` so
+   this run has a durable record, matching this repo's own convention
+   for closed-out canaries (see the Oakland Overture canary's own
+   write-up as the template) -- and this time, actually commit the
+   place-ids file's contents (or reference) into that record, so a
+   *future* handoff doesn't hit this same "list was never persisted"
+   gap.
 
 ---
 
