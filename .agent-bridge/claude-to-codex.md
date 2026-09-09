@@ -1,125 +1,59 @@
 # H-20260909-food-evidence-media-drop
 
-Status: blocked -- not on a missing credential, on a product/architecture
-decision only a human or Codex with more context should make. Everything
-below is a finding plus concrete options, not a diff.
-Owner: Claude (finding) -> Codex (scope + implement, or escalate to the
-human if the options below aren't an acceptable tradeoff)
-Branch: none from me -- no code changed for this item
-Base SHA: c8abbc55d47d75838fbeae9f9d597fbeb9f6b62c (`origin/main`, current
-as of this handoff)
-Commit SHA: none
-Allowed next files: `frontend/app/food-evidence.tsx`, `frontend/app/
-add-spot.tsx`, `frontend/src/api/upload.ts`, `frontend/src/api/nearby.ts`,
-`frontend/src/stores/videoQueueStore.ts` (read-only reference for the
-existing local-queue-then-upload pattern -- don't duplicate it blind,
-see below), plus whatever new backend surface option C below would need.
-Do not touch `frontend/app/taste-profile/[userId].tsx` or its test file
--- that's a separate, already-merged fix (PR #236), unrelated to this.
+Status: resolved -- option A implemented and merged. Compacted per
+protocol ("keep inboxes short... replace its body with a compact
+summary" once a task is complete); full original finding/options
+discussion lives in PR #238's description if needed.
+Owner: Claude
+Branch: claude/food-evidence-upload (merged, deleted)
+Base SHA: 12e0b5695a15ef744f41e95892f0db30bf3c596d (`origin/main`, before
+this fix)
+Commit SHA: 746b6e187a65890aa742205a812fb90df47569e5 (merge commit on
+`origin/main`; the fix itself is `d0dffb4` + a CodeRabbit-confirmed
+race-condition follow-up at `efaa577`, both squashed into that merge)
+Allowed next files: none from me further on this -- closed.
 
 ## Outcome
 
-Found during a full app-wide screen-by-screen audit (every route in
-`frontend/app`, one screen at a time, same rigor as the earlier Search
-subsystem audit). This is the single most severe finding: the primary
-"+" FAB, reachable from every tab via `(tabs)/_layout.tsx`'s
-`recordAction` button (`router.push('/food-evidence')`), lets a user
-take a photo, choose a photo, or choose a video from their library --
-then "Continue" does nothing but `router.push('/add-spot')`. The
-captured `{ kind, uri }` is local `useState` in `food-evidence.tsx` and
-is never passed as a nav param, queued, or uploaded. `add-spot.tsx` has
-no idea any media was ever selected. Confirmed via grep: no
-`foodEvidence`/pending-media store or API client function exists
-anywhere in `frontend/src`. The screen's own copy ("Restaurant
-identification and the private-or-post decision come next") promises a
-continuation that isn't implemented. Net effect: a user captures real
-food evidence, taps the one visible next step, and it is silently
-discarded with no error, no warning, nothing.
+Implemented option A: `food-evidence.tsx` now carries
+`{ uri, kind, fileSize, mimeType }` as route params to `/add-spot`
+instead of dropping them. `add-spot.tsx` wires the actual upload only
+on the `already_in_crave: true` branch (photo via the existing
+`useUploadImage()` flow, video via the existing
+`videoQueueStore.recordVideo()`); on the new-candidate branch
+(`confirmNewSpot()` only returns a `candidate_id`, never a `place_id`)
+the toast now says so explicitly instead of pretending it uploaded. A
+small banner surfaces the pending media while it's unclaimed.
 
-## Why this isn't a one-line fix
+CodeRabbit caught one real issue on review: `mediaOutcome === 'idle'`
+was read from React state (only updates on the next render), so two
+rapid "Open" taps on different candidates could both see `idle` and
+both attach the same media to two places. Fixed with a synchronous ref
+guard (`mediaClaimedRef`), same pattern as `rank/[placeId].tsx`'s
+`submittingRef` -- see PR #238 for the full before/after and the
+regression test that exercises the exact race window.
 
-Both existing upload paths in this codebase require a resolved
-`place_id` **at the moment the upload is requested**:
-- Photo: `frontend/src/api/upload.ts`'s `requestUpload()` takes a
-  mandatory `place_id` in `UploadRequestPayload` (backend:
-  `POST /api/v1/upload/request`).
-- Video: `frontend/src/stores/videoQueueStore.ts`'s `recordVideo()`
-  takes a `placeId` up front too (it's the queue key).
+## Verification
 
-`food-evidence.tsx` captures media *before* a place is identified --
-its own header text says so explicitly. `add-spot.tsx`'s nearby search
-(`searchNearby()`) returns two kinds of result:
-- `already_in_crave: true` -> a real `place_id` exists immediately.
-- `already_in_crave: false` -> tapping "This is it" calls
-  `confirmNewSpot()`, whose response (`ConfirmNewSpotResponse`) only
-  returns a `candidate_id`, **not** a `place_id` -- it creates a
-  `DiscoveryCandidate` for the normal async promotion pipeline, not a
-  `Place` row. There is no place to attach media to yet on this branch,
-  and promotion may not happen at all (or not soon).
-
-So this isn't "thread a param through" -- it's a genuine gap in the
-upload contract for exactly the candidate-not-yet-a-place case.
-
-## Options (pick one, or propose a better one -- don't guess silently)
-
-**A -- narrowest, recommended if a fast fix matters more than full
-coverage:** Pass `{ mediaUri, mediaKind }` as route params from
-`food-evidence.tsx` to `/add-spot`. Wire the upload only on the
-`already_in_crave: true` branch (a real `place_id` already exists at
-that point) -- call `requestUpload`/`uploadToSignedUrl`/`confirmUpload`
-for a photo, or the video queue's existing flow for a video. On the
-`already_in_crave: false` branch (brand-new candidate), do **not**
-silently drop the media either -- show the user an explicit message
-("This place needs to be confirmed first -- come back and add a photo
-once it's live") rather than pretending it uploaded. This ships real
-value for the common case (identifying an existing place) and turns
-the remaining gap into an honest, visible limitation instead of a
-silent one.
-
-**B -- fuller coverage, more backend work:** Add a new backend
-endpoint/field to attach pending media to a `DiscoveryCandidate` at
-confirm time (e.g. `POST /api/v1/nearby/confirm` accepts an optional
-media reference, stored and later transferred to the `Place` row if/
-when promotion happens). Real feature work, needs its own design pass
-on the candidate/promotion pipeline -- do not start this without
-scoping it as its own task first.
-
-**C -- reframe the screen instead of the plumbing:** If neither A nor B
-is worth the engineering cost right now, the honest short-term fix
-might be removing the "Continue" button's false promise entirely (e.g.
-disable it with a "coming soon" state, matching this app's own existing
-convention for genuinely unbuilt controls -- see `settings.tsx`'s "Rate
-CRAVE" row) until a real continuation exists, rather than shipping a
-button that silently eats the user's photo/video. This is a product
-call, not an engineering one -- flag it to the human rather than
-deciding unilaterally if A/B both seem like too much scope right now.
+- `npx tsc --noEmit` -- clean
+- Full frontend suite -- 49/49 suites, 508/508 passed (final count,
+  after the race-condition follow-up commit)
+- CI green on the merged commit: CodeQL, Frontend, Guard, both Backend
+  jobs, both Analyze jobs
 
 ## Known gaps / risks
 
-- This entry is a finding + options, not a verified fix. Whichever
-  option is picked still needs its own `tsc --noEmit` + full frontend
-  suite pass before merging, same discipline as every other PR in this
-  repo.
-- Option A still leaves a real (now honestly-surfaced, not silent) gap
-  on the new-candidate branch. Don't let that get re-classified as
-  "fixed" without also closing that branch, or explicitly deferring it
-  in `STATE.md` the way `hours`/outdoor-seating was deferred before PR
-  #229 closed it.
-- Claude has no Railway/production DB access and did not check whether
-  `DiscoveryCandidate`'s promotion pipeline (relevant to option B) has
-  any existing hook that would make this easier or harder than it looks
-  from the frontend alone -- verify against the actual backend model/
-  service before committing to option B's scope.
+- Option A's accepted limitation stands: the new-candidate branch still
+  can't attach media at confirm time (needs option B -- backend support
+  for pending media on `DiscoveryCandidate` -- if that gap is ever worth
+  closing). Not silently dropped; honestly surfaced via the toast
+  instead.
 
 ## Next action
 
-Read `frontend/app/food-evidence.tsx` and `frontend/app/add-spot.tsx`
-in full, confirm the analysis above against current code, then either:
-(1) implement option A (recommended for a same-day fix) with tests
-covering both the already-in-CRAVE upload path and the new-candidate
-honest-limitation message, or (2) if A/B/C all seem wrong, post a
-clear status update in `.agent-bridge/codex-to-claude.md` or ask the
-human directly rather than leaving the FAB silently broken.
+None -- closed. If option B (full candidate pending-media support) ever
+becomes worth doing, scope it as its own new handoff; don't reopen this
+one.
 
 ---
 

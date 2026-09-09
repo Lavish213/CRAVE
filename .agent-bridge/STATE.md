@@ -324,16 +324,27 @@ routes, dead-code/gap/broken-control checks, race-condition review.
   empty profile, with no retry — same anti-pattern its sibling
   `user/[id].tsx` already fixed via `profileError`. Added the matching
   `profileError`/`tasteError` states here too.
-- **Not fixed, relayed to Codex** (`.agent-bridge/claude-to-codex.md`,
-  `H-20260909-food-evidence-media-drop`): the "+" FAB's
-  `food-evidence.tsx` captures a photo/video, then "Continue" drops it
+- **Fixed, merged PR #238** (SHA `746b6e1`): the "+" FAB's
+  `food-evidence.tsx` captured a photo/video, then "Continue" dropped it
   entirely — no upload call, no param passed to `add-spot.tsx`, no
-  queue. Both existing upload paths (`upload.ts`'s `requestUpload`,
-  `videoQueueStore`'s `recordVideo`) require a resolved `place_id` up
-  front, which doesn't exist yet on `add-spot.tsx`'s new-candidate
-  branch (`confirmNewSpot()` only returns a `candidate_id`) — a real
-  product/architecture decision, not a one-line fix. Three concrete
-  options written up in the handoff; none implemented yet.
+  queue. Implemented option A from
+  `.agent-bridge/claude-to-codex.md`'s `H-20260909-food-evidence-media-
+  drop` handoff (now resolved/compacted there): `food-evidence.tsx`
+  carries `{ uri, kind, fileSize, mimeType }` as route params;
+  `add-spot.tsx` wires the actual upload only when a `place_id` already
+  exists (`already_in_crave: true` — photo via the existing
+  `useUploadImage()` flow, video via the existing
+  `videoQueueStore.recordVideo()`); the new-candidate branch
+  (`confirmNewSpot()` only ever returns a `candidate_id`, never a
+  `place_id`) now says so explicitly instead of pretending it uploaded.
+  CodeRabbit caught a real double-attach race on rapid "Open" taps
+  (`mediaOutcome` state read before its own setter's render committed);
+  fixed with a synchronous `mediaClaimedRef` guard, same pattern as
+  `rank/[placeId].tsx`'s `submittingRef`. **Known accepted gap**: the
+  new-candidate branch still can't attach media at confirm time —
+  that's option B from the handoff (backend support for pending media
+  on `DiscoveryCandidate`), not implemented, not silently dropped either
+  (the toast says so).
 
 ## Next action
 
