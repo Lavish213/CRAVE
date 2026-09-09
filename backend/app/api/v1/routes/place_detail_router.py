@@ -25,6 +25,8 @@ from app.services.query.place_image_visibility_query import get_public_gallery
 from app.services.social.friend_rankings_service import get_friend_rankings_for_place
 from app.db.models.hitlist_save import HitlistSave
 from app.services.visit_evidence_service import visit_evidence_for_place
+from app.db.models.place_truth import PlaceTruth
+from app.services.hours.opening_hours_service import compute_hours_status
 
 
 router = APIRouter(
@@ -152,6 +154,32 @@ def get_place_detail(
     category_names = specific_names or generic_names
 
     # --------------------------------------------------
+    # Hours / outdoor seating -- resolved truths (see
+    # app.services.truth.truth_resolver_v2), sourced today only from OSM
+    # tags already sitting in discovery_candidates.raw_payload (see
+    # app.services.discovery.promote_service_v2._osm_tag_claims). Absent
+    # entirely for a place OSM never tagged -- None here, not a fabricated
+    # "hours unknown" placeholder that implies data was checked and came
+    # back empty when it was never sourced at all.
+    # --------------------------------------------------
+
+    truths = (
+        db.query(PlaceTruth)
+        .filter(
+            PlaceTruth.place_id == place_id,
+            PlaceTruth.truth_type.in_(("hours", "outdoor_seating")),
+        )
+        .all()
+    )
+    truth_by_type = {t.truth_type: t.truth_value for t in truths}
+
+    hours_status = compute_hours_status(
+        truth_by_type.get("hours"),
+        lat=place.lat,
+        lng=place.lng,
+    )
+
+    # --------------------------------------------------
     # Response
     # --------------------------------------------------
 
@@ -178,6 +206,10 @@ def get_place_detail(
         # category: first category name for display; full list in categories
         "category": category_names[0] if category_names else None,
         "categories": category_names,
+        "hours_status": hours_status.status,
+        "hours_next_change": hours_status.next_change,
+        "hours_raw": hours_status.raw,
+        "outdoor_seating": truth_by_type.get("outdoor_seating"),
         "created_at": place.created_at,
         "updated_at": place.updated_at,
     }

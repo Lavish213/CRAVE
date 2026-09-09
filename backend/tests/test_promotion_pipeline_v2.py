@@ -253,6 +253,85 @@ def test_promote_backfills_missing_fields_on_existing_place(db, city):
     assert existing.website == "https://bareplace.example.com"
 
 
+def test_promote_writes_hours_and_outdoor_seating_claims_from_osm_tags(db, city):
+    """
+    OSM's own tags dict (fetched wholesale by osm_overpass.py and stored
+    verbatim on the candidate's raw_payload) already carries opening_hours
+    and outdoor_seating for many nodes -- this was sitting unused since
+    nothing ever turned it into a claim. Confirms promotion now does.
+    """
+    candidate = _make_candidate(
+        db, city.id, name="Tagged Diner", source="osm",
+        raw_payload={
+            "opening_hours": "Mo-Fr 09:00-17:00",
+            "outdoor_seating": "yes",
+        },
+    )
+
+    place_id = promote_candidate_v2(db=db, candidate_id=candidate.id)
+
+    claims = {
+        c.field: c for c in
+        db.query(PlaceClaim).filter(PlaceClaim.place_id == place_id)
+    }
+    assert claims["hours"].value_text == "mo-fr 09:00-17:00"
+    assert claims["outdoor_seating"].value_text == "yes"
+
+    truths = {
+        t.truth_type: t.truth_value for t in
+        db.query(PlaceTruth).filter(PlaceTruth.place_id == place_id)
+    }
+    assert truths["hours"] == "mo-fr 09:00-17:00"
+    assert truths["outdoor_seating"] == "yes"
+
+
+def test_promote_skips_hours_claim_when_osm_tag_absent(db, city):
+    candidate = _make_candidate(
+        db, city.id, name="Untagged Diner", source="osm",
+        raw_payload={"cuisine": "italian"},
+    )
+
+    place_id = promote_candidate_v2(db=db, candidate_id=candidate.id)
+
+    claim_fields = {
+        c.field for c in db.query(PlaceClaim).filter(PlaceClaim.place_id == place_id)
+    }
+    assert "hours" not in claim_fields
+    assert "outdoor_seating" not in claim_fields
+
+
+def test_promote_ignores_unrecognized_outdoor_seating_value(db, city):
+    candidate = _make_candidate(
+        db, city.id, name="Ambiguous Diner", source="osm",
+        raw_payload={"outdoor_seating": "ask staff"},
+    )
+
+    place_id = promote_candidate_v2(db=db, candidate_id=candidate.id)
+
+    claim_fields = {
+        c.field for c in db.query(PlaceClaim).filter(PlaceClaim.place_id == place_id)
+    }
+    assert "outdoor_seating" not in claim_fields
+
+
+def test_promote_ignores_matching_raw_payload_keys_from_non_osm_source(db, city):
+    """A same-shaped raw_payload from a source other than OSM must never be
+    read as if it were OSM's tag vocabulary -- these two fields are only
+    ever trustworthy under OSM's own tagging convention."""
+    candidate = _make_candidate(
+        db, city.id, name="Overture Diner", source="overture",
+        raw_payload={"opening_hours": "Mo-Fr 09:00-17:00", "outdoor_seating": "yes"},
+    )
+
+    place_id = promote_candidate_v2(db=db, candidate_id=candidate.id)
+
+    claim_fields = {
+        c.field for c in db.query(PlaceClaim).filter(PlaceClaim.place_id == place_id)
+    }
+    assert "hours" not in claim_fields
+    assert "outdoor_seating" not in claim_fields
+
+
 def test_promote_geocodes_when_coords_missing(db, city):
     candidate = _make_candidate(db, city.id, name="Needs Geocode", lat=None, lng=None)
 

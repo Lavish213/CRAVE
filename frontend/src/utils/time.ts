@@ -13,3 +13,11 @@ export function relativeTime(iso: string): string {
   if (days < 7) return `${days}d ago`;
   return new Date(iso).toLocaleDateString();
 }
+
+/** "9:00 AM" -- for an hours-status next-change timestamp. Empty string
+ * for an unparseable/missing value rather than "Invalid Date". */
+export function formatClockTime(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+}

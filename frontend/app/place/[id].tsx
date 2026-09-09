@@ -32,7 +32,7 @@ import { Colors, Spacing, Radius } from '../../src/constants/colors';
 import { getTierForPlace, formatPrice, formatDistance, computeDistanceMiles } from '../../src/utils/scoring';
 import { fetchMyRankings, fetchFriendRankings, FriendRanking } from '../../src/api/social';
 import { formatScore, tierColor, TIER_LABELS } from '../../src/utils/rankScore';
-import { relativeTime } from '../../src/utils/time';
+import { relativeTime, formatClockTime } from '../../src/utils/time';
 import { useLocation } from '../../src/hooks/useLocation';
 import { useCityStore } from '../../src/stores/cityStore';
 import { withImageWidth, AVATAR_IMAGE_WIDTH } from '../../src/utils/imageUrl';
@@ -370,6 +370,26 @@ export default function PlaceDetailScreen() {
   const distanceLabel = formatDistance(distanceMiles);
   const cityName = cities.find((c) => c.id === place.city_id)?.name ?? null;
 
+  // hours_status is null whenever there's genuinely no answer (no OSM
+  // opening_hours tag on file, or one the parser couldn't read) --
+  // never a guessed or stale status, so the chip is simply omitted then
+  // rather than showing something invented (see CRAVE_PLACE_DETAIL_SPEC.md
+  // §3.2, closed by this real backend data source rather than faked).
+  const hoursLabel =
+    place.hours_status === 'open'
+      ? place.hours_next_change
+        ? `Open now · Closes ${formatClockTime(place.hours_next_change)}`
+        : 'Open now'
+      : place.hours_status === 'closed'
+      ? place.hours_next_change
+        ? `Closed · Opens ${formatClockTime(place.hours_next_change)}`
+        : 'Closed now'
+      : null;
+  // "no" and unknown both render nothing -- a positive claim ("outdoor
+  // seating") is worth a badge; the absence of one isn't worth asserting
+  // as a fact this app is confident about.
+  const hasOutdoorSeating = place.outdoor_seating === 'yes' || place.outdoor_seating === 'limited';
+
   // "Why this fits" -- the one section whose whole job is to answer "why
   // THIS place," using only signals that are actually real today (no
   // fabricated match %, see CRAVE_PLACE_DETAIL_SPEC.md §2). The catalog
@@ -559,12 +579,23 @@ export default function PlaceDetailScreen() {
       </View>
 
       {/* Decision strip — the facts that gate whether this is even viable
-          right now. Deliberately no open/closed indicator: Place has no
-          hours/is_open field at all today, and a guessed or stale "open
-          now" is worse than none (see CRAVE_PLACE_DETAIL_SPEC.md §3.2 —
-          logged as a real backend gap, not faked here). */}
-      {(price || distanceLabel || (place.lat && place.lng)) ? (
+          right now. Open/closed is sourced from a real OSM opening_hours
+          tag (backend app/services/hours/opening_hours_service.py) when
+          one exists on file -- omitted entirely, never guessed or shown
+          stale, when it doesn't (see CRAVE_PLACE_DETAIL_SPEC.md §3.2,
+          previously a real backend gap, closed by this data source). */}
+      {(price || distanceLabel || hoursLabel || hasOutdoorSeating || (place.lat && place.lng)) ? (
         <View style={styles.decisionStrip}>
+          {hoursLabel ? (
+            <View accessible accessibilityLabel={hoursLabel}>
+              <Text
+                style={[styles.decisionChip, place.hours_status === 'closed' && styles.decisionChipClosed]}
+                importantForAccessibility="no"
+              >
+                {place.hours_status === 'open' ? '🟢' : '🔴'} {hoursLabel}
+              </Text>
+            </View>
+          ) : null}
           {price ? (
             <View accessible accessibilityLabel={`Price: ${price}`}>
               <Text style={styles.decisionChip} importantForAccessibility="no">💰 {price}</Text>
@@ -573,6 +604,13 @@ export default function PlaceDetailScreen() {
           {distanceLabel ? (
             <View accessible accessibilityLabel={`Distance: ${distanceLabel}`}>
               <Text style={styles.decisionChip} importantForAccessibility="no">📍 {distanceLabel}</Text>
+            </View>
+          ) : null}
+          {hasOutdoorSeating ? (
+            <View accessible accessibilityLabel={place.outdoor_seating === 'limited' ? 'Limited outdoor seating' : 'Outdoor seating available'}>
+              <Text style={styles.decisionChip} importantForAccessibility="no">
+                🌤️ {place.outdoor_seating === 'limited' ? 'Outdoor seating (limited)' : 'Outdoor seating'}
+              </Text>
             </View>
           ) : null}
           {/* Wave 7: once Directions is promoted to the primary CTA below
@@ -1148,6 +1186,10 @@ const styles = StyleSheet.create({
   },
   decisionChip: { fontSize: 14, color: Colors.textSecondary, fontWeight: '600' },
   decisionChipLink: { color: Colors.primary },
+  // Closed reads as a real caution, not a neutral fact like price/distance
+  // -- the same color this app's design tokens already reserve for an
+  // error/blocked state.
+  decisionChipClosed: { color: Colors.error },
   // Explicit min touch target -- unlike Text's own bounds, which shrink to
   // the glyphs and would otherwise fall well under the 44pt minimum every
   // other button on this screen already meets.

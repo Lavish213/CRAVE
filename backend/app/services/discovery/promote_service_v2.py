@@ -18,9 +18,70 @@ from app.services.truth.truth_resolver_v2 import resolve_place_truths_v2
 
 logger = logging.getLogger(__name__)
 
+# OSM's own tag vocabulary for these two attributes -- both already
+# arrive for free in every OSM-sourced candidate's raw_payload (the full
+# tags dict fetched by osm_overpass.py) with zero extra ingestion work,
+# since Overpass returns every tag on a node regardless of whether this
+# app was reading it yet. Never trusted from a non-OSM source: a
+# generic dict key collision on another source's raw_payload (e.g.
+# Overture's, which only ever stores {"category", "hierarchy"|}) would
+# otherwise silently fabricate a claim from data that was never actually
+# this tag.
+_OUTDOOR_SEATING_VALUES = {"yes", "no", "limited"}
+
 
 def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def _normalize_outdoor_seating(raw_value: object) -> Optional[str]:
+    if not raw_value:
+        return None
+    value = str(raw_value).strip().lower()
+    return value if value in _OUTDOOR_SEATING_VALUES else None
+
+
+def _osm_tag_claims(candidate: DiscoveryCandidate) -> list[dict]:
+    """
+    Claims for fields OSM tags natively carry but this app didn't read
+    until now: opening_hours (OSM's own mini-DSL, parsed live at read
+    time by app.services.hours.opening_hours_service) and
+    outdoor_seating. Confidence matches osm_overpass.py's own existing
+    0.75 for OSM-sourced claims -- same source, same trust level.
+    """
+    if candidate.source != "osm" or not isinstance(candidate.raw_payload, dict):
+        return []
+
+    tags = candidate.raw_payload
+    claims: list[dict] = []
+
+    hours_raw = tags.get("opening_hours")
+    if isinstance(hours_raw, str) and hours_raw.strip():
+        claims.append(
+            normalize_claim(
+                field="hours",
+                value=hours_raw.strip(),
+                source="osm",
+                confidence=0.75,
+                weight=1.0,
+                is_verified_source=True,
+            )
+        )
+
+    seating = _normalize_outdoor_seating(tags.get("outdoor_seating"))
+    if seating:
+        claims.append(
+            normalize_claim(
+                field="outdoor_seating",
+                value=seating,
+                source="osm",
+                confidence=0.75,
+                weight=1.0,
+                is_verified_source=True,
+            )
+        )
+
+    return claims
 
 
 def _geocode_from_candidate(candidate: DiscoveryCandidate) -> tuple[Optional[float], Optional[float]]:
@@ -202,6 +263,8 @@ def promote_candidate_v2(
             weight=1.0,
         )
     )
+
+    core_claims.extend(_osm_tag_claims(candidate))
 
     _CLAIM_FIELDS = {
         "field", "value_text", "value_number", "value_json",
