@@ -5,7 +5,7 @@
 // user may have moved since app launch, and precision matters here since
 // we're matching against a 150m search radius), searches nearby, and lets
 // the user open an existing CRAVE place or submit a new candidate signal.
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Linking,
@@ -24,9 +24,7 @@ import { useToast } from '../src/hooks/useToast';
 import { useAuthStore } from '../src/stores/authStore';
 import { AuthSheet } from '../src/components/AuthSheet';
 import { NearbyCandidate, confirmNewSpot, searchNearby } from '../src/api/nearby';
-import { useUploadImage } from '../src/hooks/useUploadImage';
-import { useVideoQueueStore } from '../src/stores/videoQueueStore';
-import type { VideoContentType } from '../src/api/videos';
+import { usePostingDraftStore } from '../src/stores/postingDraftStore';
 
 type LoadState =
   | 'locating'
@@ -37,23 +35,11 @@ type LoadState =
   | 'error'
   | 'unauthenticated';
 
-// Mirrors record-video/[placeId].tsx's identical helper -- kept local since
-// that screen is otherwise unrelated to this one and this is the only other
-// call site.
-function contentTypeForUri(uri: string): VideoContentType {
-  const ext = uri.split('.').pop()?.toLowerCase();
-  if (ext === 'mov') return 'video/quicktime';
-  if (ext === 'webm') return 'video/webm';
-  return 'video/mp4';
-}
-
 export default function AddSpotScreen() {
   const router = useRouter();
   const toast = useToast((s) => s.show);
   const user = useAuthStore((s) => s.user);
   const authLoading = useAuthStore((s) => s.loading);
-  const { upload } = useUploadImage();
-  const recordVideo = useVideoQueueStore((s) => s.recordVideo);
 
   const [state, setState] = useState<LoadState>('locating');
   const [results, setResults] = useState<NearbyCandidate[]>([]);
@@ -61,75 +47,17 @@ export default function AddSpotScreen() {
   const [confirmedIds, setConfirmedIds] = useState<Set<string>>(new Set());
   const [authVisible, setAuthVisible] = useState(false);
 
-  // Carried over from food-evidence.tsx's "Continue" button -- a photo or
-  // video captured there, waiting for whichever place the user identifies
-  // here. Undefined/invalid params (any entry into this screen that isn't
-  // via that button) simply means there's nothing pending, not an error.
-  const { mediaUri, mediaKind, mediaFileSize, mediaMimeType } = useLocalSearchParams<{
-    mediaUri?: string;
-    mediaKind?: string;
-    mediaFileSize?: string;
-    mediaMimeType?: string;
-  }>();
-  const pendingMedia = useMemo(() => {
-    if (!mediaUri || (mediaKind !== 'photo' && mediaKind !== 'video')) return null;
-    return {
-      uri: mediaUri,
-      kind: mediaKind as 'photo' | 'video',
-      fileSize: mediaFileSize ? Number(mediaFileSize) : undefined,
-      mimeType: mediaMimeType || undefined,
-    };
-  }, [mediaUri, mediaKind, mediaFileSize, mediaMimeType]);
-  // Single-use per screen visit -- once the user has acted on one candidate
-  // (attached, or explicitly deferred on a new-candidate signal), a second,
-  // unrelated candidate tapped afterward must not silently inherit the same
-  // media. 'idle' is the display-only reflection of this for the banner;
-  // the actual claim is guarded by the ref below, not this state.
-  const [mediaOutcome, setMediaOutcome] = useState<'idle' | 'uploading' | 'attached' | 'failed' | 'deferred'>('idle');
-  // React state alone can't close a fast-double-tap race here (confirmed by
-  // CodeRabbit) -- two "Open" taps on different candidates can both read
-  // mediaOutcome as still 'idle' before the first tap's setMediaOutcome('
-  // uploading') has actually committed a re-render, letting the same photo/
-  // video attach to two different places. A ref mutates synchronously and
-  // immediately, so whichever call site checks-and-claims it first (Open's
-  // onPress or handleConfirm's success branch) is guaranteed to win --
-  // same fix as rank/[placeId].tsx's identical submittingRef pattern.
-  const mediaClaimedRef = useRef(false);
-
-  const attachPendingMedia = useCallback(
-    async (placeId: string) => {
-      if (!pendingMedia) return;
-      setMediaOutcome('uploading');
-      try {
-        if (pendingMedia.kind === 'photo') {
-          if (!pendingMedia.fileSize) {
-            throw new Error("Couldn't read your photo's file size");
-          }
-          await upload(
-            { uri: pendingMedia.uri, fileSize: pendingMedia.fileSize, mimeType: pendingMedia.mimeType },
-            placeId,
-            'food',
-          );
-          toast('Photo submitted for this place');
-        } else {
-          if (!user?.id) throw new Error('Sign in to add a video');
-          await recordVideo({
-            sourceUri: pendingMedia.uri,
-            placeId,
-            contentType: contentTypeForUri(pendingMedia.uri),
-            uploadedBy: user.id,
-            templateId: null,
-          });
-          toast("Saved — it'll post as soon as you're online.");
-        }
-        setMediaOutcome('attached');
-      } catch (err) {
-        setMediaOutcome('failed');
-        toast(err instanceof Error ? err.message : "Couldn't attach your media to this place");
-      }
-    },
-    [pendingMedia, upload, recordVideo, user?.id, toast],
-  );
+  // Carried over from food-evidence.tsx's "Continue" button -- a durable
+  // PostingDraft (photo or video already persisted locally, well before
+  // this screen ever loads) waiting for whichever place the user
+  // identifies here. No draftId param, or a draftId this store doesn't
+  // recognize (e.g. already attached/deleted), simply means there's
+  // nothing pending, not an error -- the rest of this screen works
+  // identically either way.
+  const { draftId } = useLocalSearchParams<{ draftId?: string }>();
+  const draft = usePostingDraftStore((s) => (draftId ? s.drafts.find((d) => d.id === draftId) : undefined));
+  const attachDraftToPlace = usePostingDraftStore((s) => s.attachDraftToPlace);
+  const setDraftCandidate = usePostingDraftStore((s) => s.setDraftCandidate);
 
   const runIdRef = useRef(0);
 
@@ -193,7 +121,7 @@ export default function AddSpotScreen() {
     setConfirmingId(key);
     try {
       void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-      await confirmNewSpot({
+      const confirmResult = await confirmNewSpot({
         external_id: candidate.external_id,
         name: candidate.name,
         lat: candidate.lat,
@@ -206,18 +134,17 @@ export default function AddSpotScreen() {
       setConfirmedIds((prev) => new Set(prev).add(key));
       // A brand-new candidate has no place_id yet -- confirmNewSpot() only
       // returns a candidate_id, since this creates a DiscoveryCandidate for
-      // the normal async promotion pipeline, not a Place row. There's
-      // nowhere to attach pending media yet on this branch, so say so
-      // explicitly instead of silently dropping it (the media stays
-      // captured on food-evidence.tsx's side only in the sense that this
-      // screen simply doesn't touch it here -- there's no "come back and
-      // retry" mechanism beyond the user redoing food-evidence, which this
-      // copy is honest about).
-      if (pendingMedia && !mediaClaimedRef.current) {
-        mediaClaimedRef.current = true;
-        setMediaOutcome('deferred');
+      // the normal async promotion pipeline, not a Place row. Previously
+      // there was nowhere to durably record that a draft's media should
+      // wait on this specific candidate -- setDraftCandidate persists the
+      // reference (restaurantRef: candidate) so _layout.tsx's foreground
+      // resolver can pick it up automatically via GET /nearby/candidate/
+      // {id}/status once promoted, without the user having to come back
+      // and redo anything.
+      if (draft) {
+        setDraftCandidate(draft.id, confirmResult.candidate_id, candidate.name);
         toast(
-          `Got it — added as a signal. It'll appear once confirmed by more activity. Come back once it's live to add your ${pendingMedia.kind}.`,
+          `Got it — added as a signal. It'll appear once confirmed by more activity. Your ${draft.kind} will attach automatically once it's live.`,
         );
       } else {
         toast("Got it — added as a signal. It'll appear once confirmed by more activity.");
@@ -314,15 +241,15 @@ export default function AddSpotScreen() {
         get submitted as a signal toward being added.
       </Text>
 
-      {pendingMedia && mediaOutcome === 'idle' ? (
+      {draft && draft.outcome === 'pending' ? (
         <View style={styles.mediaBanner}>
           <Ionicons
-            name={pendingMedia.kind === 'photo' ? 'image-outline' : 'videocam-outline'}
+            name={draft.kind === 'photo' ? 'image-outline' : 'videocam-outline'}
             size={18}
             color={Colors.primary}
           />
           <Text style={styles.mediaBannerText}>
-            {pendingMedia.kind === 'photo' ? 'Photo' : 'Video'} ready — tap a place below to attach it.
+            {draft.kind === 'photo' ? 'Photo' : 'Video'} saved — tap a place below to attach it.
           </Text>
         </View>
       ) : null}
@@ -347,16 +274,14 @@ export default function AddSpotScreen() {
                 <TouchableOpacity
                   style={styles.actionBtn}
                   onPress={() => {
-                    // Fire-and-forget: uploading shouldn't block getting to
+                    // Fire-and-forget: attaching shouldn't block getting to
                     // the place, and toast() renders from a root-mounted
                     // container so its outcome still surfaces after
-                    // navigating away. Claimed via the ref (not mediaOutcome
-                    // state) so two rapid taps on two different candidates
-                    // can't both win the same media before either's
-                    // setMediaOutcome('uploading') has committed a re-render.
-                    if (pendingMedia && !mediaClaimedRef.current && candidate.place_id) {
-                      mediaClaimedRef.current = true;
-                      void attachPendingMedia(candidate.place_id);
+                    // navigating away. attachDraftToPlace itself guards
+                    // against a double-claim (see its own comment) -- no
+                    // component-level ref needed here anymore.
+                    if (draft && candidate.place_id) {
+                      void attachDraftToPlace(draft.id, candidate.place_id);
                     }
                     router.push(`/place/${candidate.place_id}`);
                   }}

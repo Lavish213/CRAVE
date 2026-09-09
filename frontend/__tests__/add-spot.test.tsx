@@ -5,24 +5,29 @@ import * as Location from 'expo-location';
 import AddSpotScreen from '../app/add-spot';
 import { useAuthStore } from '../src/stores/authStore';
 import { NearbyCandidate, confirmNewSpot, searchNearby } from '../src/api/nearby';
+import type { PostingDraft } from '../src/stores/postingDraftStore';
 
 const mockPush = jest.fn();
-let mockParams: Record<string, string | undefined> = {};
+let mockDraftId: string | undefined;
 jest.mock('expo-router', () => ({
   useRouter: () => ({ push: mockPush }),
-  useLocalSearchParams: () => mockParams,
+  useLocalSearchParams: () => ({ draftId: mockDraftId }),
 }));
 jest.mock('../src/stores/authStore', () => ({ useAuthStore: jest.fn() }));
 jest.mock('../src/api/nearby', () => ({ searchNearby: jest.fn(), confirmNewSpot: jest.fn() }));
-const mockUpload = jest.fn();
-jest.mock('../src/hooks/useUploadImage', () => ({
-  useUploadImage: () => ({ upload: mockUpload }),
+
+let mockDrafts: PostingDraft[] = [];
+const mockAttachDraftToPlace = jest.fn();
+const mockSetDraftCandidate = jest.fn();
+jest.mock('../src/stores/postingDraftStore', () => ({
+  usePostingDraftStore: (selector: (s: {
+    drafts: PostingDraft[];
+    attachDraftToPlace: (...args: unknown[]) => unknown;
+    setDraftCandidate: (...args: unknown[]) => unknown;
+  }) => unknown) =>
+    selector({ drafts: mockDrafts, attachDraftToPlace: mockAttachDraftToPlace, setDraftCandidate: mockSetDraftCandidate }),
 }));
-const mockRecordVideo = jest.fn();
-jest.mock('../src/stores/videoQueueStore', () => ({
-  useVideoQueueStore: (selector: (s: { recordVideo: (...args: unknown[]) => unknown }) => unknown) =>
-    selector({ recordVideo: mockRecordVideo }),
-}));
+
 jest.mock('expo-location', () => ({
   requestForegroundPermissionsAsync: jest.fn(),
   getCurrentPositionAsync: jest.fn(),
@@ -60,10 +65,27 @@ function makeCandidate(overrides: Partial<NearbyCandidate> = {}): NearbyCandidat
   };
 }
 
+function makeDraft(overrides: Partial<PostingDraft> = {}): PostingDraft {
+  return {
+    id: 'draft-1',
+    ownerId: 'user-1',
+    localUri: 'file:///durable/draft-1.jpg',
+    kind: 'photo',
+    mimeType: 'image/jpeg',
+    fileSize: 500000,
+    restaurantRef: { type: 'unresolved' },
+    outcome: 'pending',
+    lastError: null,
+    createdAt: Date.now(),
+    ...overrides,
+  };
+}
+
 describe('AddSpotScreen', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    mockParams = {};
+    mockDraftId = undefined;
+    mockDrafts = [];
     mockedRequestPermission.mockResolvedValue({ status: 'granted', canAskAgain: true });
     mockedGetPosition.mockResolvedValue({ coords: { latitude: 37.7749, longitude: -122.4194 } });
     mockedSearchNearby.mockResolvedValue([]);
@@ -172,131 +194,93 @@ describe('AddSpotScreen', () => {
     expect(await findByText('This is it')).toBeTruthy();
   });
 
-  describe('media carried over from food-evidence.tsx', () => {
-    it('does not show a pending-media banner when no media params are present', async () => {
+  describe('posting draft carried over from food-evidence.tsx', () => {
+    it('does not show a pending-draft banner when no draftId param is present', async () => {
       setAuth({ id: 'user-1' });
       mockedSearchNearby.mockResolvedValue([makeCandidate({ name: 'Plain Spot' })]);
       const { findByText, queryByText } = render(<AddSpotScreen />);
       expect(await findByText('Plain Spot')).toBeTruthy();
-      expect(queryByText(/ready — tap a place below/)).toBeNull();
+      expect(queryByText(/saved — tap a place below/)).toBeNull();
     });
 
-    it('uploads a pending photo when opening an already-in-CRAVE place, instead of dropping it', async () => {
-      mockParams = { mediaUri: 'file://photo.jpg', mediaKind: 'photo', mediaFileSize: '1000000', mediaMimeType: 'image/jpeg' };
+    it('attaches a pending photo draft when opening an already-in-CRAVE place, instead of dropping it', async () => {
+      mockDraftId = 'draft-1';
+      mockDrafts = [makeDraft({ id: 'draft-1', kind: 'photo' })];
       setAuth({ id: 'user-1' });
       mockedSearchNearby.mockResolvedValue([makeCandidate({ name: 'Existing Place', already_in_crave: true, place_id: 'place-123' })]);
-      mockUpload.mockResolvedValue('image-1');
 
       const { findByText, findByLabelText } = render(<AddSpotScreen />);
-      expect(await findByText('Photo ready — tap a place below to attach it.')).toBeTruthy();
+      expect(await findByText('Photo saved — tap a place below to attach it.')).toBeTruthy();
 
       fireEvent.press(await findByLabelText('Open Existing Place'));
-      expect(mockPush).toHaveBeenCalledWith('/place/place-123');
-      await act(async () => {});
 
-      expect(mockUpload).toHaveBeenCalledWith(
-        { uri: 'file://photo.jpg', fileSize: 1000000, mimeType: 'image/jpeg' },
-        'place-123',
-        'food',
-      );
-      expect(mockToastShow).toHaveBeenCalledWith('Photo submitted for this place');
+      expect(mockAttachDraftToPlace).toHaveBeenCalledWith('draft-1', 'place-123');
+      expect(mockPush).toHaveBeenCalledWith('/place/place-123');
     });
 
-    it('queues a pending video via the video store when opening an already-in-CRAVE place', async () => {
-      mockParams = { mediaUri: 'file://clip.mov', mediaKind: 'video' };
+    it('attaches a pending video draft when opening an already-in-CRAVE place', async () => {
+      mockDraftId = 'draft-2';
+      mockDrafts = [makeDraft({ id: 'draft-2', kind: 'video' })];
       setAuth({ id: 'user-1' });
       mockedSearchNearby.mockResolvedValue([makeCandidate({ name: 'Existing Place', already_in_crave: true, place_id: 'place-123' })]);
-      mockRecordVideo.mockResolvedValue({ id: 'local-1' });
 
-      const { findByLabelText } = render(<AddSpotScreen />);
+      const { findByText, findByLabelText } = render(<AddSpotScreen />);
+      expect(await findByText('Video saved — tap a place below to attach it.')).toBeTruthy();
+
       fireEvent.press(await findByLabelText('Open Existing Place'));
-      await act(async () => {});
 
-      expect(mockRecordVideo).toHaveBeenCalledWith({
-        sourceUri: 'file://clip.mov',
-        placeId: 'place-123',
-        contentType: 'video/quicktime',
-        uploadedBy: 'user-1',
-        templateId: null,
-      });
-      expect(mockToastShow).toHaveBeenCalledWith("Saved — it'll post as soon as you're online.");
+      expect(mockAttachDraftToPlace).toHaveBeenCalledWith('draft-2', 'place-123');
     });
 
-    it('does not silently drop pending media when confirming a brand-new candidate -- says so explicitly instead', async () => {
+    it('only shows the pending-draft banner while the draft is actually pending', async () => {
+      // The double-claim guard itself lives in the store (see
+      // postingDraftStore.test.ts's own "does not double-attach" coverage),
+      // not the component -- this only checks the component's display
+      // logic, which does gate on outcome.
+      mockDraftId = 'draft-1';
+      mockDrafts = [makeDraft({ id: 'draft-1', outcome: 'attaching' })];
+      setAuth({ id: 'user-1' });
+      mockedSearchNearby.mockResolvedValue([makeCandidate({ name: 'Existing Place', already_in_crave: true, place_id: 'place-123' })]);
+
+      const { findByText, queryByText } = render(<AddSpotScreen />);
+      await findByText('Existing Place');
+      expect(queryByText(/saved — tap a place below/)).toBeNull();
+    });
+
+    it('does not silently drop a pending draft when confirming a brand-new candidate -- records the candidate reference instead', async () => {
       // confirmNewSpot() only ever returns a candidate_id (a DiscoveryCandidate,
-      // not a Place), so there is no place_id yet to attach media to on this
-      // branch -- this must not pretend it uploaded.
-      mockParams = { mediaUri: 'file://photo.jpg', mediaKind: 'photo', mediaFileSize: '1000000', mediaMimeType: 'image/jpeg' };
+      // not a Place), so there is no place_id yet to attach the draft to on
+      // this branch -- this must not pretend it uploaded, and must not lose
+      // the reference either (setDraftCandidate persists it for the
+      // foreground resolver in _layout.tsx to pick up later).
+      mockDraftId = 'draft-1';
+      mockDrafts = [makeDraft({ id: 'draft-1', kind: 'photo' })];
       setAuth({ id: 'user-1' });
       mockedSearchNearby.mockResolvedValue([makeCandidate({ name: 'New Spot' })]);
-      mockedConfirmNewSpot.mockResolvedValue({ status: 'pending', candidate_id: 'c1', confidence_score: 0.4 });
+      mockedConfirmNewSpot.mockResolvedValue({ status: 'pending', candidate_id: 'cand-9', confidence_score: 0.4 });
 
       const { findByLabelText } = render(<AddSpotScreen />);
       const confirmBtn = await findByLabelText('Confirm this is New Spot');
       await act(async () => { fireEvent.press(confirmBtn); });
 
-      expect(mockUpload).not.toHaveBeenCalled();
+      expect(mockAttachDraftToPlace).not.toHaveBeenCalled();
+      expect(mockSetDraftCandidate).toHaveBeenCalledWith('draft-1', 'cand-9', 'New Spot');
       expect(mockToastShow).toHaveBeenCalledWith(
-        expect.stringContaining("Come back once it's live to add your photo."),
+        expect.stringContaining("will attach automatically once it's live"),
       );
     });
 
-    it('does not double-attach when two Open buttons are pressed before React re-renders mediaOutcome (confirmed by CodeRabbit)', async () => {
-      // The two presses below are fired back-to-back with no awaited flush
-      // in between -- if the claim were guarded by mediaOutcome state alone
-      // (which only updates on the *next* render), both onPress handlers
-      // would still read it as 'idle' and both would attach the same
-      // media. The mediaClaimedRef guard must catch this synchronously,
-      // regardless of render timing.
-      mockParams = { mediaUri: 'file://photo.jpg', mediaKind: 'photo', mediaFileSize: '1000000', mediaMimeType: 'image/jpeg' };
+    it('shows the plain confirm toast (no draft-specific copy) when there is no pending draft', async () => {
       setAuth({ id: 'user-1' });
-      mockedSearchNearby.mockResolvedValue([
-        makeCandidate({ external_id: 'a', name: 'First Place', already_in_crave: true, place_id: 'place-a' }),
-        makeCandidate({ external_id: 'b', name: 'Second Place', already_in_crave: true, place_id: 'place-b' }),
-      ]);
-      mockUpload.mockResolvedValue('image-1');
+      mockedSearchNearby.mockResolvedValue([makeCandidate({ name: 'New Spot' })]);
+      mockedConfirmNewSpot.mockResolvedValue({ status: 'pending', candidate_id: 'cand-9', confidence_score: 0.4 });
 
       const { findByLabelText } = render(<AddSpotScreen />);
-      const openFirst = await findByLabelText('Open First Place');
-      const openSecond = await findByLabelText('Open Second Place');
-      fireEvent.press(openFirst);
-      fireEvent.press(openSecond);
-      await act(async () => {});
+      const confirmBtn = await findByLabelText('Confirm this is New Spot');
+      await act(async () => { fireEvent.press(confirmBtn); });
 
-      expect(mockUpload).toHaveBeenCalledTimes(1);
-      expect(mockUpload).toHaveBeenCalledWith(expect.anything(), 'place-a', 'food');
-    });
-
-    it('does not attach the same media a second time to a different candidate', async () => {
-      mockParams = { mediaUri: 'file://photo.jpg', mediaKind: 'photo', mediaFileSize: '1000000', mediaMimeType: 'image/jpeg' };
-      setAuth({ id: 'user-1' });
-      mockedSearchNearby.mockResolvedValue([
-        makeCandidate({ external_id: 'a', name: 'First Place', already_in_crave: true, place_id: 'place-a' }),
-        makeCandidate({ external_id: 'b', name: 'Second Place', already_in_crave: true, place_id: 'place-b' }),
-      ]);
-      mockUpload.mockResolvedValue('image-1');
-
-      const { findByLabelText } = render(<AddSpotScreen />);
-      fireEvent.press(await findByLabelText('Open First Place'));
-      await act(async () => {});
-      fireEvent.press(await findByLabelText('Open Second Place'));
-      await act(async () => {});
-
-      expect(mockUpload).toHaveBeenCalledTimes(1);
-      expect(mockUpload).toHaveBeenCalledWith(expect.anything(), 'place-a', 'food');
-    });
-
-    it('toasts a failure instead of crashing when the upload itself fails', async () => {
-      mockParams = { mediaUri: 'file://photo.jpg', mediaKind: 'photo', mediaFileSize: '1000000', mediaMimeType: 'image/jpeg' };
-      setAuth({ id: 'user-1' });
-      mockedSearchNearby.mockResolvedValue([makeCandidate({ name: 'Existing Place', already_in_crave: true, place_id: 'place-123' })]);
-      mockUpload.mockRejectedValue(new Error('Upload to storage failed'));
-
-      const { findByLabelText } = render(<AddSpotScreen />);
-      fireEvent.press(await findByLabelText('Open Existing Place'));
-      await act(async () => {});
-
-      expect(mockToastShow).toHaveBeenCalledWith('Upload to storage failed');
+      expect(mockSetDraftCandidate).not.toHaveBeenCalled();
+      expect(mockToastShow).toHaveBeenCalledWith("Got it — added as a signal. It'll appear once confirmed by more activity.");
     });
   });
 });

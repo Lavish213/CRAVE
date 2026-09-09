@@ -46,3 +46,20 @@ export async function confirmNewSpot(payload: ConfirmNewSpotPayload): Promise<Co
   const { data } = await client.post<ConfirmNewSpotResponse>('/api/v1/nearby/confirm', payload);
   return data;
 }
+
+export interface CandidateStatus {
+  candidate_id: string;
+  resolved: boolean;
+  place_id: string | null;
+  blocked: boolean;
+}
+
+// confirmNewSpot() above only ever returns a candidate_id -- never a
+// place_id, since confirming just creates a DiscoveryCandidate for the
+// normal async promotion pipeline (scheduler runs every 5 minutes, and one
+// confirmation alone isn't enough corroboration). This is how a client
+// checks back later whether that candidate has since been promoted.
+export async function getCandidateStatus(candidateId: string): Promise<CandidateStatus> {
+  const { data } = await client.get<CandidateStatus>(`/api/v1/nearby/candidate/${candidateId}/status`);
+  return data;
+}
