@@ -9,6 +9,7 @@ import { useCityStore } from '../src/stores/cityStore';
 import { useAuthStore } from '../src/stores/authStore';
 import { useCravesStore } from '../src/stores/cravesStore';
 import { useVideoQueueStore, setActiveUserForVideoSync } from '../src/stores/videoQueueStore';
+import { usePostingDraftStore, setActiveUserForDraftResolution } from '../src/stores/postingDraftStore';
 import { usePushNotifications } from '../src/hooks/usePushNotifications';
 import { pingStreak } from '../src/api/streak';
 import { isSupabaseConfigured } from '../src/lib/supabase';
@@ -98,6 +99,7 @@ export default function RootLayout() {
   const user = useAuthStore((s) => s.user);
   const loadSaves = useCravesStore((s) => s.loadSaves);
   const runVideoSyncPass = useVideoQueueStore((s) => s.runSyncPass);
+  const resolvePendingCandidates = usePostingDraftStore((s) => s.resolvePendingCandidates);
 
   usePushNotifications(user?.id);
 
@@ -144,6 +146,17 @@ export default function RootLayout() {
       runVideoSyncPass(user.id).catch(() => {});
     }
   }, [user?.id, runVideoSyncPass]);
+
+  // Posting drafts left with restaurantRef=candidate (a place CRAVE
+  // didn't have yet when captured) get checked against the promotion
+  // pipeline here too -- same "on sign-in, then on every foreground"
+  // trigger as the video queue above.
+  useEffect(() => {
+    setActiveUserForDraftResolution(user?.id ?? null);
+    if (user?.id) {
+      resolvePendingCandidates(user.id).catch(() => {});
+    }
+  }, [user?.id, resolvePendingCandidates]);
 
   useEffect(() => {
     if (!user?.id) return;
