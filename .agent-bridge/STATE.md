@@ -297,6 +297,44 @@ app.main` clean, full frontend suite green (48/48 suites, 486/486 tests
 by the final PR), full backend suite (1110 passed, 2 skipped by the
 final PR) against a **freshly reset** local Postgres schema.
 
+## App-wide screen audit (Claude, 2026-09-09) — standalone, not a wave claim
+
+User asked for a full screen-by-screen audit of every route in
+`frontend/app` (not just Search), same rigor as the Search subsystem
+audit below: full file reads, API-contract cross-checks against backend
+routes, dead-code/gap/broken-control checks, race-condition review.
+
+- Confirmed **fixed** (no longer gaps) from the earlier
+  `SCREEN_INVENTORY_UX_DESIGN_AUDIT_2026-09-06.md`: Rank's retry buttons
+  are genuine refetches, record-video's failed `recordAsync()` now
+  toasts a real error, Leaderboard has a distinct Friends sign-in gate,
+  Craves' remove-a-save now confirms via `Alert.alert`.
+- Confirmed a real cross-screen bug class (client-side filtering
+  against a capped/paginated fetch) present in Search, Feed, and Map —
+  already fixed with three screen-specific patches, merged PR #234
+  (SHA `c8abbc5`). Confirmed **absent** elsewhere (`rank-home.tsx`'s
+  `list_user_rankings()` is a genuine unbounded fetch).
+- Full remaining sweep (rank-home, rank/[placeId], friends-feed,
+  add-spot, settings, record-video, user/[id], taste-profile, activity,
+  legal, profile-setup, +not-found, both root layouts): no new gaps
+  except two, both below.
+- **Fixed, merged PR #236**: `taste-profile/[userId].tsx` collapsed any
+  non-404 error on `fetchProfile`/`fetchTasteProfile` into the same
+  false "not found"/"no taste profile yet" states as a genuine 404 or
+  empty profile, with no retry — same anti-pattern its sibling
+  `user/[id].tsx` already fixed via `profileError`. Added the matching
+  `profileError`/`tasteError` states here too.
+- **Not fixed, relayed to Codex** (`.agent-bridge/claude-to-codex.md`,
+  `H-20260909-food-evidence-media-drop`): the "+" FAB's
+  `food-evidence.tsx` captures a photo/video, then "Continue" drops it
+  entirely — no upload call, no param passed to `add-spot.tsx`, no
+  queue. Both existing upload paths (`upload.ts`'s `requestUpload`,
+  `videoQueueStore`'s `recordVideo`) require a resolved `place_id` up
+  front, which doesn't exist yet on `add-spot.tsx`'s new-candidate
+  branch (`confirmNewSpot()` only returns a `candidate_id`) — a real
+  product/architecture decision, not a one-line fix. Three concrete
+  options written up in the handoff; none implemented yet.
+
 ## Next action
 
 Claim the next wave here before starting it — owner, branch, base SHA
