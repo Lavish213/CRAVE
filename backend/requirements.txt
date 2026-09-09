@@ -31,7 +31,7 @@ curl_cffi>=0.15.0
 truststore>=0.10.4
 
 # Database
-sqlalchemy>=2.0.0
+sqlalchemy>=2.0.52
 alembic>=1.18.0
 psycopg2-binary>=2.9.12
 
