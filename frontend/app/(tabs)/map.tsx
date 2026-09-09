@@ -1,8 +1,9 @@
 import React from 'react';
-import MapScreenCore, { buildClusters } from '../../src/screens/MapScreenCore';
+import MapScreenCore from '../../src/screens/MapScreenCore';
 import { useDiscoveryContextStore } from '../../src/stores/discoveryContextStore';
+import { buildMapClusters } from '../../src/ui-v2/map/mapClustering';
 
-export { buildClusters };
+export { buildMapClusters as buildClusters };
 
 /**
  * Route boundary for the contextual Map.
