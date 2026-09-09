@@ -16,10 +16,10 @@ export function CravePressable({ style, disabled, compactTarget = false, ...prop
       accessibilityState={{ ...props.accessibilityState, disabled: Boolean(disabled) }}
       style={({ pressed }) => [
         styles.base,
+        style,
         !compactTarget && styles.minimumTarget,
         pressed && !disabled ? styles.pressed : null,
         disabled ? styles.disabled : null,
-        style,
       ]}
     />
   );
