@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { RefreshControl, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { RefreshControl, StyleSheet, View } from 'react-native';
 import { FlashList, ViewToken } from '@shopify/flash-list';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -13,19 +13,32 @@ import { PlaceOut } from '../api/places';
 import type { SearchInterpretation } from '../api/search';
 import { getTierForPlace } from '../utils/scoring';
 import { logRecommendationEvent, logRecommendationEvents } from '../utils/recommendationEventQueue';
-import { Colors, Radius, Spacing } from '../constants/colors';
-import { PlaceCardCompact } from '../components/PlaceCardCompact';
-import type { SearchReasonRole } from '../components/DecisionStrip';
 import { CitySelectorStrip } from '../components/CitySelectorStrip';
 import { SkeletonRowList } from '../components/SkeletonCard';
 import { ErrorState } from '../components/ErrorState';
-import { EmptyState } from '../components/EmptyState';
 import { FilterSheet, FilterState, EMPTY_FILTERS, hasActiveFilters } from '../components/FilterSheet';
 import { useAuthStore } from '../stores/authStore';
 import { useCravesStore } from '../stores/cravesStore';
 import { useRecentSearchesStore } from '../stores/recentSearchesStore';
 import { fetchMyRankings } from '../api/social';
 import { SearchScope, useDiscoveryContextStore } from '../stores/discoveryContextStore';
+import type { SearchReasonRole } from '../components/DecisionStrip';
+import {
+  ConstraintToken,
+  DecisionRecovery,
+  InterpretationLine,
+  PlaceResultHero,
+  PlaceResultSupporting,
+  type ReasonKind,
+} from '../ui-v2/components';
+import {
+  CraveButton,
+  CraveIconButton,
+  CraveInput,
+  CravePressable,
+  CraveText,
+} from '../ui-v2/primitives';
+import { uiColors, uiRadius, uiSpace } from '../ui-v2/tokens';
 
 function makeSearchSessionId(): string {
   return randomUUID();
@@ -37,11 +50,6 @@ function makeSearchSessionId(): string {
  * derived from each place's own real catalog tier (the same signal already
  * shown via TierBadge/percentileCaption elsewhere), never a fabricated
  * personalized-fit claim.
- *
- * "Best match for you" is reserved for the single top-ranked result, and
- * only when the search didn't need to relax what the user actually asked
- * for -- claiming a top match after a compromise (e.g. a relaxed price
- * constraint) would overstate the evidence.
  */
 function searchReasonForResult(
   place: PlaceOut,
@@ -58,13 +66,16 @@ function searchReasonForResult(
   return 'worth_exploring';
 }
 
+function reasonKindForSearchRole(role: SearchReasonRole): ReasonKind {
+  if (role === 'best_match') return 'bestMatch';
+  if (role === 'safer_pick') return 'saferPick';
+  return 'worthExploring';
+}
+
 /**
  * Zero-state's time-relevant intent shortcut (Search Screen Contract §5/§6).
  * Deliberately a plain time-of-day rule, not personalized or inferred from
- * any user data -- "the smallest honest implementation," not invented
- * backend intelligence. Each phrase is real interpretable intent (e.g.
- * "Quick lunch" matches the interpreter's own `quick` context phrase), not
- * decorative copy.
+ * any user data.
  */
 export function intentShortcutForHour(hour: number): string {
   if (hour >= 5 && hour < 11) return 'Breakfast nearby';
@@ -77,8 +88,6 @@ export function intentShortcutForHour(hour: number): string {
 interface ZeroResultInfo {
   title: string;
   body: string;
-  /** Present only when a specific, safe-to-relax constraint exists to
-   * offer removing. Absent (not a fabricated fallback) when none does. */
   relaxKey?: string;
   relaxLabel?: string;
 }
@@ -86,9 +95,7 @@ interface ZeroResultInfo {
 /**
  * Zero-result relaxation offer (Search Screen Contract §11). Names the
  * smallest specific relaxation the interpreted query can actually justify
- * -- never a generic "try broadening your search," and never a dietary/
- * allergy hard constraint (contract §9/§16). When no safe relaxation
- * exists, says so directly instead of implying one does.
+ * and never offers a dietary/allergy hard constraint.
  */
 export function zeroResultInfo(
   interpretation: SearchInterpretation | undefined,
@@ -105,10 +112,6 @@ export function zeroResultInfo(
     };
   }
 
-  // required_categories are always the dietary/allergy phrases the
-  // interpreter also records as hard_constraints (see query_interpreter.py)
-  // -- never offered here. context entries (near_me/date_night/open_late/
-  // quick) and an unrelaxed price tier are the only genuinely soft signals.
   const hardSet = new Set(interpretation.hard_constraints);
   const candidates: { key: string; label: string }[] = [];
   if (interpretation.price_tier != null && !priceWasRelaxed) {
@@ -172,7 +175,9 @@ export default function SearchScreen() {
   const [resultLimit, setResultLimit] = useState(DEFAULT_RESULT_LIMIT);
   const [filters, setFilters] = useState<FilterState>(EMPTY_FILTERS);
   const [filterVisible, setFilterVisible] = useState(false);
+  const [acceptedPriceRelaxation, setAcceptedPriceRelaxation] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const inputRef = useRef<React.ElementRef<typeof CraveInput>>(null);
   const searchSessionIdRef = useRef(makeSearchSessionId());
   const exposedIdsRef = useRef<Set<string>>(new Set());
 
@@ -185,6 +190,7 @@ export default function SearchScreen() {
     setResultLimit(DEFAULT_RESULT_LIMIT);
     setScope('all');
     setFilters(EMPTY_FILTERS);
+    setAcceptedPriceRelaxation(false);
   }, [debouncedQuery]);
 
   const searchQuery = useQuery({
@@ -285,10 +291,6 @@ export default function SearchScreen() {
     handleChange(query.replace(pattern, ' ').replace(/\s+/g, ' ').trim());
   };
 
-  /** Zero-state shortcut tap (recent search or the time-relevant intent
-   * shortcut) -- a deliberate, explicit search, so it searches immediately
-   * rather than waiting out the normal debounce, and it's recorded like any
-   * other explicit search. */
   const applyShortcut = (text: string) => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     searchSessionIdRef.current = makeSearchSessionId();
@@ -299,286 +301,399 @@ export default function SearchScreen() {
   };
 
   const priceWasRelaxed = Boolean(searchData?.relaxed_constraints.includes('price'));
-
   const showZeroState = query.length === 0 && !searchQuery.isLoading;
   const showBelowThreshold = query.length > 0 && query.length < 2;
   const showNoResults = searched && results.length === 0 && !searchQuery.isError;
   const showNoFilterMatches = searched && results.length > 0 && filteredResults.length === 0 && !rankedScopeLoading && !rankedScopeError;
-  const canRenderResults = !showZeroState && !showNoResults && !showNoFilterMatches && !searchQuery.isError && !rankedScopeLoading && !rankedScopeError && filteredResults.length > 0;
+  const showPreferredRelaxation = searched && results.length > 0 && priceWasRelaxed && !acceptedPriceRelaxation;
+  const canRenderResults = !showZeroState
+    && !showNoResults
+    && !showNoFilterMatches
+    && !showPreferredRelaxation
+    && !searchQuery.isError
+    && !rankedScopeLoading
+    && !rankedScopeError
+    && filteredResults.length > 0;
+
+  const openResult = (item: PlaceOut, position: number, reason: SearchReasonRole) => {
+    logRecommendationEvent({
+      surface: 'search',
+      event_type: 'click',
+      place_id: item.id,
+      position,
+      rank_percentile: item.rank_percentile,
+      query: debouncedQuery,
+      city_id: selectedCity?.id ?? null,
+      search_session_id: searchSessionIdRef.current,
+    });
+    router.push(`/place/${item.id}?reason_role=${reason}&reason_source=search`);
+  };
+
+  const mapCurrentResults = () => {
+    if (!searchData) return;
+    setSearchMapHandoff({
+      query: debouncedQuery,
+      searchSessionId: searchSessionIdRef.current,
+      interpretation: searchData.interpretation,
+      items: filteredResults,
+      scope,
+    });
+    router.push('/(tabs)/map');
+  };
 
   return (
     <View style={styles.container}>
       <View style={styles.bar}>
         <View style={styles.barRow}>
-          <View style={[styles.inputRow, styles.inputRowFlex]}>
-            <Ionicons name="search" size={16} color={Colors.textSecondary} />
-            <TextInput
-              style={styles.input}
-              placeholder="Search places, cuisines…"
-              placeholderTextColor={Colors.textSecondary}
-              value={query}
-              onChangeText={handleChange}
-              returnKeyType="search"
-              onSubmitEditing={() => {
-                const submitted = query.trim();
-                if (!submitted) return;
-                // A pending debounce from onChangeText must not fire after
-                // this explicit submit already set debouncedQuery -- an
-                // identical late setDebouncedQuery is at best redundant,
-                // and firing after unmount is a real dangling-update bug.
-                if (debounceRef.current) clearTimeout(debounceRef.current);
-                setSubmittedQuery(submitted);
-                setDebouncedQuery(submitted);
-                addRecentQuery(submitted);
-              }}
-              autoCorrect={false}
-              accessibilityLabel="Search input"
+          <CraveInput
+            ref={inputRef}
+            containerStyle={styles.inputFlex}
+            leading={<Ionicons name="search" size={18} color={uiColors.text.secondary} />}
+            trailing={query.length > 0 ? (
+              <CraveIconButton
+                accessibilityLabel="Clear search"
+                icon={<Ionicons name="close-circle" size={20} color={uiColors.text.secondary} />}
+                onPress={handleClear}
+              />
+            ) : undefined}
+            placeholder="Search places, cuisines…"
+            value={query}
+            onChangeText={handleChange}
+            returnKeyType="search"
+            onSubmitEditing={() => {
+              const submitted = query.trim();
+              if (!submitted) return;
+              if (debounceRef.current) clearTimeout(debounceRef.current);
+              setSubmittedQuery(submitted);
+              setDebouncedQuery(submitted);
+              addRecentQuery(submitted);
+            }}
+            autoCorrect={false}
+            accessibilityLabel="Search input"
+          />
+          {searched && results.length > 0 ? (
+            <CraveIconButton
+              accessibilityLabel="Filter results"
+              selected={hasActiveFilters(filters)}
+              icon={<Ionicons name="options-outline" size={21} color={hasActiveFilters(filters) ? uiColors.accent.selected : uiColors.text.secondary} />}
+              onPress={() => setFilterVisible(true)}
             />
-            {query.length > 0 && (
-              <TouchableOpacity onPress={handleClear} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} accessibilityLabel="Clear search" accessibilityRole="button">
-                <Ionicons name="close-circle" size={18} color={Colors.textSecondary} />
-              </TouchableOpacity>
-            )}
-          </View>
-          {searched && results.length > 0 && (
-            <TouchableOpacity style={styles.filterBtn} onPress={() => setFilterVisible(true)} accessibilityLabel="Filter results" accessibilityRole="button">
-              <Ionicons name="options-outline" size={20} color={hasActiveFilters(filters) ? Colors.primary : Colors.textSecondary} />
-            </TouchableOpacity>
-          )}
+          ) : null}
         </View>
-        <Text style={styles.cityContext}>
+        <CraveText role="caption" tone="secondary">
           {locationState.status === 'granted'
             ? 'Searching everywhere, nearest first'
             : locationState.status === 'resolving'
               ? 'Searching everywhere — finding your location…'
               : 'Searching everywhere'}
-        </Text>
+        </CraveText>
       </View>
 
-      {searched && searchData?.interpretation && (
+      {searched && searchData?.interpretation ? (
         <View style={styles.interpretationPanel}>
-          <Text style={styles.interpretationTitle}>{searchData.interpretation.uncertain ? 'CHECK THIS SEARCH' : 'UNDERSTOOD'}</Text>
-          <Text style={styles.interpretationQuery}>Searching for {searchData.interpretation.lookup_query}</Text>
+          <InterpretationLine query={searchData.interpretation.lookup_query} uncertain={searchData.interpretation.uncertain} />
           <View style={styles.constraintRow}>
-            {searchData.interpretation.price_tier != null && (
-              <TouchableOpacity style={styles.constraintChip} onPress={() => removeInterpretedConstraint('price')} accessibilityLabel="Remove price constraint">
-                <Text style={styles.constraintText}>{'$'.repeat(searchData.interpretation.price_tier)} ×</Text>
-              </TouchableOpacity>
-            )}
-            {[...searchData.interpretation.required_categories, ...searchData.interpretation.context].map((key) => (
-              <TouchableOpacity key={key} style={styles.constraintChip} onPress={() => removeInterpretedConstraint(key)} accessibilityLabel={`Remove ${key.replace('_', ' ')} constraint`}>
-                <Text style={styles.constraintText}>{key.replace('_', ' ')} ×</Text>
-              </TouchableOpacity>
+            {searchData.interpretation.price_tier != null ? (
+              <ConstraintToken
+                label={'$'.repeat(searchData.interpretation.price_tier)}
+                kind={priceWasRelaxed ? 'relaxed' : 'preferred'}
+                onRemove={() => removeInterpretedConstraint('price')}
+              />
+            ) : null}
+            {searchData.interpretation.required_categories.map((key) => (
+              <ConstraintToken key={`required:${key}`} label={key.replace(/_/g, ' ')} kind="protected" onRemove={() => removeInterpretedConstraint(key)} />
+            ))}
+            {searchData.interpretation.context.map((key) => (
+              <ConstraintToken key={`context:${key}`} label={key.replace(/_/g, ' ')} kind="preferred" onRemove={() => removeInterpretedConstraint(key)} />
             ))}
           </View>
-          {searchData.interpretation.unsupported_hard_constraints.length > 0 && (
-            <Text style={styles.constraintWarning}>We can’t verify this allergy safely yet. No results were shown.</Text>
-          )}
-          {searchData.relaxed_constraints.includes('price') && (
-            <Text style={styles.relaxationText}>No exact budget matches — showing broader prices. Dietary constraints stayed enforced.</Text>
-          )}
+          {searchData.interpretation.unsupported_hard_constraints.length > 0 ? (
+            <CraveText role="caption" tone="destructive">We can’t verify this allergy safely yet. No results were shown.</CraveText>
+          ) : null}
+          {priceWasRelaxed && acceptedPriceRelaxation ? (
+            <CraveText role="caption" tone="uncertain">Showing broader prices. Protected dietary constraints stayed enforced.</CraveText>
+          ) : null}
         </View>
-      )}
+      ) : null}
 
-      {searched && user && (
+      {searched && user ? (
         <View style={styles.scopeRow}>
-          {(['all', 'craves', 'ranked'] as SearchScope[]).map((value) => (
-            <TouchableOpacity
-              key={value}
-              style={[styles.scopeChip, scope === value && styles.scopeChipActive]}
-              onPress={() => {
-                setScope(value);
-                if (value !== 'all') setResultLimit(MAX_RESULT_LIMIT);
-              }}
-              accessibilityRole="button"
-              accessibilityState={{ selected: scope === value }}
-            >
-              <Text style={[styles.scopeText, scope === value && styles.scopeTextActive]}>{value === 'all' ? 'All' : value === 'craves' ? 'Craves' : 'Ranked'}</Text>
-            </TouchableOpacity>
-          ))}
+          {(['all', 'craves', 'ranked'] as SearchScope[]).map((value) => {
+            const selected = scope === value;
+            const label = value === 'all' ? 'All' : value === 'craves' ? 'Craves' : 'Ranked';
+            return (
+              <CravePressable
+                key={value}
+                onPress={() => {
+                  setScope(value);
+                  if (value !== 'all') setResultLimit(MAX_RESULT_LIMIT);
+                }}
+                accessibilityLabel={`Search ${label}`}
+                accessibilityState={{ selected }}
+                style={[styles.scopeChip, selected ? styles.scopeChipActive : null]}
+              >
+                <CraveText role="caption" tone={selected ? 'brand' : 'secondary'}>{label}</CraveText>
+              </CravePressable>
+            );
+          })}
         </View>
-      )}
+      ) : null}
 
-      {searchQuery.isLoading && <View style={styles.list}><SkeletonRowList count={5} /></View>}
-      {searchQuery.isError && !searchQuery.isLoading && <ErrorState message="Couldn't search right now." onRetry={() => searchQuery.refetch()} />}
+      {searchQuery.isLoading ? <View style={styles.list}><SkeletonRowList count={5} /></View> : null}
+      {searchQuery.isError && !searchQuery.isLoading ? <ErrorState message="Couldn't search right now." onRetry={() => searchQuery.refetch()} /> : null}
 
-      {showZeroState && (
+      {showZeroState ? (
         <View style={styles.zeroState}>
-          <Text style={styles.zeroStateTitle}>What are you craving?</Text>
-          <TouchableOpacity
+          <CraveText role="headline">What are you craving?</CraveText>
+          <CravePressable
             style={styles.shortcutChip}
             onPress={() => applyShortcut(intentShortcut)}
-            accessibilityRole="button"
             accessibilityLabel={`Search ${intentShortcut}`}
           >
-            <Ionicons name="time-outline" size={14} color={Colors.primary} />
-            <Text style={styles.shortcutText}>{intentShortcut}</Text>
-          </TouchableOpacity>
+            <Ionicons name="time-outline" size={16} color={uiColors.accent.brand} />
+            <CraveText role="caption">{intentShortcut}</CraveText>
+          </CravePressable>
 
-          {recentQueries.length > 0 && (
+          {recentQueries.length > 0 ? (
             <>
-              <Text style={styles.zeroStateSectionLabel}>RECENT SEARCHES</Text>
+              <CraveText role="micro" tone="secondary" style={styles.sectionLabel}>RECENT SEARCHES</CraveText>
               <View style={styles.shortcutRow}>
                 {recentQueries.map((recent) => (
-                  <TouchableOpacity
+                  <CravePressable
                     key={recent}
                     style={styles.shortcutChip}
                     onPress={() => applyShortcut(recent)}
-                    accessibilityRole="button"
                     accessibilityLabel={`Search ${recent} again`}
                   >
-                    <Ionicons name="time-outline" size={14} color={Colors.textSecondary} />
-                    <Text style={styles.shortcutText}>{recent}</Text>
-                  </TouchableOpacity>
+                    <Ionicons name="time-outline" size={16} color={uiColors.text.secondary} />
+                    <CraveText role="caption">{recent}</CraveText>
+                  </CravePressable>
                 ))}
               </View>
             </>
-          )}
+          ) : null}
 
-          <Text style={styles.zeroStateSectionLabel}>CITY</Text>
+          <CraveText role="micro" tone="secondary" style={styles.sectionLabel}>CITY</CraveText>
           <CitySelectorStrip />
         </View>
-      )}
-      {showBelowThreshold && <View style={styles.loadingRow}><Text style={styles.hintText}>Keep typing to search…</Text></View>}
-      {showNoResults && (() => {
+      ) : null}
+
+      {showBelowThreshold ? (
+        <View style={styles.loadingRow}>
+          <CraveText role="caption" tone="secondary">Keep typing to search…</CraveText>
+        </View>
+      ) : null}
+
+      {showNoResults ? (() => {
         const info = zeroResultInfo(searchData?.interpretation, priceWasRelaxed);
+        const unsupported = Boolean(searchData?.interpretation.unsupported_hard_constraints.length);
         return (
-          <EmptyState
-            icon="search-outline"
-            title={info.title}
-            body={info.body}
-            ctaLabel={info.relaxKey ? `Remove ${info.relaxLabel}` : undefined}
-            onCta={info.relaxKey ? () => removeInterpretedConstraint(info.relaxKey!) : undefined}
-          />
+          <View style={styles.recoveryWrap}>
+            <DecisionRecovery
+              kind={unsupported ? 'requiredZero' : 'generic'}
+              protectedConstraint={unsupported ? searchData?.interpretation.unsupported_hard_constraints[0] : undefined}
+              title={info.title}
+              body={info.body}
+              primaryLabel={info.relaxKey ? `Remove ${info.relaxLabel}` : undefined}
+              onPrimary={info.relaxKey ? () => removeInterpretedConstraint(info.relaxKey!) : undefined}
+              secondaryLabel="Edit search"
+              onSecondary={() => inputRef.current?.focus()}
+            />
+          </View>
         );
-      })()}
+      })() : null}
 
-      {rankedScopeLoading && <View style={styles.list}><SkeletonRowList count={4} /></View>}
-      {rankedScopeError && (
-        <ErrorState message="Couldn't load your ranked places." onRetry={() => rankingQuery.refetch()} />
-      )}
+      {showPreferredRelaxation ? (
+        <View style={styles.recoveryWrap}>
+          <DecisionRecovery
+            kind="preferredNoExact"
+            title="No exact budget match"
+            body="CRAVE found options at broader prices. Protected dietary constraints stayed enforced."
+            primaryLabel="See broader prices"
+            onPrimary={() => setAcceptedPriceRelaxation(true)}
+            secondaryLabel="Edit search"
+            onSecondary={() => inputRef.current?.focus()}
+          />
+        </View>
+      ) : null}
 
-      {showNoFilterMatches && (
-        <EmptyState
-          icon="options-outline"
-          title="No matches for these filters"
-          body="Try clearing a filter to see more results."
-          ctaLabel="Clear filters"
-          onCta={() => {
-            setFilters(EMPTY_FILTERS);
-            if (scope !== 'all') setScope('all');
-          }}
-        />
-      )}
+      {rankedScopeLoading ? <View style={styles.list}><SkeletonRowList count={4} /></View> : null}
+      {rankedScopeError ? <ErrorState message="Couldn't load your ranked places." onRetry={() => rankingQuery.refetch()} /> : null}
 
-      {canRenderResults && (
+      {showNoFilterMatches ? (
+        <View style={styles.recoveryWrap}>
+          <DecisionRecovery
+            kind="generic"
+            title="No matches for these filters"
+            body="The search itself still has results. Clear the view filters to see them."
+            primaryLabel="Clear filters"
+            onPrimary={() => {
+              setFilters(EMPTY_FILTERS);
+              if (scope !== 'all') setScope('all');
+            }}
+            secondaryLabel="Edit search"
+            onSecondary={() => inputRef.current?.focus()}
+          />
+        </View>
+      ) : null}
+
+      {canRenderResults ? (
         <FlashList
           data={filteredResults}
           keyExtractor={(place) => place.id}
           viewabilityConfig={VIEWABILITY_CONFIG}
           onViewableItemsChanged={onViewableItemsChanged}
-          renderItem={({ item }) => {
+          renderItem={({ item, index }) => {
             const position = results.findIndex((place) => place.id === item.id);
             const reason = searchReasonForResult(item, position, priceWasRelaxed);
+            const commonProps = {
+              place: item,
+              reasonKind: reasonKindForSearchRole(reason),
+              onPress: () => openResult(item, position, reason),
+              onPressIn: () => prefetchPlace(item.id),
+            };
             return (
               <View style={styles.rowSpacer}>
-                <PlaceCardCompact
-                  place={item}
-                  searchReason={reason}
-                  onPress={() => {
-                    logRecommendationEvent({
-                      surface: 'search',
-                      event_type: 'click',
-                      place_id: item.id,
-                      position,
-                      rank_percentile: item.rank_percentile,
-                      query: debouncedQuery,
-                      city_id: selectedCity?.id ?? null,
-                      search_session_id: searchSessionIdRef.current,
-                    });
-                    router.push(
-                      reason
-                        ? `/place/${item.id}?reason_role=${reason}&reason_source=search`
-                        : `/place/${item.id}`,
-                    );
-                  }}
-                  onPressIn={() => prefetchPlace(item.id)}
-                />
+                {index === 0 ? <PlaceResultHero {...commonProps} /> : <PlaceResultSupporting {...commonProps} />}
               </View>
             );
           }}
           contentContainerStyle={styles.list}
-          refreshControl={<RefreshControl refreshing={searchQuery.isRefetching} onRefresh={() => searchQuery.refetch()} tintColor={Colors.primary} />}
+          refreshControl={<RefreshControl refreshing={searchQuery.isRefetching} onRefresh={() => searchQuery.refetch()} tintColor={uiColors.accent.brand} />}
           ListHeaderComponent={(
             <View style={styles.resultsHeader}>
-              <Text style={styles.resultCount}>{filteredResults.length} result{filteredResults.length !== 1 ? 's' : ''}{filteredResults.length !== results.length ? ` of ${results.length}` : ''}</Text>
-              <TouchableOpacity
-                onPress={() => {
-                  if (!searchData) return;
-                  setSearchMapHandoff({
-                    query: debouncedQuery,
-                    searchSessionId: searchSessionIdRef.current,
-                    interpretation: searchData.interpretation,
-                    items: filteredResults,
-                    scope,
-                  });
-                  router.push('/(tabs)/map');
-                }}
-                accessibilityRole="button"
-                accessibilityLabel="Show these search results on map"
-              >
-                <Text style={styles.mapLink}>Map these results</Text>
-              </TouchableOpacity>
+              <View style={styles.resultsHeaderCopy}>
+                <CraveText role="micro" tone="secondary">
+                  {filteredResults.length} result{filteredResults.length !== 1 ? 's' : ''}{filteredResults.length !== results.length ? ` of ${results.length}` : ''}
+                </CraveText>
+                <CraveText role="caption" tone="secondary">Best current matches first. More stays bounded.</CraveText>
+              </View>
+              <CraveButton label="Map" variant="ghost" onPress={mapCurrentResults} accessibilityLabel="Show these search results on map" />
             </View>
           )}
           ListFooterComponent={searchData && searchData.total > results.length && resultLimit < MAX_RESULT_LIMIT ? (
-            <TouchableOpacity style={styles.showMoreButton} onPress={() => setResultLimit((value) => Math.min(MAX_RESULT_LIMIT, value + RESULT_STEP))} accessibilityRole="button">
-              <Text style={styles.showMoreText}>Show more</Text>
-            </TouchableOpacity>
+            <CraveButton
+              label="Show more"
+              variant="secondary"
+              onPress={() => setResultLimit((value) => Math.min(MAX_RESULT_LIMIT, value + RESULT_STEP))}
+              style={styles.showMoreButton}
+            />
           ) : null}
         />
-      )}
+      ) : null}
 
-      <FilterSheet visible={filterVisible} onClose={() => setFilterVisible(false)} filters={filters} onChange={setFilters} availableCategories={availableCategories} />
+      <FilterSheet
+        visible={filterVisible}
+        onClose={() => setFilterVisible(false)}
+        filters={filters}
+        onChange={setFilters}
+        availableCategories={availableCategories}
+      />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.background },
-  bar: { padding: Spacing.md, paddingBottom: Spacing.xs, gap: Spacing.xs },
-  barRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
-  inputRowFlex: { flex: 1 },
-  filterBtn: { padding: Spacing.sm, minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
-  inputRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.surface, borderRadius: Radius.md, borderWidth: 1, borderColor: Colors.border, paddingHorizontal: Spacing.md, paddingVertical: 10, gap: Spacing.sm, minHeight: 46 },
-  input: { flex: 1, color: Colors.text, fontSize: 15 },
-  cityContext: { color: Colors.textSecondary, fontSize: 12, fontWeight: '500', paddingLeft: Spacing.xs },
-  list: { padding: Spacing.md, paddingBottom: Spacing.xxl },
-  rowSpacer: { marginBottom: Spacing.sm },
-  loadingRow: { paddingVertical: 20, alignItems: 'center', gap: Spacing.sm },
-  hintText: { color: Colors.textSecondary, fontSize: 13 },
-  zeroState: { paddingHorizontal: Spacing.md, paddingTop: Spacing.sm, gap: Spacing.xs },
-  zeroStateTitle: { color: Colors.text, fontSize: 17, fontWeight: '800', marginBottom: Spacing.xs },
-  zeroStateSectionLabel: { color: Colors.textSecondary, fontSize: 11, fontWeight: '700', textTransform: 'uppercase', marginTop: Spacing.sm, marginBottom: Spacing.xs },
-  shortcutRow: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.xs },
-  shortcutChip: { flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 44, paddingHorizontal: Spacing.md, borderRadius: Radius.full, borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.surface, alignSelf: 'flex-start' },
-  shortcutText: { color: Colors.text, fontSize: 13, fontWeight: '600' },
-  interpretationPanel: { marginHorizontal: Spacing.md, marginBottom: Spacing.xs, padding: Spacing.sm, backgroundColor: Colors.surface, borderRadius: Radius.md, borderWidth: 1, borderColor: Colors.border },
-  interpretationTitle: { color: Colors.primary, fontSize: 10, fontWeight: '800', letterSpacing: 1.2 },
-  interpretationQuery: { color: Colors.text, fontSize: 13, fontWeight: '700', marginTop: 4 },
-  constraintRow: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.xs, marginTop: Spacing.xs },
-  constraintChip: { minHeight: 36, justifyContent: 'center', paddingHorizontal: Spacing.sm, borderRadius: Radius.full, backgroundColor: Colors.surfaceElevated },
-  constraintText: { color: Colors.textSecondary, fontSize: 12, fontWeight: '700', textTransform: 'capitalize' },
-  constraintWarning: { color: Colors.error, fontSize: 12, lineHeight: 17, marginTop: Spacing.xs },
-  relaxationText: { color: Colors.textSecondary, fontSize: 12, lineHeight: 17, marginTop: Spacing.xs },
-  scopeRow: { flexDirection: 'row', gap: Spacing.xs, paddingHorizontal: Spacing.md, paddingVertical: Spacing.xs },
-  scopeChip: { minHeight: 44, justifyContent: 'center', paddingHorizontal: Spacing.md, borderRadius: Radius.full, borderWidth: 1, borderColor: Colors.border },
-  scopeChipActive: { backgroundColor: Colors.primary, borderColor: Colors.primary },
-  scopeText: { color: Colors.textSecondary, fontSize: 13, fontWeight: '700' },
-  scopeTextActive: { color: Colors.background },
-  resultsHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingBottom: Spacing.sm },
-  resultCount: { color: Colors.textSecondary, fontSize: 11, fontWeight: '700', textTransform: 'uppercase' },
-  mapLink: { color: Colors.primary, fontSize: 13, fontWeight: '800' },
-  showMoreButton: { minHeight: 48, alignItems: 'center', justifyContent: 'center', marginTop: Spacing.sm, borderRadius: Radius.md, borderWidth: 1, borderColor: Colors.primary },
-  showMoreText: { color: Colors.primary, fontSize: 14, fontWeight: '800' },
+  container: {
+    flex: 1,
+    backgroundColor: uiColors.surface.canvas,
+  },
+  bar: {
+    paddingHorizontal: uiSpace.screenGutter,
+    paddingTop: uiSpace.md,
+    paddingBottom: uiSpace.xs,
+    gap: uiSpace.xs,
+  },
+  barRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: uiSpace.sm,
+  },
+  inputFlex: {
+    flex: 1,
+  },
+  list: {
+    padding: uiSpace.screenGutter,
+    paddingBottom: uiSpace.xxl,
+  },
+  rowSpacer: {
+    marginBottom: uiSpace.md,
+  },
+  loadingRow: {
+    paddingVertical: uiSpace.xl,
+    alignItems: 'center',
+  },
+  zeroState: {
+    paddingHorizontal: uiSpace.screenGutter,
+    paddingTop: uiSpace.lg,
+    gap: uiSpace.md,
+  },
+  sectionLabel: {
+    marginTop: uiSpace.sm,
+  },
+  shortcutRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: uiSpace.sm,
+  },
+  shortcutChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: uiSpace.sm,
+    paddingHorizontal: uiSpace.md,
+    borderRadius: uiRadius.pill,
+    borderWidth: 1,
+    borderColor: uiColors.border.subtle,
+    backgroundColor: uiColors.surface.primary,
+  },
+  interpretationPanel: {
+    marginHorizontal: uiSpace.screenGutter,
+    marginBottom: uiSpace.xs,
+    padding: uiSpace.md,
+    gap: uiSpace.sm,
+    backgroundColor: uiColors.surface.primary,
+    borderRadius: uiRadius.card,
+    borderWidth: 1,
+    borderColor: uiColors.border.subtle,
+  },
+  constraintRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: uiSpace.sm,
+  },
+  scopeRow: {
+    flexDirection: 'row',
+    gap: uiSpace.sm,
+    paddingHorizontal: uiSpace.screenGutter,
+    paddingVertical: uiSpace.xs,
+  },
+  scopeChip: {
+    paddingHorizontal: uiSpace.md,
+    borderRadius: uiRadius.pill,
+    borderWidth: 1,
+    borderColor: uiColors.border.subtle,
+    alignItems: 'center',
+  },
+  scopeChipActive: {
+    backgroundColor: uiColors.surface.selected,
+    borderColor: uiColors.border.selected,
+  },
+  recoveryWrap: {
+    padding: uiSpace.screenGutter,
+  },
+  resultsHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: uiSpace.md,
+    paddingBottom: uiSpace.md,
+  },
+  resultsHeaderCopy: {
+    flex: 1,
+    gap: uiSpace.xs,
+  },
+  showMoreButton: {
+    marginTop: uiSpace.sm,
+  },
 });
