@@ -94,6 +94,42 @@ def test_backfill_is_idempotent_on_a_second_run(db, city):
     assert second["claims_written"] == 0
 
 
+def test_backfill_dedupes_duplicate_candidates_for_same_place(db, city):
+    place = Place(name="Duplicate OSM Place", city_id=city.id, lat=37.77, lng=-122.42)
+    db.add(place)
+    db.flush()
+
+    for suffix in ("a", "b"):
+        db.add(
+            DiscoveryCandidate(
+                name=f"Duplicate OSM Place {suffix}",
+                city_id=city.id,
+                lat=37.77,
+                lng=-122.42,
+                source="osm",
+                resolved=True,
+                resolved_place_id=place.id,
+                status="promoted",
+                raw_payload={"outdoor_seating": "yes"},
+            )
+        )
+    db.commit()
+
+    result = run_backfill()
+
+    assert result["claims_written"] == 1
+    assert result["places_affected"] == 1
+    assert (
+        db.query(PlaceClaim)
+        .filter(
+            PlaceClaim.place_id == place.id,
+            PlaceClaim.field == "outdoor_seating",
+        )
+        .count()
+        == 1
+    )
+
+
 def test_backfill_skips_non_osm_sourced_candidates(db, city):
     _already_promoted_candidate(
         db, city, source="overture",

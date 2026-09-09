@@ -1,28 +1,58 @@
-# H-20260902-screen-coverage-brief
+# H-20260909-osm-backfill-dedupe-blocker
 
-Status: ready-for-review
+Status: blocked
 Owner: Codex
-Branch: codex/screen-journey-feed-detail-craves
-Base SHA: e6b7d9b3d803fdf36154b4fe2cecc56a5d47d06b
-Commit SHA: 89978f3
-Allowed next files: docs/CLAUDE_EXECUTION_BRIEF_SCREEN_AND_COVERAGE_2026-09-02.md, .agent-bridge/STATE.md, .agent-bridge/claude-to-codex.md
+Branch: codex/osm-backfill-dedupe-claims
+Base SHA: 2bd1bfa1d29700c9894cf64face90cf138529c9f
+Commit SHA: bc92ea70a7d11ef4e0776987ac8c77b6cbdd20cf
+Allowed next files: backend/scripts/backfill_osm_hours_and_seating.py, backend/tests/test_backfill_osm_hours_and_seating.py, .agent-bridge/STATE.md, .agent-bridge/codex-to-claude.md
 
 ## Outcome
 
-Added an executable brief for two deliberately separate tracks: the Feed → Place Detail → Save/Craves UI journey and bounded free-source menu/photo coverage. It records the historical baseline, existing canary commands, safety gates, measurable outcomes, stop conditions, and PR boundaries.
+Codex verified Railway production access and attempted the approved OSM
+hours/outdoor-seating backfill from a clean `origin/main` worktree.
+
+Dry-run on merged `main` was sane: `11239` OSM candidates scanned, `4321`
+claims would be written across `3658` places. The real run then started and
+committed the first small batches, reaching `30` claims across `27` places,
+before failing in a later batch on the existing `(place_id, field, claim_key)`
+uniqueness constraint.
+
+Root cause: the script checked for claims already committed in the database,
+but did not dedupe claims scheduled within the same run/session. Production
+has duplicate promoted OSM candidates that can point to the same place and
+produce the same deterministic claim before the session flushes.
+
+This branch fixes that by keeping an in-memory `(place_id, field, claim_key)`
+set for claims already scheduled in the current run, and adds a regression
+test for duplicate OSM candidates resolving to the same place.
+
+The menu backlog canary was not run. Current `run_menu_backlog_canary.py`
+requires exact `--place-ids` or `--place-ids-file`; the bare
+`--run --confirm-count 10` command is insufficient without a reviewed 10-place
+ID list.
 
 ## Verification
 
-- `git diff --check` → passed with no output before commit.
-- referenced-path existence loop covering every file/script named in the brief → passed with no `MISSING` output.
-- baseline cross-check against `CRAVE_STATUS.md` and canary constraints against `docs/POPULATION_RELEASE_PASS_2026-09-01.md`/`docs/SCHEDULER_WORKER_ROLLOUT.md` → counts, allowlist, disabled jobs, and prior 0/3 menu + 1/2 hidden-image evidence match.
+- `railway status` in the main repo → production project/service linked.
+- clean worktree from `origin/main` → `2bd1bfa1d29700c9894cf64face90cf138529c9f`.
+- `railway run --no-local --service CRAVE-scheduler --environment production -- sh -lc 'if [ -n "$DATABASE_URL" ]; then echo DATABASE_URL_PRESENT; else echo DATABASE_URL_MISSING; fi'` → `DATABASE_URL_PRESENT`; value was not printed.
+- `railway run --no-local --service CRAVE-scheduler --environment production -- sh -lc 'cd backend && python3 scripts/backfill_osm_hours_and_seating.py --dry-run'` on merged `main` → completed with `candidates_touched=3663 claims_written=4321 places_affected=3658 dry_run=True`.
+- `railway run --no-local --service CRAVE-scheduler --environment production -- sh -lc 'cd backend && python3 scripts/backfill_osm_hours_and_seating.py'` on merged `main` → failed after early committed batches with `psycopg2.errors.UniqueViolation` on `(place_id, field, claim_key)`.
+- `python3 -m pytest backend/tests/test_backfill_osm_hours_and_seating.py -q` after fix → `5 passed in 0.43s`.
+- Patched production dry-run → completed with `candidates_touched=3634 claims_written=4289 places_affected=3631 dry_run=True`.
 
 ## Known gaps / risks
 
-- Documentation only: no UI/backend code changed and no production job or canary ran.
-- Production counts are explicitly labeled historical until reproduced.
-- The branch name predates the user's pivot to a Claude brief; trust the declared diff scope, not the branch label.
+- Production is partially backfilled: the early committed batches wrote `30`
+  claims across `27` places before the failing batch rolled back.
+- The remaining production write should not be run from this unmerged branch
+  unless the human explicitly authorizes that shortcut.
+- Menu canary still needs a reviewed exact 10-place ID list before it can run.
 
 ## Next action
 
-Review and merge this documentation-only change. Then claim exactly one track on a fresh Claude branch; keep UI work, extractor changes, production canaries, image promotion, and scheduler expansion in separate PRs.
+Review and merge `bc92ea70a7d11ef4e0776987ac8c77b6cbdd20cf`, then rerun the
+OSM backfill for real from merged `main`. For the menu canary, produce/review a
+10-place ID file first, preview it, then run with
+`--place-ids-file <reviewed-file> --run --confirm-count 10`.

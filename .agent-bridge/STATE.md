@@ -1,10 +1,64 @@
 # Active agent state
 
-Status: doctrine chain complete and certified; implementation Waves 0-4 merged; Wave 5 Search Screen Contract **COMPLETE** and certified (2026-09-07); Wave 5 contextual-Map plumbing **PARTIAL** (one open item, see below); **Wave 6 (Craves intelligence) COMPLETE** (all 4 steps merged, 2026-09-08); **Wave 7 (Place Detail relationship hierarchy) COMPLETE** (backend + frontend + doctrine correction merged, 2026-09-08) — **not yet claimed by anyone for Wave 8**; a parallel Penpot design track (Feed/Decision Session, then Search, then Craves) may begin independently at Exploratory status per explicit user direction — design work does not wait on implementation waves, and vice versa.
-Owner: Claude
-Branch: main (Wave 7 fully merged; no wave currently claimed)
-Head SHA: 85ec47a (`Merge pull request #222` — current `origin/main` at Wave 7 completion; this PR's own remembered-reason fix + doctrine correction land on top, see below)
-Scope: `docs/doctrine/CRAVE_CANONICAL_IMPLEMENTATION_INDEX.md` — **START HERE**; `docs/doctrine/CRAVE_MASTER_CODEX_REMAINING_WORK.md` — **the current operational checklist**, read this before claiming any wave; `docs/CLAUDE_EXECUTION_BRIEF_WAVES_7_10_2026-09-08.md` — self-contained Waves 7-10 brief with concrete buildable-now-vs-blocked findings already verified against current code, for any Claude session resuming this work
+Status: blocked
+Owner: Codex
+Branch: codex/osm-backfill-dedupe-claims
+Head SHA: bc92ea7 (`fix: dedupe osm backfill claims`)
+Scope: OSM hours/outdoor-seating production backfill execution from clean `origin/main`, plus the duplicate-claim script fix found by the real production run.
+
+## Active blocker — OSM backfill production run
+
+Clean temp worktree was created from fresh `origin/main` at `2bd1bfa`.
+Railway was linked to production `CRAVE-scheduler`; `DATABASE_URL` was present
+via Railway variable injection and was never printed.
+
+Dry-run on merged `main` succeeded:
+- `osm_candidates_scanned=11239`
+- `candidates_touched=3663`
+- `claims_written=4321`
+- `places_affected=3658`
+- `dry_run=True`
+
+The real run started, committed the early batches, then stopped on a
+production duplicate-claim edge case:
+- reached `progress: scanned=2500 claims_written=30 places_affected=27`
+- failed in the next batch with `psycopg2.errors.UniqueViolation` on the
+  existing `(place_id, field, claim_key)` uniqueness constraint
+
+Interpretation: the script was idempotent across repeated runs, but not within
+one run when duplicate promoted OSM candidates pointed to the same place and
+produced the same deterministic claim before the session flushed. Earlier
+committed batches remain applied; the failing batch rolled back.
+
+Fix on this branch:
+- `backend/scripts/backfill_osm_hours_and_seating.py` now keeps an in-memory
+  `(place_id, field, claim_key)` set for claims scheduled in the current run.
+- `backend/tests/test_backfill_osm_hours_and_seating.py` adds a regression for
+  duplicate OSM candidates resolving to the same place.
+
+Verification:
+- `python3 -m pytest backend/tests/test_backfill_osm_hours_and_seating.py -q`
+  → `5 passed in 0.43s`
+- patched production dry-run completed without crashing:
+  `candidates_touched=3634 claims_written=4289 places_affected=3631 dry_run=True`
+
+Next action: review/merge this duplicate-claim fix, then rerun the OSM
+backfill for real. Do not run the patched writer against production from this
+unmerged branch unless the human explicitly authorizes that exact shortcut.
+
+## Menu backlog canary status — 2026-09-09
+
+Still not run. Additional verified blocker: current
+`backend/scripts/run_menu_backlog_canary.py` requires exact `--place-ids` or
+`--place-ids-file`; the pasted `--run --confirm-count 10` command alone is
+insufficient. The docs require a reviewed exact 10-place list first.
+
+Next action for menu canary: once production DB access remains available,
+provide or build a reviewed 10-place ID file, preview it, then run with
+`--place-ids-file <reviewed-file> --run --confirm-count 10` and review all
+outcomes immediately.
+
+## Previous compacted context
 
 ## Wave 6 — Craves intelligence — COMPLETE
 

@@ -57,6 +57,7 @@ def run_backfill(*, dry_run: bool = False) -> dict:
     claims_written = 0
     candidates_touched = 0
     affected_place_ids: set[str] = set()
+    scheduled_claim_keys: set[tuple[str, str, str]] = set()
 
     try:
         candidates = _candidates_to_backfill(db)
@@ -74,6 +75,10 @@ def run_backfill(*, dry_run: bool = False) -> dict:
 
                 wrote_any = False
                 for c in new_claims:
+                    claim_identity = (place_id, c["field"], c["claim_key"])
+                    if claim_identity in scheduled_claim_keys:
+                        continue
+
                     existing = (
                         db.query(PlaceClaim)
                         .filter(
@@ -86,6 +91,7 @@ def run_backfill(*, dry_run: bool = False) -> dict:
                     if existing:
                         continue
 
+                    scheduled_claim_keys.add(claim_identity)
                     if not dry_run:
                         db.add(PlaceClaim(
                             place_id=place_id,
