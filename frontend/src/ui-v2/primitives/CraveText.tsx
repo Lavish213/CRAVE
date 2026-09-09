@@ -2,7 +2,7 @@ import React from 'react';
 import { StyleSheet, Text, type TextProps, type TextStyle } from 'react-native';
 import { uiColors, uiType, type UiTextTone, type UiTypographyRole } from '../tokens';
 
-export interface CraveTextProps extends TextProps {
+export interface CraveTextProps extends Omit<TextProps, 'role'> {
   role?: UiTypographyRole;
   tone?: UiTextTone;
   align?: TextStyle['textAlign'];
@@ -20,12 +20,12 @@ const toneColors: Record<UiTextTone, string> = {
   protected: uiColors.text.protected,
 };
 
-export function CraveText({ role = 'body', tone = 'primary', align, style, ...props }: CraveTextProps) {
+export function CraveText({ role = 'body', tone = 'primary', align, style, maxFontSizeMultiplier, ...props }: CraveTextProps) {
   return (
     <Text
-      allowFontScaling
-      maxFontSizeMultiplier={props.maxFontSizeMultiplier ?? 2}
       {...props}
+      allowFontScaling
+      maxFontSizeMultiplier={maxFontSizeMultiplier ?? 2}
       style={[styles.base, uiType[role], { color: toneColors[tone], textAlign: align }, style]}
     />
   );
