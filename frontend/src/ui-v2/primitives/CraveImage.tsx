@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 import { Image, type ImageProps } from 'expo-image';
 import { uiColors, uiRadius } from '../tokens';
@@ -25,6 +25,11 @@ export function CraveImage({
   ...props
 }: CraveImageProps) {
   const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    setFailed(false);
+  }, [source]);
+
   const state: CraveImageState = !source ? 'missing' : failed ? 'failed' : 'available';
 
   if (state !== 'available') {
