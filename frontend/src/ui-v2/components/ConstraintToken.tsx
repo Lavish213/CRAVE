@@ -37,7 +37,11 @@ export function ConstraintToken({ label, kind = 'preferred', onRemove }: Constra
       compactTarget={!onRemove}
       accessibilityLabel={onRemove ? `Remove ${label} constraint` : `${label} constraint`}
       accessibilityHint={protectedConstraint ? 'Protected constraint' : undefined}
-      style={[styles.token, { backgroundColor, borderColor }]}
+      style={[
+        styles.token,
+        !onRemove ? styles.staticToken : null,
+        { backgroundColor, borderColor },
+      ]}
     >
       <CraveText role="caption" style={{ color: foreground }}>
         {protectedConstraint ? `Protected · ${label}` : relaxed ? `Relaxed · ${label}` : label}{onRemove ? '  ×' : ''}
@@ -48,10 +52,12 @@ export function ConstraintToken({ label, kind = 'preferred', onRemove }: Constra
 
 const styles = StyleSheet.create({
   token: {
-    minHeight: 36,
     alignSelf: 'flex-start',
     paddingHorizontal: uiSpace.md,
     borderRadius: uiRadius.pill,
     borderWidth: 1,
+  },
+  staticToken: {
+    minHeight: 36,
   },
 });
