@@ -60,8 +60,11 @@ class ContributionCreate(BaseModel):
                 raise ValueError("social posts require an explicit social audience")
             if not (self.image_id or self.video_id):
                 raise ValueError("social posts require media")
-        if self.occurred_at and self.occurred_at > datetime.now(timezone.utc):
-            raise ValueError("occurred_at cannot be in the future")
+        if self.occurred_at:
+            if self.occurred_at.tzinfo is None or self.occurred_at.utcoffset() is None:
+                raise ValueError("occurred_at must include a timezone")
+            if self.occurred_at > datetime.now(timezone.utc):
+                raise ValueError("occurred_at cannot be in the future")
         return self
 
 
@@ -81,6 +84,35 @@ class ContributionOut(BaseModel):
     status: str
     created_at: datetime
     updated_at: datetime
+
+
+def _normalized_caption(value: str | None) -> str | None:
+    return value.strip() if value and value.strip() else None
+
+
+def _assert_idempotent_replay(existing: FoodContribution, payload: ContributionCreate) -> None:
+    expected = (
+        payload.place_id,
+        payload.intent,
+        payload.reaction,
+        _normalized_caption(payload.caption),
+        payload.visibility,
+        payload.occurred_at,
+        payload.image_id,
+        payload.video_id,
+    )
+    actual = (
+        existing.place_id,
+        existing.intent,
+        existing.reaction,
+        existing.caption,
+        existing.visibility,
+        existing.occurred_at,
+        existing.image_id,
+        existing.video_id,
+    )
+    if actual != expected:
+        raise HTTPException(status_code=409, detail="client_id already used for different contribution data")
 
 
 def _owned_media_or_404(
@@ -115,6 +147,7 @@ def create_contribution(
     if existing is not None:
         if existing.status == STATUS_DELETED:
             raise HTTPException(status_code=409, detail="Contribution was deleted")
+        _assert_idempotent_replay(existing, payload)
         return existing
 
     if db.query(Place.id).filter(Place.id == payload.place_id).first() is None:
@@ -134,7 +167,7 @@ def create_contribution(
         place_id=payload.place_id,
         intent=payload.intent,
         reaction=payload.reaction,
-        caption=payload.caption.strip() if payload.caption and payload.caption.strip() else None,
+        caption=_normalized_caption(payload.caption),
         visibility=payload.visibility,
         occurred_at=payload.occurred_at,
         image_id=payload.image_id,
@@ -162,6 +195,7 @@ def create_contribution(
         )
         if existing is None:
             raise
+        _assert_idempotent_replay(existing, payload)
         return existing
     db.refresh(contribution)
     return contribution
