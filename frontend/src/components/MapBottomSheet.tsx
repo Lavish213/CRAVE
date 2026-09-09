@@ -26,7 +26,7 @@ interface Props {
 
 export function MapBottomSheet({ feature, onOpen, onClose }: Props) {
   const translateY = useRef(new Animated.Value(0)).current;
-  const [reduceMotion, setReduceMotion] = useState(false);
+  const [reduceMotion, setReduceMotion] = useState<boolean | null>(null);
 
   useEffect(() => {
     let mounted = true;
@@ -46,7 +46,7 @@ export function MapBottomSheet({ feature, onOpen, onClose }: Props) {
 
   const dismiss = useMemo(
     () => () => {
-      if (reduceMotion) {
+      if (reduceMotion !== false) {
         translateY.setValue(EXIT_DISTANCE);
         onClose();
         return;
@@ -62,7 +62,7 @@ export function MapBottomSheet({ feature, onOpen, onClose }: Props) {
 
   const restore = useMemo(
     () => () => {
-      if (reduceMotion) {
+      if (reduceMotion !== false) {
         translateY.setValue(0);
         return;
       }
