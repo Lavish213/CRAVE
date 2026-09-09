@@ -1,10 +1,17 @@
 # Active agent state
 
-Status: doctrine chain complete and certified; implementation Waves 0-4 merged; Wave 5 Search Screen Contract **COMPLETE** and certified (2026-09-07); Wave 5 contextual-Map plumbing **PARTIAL** (one open item, see below); **Wave 6 (Craves intelligence) COMPLETE** (all 4 steps merged, 2026-09-08); **Wave 7 (Place Detail relationship hierarchy) COMPLETE** (backend + frontend + doctrine correction merged, 2026-09-08) — **not yet claimed by anyone for Wave 8**; a parallel Penpot design track (Feed/Decision Session, then Search, then Craves) may begin independently at Exploratory status per explicit user direction — design work does not wait on implementation waves, and vice versa.
-Owner: Claude
-Branch: main (Wave 7 fully merged; no wave currently claimed)
-Head SHA: 85ec47a (`Merge pull request #222` — current `origin/main` at Wave 7 completion; this PR's own remembered-reason fix + doctrine correction land on top, see below)
-Scope: `docs/doctrine/CRAVE_CANONICAL_IMPLEMENTATION_INDEX.md` — **START HERE**; `docs/doctrine/CRAVE_MASTER_CODEX_REMAINING_WORK.md` — **the current operational checklist**, read this before claiming any wave; `docs/CLAUDE_EXECUTION_BRIEF_WAVES_7_10_2026-09-08.md` — self-contained Waves 7-10 brief with concrete buildable-now-vs-blocked findings already verified against current code, for any Claude session resuming this work
+Status: ready for review
+Owner: Codex
+Branch: codex/free-source-coverage
+Base SHA: 1d0339de555f3f733ebac70996b8b79c962f4b4e
+Scope: Improve bounded free-only image acquisition recall using structured website/provider metadata, with candidates remaining hidden and review-gated.
+Locked files: backend/app/services/images/website_image_extractor.py, backend/app/services/images/provider_image_extractor.py, backend/scripts/run_free_image_canary.py, backend/tests/test_website_image_extractor.py, backend/tests/test_free_image_canary_script.py, .agent-bridge/STATE.md, .agent-bridge/codex-to-claude.md
+Verification plan: Reproduce current low-recall fixtures, add regression fixtures for authoritative structured metadata/provider assets, run focused image/canary tests, full backend suite, then a maximum-10-place production canary with no Google calls and hidden-only writes.
+Explicit exclusions: Existing dirty checkout and all frontend/design files; paid Google acquisition; automatic public promotion; bulk image worker; menu pipeline changes; OSM hours/seating backfill.
+Implementation commit: f63cd5a (`Improve free website image discovery`).
+Verification: focused image/canary suite 25 passed; full backend suite 1112 passed, 2 skipped; production free-only canary staged 32 rows across 4/4 exact targets, independently rechecked as 32 hidden and 0 primary.
+Known gap: Candidates remain review-gated; no automatic public promotion was attempted. Provider-claim expansion was investigated and intentionally not broadened because menu item photos already flow through the dedicated menu-image bridge and generic recursive harvesting would increase contamination risk.
+Next action: Open the PR, request CodeRabbit review, resolve every actionable finding, then merge only after checks are green.
 
 ## Wave 6 — Craves intelligence — COMPLETE
 

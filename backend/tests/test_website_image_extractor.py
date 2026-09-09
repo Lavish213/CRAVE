@@ -40,6 +40,31 @@ LAZY_LOAD_HTML = """
 </body></html>
 """
 
+STRUCTURED_IMAGE_HTML = """
+<html><head>
+<meta property="og:image:secure_url" content="/hero.jpg">
+<meta name="twitter:image:src" content="/social.jpg">
+<link rel="image_src" href="/share.jpg">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "Restaurant",
+  "name": "Restaurant",
+  "image": {"@type": "ImageObject", "contentUrl": "/food.jpg", "width": 1200, "height": 800},
+  "photo": ["/room.jpg"],
+  "logo": "/logo.jpg",
+  "hasMenu": {
+    "@type": "Menu",
+    "hasMenuSection": [{"@type": "MenuSection", "image": "/dishes.jpg"}]
+  }
+}
+</script>
+</head><body>
+<picture><source srcset="/plate-400.jpg 400w, /plate-1200.jpg 1200w"></picture>
+<div style="background-image: url('/patio.jpg')"></div>
+</body></html>
+"""
+
 RENDERED_HTML_WITH_IMAGE = """
 <html><body><img src="https://cdn.restaurant.test/rendered-menu-photo-full-size.jpg"></body></html>
 """
@@ -114,3 +139,36 @@ def test_lazy_load_attributes_are_read_without_needing_escalation():
     urls = {r["url"] for r in results}
     assert "https://restaurant.test/gallery/interior-shot-full-resolution-photo.jpg" in urls
     assert "https://restaurant.test/gallery/plated-dish-photo-800px-wide.jpg" in urls
+
+
+def test_short_absolute_food_url_is_not_discarded_before_quality_scoring():
+    extractor = WebsiteImageExtractor()
+
+    results = extractor._extract_from_html(
+        '<img src="https://r.test/a.jpg" alt="signature dish">',
+        "https://r.test",
+    )
+
+    assert [result["url"] for result in results] == ["https://r.test/a.jpg"]
+
+
+def test_extracts_authoritative_structured_and_responsive_image_sources():
+    extractor = WebsiteImageExtractor()
+
+    results = extractor._extract_from_html(STRUCTURED_IMAGE_HTML, "https://restaurant.test")
+
+    by_url = {result["url"]: result for result in results}
+    expected = {
+        "https://restaurant.test/hero.jpg",
+        "https://restaurant.test/social.jpg",
+        "https://restaurant.test/share.jpg",
+        "https://restaurant.test/food.jpg",
+        "https://restaurant.test/room.jpg",
+        "https://restaurant.test/dishes.jpg",
+        "https://restaurant.test/plate-1200.jpg",
+        "https://restaurant.test/patio.jpg",
+    }
+    assert expected <= set(by_url)
+    assert "https://restaurant.test/logo.jpg" not in by_url
+    assert by_url["https://restaurant.test/food.jpg"]["width"] == 1200
+    assert by_url["https://restaurant.test/food.jpg"]["height"] == 800
