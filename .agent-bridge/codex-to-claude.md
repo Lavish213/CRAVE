@@ -1,3 +1,37 @@
+# H-20260908-free-image-coverage
+
+Status: ready-for-review
+Owner: Codex
+Branch: codex/free-source-coverage
+Base SHA: 1d0339de555f3f733ebac70996b8b79c962f4b4e
+Implementation commit: f63cd5a
+
+## Outcome
+
+Improved official-website image recall without adding paid calls or public promotion. The extractor now accepts valid short absolute URLs; reads Schema.org JSON-LD image/photo fields, Open Graph and Twitter aliases, image links/preloads, responsive picture sources, lazy-load attributes, and inline background images; chooses the strongest srcset candidate; and still excludes logos/icons and non-image resources.
+
+Provider-claim expansion was investigated but deliberately not broadened: current menu item photos already feed the dedicated menu-image bridge, while generic recursive URL harvesting would create avoidable entity/asset contamination.
+
+## Verification
+
+- Focused image/canary suite: `25 passed`.
+- Full backend suite: `1112 passed, 2 skipped`.
+- Production canary: exact four active zero-image places; `32` free-source rows staged (`9 + 9 + 9 + 5`).
+- Independent production DB recheck: `32 hidden`, `0 primary`, therefore `0 publicly visible`.
+- No Google branch is reachable from the canary reader.
+
+## Known gaps / risks
+
+- All 32 candidates remain hidden and require human review before any promotion.
+- The extractor can surface page presentation assets along with food/interior images; downstream scoring/review remains necessary.
+- This task does not repair or retry the separate unfinished production `menu_enrichment` job row.
+
+## Next action
+
+Review PR and CodeRabbit findings. After merge, review the hidden canary gallery before promoting any image, then claim menu-enrichment reliability as a separate bounded task.
+
+---
+
 # H-20260902-screen-coverage-brief
 
 Status: ready-for-review
