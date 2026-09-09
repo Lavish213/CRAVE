@@ -5,7 +5,7 @@
 // user may have moved since app launch, and precision matters here since
 // we're matching against a 150m search radius), searches nearby, and lets
 // the user open an existing CRAVE place or submit a new candidate signal.
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Linking,
@@ -16,7 +16,7 @@ import {
   View,
 } from 'react-native';
 import * as Location from 'expo-location';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { Colors, Spacing, Radius } from '../src/constants/colors';
@@ -24,6 +24,9 @@ import { useToast } from '../src/hooks/useToast';
 import { useAuthStore } from '../src/stores/authStore';
 import { AuthSheet } from '../src/components/AuthSheet';
 import { NearbyCandidate, confirmNewSpot, searchNearby } from '../src/api/nearby';
+import { useUploadImage } from '../src/hooks/useUploadImage';
+import { useVideoQueueStore } from '../src/stores/videoQueueStore';
+import type { VideoContentType } from '../src/api/videos';
 
 type LoadState =
   | 'locating'
@@ -34,17 +37,89 @@ type LoadState =
   | 'error'
   | 'unauthenticated';
 
+// Mirrors record-video/[placeId].tsx's identical helper -- kept local since
+// that screen is otherwise unrelated to this one and this is the only other
+// call site.
+function contentTypeForUri(uri: string): VideoContentType {
+  const ext = uri.split('.').pop()?.toLowerCase();
+  if (ext === 'mov') return 'video/quicktime';
+  if (ext === 'webm') return 'video/webm';
+  return 'video/mp4';
+}
+
 export default function AddSpotScreen() {
   const router = useRouter();
   const toast = useToast((s) => s.show);
   const user = useAuthStore((s) => s.user);
   const authLoading = useAuthStore((s) => s.loading);
+  const { upload } = useUploadImage();
+  const recordVideo = useVideoQueueStore((s) => s.recordVideo);
 
   const [state, setState] = useState<LoadState>('locating');
   const [results, setResults] = useState<NearbyCandidate[]>([]);
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
   const [confirmedIds, setConfirmedIds] = useState<Set<string>>(new Set());
   const [authVisible, setAuthVisible] = useState(false);
+
+  // Carried over from food-evidence.tsx's "Continue" button -- a photo or
+  // video captured there, waiting for whichever place the user identifies
+  // here. Undefined/invalid params (any entry into this screen that isn't
+  // via that button) simply means there's nothing pending, not an error.
+  const { mediaUri, mediaKind, mediaFileSize, mediaMimeType } = useLocalSearchParams<{
+    mediaUri?: string;
+    mediaKind?: string;
+    mediaFileSize?: string;
+    mediaMimeType?: string;
+  }>();
+  const pendingMedia = useMemo(() => {
+    if (!mediaUri || (mediaKind !== 'photo' && mediaKind !== 'video')) return null;
+    return {
+      uri: mediaUri,
+      kind: mediaKind as 'photo' | 'video',
+      fileSize: mediaFileSize ? Number(mediaFileSize) : undefined,
+      mimeType: mediaMimeType || undefined,
+    };
+  }, [mediaUri, mediaKind, mediaFileSize, mediaMimeType]);
+  // Single-use per screen visit -- once the user has acted on one candidate
+  // (attached, or explicitly deferred on a new-candidate signal), a second,
+  // unrelated candidate tapped afterward must not silently inherit the same
+  // media. 'idle' is the only state that still offers to attach it.
+  const [mediaOutcome, setMediaOutcome] = useState<'idle' | 'uploading' | 'attached' | 'failed' | 'deferred'>('idle');
+
+  const attachPendingMedia = useCallback(
+    async (placeId: string) => {
+      if (!pendingMedia) return;
+      setMediaOutcome('uploading');
+      try {
+        if (pendingMedia.kind === 'photo') {
+          if (!pendingMedia.fileSize) {
+            throw new Error("Couldn't read your photo's file size");
+          }
+          await upload(
+            { uri: pendingMedia.uri, fileSize: pendingMedia.fileSize, mimeType: pendingMedia.mimeType },
+            placeId,
+            'food',
+          );
+          toast('Photo submitted for this place');
+        } else {
+          if (!user?.id) throw new Error('Sign in to add a video');
+          await recordVideo({
+            sourceUri: pendingMedia.uri,
+            placeId,
+            contentType: contentTypeForUri(pendingMedia.uri),
+            uploadedBy: user.id,
+            templateId: null,
+          });
+          toast("Saved — it'll post as soon as you're online.");
+        }
+        setMediaOutcome('attached');
+      } catch (err) {
+        setMediaOutcome('failed');
+        toast(err instanceof Error ? err.message : "Couldn't attach your media to this place");
+      }
+    },
+    [pendingMedia, upload, recordVideo, user?.id, toast],
+  );
 
   const runIdRef = useRef(0);
 
@@ -119,7 +194,23 @@ export default function AddSpotScreen() {
       if (submittingGeneration !== accountGenerationRef.current) return;
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setConfirmedIds((prev) => new Set(prev).add(key));
-      toast("Got it — added as a signal. It'll appear once confirmed by more activity.");
+      // A brand-new candidate has no place_id yet -- confirmNewSpot() only
+      // returns a candidate_id, since this creates a DiscoveryCandidate for
+      // the normal async promotion pipeline, not a Place row. There's
+      // nowhere to attach pending media yet on this branch, so say so
+      // explicitly instead of silently dropping it (the media stays
+      // captured on food-evidence.tsx's side only in the sense that this
+      // screen simply doesn't touch it here -- there's no "come back and
+      // retry" mechanism beyond the user redoing food-evidence, which this
+      // copy is honest about).
+      if (pendingMedia && mediaOutcome === 'idle') {
+        setMediaOutcome('deferred');
+        toast(
+          `Got it — added as a signal. It'll appear once confirmed by more activity. Come back once it's live to add your ${pendingMedia.kind}.`,
+        );
+      } else {
+        toast("Got it — added as a signal. It'll appear once confirmed by more activity.");
+      }
     } catch (err) {
       if (submittingGeneration !== accountGenerationRef.current) return;
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
@@ -212,6 +303,19 @@ export default function AddSpotScreen() {
         get submitted as a signal toward being added.
       </Text>
 
+      {pendingMedia && mediaOutcome === 'idle' ? (
+        <View style={styles.mediaBanner}>
+          <Ionicons
+            name={pendingMedia.kind === 'photo' ? 'image-outline' : 'videocam-outline'}
+            size={18}
+            color={Colors.primary}
+          />
+          <Text style={styles.mediaBannerText}>
+            {pendingMedia.kind === 'photo' ? 'Photo' : 'Video'} ready — tap a place below to attach it.
+          </Text>
+        </View>
+      ) : null}
+
       {results.length === 0 ? (
         <Text style={styles.empty}>Nothing found within range. Try again once you're closer.</Text>
       ) : (
@@ -231,7 +335,18 @@ export default function AddSpotScreen() {
               {candidate.already_in_crave ? (
                 <TouchableOpacity
                   style={styles.actionBtn}
-                  onPress={() => router.push(`/place/${candidate.place_id}`)}
+                  onPress={() => {
+                    // Fire-and-forget: uploading shouldn't block getting to
+                    // the place, and toast() renders from a root-mounted
+                    // container so its outcome still surfaces after
+                    // navigating away. Guarded on 'idle' so a second,
+                    // different candidate tapped afterward doesn't also
+                    // try to claim the same media.
+                    if (pendingMedia && mediaOutcome === 'idle' && candidate.place_id) {
+                      void attachPendingMedia(candidate.place_id);
+                    }
+                    router.push(`/place/${candidate.place_id}`);
+                  }}
                   accessibilityRole="button"
                   accessibilityLabel={`Open ${candidate.name}`}
                 >
@@ -275,6 +390,18 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.background,
   },
   statusText: { color: Colors.textSecondary, fontSize: 14, textAlign: 'center' },
+  mediaBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    padding: Spacing.md,
+    borderRadius: Radius.card,
+    borderWidth: 1,
+    borderColor: Colors.primary,
+    backgroundColor: Colors.surface,
+    marginBottom: Spacing.lg,
+  },
+  mediaBannerText: { flex: 1, color: Colors.text, fontSize: 13, fontWeight: '600' },
   retryBtn: {
     marginTop: Spacing.sm,
     paddingHorizontal: 18,
