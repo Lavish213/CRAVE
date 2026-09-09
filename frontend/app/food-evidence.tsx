@@ -10,6 +10,12 @@ type CaptureKind = 'photo' | 'video';
 type SelectedMedia = {
   kind: CaptureKind;
   uri: string;
+  // Captured here (the picker/camera result already has them) rather than
+  // re-derived downstream -- add-spot.tsx needs fileSize for the same
+  // upload-size validation place/[id].tsx's photo upload already does, and
+  // mimeType to pick the right content-type instead of guessing.
+  fileSize?: number;
+  mimeType?: string;
 };
 
 export default function FoodEvidenceScreen() {
@@ -30,7 +36,8 @@ export default function FoodEvidenceScreen() {
     });
 
     if (!result.canceled && result.assets[0]?.uri) {
-      setSelectedMedia({ kind: 'photo', uri: result.assets[0].uri });
+      const asset = result.assets[0];
+      setSelectedMedia({ kind: 'photo', uri: asset.uri, fileSize: asset.fileSize, mimeType: asset.mimeType });
     }
   }
 
@@ -42,7 +49,8 @@ export default function FoodEvidenceScreen() {
     });
 
     if (!result.canceled && result.assets[0]?.uri) {
-      setSelectedMedia({ kind, uri: result.assets[0].uri });
+      const asset = result.assets[0];
+      setSelectedMedia({ kind, uri: asset.uri, fileSize: asset.fileSize, mimeType: asset.mimeType });
     }
   }
 
@@ -78,7 +86,21 @@ export default function FoodEvidenceScreen() {
             </Text>
           </View>
           <Pressable
-            onPress={() => router.push('/add-spot')}
+            onPress={() =>
+              router.push({
+                pathname: '/add-spot',
+                // add-spot.tsx attaches this to whichever place the user
+                // identifies next -- previously this button navigated with
+                // nothing, and the media captured above was silently
+                // discarded (no upload call, no param, no queue).
+                params: {
+                  mediaUri: selectedMedia.uri,
+                  mediaKind: selectedMedia.kind,
+                  mediaFileSize: selectedMedia.fileSize != null ? String(selectedMedia.fileSize) : '',
+                  mediaMimeType: selectedMedia.mimeType ?? '',
+                },
+              })
+            }
             accessibilityRole="button"
             accessibilityLabel="Identify restaurant"
             style={styles.continueButton}
