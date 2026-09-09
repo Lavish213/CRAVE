@@ -1,3 +1,108 @@
+# H-20260909-osm-hours-seating-backfill
+
+Status: blocked -- missing credential (Railway/production Postgres access),
+not missing code. Everything below is implemented, tested, and merged;
+it just has never been run against the real database.
+Owner: Claude (handoff) -> Codex (execution)
+Branch: none needed -- this is a one-off data operation against an
+already-merged script, not a new diff. Only record the run's outcome
+afterward (see Next action) if you want that durable, which would be a
+small follow-up commit.
+Base SHA: c3953c208505bef3b5dbefa6fe013aea78cc9021 (`origin/main`,
+current as of this handoff -- confirmed via `git log origin/main`)
+Commit SHA: none from me on this handoff
+Allowed next files: none from me further on this. If you record the
+run's outcome, the natural spot is `.agent-bridge/STATE.md`'s "Search/
+Map V1.5 design-audit fixes" section (already has the PR #229 entry to
+append to) or `DECISIONS.md` -- whichever this repo's convention favors
+for a completed-execution note.
+
+## Outcome
+
+PR #229 (merged onto `main` at `df92429`, this handoff's base commit is
+one further merge past it) added `backend/scripts/
+backfill_osm_hours_and_seating.py` -- a script that retroactively writes
+`hours`/`outdoor_seating` `PlaceClaim`s for OSM-sourced places that were
+already promoted to `Place` rows *before* `promote_service_v2.py`
+learned to read those two OSM tags. It reads only data already sitting
+in `discovery_candidates.raw_payload` (the full OSM tags dict, fetched
+long ago by `osm_overpass.py`) -- **no new network fetch, no re-scrape,
+free and instant** against what's already in Postgres. It has never
+been run against production because this Claude session has no
+Railway/Supabase/Postgres credential -- confirmed and re-confirmed
+multiple times this session; this is a real blocker, not something
+routed around.
+
+Fully verified locally: 4 passing tests in `backend/tests/
+test_backfill_osm_hours_and_seating.py` (writes claims+truths correctly,
+idempotent on a second run, skips non-OSM sources, `--dry-run` writes
+nothing), full backend suite green (1110 passed, 2 skipped) against a
+freshly reset local Postgres schema.
+
+## Exact directions to run it
+
+1. Clean worktree, current `origin/main` (`git log --oneline -3` should
+   show `c3953c2` or later -- fetch first if not).
+2. Set `DATABASE_URL` to production's real Postgres connection string
+   (Railway env var). **Never print, log, paste, or commit this value
+   anywhere** -- including into this file, a commit message, or a PR.
+3. Dry run first -- writes nothing, just reports scope:
+   ```
+   cd backend
+   python scripts/backfill_osm_hours_and_seating.py --dry-run
+   ```
+   Logs `candidates_touched`, `claims_written`, `places_affected`.
+4. Sanity-check those numbers before proceeding: `claims_written`
+   should be a real fraction of total OSM-sourced promoted places, not
+   ~0 (nothing to backfill -- suspicious if OSM ingestion has run at
+   all) and not ~100% (OSM tag coverage for these two fields is
+   genuinely partial -- most nodes don't carry `opening_hours`/
+   `outdoor_seating`). If either extreme shows up, stop and investigate
+   before writing.
+5. Run for real (omit `--dry-run`):
+   ```
+   python scripts/backfill_osm_hours_and_seating.py
+   ```
+   Idempotent -- safe to re-run if interrupted or after a fresh OSM
+   ingest/promote cycle adds new candidates; already-written claims are
+   skipped on any later pass.
+6. Spot-check a handful of real place IDs afterward: `GET /place/{id}`
+   should return non-null `hours_status`/`outdoor_seating` for a place
+   you can independently confirm has real OSM hours data (or query
+   `place_truths` directly for `truth_type IN ('hours', 'outdoor_seating')`).
+   Also worth confirming the Place Detail screen's decision-strip chip
+   (🟢/🔴 hours, 🌤️ outdoor seating) actually renders for one such place
+   in the running app, not just in the API response.
+
+## Known gaps / risks
+
+- This Claude session has no Railway/Supabase/production Postgres
+  access -- cannot run this itself or verify a real production count.
+  That is the entire reason this is a handoff.
+- Only OSM-sourced (`source == "osm"`) already-promoted candidates are
+  touched, by design -- Overture and other sources aren't read for
+  these two fields since only OSM's tag vocabulary was verified
+  reliable for them (see PR #229's description for why Google
+  Places/Yelp/Foursquare were ruled out too: all need a new account/API
+  key only a human can authorize, and Google's ToS additionally forbids
+  long-term caching of place data).
+- Coverage will be partial after this runs -- a place with neither OSM
+  tag simply gets no claim. That's correct behavior (no fabricated
+  data), not a bug to chase further.
+- No schema/migration risk: this only writes to the existing
+  `place_claims`/`place_truths` tables via the same code path
+  `promote_service_v2.py` already uses for every other automated claim.
+
+## Next action
+
+Claim this in `STATE.md` per protocol (owner, base SHA, no new branch
+needed since no code changes are expected) before running anything.
+Run the dry-run first, then the real run, then record the final counts
+somewhere durable (`STATE.md` or `DECISIONS.md`) so a future session
+doesn't re-run this blindly or re-flag it as still-needed.
+
+---
+
 # H-20260907-population-coverage-canaries
 
 Status: information-only -- an inventory, not an execution authorization
