@@ -154,9 +154,6 @@ describe('postingDraftStore', () => {
       fileSize: 500_000,
     });
 
-    // Fired without awaiting the first -- the synchronous 'pending' guard
-    // at the top of attachDraftToPlace must still prevent a second attach,
-    // same race CodeRabbit flagged on PR #238's component-level version.
     const first = usePostingDraftStore.getState().attachDraftToPlace(draft.id, 'place-a');
     const second = usePostingDraftStore.getState().attachDraftToPlace(draft.id, 'place-b');
     await Promise.all([first, second]);
@@ -165,21 +162,40 @@ describe('postingDraftStore', () => {
     expect(uploadApi.requestUpload).toHaveBeenCalledWith(expect.objectContaining({ place_id: 'place-a' }));
   });
 
-  it('setDraftCandidate records the reference without attaching anything', () => {
-    return usePostingDraftStore.getState().createDraftFromCapture({
+  it('setDraftCandidate claims the draft for candidate resolution without attaching anything', async () => {
+    const draft = await usePostingDraftStore.getState().createDraftFromCapture({
       ownerId: 'user-a',
       sourceUri: 'file:///tmp/photo.jpg',
       kind: 'photo',
       mimeType: 'image/jpeg',
       fileSize: 500_000,
-    }).then((draft) => {
-      usePostingDraftStore.getState().setDraftCandidate(draft.id, 'cand-1', 'Mama Rosa\'s Taco Truck');
-
-      const stored = usePostingDraftStore.getState().drafts.find((d) => d.id === draft.id);
-      expect(stored?.restaurantRef).toEqual({ type: 'candidate', candidateId: 'cand-1', displayName: "Mama Rosa's Taco Truck" });
-      expect(stored?.outcome).toBe('pending');
-      expect(uploadApi.requestUpload).not.toHaveBeenCalled();
     });
+
+    usePostingDraftStore.getState().setDraftCandidate(draft.id, 'cand-1', "Mama Rosa's Taco Truck");
+
+    const stored = usePostingDraftStore.getState().drafts.find((d) => d.id === draft.id);
+    expect(stored?.restaurantRef).toEqual({ type: 'candidate', candidateId: 'cand-1', displayName: "Mama Rosa's Taco Truck" });
+    expect(stored?.outcome).toBe('awaiting_place');
+    expect(uploadApi.requestUpload).not.toHaveBeenCalled();
+  });
+
+  it('does not let an existing-place action steal media after a candidate has claimed the draft', async () => {
+    const draft = await usePostingDraftStore.getState().createDraftFromCapture({
+      ownerId: 'user-a',
+      sourceUri: 'file:///tmp/photo.jpg',
+      kind: 'photo',
+      mimeType: 'image/jpeg',
+      fileSize: 500_000,
+    });
+
+    usePostingDraftStore.getState().setDraftCandidate(draft.id, 'cand-1', 'New Place');
+    await usePostingDraftStore.getState().attachDraftToPlace(draft.id, 'place-wrong');
+
+    const stored = usePostingDraftStore.getState().drafts.find((d) => d.id === draft.id);
+    expect(stored?.restaurantRef).toEqual({ type: 'candidate', candidateId: 'cand-1', displayName: 'New Place' });
+    expect(stored?.outcome).toBe('awaiting_place');
+    expect(uploadApi.requestUpload).not.toHaveBeenCalled();
+    expect(mockRecordVideo).not.toHaveBeenCalled();
   });
 
   describe('resolvePendingCandidates', () => {
@@ -207,7 +223,7 @@ describe('postingDraftStore', () => {
       expect(usePostingDraftStore.getState().drafts).toHaveLength(0);
     });
 
-    it('leaves a still-unresolved candidate draft pending, untouched', async () => {
+    it('leaves a still-unresolved candidate draft awaiting place promotion, untouched', async () => {
       (nearbyApi.getCandidateStatus as jest.Mock).mockResolvedValue({
         candidate_id: 'cand-1', resolved: false, place_id: null, blocked: false,
       });
@@ -224,7 +240,7 @@ describe('postingDraftStore', () => {
       await usePostingDraftStore.getState().resolvePendingCandidates('user-a');
 
       const stored = usePostingDraftStore.getState().drafts.find((d) => d.id === draft.id);
-      expect(stored?.outcome).toBe('pending');
+      expect(stored?.outcome).toBe('awaiting_place');
       expect(uploadApi.requestUpload).not.toHaveBeenCalled();
     });
 
@@ -265,7 +281,7 @@ describe('postingDraftStore', () => {
       expect(nearbyApi.getCandidateStatus).not.toHaveBeenCalled();
     });
 
-    it('does not mark a draft failed on a transient status-check error -- stays pending for next time', async () => {
+    it('does not mark a draft failed on a transient status-check error -- stays awaiting place for next time', async () => {
       (nearbyApi.getCandidateStatus as jest.Mock).mockRejectedValue(new Error('network'));
 
       const draft = await usePostingDraftStore.getState().createDraftFromCapture({
@@ -280,7 +296,7 @@ describe('postingDraftStore', () => {
       await usePostingDraftStore.getState().resolvePendingCandidates('user-a');
 
       const stored = usePostingDraftStore.getState().drafts.find((d) => d.id === draft.id);
-      expect(stored?.outcome).toBe('pending');
+      expect(stored?.outcome).toBe('awaiting_place');
     });
 
     it('does not check an unresolved (no candidate yet) draft', async () => {
