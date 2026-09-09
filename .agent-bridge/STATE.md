@@ -1,9 +1,10 @@
 # Active agent state
 
-Status: **UI V2 foundation claimed and in progress** (user-authorized 2026-09-08). UIV2-00 Repository Census, UIV2-01 Semantics, and UIV2-02 Token Contract are complete on `chatgpt/ui-v2-foundation`. UIV2-03 Primitives is now active. Product implementation Waves 0-7 remain merged baseline. Wave 8 is not claimed by this task. The prior Penpot/Figma design track is superseded for this UI V2 effort by the user's explicit direction to use the production design system + UI Lab as the design bridge.
+Status: **UI V2 Search/Map pilot active** (user-authorized 2026-09-08). UIV2-00 Repository Census, UIV2-01 Semantics, UIV2-02 Tokens, UIV2-03 Primitives, UIV2-04 Product Components, and the initial UIV2-05 UI Lab are implemented on `chatgpt/ui-v2-foundation`. Foundation TypeScript and the full frontend Jest suite are green in PR #228 CI at commit `2297070b0840491ca87bec35efdb6f914fc0a1bb`. UIV2-06 Search/Map pilot is now authorized. Product implementation Waves 0-7 remain merged baseline. Wave 8 is not claimed by this task.
 Owner: ChatGPT (user-directed execution)
 Branch: `chatgpt/ui-v2-foundation`
 Base SHA: `1199e27c6ba9f00ac21e1eaf80d482ee38b5937e`
+PR: #228 (draft)
 Scope: UI V2 foundation and Search/Map pilot only.
 
 ## Locked execution order
@@ -12,22 +13,32 @@ Scope: UI V2 foundation and Search/Map pilot only.
 
 No visual production code began before UIV2-00 completed. Agents may resolve implementation mechanics, but may not silently resolve product, UX, IA, visual-design, permission, data-semantic, or interaction ambiguity.
 
-## Allowed files for the active foundation task
+## Allowed files for active UIV2-06
 
 - `docs/ui-v2/**`
 - `frontend/src/ui-v2/**`
-- `frontend/app/dev/ui-v2.tsx` once UIV2-05 begins
+- `frontend/app/dev/ui-v2.tsx`
+- `frontend/src/screens/SearchScreen.tsx`
+- `frontend/src/screens/MapScreenCore.tsx`
+- `frontend/src/components/MapBottomSheet.tsx` only as a UI V2 composition bridge
+- `frontend/src/components/MapMarker.tsx` only as a compatibility adapter/retirement bridge
+- `frontend/src/components/FilterSheet.tsx` only if needed for UI V2 primitive/token consumption without semantic changes
+- Search/Map/UI-V2 tests
 - `.agent-bridge/STATE.md`
 - `.agent-bridge/codex-to-claude.md` only for final handoff if needed
 
-No legacy production Search/Map file is yet authorized for edits. UIV2-06 must explicitly expand this list before touching `SearchScreen.tsx`, `MapScreenCore.tsx`, or existing shared components.
+Do not touch Feed, Craves, Rank, Place Detail, Posting, Profile/Taste, backend ranking/data, or unrelated legacy routes during this pilot.
 
-## Verification plan
+## Verification evidence so far
 
-- TypeScript: `cd frontend && npx tsc --noEmit`.
-- Frontend tests: `cd frontend && npx jest --ci`.
-- Required GitHub CI / CodeQL after PR creation.
-- UI/device accessibility evidence only after executable UI exists.
+PR #228 CI against foundation commit `2297070b0840491ca87bec35efdb6f914fc0a1bb`:
+- conflict-marker guard: green
+- frontend TypeScript: green
+- frontend Jest suite: green
+- backend checks still running at the time this state advanced; no backend files are changed by this UI task
+- CodeQL is required before merge
+
+Runtime/device accessibility remains **unverified** until executable UI is tested. UI Lab states are design/implementation proof only.
 
 ## Explicit exclusions
 
@@ -45,6 +56,10 @@ No legacy production Search/Map file is yet authorized for edits. UIV2-06 must e
 - Wave 7 Place Detail relationship hierarchy complete.
 - Current `main` when claimed: `1199e27c6ba9f00ac21e1eaf80d482ee38b5937e` (merge PR #227).
 
+## Open visible design unknown
+
+`OPEN-VISUAL-01`: exact warm orange/gold production accent calibration. Semantic role is locked; current literal is explicitly provisional until actual UI Lab + real-photo + contrast/device review. This is not permission for screen-local colors.
+
 ## Next action
 
-Implement UIV2-03 tokens/primitives inside the isolated `frontend/src/ui-v2/**` namespace, then verify before proceeding to product components. The exact warm accent literal remains a visible provisional token until UI Lab/real-photo calibration closes `OPEN-VISUAL-01`.
+Migrate Search first while preserving its already-certified behavior and data contracts, then Map while preserving exact Search candidate handoff, explicit Search-this-area behavior, and list-equivalent location fallback. Re-run CI after each meaningful pilot boundary. Do not certify visual/runtime accessibility until actual runtime evidence exists.
