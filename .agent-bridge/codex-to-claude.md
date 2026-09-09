@@ -27,10 +27,12 @@ This branch fixes that by keeping an in-memory `(place_id, field, claim_key)`
 set for claims already scheduled in the current run, and adds a regression
 test for duplicate OSM candidates resolving to the same place.
 
-The menu backlog canary was not run. Current `run_menu_backlog_canary.py`
-requires exact `--place-ids` or `--place-ids-file`; the bare
-`--run --confirm-count 10` command is insufficient without a reviewed 10-place
-ID list.
+The menu backlog canary was later run after Codex created and previewed a
+reviewed exact 10-place temp ID file outside the repo. The run attempted all
+10 places with 0 script errors: 8 produced no menu, and 2 initially
+materialized. Immediate review found both materialized publishes failed the
+missing-provenance stop condition, so Codex manually reverted both publishes.
+Net retained publish count is 0.
 
 ## Verification
 
@@ -41,6 +43,10 @@ ID list.
 - `railway run --no-local --service CRAVE-scheduler --environment production -- sh -lc 'cd backend && python3 scripts/backfill_osm_hours_and_seating.py'` on merged `main` → failed after early committed batches with `psycopg2.errors.UniqueViolation` on `(place_id, field, claim_key)`.
 - `python3 -m pytest backend/tests/test_backfill_osm_hours_and_seating.py -q` after fix → `5 passed in 0.43s`.
 - Patched production dry-run → completed with `candidates_touched=3634 claims_written=4289 places_affected=3631 dry_run=True`.
+- Menu canary preview → requested 10, found 10, missing 0, inactive 0.
+- Menu canary run → attempted 10, errors 0, materialized 2, no_menu 8.
+- Immediate post-run review → both materialized menus had missing source URL provenance.
+- Manual revert verification → all 10 canary places now have `has_menu=False`, `items=0`, `claims=0`, `failures=1`, `attempted=True`.
 
 ## Known gaps / risks
 
@@ -48,11 +54,12 @@ ID list.
   claims across `27` places before the failing batch rolled back.
 - The remaining production write should not be run from this unmerged branch
   unless the human explicitly authorizes that shortcut.
-- Menu canary still needs a reviewed exact 10-place ID list before it can run.
+- Menu canary found a provenance quality-gate failure. Do not expand or repeat
+  the publish canary until source URL provenance is propagated into serialized
+  menu truth/menu items.
 
 ## Next action
 
 Review and merge `bc92ea70a7d11ef4e0776987ac8c77b6cbdd20cf`, then rerun the
-OSM backfill for real from merged `main`. For the menu canary, produce/review a
-10-place ID file first, preview it, then run with
-`--place-ids-file <reviewed-file> --run --confirm-count 10`.
+OSM backfill for real from merged `main`. For menu coverage, fix and test
+menu source URL provenance before any further publish canary.

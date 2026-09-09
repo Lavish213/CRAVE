@@ -46,17 +46,51 @@ Next action: review/merge this duplicate-claim fix, then rerun the OSM
 backfill for real. Do not run the patched writer against production from this
 unmerged branch unless the human explicitly authorizes that exact shortcut.
 
-## Menu backlog canary status — 2026-09-09
+## Menu backlog canary result — 2026-09-09
 
-Still not run. Additional verified blocker: current
-`backend/scripts/run_menu_backlog_canary.py` requires exact `--place-ids` or
-`--place-ids-file`; the pasted `--run --confirm-count 10` command alone is
-insufficient. The docs require a reviewed exact 10-place list first.
+Ran the approved exact 10-place production menu canary after creating and
+previewing a reviewed temp ID file outside the repo. The cohort used active
+places with no current materialized menu, no prior extraction failures, unique
+source hosts, and menu-ish website URLs.
 
-Next action for menu canary: once production DB access remains available,
-provide or build a reviewed 10-place ID file, preview it, then run with
-`--place-ids-file <reviewed-file> --run --confirm-count 10` and review all
-outcomes immediately.
+Preview:
+- requested `10`
+- found `10`
+- missing `0`
+- inactive `0`
+
+Run result:
+- attempted `10`
+- errors `0`
+- materialized `2`
+- no_menu `8`
+
+Immediate review:
+- Eight places did not publish a menu and now have one recorded extraction
+  attempt/failure.
+- Two places initially materialized menu items, but both failed the canary's
+  missing-provenance stop condition: serialized menu items had no source URL
+  provenance.
+- Both failed publishes were manually reverted immediately: served menu items,
+  menu-item claims, and menu truth were removed; place menu flags were reset.
+
+Net retained publish count: `0`.
+
+Places in the canary cohort:
+- Dario's Mexican Restaurant
+- 88 BaoBao Dumpling House
+- Okayama
+- Thai Patio
+- Yai Restaurant
+- Cafe 50's
+- Lee's Sandwiches
+- Carousel Restaurant Glendale
+- Vino Volo
+- Caffé Central
+
+Next action for menu coverage: fix provenance propagation before another
+publish canary. Do not expand the batch size; this canary found a quality gate
+failure, not a scaling success.
 
 ## Previous compacted context
 
