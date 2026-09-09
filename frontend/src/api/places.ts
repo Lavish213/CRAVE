@@ -37,6 +37,19 @@ export interface PlaceOut {
   price_tier: number | null;
   /** Formatted price string, e.g. "$$$". Populated by normalizePlaceOut. */
   price?: string;
+  /** Live open/closed, computed server-side from an OSM opening_hours tag
+   * (see backend app/services/hours/opening_hours_service.py). null/absent
+   * means genuinely unknown -- no OSM tag on file, or one the parser
+   * couldn't read -- never a guessed or stale status. */
+  hours_status?: 'open' | 'closed' | null;
+  /** ISO timestamp of the next open<->closed transition. null/absent
+   * whenever hours_status is null. */
+  hours_next_change?: string | null;
+  /** Raw OSM opening_hours string, for a "view hours" affordance. */
+  hours_raw?: string | null;
+  /** OSM's own outdoor_seating tag vocabulary. null/absent means no tag on
+   * file -- never inferred or defaulted to "no". */
+  outdoor_seating?: 'yes' | 'no' | 'limited' | null;
 }
 
 export interface PlacesResponse {

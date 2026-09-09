@@ -100,6 +100,15 @@ export function normalizePlaceOut(raw: unknown): PlaceOut {
     has_video: Boolean(p.has_video),
     price_tier: typeof p.price_tier === 'number' ? p.price_tier : null,
     price: undefined as string | undefined,
+    hours_status: (p.hours_status === 'open' || p.hours_status === 'closed' ? p.hours_status : null) as
+      | 'open'
+      | 'closed'
+      | null,
+    hours_next_change: typeof p.hours_next_change === 'string' ? p.hours_next_change : null,
+    hours_raw: typeof p.hours_raw === 'string' ? p.hours_raw : null,
+    outdoor_seating: (p.outdoor_seating === 'yes' || p.outdoor_seating === 'no' || p.outdoor_seating === 'limited'
+      ? p.outdoor_seating
+      : null) as 'yes' | 'no' | 'limited' | null,
   };
   // Populate formatted price after object is built so inferPrice can read it
   normalized.price = formatPrice(normalized) ?? undefined;

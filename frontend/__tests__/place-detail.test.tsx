@@ -452,4 +452,46 @@ describe('PlaceDetailScreen — Wave 7 relationship hierarchy', () => {
       message: expect.stringContaining('crave://place/place-1'),
     }));
   });
+
+  it('shows an open-now chip with the next close time when hours_status is open', async () => {
+    mockedFetchPlaceDetail.mockResolvedValue(basePlace({
+      hours_status: 'open', hours_next_change: '2026-09-09T17:00:00-07:00',
+    }));
+    const { findByText } = renderScreen();
+
+    expect(await findByText(/Open now · Closes/)).toBeTruthy();
+  });
+
+  it('shows a closed chip with the next open time when hours_status is closed', async () => {
+    mockedFetchPlaceDetail.mockResolvedValue(basePlace({
+      hours_status: 'closed', hours_next_change: '2026-09-09T09:00:00-07:00',
+    }));
+    const { findByText } = renderScreen();
+
+    expect(await findByText(/Closed · Opens/)).toBeTruthy();
+  });
+
+  it('shows no hours chip at all when hours_status is unknown', async () => {
+    mockedFetchPlaceDetail.mockResolvedValue(basePlace({ hours_status: null }));
+    const { findByText, queryByText } = renderScreen();
+
+    await findByText('Nari');
+    expect(queryByText(/Open now/)).toBeNull();
+    expect(queryByText(/Closed/)).toBeNull();
+  });
+
+  it('shows an outdoor seating chip when the place has one', async () => {
+    mockedFetchPlaceDetail.mockResolvedValue(basePlace({ outdoor_seating: 'yes' }));
+    const { findByText } = renderScreen();
+
+    expect(await findByText(/Outdoor seating/)).toBeTruthy();
+  });
+
+  it('shows no outdoor seating chip when the tag is absent', async () => {
+    mockedFetchPlaceDetail.mockResolvedValue(basePlace({ outdoor_seating: null }));
+    const { findByText, queryByText } = renderScreen();
+
+    await findByText('Nari');
+    expect(queryByText(/Outdoor seating/)).toBeNull();
+  });
 });
