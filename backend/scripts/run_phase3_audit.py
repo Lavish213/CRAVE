@@ -256,15 +256,6 @@ def check_search_ranker():
 check("search_ranker exact-match boost", check_search_ranker)
 
 
-def check_search_index_build():
-    from app.services.search.search_index_builder import build_search_index
-    t0 = time.time()
-    count = build_search_index(db)
-    elapsed = time.time() - t0
-    return PASS, f"indexed {count} places in {elapsed:.3f}s"
-check("search_index_builder runs", check_search_index_build)
-
-
 def check_search_execute():
     from app.services.search.search_engine import execute_search
     cities = list(db.execute(select(City).limit(1)).scalars().all())
@@ -366,7 +357,6 @@ workers = [
     ("master_worker", "app.workers.master_worker", "run_master_worker"),
     ("discovery_worker", "app.workers.discovery_worker", "run_discovery_worker"),
     ("truth_rebuild_worker", "app.workers.truth_rebuild_worker", "run_truth_rebuild_worker"),
-    ("search_index_worker", "app.workers.search_index_worker", "run_search_index_worker"),
     ("ranking_worker", "app.workers.ranking_worker", "run_worker"),
     ("recompute_scores_worker", "app.workers.recompute_scores_worker", "worker_once"),
     ("feed_refresh_worker", "app.workers.feed_refresh_worker", "refresh_feed"),
@@ -398,15 +388,6 @@ def bench_score_recompute():
     status = PASS if rate > 50 else WARN
     return status, f"{n} places in {elapsed:.3f}s = {rate:.0f} places/sec"
 check("score recompute throughput", bench_score_recompute)
-
-
-def bench_search_index():
-    from app.services.search.search_index_builder import build_search_index
-    t0 = time.time()
-    n = build_search_index(db)
-    elapsed = time.time() - t0
-    return PASS, f"indexed {n} places in {elapsed:.3f}s"
-check("search index build speed", bench_search_index)
 
 
 def bench_dedup_scan():
@@ -449,7 +430,6 @@ paths = [
     ("ACTIVE",    "master_worker.py",              "discovery + menu + image crawl, 30s loop"),
     ("ACTIVE",    "discovery_worker.py",            "standalone discovery, 120s loop"),
     ("ACTIVE",    "truth_rebuild_worker.py",        "truth rebuild, 600s loop"),
-    ("ACTIVE",    "search_index_worker.py",         "search index, 900s loop"),
     ("ACTIVE",    "ranking_worker.py",              "city ranking snapshot, 3600s loop"),
     ("ACTIVE",    "recompute_scores_worker.py",     "queue-based score recompute"),
     ("ACTIVE",    "feed_refresh_worker.py",         "feed warming worker"),
@@ -457,7 +437,6 @@ paths = [
     ("ACTIVE",    "run_master_worker.py",           "entrypoint for master_worker"),
     ("DEPRECATED","run_pipeline.py",               "shim → master_worker (import fixed)"),
     ("ORPHANED",  "score_all_places_v2.py",        "needs_recompute never set; scale conflict with recompute.py"),
-    ("ORPHANED",  "search_service.py",              "empty stub — unused"),
     ("ORPHANED",  "feed_service.py",                "empty stub — unused"),
     ("ORPHANED",  "scripts/run_rank_places.py",     "empty stub"),
     ("ORPHANED",  "scripts/run_score_rebuild_v2.py","empty stub"),
@@ -505,7 +484,6 @@ print("""
   Run dedup audit:    python scripts/run_dedup_audit.py
   Rebuild truth:      python -c "from app.workers.truth_rebuild_worker import run_truth_rebuild_worker; run_truth_rebuild_worker()"
   Recompute scores:   python app/workers/recompute_scores_worker.py
-  Rebuild search idx: python -c "from app.db.session import SessionLocal; from app.services.search.search_index_builder import build_search_index; db=SessionLocal(); print(build_search_index(db)); db.close()"
   Data validation:    python scripts/run_data_validation.py
   Full audit:         python scripts/run_phase3_audit.py
 ──────────────────────────────────────────────────────────────────────

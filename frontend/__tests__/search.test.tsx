@@ -152,6 +152,47 @@ describe('SearchScreen — debounce, clear, and retry', () => {
   });
 });
 
+describe('SearchScreen — radius filter', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    useCityStore.setState({ selectedCity: SF_CITY, cities: [SF_CITY] });
+    mockedSearchPlaces.mockResolvedValue(makeSearchResult([makePlace('p0')]));
+  });
+
+  it('shows no distance chips at all without a resolved location', async () => {
+    mockedUseLocationStatus.mockReturnValue({ status: 'denied', coords: null, updatedAt: null });
+    const { getByLabelText, queryByText } = renderScreen();
+
+    act(() => getByLabelText('Search input').props.onChangeText('ramen'));
+    await waitFor(() => expect(mockedSearchPlaces).toHaveBeenCalled());
+
+    expect(queryByText('Any distance')).toBeNull();
+  });
+
+  it('sends the selected radius_miles once a location is known, and omits it before a distance is picked', async () => {
+    mockedUseLocationStatus.mockReturnValue({ status: 'granted', coords: { lat: 1, lng: 2 }, updatedAt: Date.now() });
+    const { getByLabelText, findByText } = renderScreen();
+
+    act(() => getByLabelText('Search input').props.onChangeText('ramen'));
+    await waitFor(() => expect(mockedSearchPlaces).toHaveBeenCalled());
+    expect(mockedSearchPlaces.mock.calls[0][0].radius_miles).toBeUndefined();
+
+    fireEvent.press(await findByText('3 mi'));
+    await waitFor(() => expect(mockedSearchPlaces).toHaveBeenCalledTimes(2));
+    expect(mockedSearchPlaces.mock.calls[1][0].radius_miles).toBe(3);
+  });
+
+  it('shows the radius relaxation message only when the backend actually relaxed it', async () => {
+    mockedUseLocationStatus.mockReturnValue({ status: 'granted', coords: { lat: 1, lng: 2 }, updatedAt: Date.now() });
+    mockedSearchPlaces.mockResolvedValue(makeSearchResult([makePlace('p0')], { relaxed_constraints: ['radius'] }));
+    const { getByLabelText, findByText } = renderScreen();
+
+    act(() => getByLabelText('Search input').props.onChangeText('ramen'));
+
+    expect(await findByText(/showing farther matches too/)).toBeTruthy();
+  });
+});
+
 describe('SearchScreen — Wave 5 intent and map handoff', () => {
   beforeEach(() => {
     jest.clearAllMocks();

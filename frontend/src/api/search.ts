@@ -39,6 +39,9 @@ export async function searchPlaces(
     city_id?: string;
     lat?: number;
     lng?: number;
+    /** Excludes results beyond this distance. Backend ignores it unless
+     * lat/lng are also present (see search.py's effective_radius_miles). */
+    radius_miles?: number;
     page_size?: number;
   },
   signal?: AbortSignal,
