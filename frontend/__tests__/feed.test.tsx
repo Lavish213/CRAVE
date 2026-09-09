@@ -308,6 +308,30 @@ describe('FeedScreen', () => {
     expect(mockedLogMany).toHaveBeenCalledTimes(1);
   });
 
+  it('automatically fetches the next page when a filter narrows the loaded page to zero, instead of getting stuck on a false empty state', async () => {
+    mockedFetchPlaces
+      .mockResolvedValueOnce(page(
+        [makePlace('p0', 0.86, { categories: ['Italian'], price_tier: 2 })], 2, 1, 'snapshot.2',
+      ))
+      .mockResolvedValueOnce(page(
+        [makePlace('p1', 0.85, { categories: ['Thai'], price_tier: 1 })], 2, 2,
+      ));
+
+    const { getByLabelText, findByLabelText, queryByText } = renderScreen();
+    await findByLabelText(/^p0,/);
+
+    fireEvent.press(getByLabelText('Filter discovery places'));
+    fireEvent.press(getByLabelText('Thai'));
+
+    // p0 (the only loaded page's only place) doesn't match "Thai" -- the
+    // filtered view is briefly empty, which would previously unmount the
+    // FlashList (the only thing wired to onEndReached) and strand this
+    // screen on the empty state forever, even though p1 is sitting on the
+    // very next cursor page.
+    await findByLabelText(/^p1,/);
+    expect(queryByText('No confident answer yet')).toBeNull();
+  });
+
   it('shows the error state and lets retry re-fetch', async () => {
     mockedFetchPlaces.mockRejectedValueOnce(new Error('network'));
     mockedFetchPlaces.mockResolvedValueOnce(page([makePlace('p0', 0.85)]));

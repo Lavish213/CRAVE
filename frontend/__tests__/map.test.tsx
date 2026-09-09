@@ -486,3 +486,51 @@ describe('MapScreen — "my saved places" toggle', () => {
     await waitFor(() => expect(mockedFetch).toHaveBeenCalledTimes(2));
   });
 });
+
+describe('MapScreen — widen fetch when a filter becomes active', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mapViewProps.current = null;
+    useCityStore.setState({ selectedCity: SF_CITY, cities: [SF_CITY] });
+    mockedFetch.mockResolvedValue([REAL_FEATURE]);
+    mockedSavedFetch.mockResolvedValue([]);
+    mockedUseAuthStore.mockImplementation((selector: (s: { user: unknown }) => unknown) =>
+      selector({ user: null }),
+    );
+    useDiscoveryContextStore.setState({ searchMapHandoff: null });
+  });
+
+  it('re-fetches at the backend max limit the moment a filter first becomes active, reusing the last known coordinates', async () => {
+    const { getByLabelText, findByLabelText } = render(<MapScreen />);
+    await waitFor(() => expect(mockedFetch).toHaveBeenCalledTimes(1));
+    const [firstCallArgs] = mockedFetch.mock.calls[0];
+    expect(firstCallArgs.limit).toBeUndefined();
+
+    fireEvent.press(getByLabelText('Filter places'));
+    fireEvent.press(await findByLabelText('Breakfast'));
+
+    await waitFor(() => expect(mockedFetch).toHaveBeenCalledTimes(2));
+    const [, secondCallArgs] = mockedFetch.mock.calls;
+    expect(secondCallArgs[0]).toEqual(expect.objectContaining({
+      lat: firstCallArgs.lat,
+      lng: firstCallArgs.lng,
+      radius_km: firstCallArgs.radius_km,
+      limit: 1000,
+    }));
+  });
+
+  it('does not re-fetch again for a second filter tweak while already active', async () => {
+    const { getByLabelText, findByLabelText } = render(<MapScreen />);
+    await waitFor(() => expect(mockedFetch).toHaveBeenCalledTimes(1));
+
+    fireEvent.press(getByLabelText('Filter places'));
+    fireEvent.press(await findByLabelText('Breakfast'));
+    await waitFor(() => expect(mockedFetch).toHaveBeenCalledTimes(2));
+
+    fireEvent.press(getByLabelText('Price tier $'));
+
+    // Still filters-active -> filters-active; no false->true transition,
+    // so no additional fetch.
+    expect(mockedFetch).toHaveBeenCalledTimes(2);
+  });
+});
