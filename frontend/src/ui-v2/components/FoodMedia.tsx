@@ -1,7 +1,7 @@
 import React from 'react';
 import { StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 import type { ImageProps } from 'expo-image';
-import { uiColors, uiMedia, uiRadius } from '../tokens';
+import { uiColors, uiMedia, uiRadius, uiSpace } from '../tokens';
 import { CraveImage, CraveText } from '../primitives';
 
 export type FoodMediaVariant = 'hero' | 'supporting' | 'compact';
@@ -10,12 +10,12 @@ export interface FoodMediaProps {
   source?: ImageProps['source'] | null;
   placeName: string;
   variant?: FoodMediaVariant;
-  style?: StyleProp<ViewStyle>;
+  style?: ImageProps['style'];
 }
 
 export function FoodMedia({ source, placeName, variant = 'supporting', style }: FoodMediaProps) {
   const fallback = (
-    <View style={[styles.fallback, variant === 'compact' ? styles.compact : styles.flexible, style]}>
+    <View style={[styles.fallback, variant === 'compact' ? styles.compact : styles.flexible, style as StyleProp<ViewStyle>] }>
       <CraveText role={variant === 'hero' ? 'title' : 'caption'} tone="secondary" align="center">
         {placeName}
       </CraveText>
@@ -68,7 +68,7 @@ const styles = StyleSheet.create({
     borderRadius: uiRadius.media,
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 16,
-    gap: 4,
+    padding: uiSpace.lg,
+    gap: uiSpace.xs,
   },
 });
