@@ -28,7 +28,7 @@
 - `frontend/src/ui-v2/primitives/CraveSurface.tsx`
 - `frontend/src/ui-v2/primitives/CraveImage.tsx`
 - `frontend/src/ui-v2/primitives/CraveInput.tsx`
-- `frontend/src/ui-v2/primitives/CraveToast.tsx`
+- `frontend/src/ui-v2/primitives/CraveToast.ts`
 - `frontend/src/ui-v2/primitives/CraveSheet.tsx`
 - `frontend/src/ui-v2/primitives/CraveSkeleton.tsx`
 - `frontend/src/ui-v2/primitives/index.ts`
