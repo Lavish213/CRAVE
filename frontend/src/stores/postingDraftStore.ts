@@ -52,7 +52,7 @@ export type DraftRestaurantRef =
   | { type: 'candidate'; candidateId: string; displayName: string }
   | { type: 'place'; placeId: string };
 
-export type DraftOutcome = 'pending' | 'attaching' | 'attached' | 'failed';
+export type DraftOutcome = 'pending' | 'awaiting_place' | 'attaching' | 'attached' | 'failed';
 
 export interface PostingDraft {
   id: string;
@@ -110,12 +110,13 @@ interface PostingDraftStore {
   attachDraftToPlace: (draftId: string, placeId: string) => Promise<void>;
 
   // User identified a place CRAVE doesn't have yet -- confirmNewSpot()
-  // already ran; this just records the reference so it can resolve later.
-  // Media stays exactly where it is; nothing is attached yet.
+  // already ran; this records the reference and *claims* the draft for
+  // candidate resolution so a later/rapid existing-place tap cannot attach
+  // the same media somewhere else while promotion is pending.
   setDraftCandidate: (draftId: string, candidateId: string, displayName: string) => void;
 
-  // Check every pending candidate-ref draft owned by userId against the
-  // backend; auto-attach any that have been promoted to a place.
+  // Check every candidate-ref draft owned by userId against the backend;
+  // auto-attach any that have been promoted to a place.
   resolvePendingCandidates: (userId: string) => Promise<void>;
 
   deleteDraft: (draftId: string) => Promise<void>;
@@ -156,20 +157,23 @@ export const usePostingDraftStore = create<PostingDraftStore>()(
       },
 
       setDraftCandidate: (draftId, candidateId, displayName) => {
-        // Guarded on 'pending' for the same reason attachDraftToPlace is
-        // below -- zustand's set/get are synchronous, so two rapid taps on
-        // two different candidates (one "Open" on an already-listed place,
-        // one "This is it" on a new one) can't both claim the same draft:
-        // whichever call's synchronous prefix runs first (JS's single-
-        // threaded event dispatch guarantees one fully completes before
-        // the next tap's handler starts) has already flipped the outcome
-        // away from 'pending' by the time the second one checks.
+        // Claim synchronously. `restaurantRef` alone is not a lock: leaving
+        // outcome='pending' here allowed a rapid existing-place action to
+        // enter attachDraftToPlace afterward and reassign/upload this same
+        // media to a different restaurant. `awaiting_place` is both the
+        // truthful lifecycle state and the exclusive claim while the
+        // DiscoveryCandidate is waiting for promotion.
         const draft = get().drafts.find((d) => d.id === draftId);
         if (!draft || draft.outcome !== 'pending') return;
         set({
           drafts: get().drafts.map((d) =>
             d.id === draftId
-              ? { ...d, restaurantRef: { type: 'candidate', candidateId, displayName }, lastError: null }
+              ? {
+                  ...d,
+                  restaurantRef: { type: 'candidate', candidateId, displayName },
+                  outcome: 'awaiting_place',
+                  lastError: null,
+                }
               : d
           ),
         });
@@ -177,11 +181,12 @@ export const usePostingDraftStore = create<PostingDraftStore>()(
 
       attachDraftToPlace: async (draftId, placeId) => {
         const draft = get().drafts.find((d) => d.id === draftId);
-        // 'pending' only -- this single check is what makes it safe for
-        // both the "Open" button (attachDraftToPlace) and the "This is it"
-        // button (setDraftCandidate) to race against each other, and safe
-        // for resolvePendingCandidates to call this on a draft a user is
-        // simultaneously tapping "Open" on elsewhere.
+        // 'pending' only. Candidate selection moves the draft to
+        // 'awaiting_place', so direct existing-place attachment cannot race
+        // with a candidate claim. Candidate resolution temporarily restores
+        // 'pending' and immediately invokes this function in the same JS
+        // turn; this function synchronously flips to 'attaching' before its
+        // first await, preserving exclusivity.
         if (!draft || draft.outcome !== 'pending') return;
 
         set({
@@ -241,7 +246,10 @@ export const usePostingDraftStore = create<PostingDraftStore>()(
         resolveInFlight = true;
         try {
           const pending = get().drafts.filter(
-            (d) => d.ownerId === userId && d.restaurantRef.type === 'candidate' && d.outcome === 'pending'
+            (d) =>
+              d.ownerId === userId &&
+              d.restaurantRef.type === 'candidate' &&
+              d.outcome === 'awaiting_place'
           );
 
           for (const draft of pending) {
@@ -252,14 +260,28 @@ export const usePostingDraftStore = create<PostingDraftStore>()(
                 set({
                   drafts: get().drafts.map((d) =>
                     d.id === draft.id
-                      ? { ...d, outcome: 'failed', lastError: `${draft.restaurantRef.type === 'candidate' ? draft.restaurantRef.displayName : 'This place'} wasn't added — it didn't get enough corroboration.` }
+                      ? {
+                          ...d,
+                          outcome: 'failed',
+                          lastError: `${draft.restaurantRef.type === 'candidate' ? draft.restaurantRef.displayName : 'This place'} wasn't added — it didn't get enough corroboration.`,
+                        }
                       : d
                   ),
                 });
               } else if (result.resolved && result.place_id) {
+                // Release only to the resolved attachment path, then invoke
+                // it immediately. attachDraftToPlace synchronously flips the
+                // draft to 'attaching' before any await, so no UI action can
+                // interleave and steal the claim in this JS turn.
+                set({
+                  drafts: get().drafts.map((d) =>
+                    d.id === draft.id ? { ...d, outcome: 'pending', lastError: null } : d
+                  ),
+                });
                 await get().attachDraftToPlace(draft.id, result.place_id);
               }
-              // Neither resolved nor blocked yet -- stays 'pending', check again next foreground.
+              // Neither resolved nor blocked yet -- stays awaiting_place,
+              // check again next foreground.
             } catch {
               // A transient failure checking status shouldn't mark the
               // draft failed -- the media and the candidate reference are
