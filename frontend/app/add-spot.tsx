@@ -83,8 +83,18 @@ export default function AddSpotScreen() {
   // Single-use per screen visit -- once the user has acted on one candidate
   // (attached, or explicitly deferred on a new-candidate signal), a second,
   // unrelated candidate tapped afterward must not silently inherit the same
-  // media. 'idle' is the only state that still offers to attach it.
+  // media. 'idle' is the display-only reflection of this for the banner;
+  // the actual claim is guarded by the ref below, not this state.
   const [mediaOutcome, setMediaOutcome] = useState<'idle' | 'uploading' | 'attached' | 'failed' | 'deferred'>('idle');
+  // React state alone can't close a fast-double-tap race here (confirmed by
+  // CodeRabbit) -- two "Open" taps on different candidates can both read
+  // mediaOutcome as still 'idle' before the first tap's setMediaOutcome('
+  // uploading') has actually committed a re-render, letting the same photo/
+  // video attach to two different places. A ref mutates synchronously and
+  // immediately, so whichever call site checks-and-claims it first (Open's
+  // onPress or handleConfirm's success branch) is guaranteed to win --
+  // same fix as rank/[placeId].tsx's identical submittingRef pattern.
+  const mediaClaimedRef = useRef(false);
 
   const attachPendingMedia = useCallback(
     async (placeId: string) => {
@@ -203,7 +213,8 @@ export default function AddSpotScreen() {
       // screen simply doesn't touch it here -- there's no "come back and
       // retry" mechanism beyond the user redoing food-evidence, which this
       // copy is honest about).
-      if (pendingMedia && mediaOutcome === 'idle') {
+      if (pendingMedia && !mediaClaimedRef.current) {
+        mediaClaimedRef.current = true;
         setMediaOutcome('deferred');
         toast(
           `Got it — added as a signal. It'll appear once confirmed by more activity. Come back once it's live to add your ${pendingMedia.kind}.`,
@@ -339,10 +350,12 @@ export default function AddSpotScreen() {
                     // Fire-and-forget: uploading shouldn't block getting to
                     // the place, and toast() renders from a root-mounted
                     // container so its outcome still surfaces after
-                    // navigating away. Guarded on 'idle' so a second,
-                    // different candidate tapped afterward doesn't also
-                    // try to claim the same media.
-                    if (pendingMedia && mediaOutcome === 'idle' && candidate.place_id) {
+                    // navigating away. Claimed via the ref (not mediaOutcome
+                    // state) so two rapid taps on two different candidates
+                    // can't both win the same media before either's
+                    // setMediaOutcome('uploading') has committed a re-render.
+                    if (pendingMedia && !mediaClaimedRef.current && candidate.place_id) {
+                      mediaClaimedRef.current = true;
                       void attachPendingMedia(candidate.place_id);
                     }
                     router.push(`/place/${candidate.place_id}`);

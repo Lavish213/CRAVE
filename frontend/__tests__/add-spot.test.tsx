@@ -241,6 +241,32 @@ describe('AddSpotScreen', () => {
       );
     });
 
+    it('does not double-attach when two Open buttons are pressed before React re-renders mediaOutcome (confirmed by CodeRabbit)', async () => {
+      // The two presses below are fired back-to-back with no awaited flush
+      // in between -- if the claim were guarded by mediaOutcome state alone
+      // (which only updates on the *next* render), both onPress handlers
+      // would still read it as 'idle' and both would attach the same
+      // media. The mediaClaimedRef guard must catch this synchronously,
+      // regardless of render timing.
+      mockParams = { mediaUri: 'file://photo.jpg', mediaKind: 'photo', mediaFileSize: '1000000', mediaMimeType: 'image/jpeg' };
+      setAuth({ id: 'user-1' });
+      mockedSearchNearby.mockResolvedValue([
+        makeCandidate({ external_id: 'a', name: 'First Place', already_in_crave: true, place_id: 'place-a' }),
+        makeCandidate({ external_id: 'b', name: 'Second Place', already_in_crave: true, place_id: 'place-b' }),
+      ]);
+      mockUpload.mockResolvedValue('image-1');
+
+      const { findByLabelText } = render(<AddSpotScreen />);
+      const openFirst = await findByLabelText('Open First Place');
+      const openSecond = await findByLabelText('Open Second Place');
+      fireEvent.press(openFirst);
+      fireEvent.press(openSecond);
+      await act(async () => {});
+
+      expect(mockUpload).toHaveBeenCalledTimes(1);
+      expect(mockUpload).toHaveBeenCalledWith(expect.anything(), 'place-a', 'food');
+    });
+
     it('does not attach the same media a second time to a different candidate', async () => {
       mockParams = { mediaUri: 'file://photo.jpg', mediaKind: 'photo', mediaFileSize: '1000000', mediaMimeType: 'image/jpeg' };
       setAuth({ id: 'user-1' });
