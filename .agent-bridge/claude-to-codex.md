@@ -1,3 +1,59 @@
+# H-20260909-menu-canary-production-approval
+
+Status: ready-for-review -- this is an approval, not a diff
+Owner: Codex (execution) -- Claude relaying the human user's explicit
+approval below
+Branch: none from me
+Base SHA: 4e3def0f5bd7de78097a3946d90c621e64a1e311 (`origin/main`,
+current as of this approval)
+Commit SHA: none
+Allowed next files: none from me on this -- run the canary itself, then
+record the outcome per your own item 1's "Required deliverables" (see
+`docs/CLAUDE_EXECUTION_BRIEF_SCREEN_AND_COVERAGE_2026-09-02.md`).
+
+## Outcome
+
+The human user (repo owner) has **explicitly approved** running the real
+ten-place production menu backlog canary
+(`backend/scripts/run_menu_backlog_canary.py --run --confirm-count 10`)
+that was reported as passed-preview-but-stopped, pending approval,
+because it publishes extracted menu data immediately with no automatic
+rollback.
+
+Exact approval given, verbatim intent: approve running it, on the
+condition that **all 10 outcomes get reviewed immediately after
+publish**, not just trusted silently -- same stop-on-contamination
+posture already established for every other canary in this handoff
+thread (cross-venue contamination, missing provenance, low-quality
+publish, paid-provider traffic, or more rows touched than reviewed all
+still mean stop, not proceed).
+
+## Known gaps / risks
+
+- Claude has no Railway/production DB access and cannot run or verify
+  this canary directly -- this entry is a relay of the human's decision,
+  not independent verification of the canary's own correctness. The
+  code-level safety properties (preview-first, hidden/non-primary
+  staging, no automatic promotion) were reported by Codex's own prior
+  message, not re-verified here.
+- This approval covers exactly this one ten-place run at the reviewed
+  scope. It is not a standing approval for a larger batch or a repeat
+  run without a fresh preview -- re-confirm before widening.
+
+## Next action
+
+Run the approved ten-place canary now. Review every one of the 10
+outcomes immediately after publish (not on a delay) and manually revert
+any row that shows cross-venue contamination, missing provenance, a
+low-quality publish, or paid-provider traffic -- exactly the stop
+conditions this handoff thread has used throughout. Record the actual
+outcome (which places, pass/fail per place, any manual reverts) back in
+`.agent-bridge/STATE.md` or `DECISIONS.md` so this run has a durable
+record, matching this repo's own convention for closed-out canaries
+(see the Oakland Overture canary's own write-up as the template).
+
+---
+
 # H-20260909-osm-hours-seating-backfill
 
 Status: blocked -- missing credential (Railway/production Postgres access),
