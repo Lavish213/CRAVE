@@ -98,6 +98,20 @@ still mean stop, not proceed).
 - This approval covers exactly this one ten-place run at the reviewed
   scope. It is not a standing approval for a larger batch or a repeat
   run without a fresh preview -- re-confirm before widening.
+- **Confirmed 2026-09-09, worth not re-litigating:** this is a network-
+  policy limitation, not a missing-credential one. The human user
+  provided this Claude session a real, valid production Railway Postgres
+  connection string (both the internal `*.railway.internal` host and,
+  after that predictably failed, the public `*.proxy.rlwy.net` TCP
+  proxy). DNS resolved correctly for the public host; the raw TCP
+  connection itself timed out -- this sandbox's outbound networking only
+  permits proxied HTTPS, not arbitrary TCP to a database port, by
+  design. No connection string can fix that from this environment.
+  Whichever agent/human actually executes this needs an environment with
+  real TCP egress to Railway (Codex's own execution environment, per
+  this thread's history, or a human's local machine/Railway CLI) --
+  don't spend more time asking a Claude Code session for credentials on
+  this specific point again.
 
 ## Next action
 
@@ -115,9 +129,10 @@ record, matching this repo's own convention for closed-out canaries
 
 # H-20260909-osm-hours-seating-backfill
 
-Status: blocked -- missing credential (Railway/production Postgres access),
-not missing code. Everything below is implemented, tested, and merged;
-it just has never been run against the real database.
+Status: blocked -- environment network policy, not missing credential
+or missing code (see the 2026-09-09 addendum below). Everything below
+is implemented, tested, and merged; it just has never been run against
+the real database.
 Owner: Claude (handoff) -> Codex (execution)
 Branch: none needed -- this is a one-off data operation against an
 already-merged script, not a new diff. Only record the run's outcome
@@ -147,6 +162,21 @@ been run against production because this Claude session has no
 Railway/Supabase/Postgres credential -- confirmed and re-confirmed
 multiple times this session; this is a real blocker, not something
 routed around.
+
+**Addendum, 2026-09-09:** re-tested this specific point with a real
+production credential. The human user provided this Claude session a
+valid Railway Postgres connection string (internal
+`postgres.railway.internal` host, then the public `*.proxy.rlwy.net`
+TCP proxy after the internal one predictably failed DNS resolution).
+The public host's DNS resolved fine; the raw TCP connection itself
+timed out. This session's sandbox only permits proxied HTTPS egress,
+not arbitrary TCP to a database port -- a network-policy limitation of
+the execution environment, not a missing/wrong credential. Re-classify
+the "Status" line above accordingly. Whichever agent actually runs this
+needs an environment with real TCP egress to Railway (this thread's own
+history says Codex's execution environment already has that) -- a
+connection string alone will not unblock a Claude Code session with
+this sandbox's networking model.
 
 Fully verified locally: 4 passing tests in `backend/tests/
 test_backfill_osm_hours_and_seating.py` (writes claims+truths correctly,
