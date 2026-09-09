@@ -30,6 +30,7 @@ from app.core.rate_limit import rate_limit
 from app.core.user_auth import get_current_user_id
 from app.db.session import get_db
 from app.db.models.place import Place
+from app.db.models.discovery_candidate import DiscoveryCandidate
 from app.services.ingest.google_places_ingest import GooglePlacesIngest
 from app.services.discovery.discovery_service import ingest_candidate_v2
 
@@ -92,6 +93,13 @@ class NearbyConfirmResponse(BaseModel):
     status: str
     candidate_id: str
     confidence_score: float
+
+
+class CandidateStatusResponse(BaseModel):
+    candidate_id: str
+    resolved: bool
+    place_id: Optional[str] = None
+    blocked: bool
 
 
 @router.post("/search", response_model=NearbySearchResponse, dependencies=[Depends(rate_limit), Depends(require_api_key)])
@@ -183,4 +191,41 @@ def confirm_new_spot(
         status="candidate_recorded",
         candidate_id=candidate.id,
         confidence_score=candidate.confidence_score,
+    )
+
+
+@router.get(
+    "/candidate/{candidate_id}/status",
+    response_model=CandidateStatusResponse,
+    dependencies=[Depends(rate_limit), Depends(require_api_key)],
+)
+def get_candidate_status(
+    candidate_id: str,
+    db: Session = Depends(get_db),
+    _user_id: str = Depends(get_current_user_id),
+):
+    """
+    Lets a client that confirmed a new spot (POST /nearby/confirm, which only
+    ever returns a candidate_id -- never a place_id, since confirming just
+    creates a DiscoveryCandidate for the normal async promotion pipeline)
+    later check whether that candidate has since been promoted to a real
+    Place. No ownership is tracked per-candidate (corroboration is
+    multi-signal, not single-submitter -- see contributor_key elsewhere in
+    this module), so this is a plain lookup by id rather than scoped to the
+    original confirmer; the id itself is an unguessable UUID and the
+    response carries nothing sensitive.
+    """
+    candidate = (
+        db.query(DiscoveryCandidate)
+        .filter(DiscoveryCandidate.id == candidate_id)
+        .first()
+    )
+    if candidate is None:
+        raise HTTPException(status_code=404, detail="Candidate not found")
+
+    return CandidateStatusResponse(
+        candidate_id=candidate.id,
+        resolved=candidate.resolved,
+        place_id=candidate.resolved_place_id,
+        blocked=candidate.blocked,
     )
