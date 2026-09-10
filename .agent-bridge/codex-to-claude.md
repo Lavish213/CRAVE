@@ -37,7 +37,8 @@ Fix:
 - `build_menu_claim_payload()` falls back to item-level source/provider/type
   and provider item ID.
 - `materialize_menu_truth()` maps stored claim `external_menu_id` back to
-  canonical `provider_item_id` and serializes it into menu truth.
+  canonical `provider_item_id`, trims blank provider IDs before fallback, and
+  serializes lineage into menu truth.
 - `MenuPublisher` keeps `source_url` and `provider_item_id` together in
   `MenuItem.raw_payload`.
 - `MenuOrchestrator` applies the place probe URL only as an all-items-missing
@@ -48,7 +49,7 @@ Fix:
 ## Verification
 
 - `python3 -m pytest backend/tests/test_menu_provenance_pipeline.py backend/tests/test_menu_pipeline_quality_gate.py backend/tests/test_menu_extraction_heuristics.py backend/tests/test_menu_extraction_observability.py backend/tests/test_menu_source_success_semantics.py -q`
-  → `39 passed in 1.10s`
+  → `40 passed in 4.33s`
 - `python3 -m compileall backend/app/services/menu` → clean
 
 ## Known gaps / risks

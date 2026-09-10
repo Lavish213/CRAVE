@@ -427,6 +427,58 @@ def test_materialize_rewrites_legacy_truth_when_only_lineage_changes():
         db.close()
 
 
+def test_materialize_falls_back_to_external_menu_id_when_provider_item_id_is_blank():
+    db = SessionLocal()
+    place_id = str(uuid.uuid4())
+    try:
+        db.add(Place(
+            id=place_id,
+            name=f"Provider Id Fallback Test {place_id[:8]}",
+            city_id="00000000-0000-0000-0000-000000000001",
+        ))
+        for index, name in enumerate(("Taco", "Burrito"), start=1):
+            db.add(PlaceClaim(
+                place_id=place_id,
+                field="menu_item",
+                claim_key=f"item-{index}",
+                value_json={
+                    "fingerprint": f"item-{index}",
+                    "name": name,
+                    "section": "Mains",
+                    "price_cents": 1000 + index,
+                    "currency": "USD",
+                    "provider": "toast",
+                    "provider_item_id": "   ",
+                    "external_menu_id": f"toast-{index}",
+                    "source_type": "provider",
+                    "source_url": "https://order.example/menu",
+                },
+                confidence=0.9,
+                source="toast",
+            ))
+        db.commit()
+
+        menu = materialize_menu_truth(db=db, place_id=place_id)
+        assert menu is not None
+
+        materialized_items = [
+            item
+            for section in menu.sections
+            for item in section.items
+        ]
+        assert {item.provider_item_id for item in materialized_items} == {
+            "toast-1",
+            "toast-2",
+        }
+    finally:
+        db.rollback()
+        db.query(PlaceClaim).filter(PlaceClaim.place_id == place_id).delete()
+        db.query(PlaceTruth).filter(PlaceTruth.place_id == place_id).delete()
+        db.query(Place).filter(Place.id == place_id).delete()
+        db.commit()
+        db.close()
+
+
 def test_orchestrator_source_url_fallback_only_when_entire_batch_needs_it():
     orchestrator = MenuOrchestrator()
 

@@ -35,7 +35,8 @@ Fix on this branch:
   exists.
 - `build_menu_claim_payload()` falls back to item-level lineage fields.
 - `materialize_menu_truth()` maps claim `external_menu_id` back to canonical
-  `provider_item_id` and serializes it into menu truth.
+  `provider_item_id`, trims blank provider IDs before fallback, and serializes
+  lineage into menu truth.
 - `MenuPublisher` carries both `source_url` and `provider_item_id` in
   `MenuItem.raw_payload`.
 - `MenuOrchestrator` only applies a batch `_probe_url` fallback when every
@@ -45,7 +46,7 @@ Fix on this branch:
 
 Verification:
 - `python3 -m pytest backend/tests/test_menu_provenance_pipeline.py backend/tests/test_menu_pipeline_quality_gate.py backend/tests/test_menu_extraction_heuristics.py backend/tests/test_menu_extraction_observability.py backend/tests/test_menu_source_success_semantics.py -q`
-  → `39 passed in 1.10s`
+  → `40 passed in 4.33s`
 - `python3 -m compileall backend/app/services/menu` → clean
 
 Next action: review/merge this provenance fix, then run a fresh reviewed
@@ -92,17 +93,17 @@ Next action: review/merge this duplicate-claim fix, then rerun the OSM
 backfill for real. Do not run the patched writer against production from this
 unmerged branch unless the human explicitly authorizes that exact shortcut.
 
-## Menu backlog canary status — 2026-09-09
+## Menu backlog canary status — 2026-09-10
 
-Still not run. Additional verified blocker: current
-`backend/scripts/run_menu_backlog_canary.py` requires exact `--place-ids` or
-`--place-ids-file`; the pasted `--run --confirm-count 10` command alone is
-insufficient. The docs require a reviewed exact 10-place list first.
+Pre-fix reviewed 10-place canary ran, materialized two menus, and was reverted
+immediately because every published item lacked source URL provenance; net
+retained publish count was zero. No post-fix canary has run yet.
 
-Next action for menu canary: once production DB access remains available,
-provide or build a reviewed 10-place ID file, preview it, then run with
-`--place-ids-file <reviewed-file> --run --confirm-count 10` and review all
-outcomes immediately.
+Bounded next action for menu canary: after this provenance fix merges, build a
+fresh reviewed exact 10-place ID file, preview it, then run only that canary
+with `--place-ids-file <reviewed-file> --run --confirm-count 10`; immediately
+review all materialized rows and revert any missing provenance, contamination,
+low-quality publish, or paid-provider traffic.
 
 ## Previous compacted context
 
