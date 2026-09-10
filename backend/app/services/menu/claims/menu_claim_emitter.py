@@ -133,9 +133,18 @@ def emit_menu_claims(
             # CLAIM KEY
             # =========================================================
 
+            item_source_url = (
+                _safe_str(getattr(item, "source_url", None))
+                or source_url
+            )
+
+            if not item_source_url:
+                failed_items += 1
+                continue
+
             claim_key = build_menu_claim_key(
                 fingerprint=fingerprint,
-                source_url=source_url,
+                source_url=item_source_url,
             )
 
             if not claim_key:
@@ -153,7 +162,7 @@ def emit_menu_claims(
 
             payload = build_menu_claim_payload(
                 item=item,
-                source_url=source_url,
+                source_url=item_source_url,
             )
 
             payload_json = claim_payload_to_json(payload)

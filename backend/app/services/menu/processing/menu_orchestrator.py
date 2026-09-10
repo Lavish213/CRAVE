@@ -517,6 +517,10 @@ class MenuOrchestrator:
                 db=db,
                 place_id=place_id,
                 items=normalized_items,
+                source_url=self._batch_source_url_fallback(
+                    normalized_items,
+                    _probe_url,
+                ),
                 source=f"menu_orchestrator:{_source_provider or 'unknown'}",
                 confidence=_confidence,
                 weight=1.0,
@@ -819,12 +823,37 @@ class MenuOrchestrator:
                     fingerprint=fingerprint,
                     image_url=self._get(item, "image_url"),
                     provider=self._get(item, "provider"),
+                    provider_item_id=self._get(item, "provider_item_id"),
                     source_type=self._get(item, "source_type"),
                     source_url=self._get(item, "source_url"),
                 )
             )
 
         return out
+
+    def _batch_source_url_fallback(self, items, source_url: Optional[str]) -> Optional[str]:
+        fallback = self._clean_str(source_url)
+        if not fallback:
+            return None
+
+        item_list = list(items or [])
+        if not item_list:
+            return None
+
+        missing_count = sum(
+            1
+            for item in item_list
+            if not self._get(item, "source_url")
+        )
+
+        # If any item already has its own source URL, trust item-level
+        # provenance and do not stamp the batch probe URL onto the rest. That
+        # prevents mixed-source extraction results from silently inheriting the
+        # place probe URL.
+        if missing_count and missing_count == len(item_list):
+            return fallback
+
+        return None
 
     def _get(self, item, field, *, raw: bool = False):
         if isinstance(item, dict):

@@ -21,12 +21,17 @@ def build_menu_claim_payload(
     *,
     source_url: Optional[str] = None,
     provider: Optional[str] = None,
-    source_type: str = "html",
+    source_type: Optional[str] = None,
     external_menu_id: Optional[str] = None,
 ) -> MenuClaimPayload:
 
-    # 🔥 fallback provider from item
+    # Preserve item-level lineage when callers do not have a single global
+    # source for every item. Production menu canaries depend on these fields
+    # surviving extraction → claims → materialized truth → published cache.
+    source_url = source_url or getattr(item, "source_url", None)
     provider = provider or getattr(item, "provider", None)
+    source_type = source_type or getattr(item, "source_type", None)
+    external_menu_id = external_menu_id or getattr(item, "provider_item_id", None)
 
     return MenuClaimPayload(
         fingerprint=item.fingerprint,

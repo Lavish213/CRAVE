@@ -36,6 +36,11 @@ class _NormalizedRow:
     currency: str
     fingerprint: str
     confidence: float
+    image_url: Optional[str]
+    provider: Optional[str]
+    provider_item_id: Optional[str]
+    source_type: Optional[str]
+    source_url: Optional[str]
 
 
 # ---------------------------------------------------------
@@ -111,7 +116,12 @@ def process_extracted_menu(
                 price_cents=row.price_cents,
                 currency=row.currency,
                 description=row.description,
+                image_url=row.image_url,
                 confidence_score=row.confidence,
+                provider=row.provider,
+                provider_item_id=row.provider_item_id,
+                source_type=row.source_type,
+                source_url=row.source_url,
             )
         )
 
@@ -235,6 +245,14 @@ def _normalize_extracted_item(
         currency=currency,
         fingerprint=fingerprint,
         confidence=confidence,
+        image_url=_clean_text(getattr(item, "image_url", None), max_length=2048),
+        provider=_clean_text(getattr(item, "provider", None), max_length=128),
+        provider_item_id=_clean_text(
+            getattr(item, "provider_item_id", None),
+            max_length=255,
+        ),
+        source_type=_clean_text(getattr(item, "source_type", None), max_length=64),
+        source_url=_clean_text(getattr(item, "source_url", None), max_length=2048),
     )
 
 

@@ -1,10 +1,57 @@
 # Active agent state
 
-Status: blocked
+Status: ready-for-review
 Owner: Codex
-Branch: codex/osm-backfill-dedupe-claims
-Head SHA: bc92ea7 (`fix: dedupe osm backfill claims`)
-Scope: OSM hours/outdoor-seating production backfill execution from clean `origin/main`, plus the duplicate-claim script fix found by the real production run.
+Branch: codex/menu-provenance-fix
+Base SHA: 8d3023d594f40f8d90de93683b59c1c714f7d407
+Verified code SHA: 988c98491af1af8f6a761739dd870142db345392 (`fix: close menu provenance review gaps`)
+Scope: repair the menu canary provenance loss found during the 10-place production canary review. Locked files: `backend/app/services/menu/contracts.py`, `backend/app/services/menu/menu_pipeline.py`, `backend/app/services/menu/materialize_menu_truth.py`, `backend/app/services/menu/menu_publisher.py`, `backend/app/services/menu/claims/menu_claim_emitter.py`, `backend/app/services/menu/claims/menu_claim_values.py`, `backend/app/services/menu/processing/menu_orchestrator.py`, `backend/app/services/menu/orchestration/menu_enrichment_worker.py`, `backend/tests/test_menu_provenance_pipeline.py`, `.agent-bridge/STATE.md`, `.agent-bridge/codex-to-claude.md`.
+
+## Active task — menu provenance repair
+
+The 10-place menu backlog canary was run with a reviewed place list. It
+materialized two menus, but immediate review found every published item missing
+source URL provenance, which violates the population execution brief and the
+menu provenance contract. Both published menus were reverted immediately; net
+retained publish count is zero.
+
+Investigation on clean `origin/main` found the downstream truth/publisher path
+can preserve provenance when `PlaceClaim.value_json` includes it. The leak is
+upstream: `process_extracted_menu()` strips item `provider`, `source_type`, and
+`source_url` while converting extracted items into canonical items, and
+`emit_menu_claims()` builds keys/payloads from only the function-level
+`source_url` instead of each normalized item's source URL. The fix must preserve
+item-level lineage through canonicalization and claim emission, with regression
+tests at that seam.
+
+Fix on this branch:
+- `CanonicalMenuItem` now carries `provider_item_id`.
+- `process_extracted_menu()` preserves item `image_url`, `provider`,
+  `provider_item_id`, `source_type`, and `source_url`.
+- The scheduler/orchestrator and enrichment worker preserve that lineage when
+  rebuilding `NormalizedMenuItem` objects.
+- `emit_menu_claims()` uses the item source URL first, falls back to the
+  caller source URL, and refuses anonymous menu claims when no provenance URL
+  exists.
+- `build_menu_claim_payload()` falls back to item-level lineage fields.
+- `materialize_menu_truth()` maps claim `external_menu_id` back to canonical
+  `provider_item_id`, trims blank provider IDs before fallback, and serializes
+  lineage into menu truth.
+- `MenuPublisher` carries both `source_url` and `provider_item_id` in
+  `MenuItem.raw_payload`.
+- `MenuOrchestrator` only applies a batch `_probe_url` fallback when every
+  normalized item lacks its own source URL, avoiding mixed-source URL stamping.
+- `_menu_hash()` includes provenance lineage fields so materialization rewrites
+  legacy `PlaceTruth.sources_json` when only provenance changes.
+
+Verification:
+- `python3 -m pytest backend/tests/test_menu_provenance_pipeline.py backend/tests/test_menu_pipeline_quality_gate.py backend/tests/test_menu_extraction_heuristics.py backend/tests/test_menu_extraction_observability.py backend/tests/test_menu_source_success_semantics.py -q`
+  → `40 passed in 4.33s`
+- `python3 -m compileall backend/app/services/menu` → clean
+
+Next action: review/merge this provenance fix, then run a fresh reviewed
+10-place menu canary from merged `main` with explicit human authorization. Do
+not run another production `--run` menu canary from this unmerged branch.
 
 ## Active blocker — OSM backfill production run
 
@@ -46,17 +93,17 @@ Next action: review/merge this duplicate-claim fix, then rerun the OSM
 backfill for real. Do not run the patched writer against production from this
 unmerged branch unless the human explicitly authorizes that exact shortcut.
 
-## Menu backlog canary status — 2026-09-09
+## Menu backlog canary status — 2026-09-10
 
-Still not run. Additional verified blocker: current
-`backend/scripts/run_menu_backlog_canary.py` requires exact `--place-ids` or
-`--place-ids-file`; the pasted `--run --confirm-count 10` command alone is
-insufficient. The docs require a reviewed exact 10-place list first.
+Pre-fix reviewed 10-place canary ran, materialized two menus, and was reverted
+immediately because every published item lacked source URL provenance; net
+retained publish count was zero. No post-fix canary has run yet.
 
-Next action for menu canary: once production DB access remains available,
-provide or build a reviewed 10-place ID file, preview it, then run with
-`--place-ids-file <reviewed-file> --run --confirm-count 10` and review all
-outcomes immediately.
+Bounded next action for menu canary: after this provenance fix merges, build a
+fresh reviewed exact 10-place ID file, preview it, then run only that canary
+with `--place-ids-file <reviewed-file> --run --confirm-count 10`; immediately
+review all materialized rows and revert any missing provenance, contamination,
+low-quality publish, or paid-provider traffic.
 
 ## Previous compacted context
 

@@ -159,7 +159,12 @@ def _build_normalized_items(canonical_menu) -> List[NormalizedMenuItem]:
                 price_cents=getattr(item, "price_cents", None),
                 currency=currency,
                 description=getattr(item, "description", None),
+                image_url=getattr(item, "image_url", None),
                 fingerprint=fp,
+                provider=getattr(item, "provider", None),
+                provider_item_id=getattr(item, "provider_item_id", None),
+                source_type=getattr(item, "source_type", None),
+                source_url=getattr(item, "source_url", None),
             ))
 
     return out
@@ -324,6 +329,7 @@ def process_menu_job(
             db=db,
             place_id=place_id,
             items=normalized,
+            source_url=resolved_url,
             source="menu_enrichment_worker",
             confidence=0.9,
             weight=1.0,
