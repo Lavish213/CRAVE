@@ -1,10 +1,3 @@
-// app/friends-feed.tsx
-//
-// "Your friend just ranked X" — the payoff for having a follow graph at
-// all. Deliberately separate from the algorithmic catalog feed on the home
-// tab: this one is chronological, small, and empty until you follow people,
-// and pretending otherwise by padding it with recommendations would make it
-// indistinguishable from the home tab.
 import React, { useCallback } from 'react';
 import {
   RefreshControl,
@@ -30,27 +23,20 @@ import { relativeTime } from '../src/utils/time';
 import { withImageWidth, AVATAR_IMAGE_WIDTH } from '../src/utils/imageUrl';
 
 function actorName(event: ActivityEvent): string {
-  const a = event.actor;
-  return a?.display_name ?? (a?.username ? `@${a.username}` : 'Someone');
+  const actor = event.actor;
+  return actor?.display_name ?? (actor?.username ? `@${actor.username}` : 'Someone');
+}
+
+function reactionCopy(reaction: ActivityEvent['payload'] extends infer P ? P extends { reaction?: infer R } ? R : never : never): string {
+  if (reaction === 'loved') return 'Loved it';
+  if (reaction === 'good') return 'Good';
+  if (reaction === 'not_for_me') return 'Not for me';
+  return 'Shared a food find';
 }
 
 export default function FriendsFeedScreen() {
   const router = useRouter();
-  const user = useAuthStore((s) => s.user);
-  // Previously raw useState + useFocusEffect with no caching at all -- every
-  // tab focus re-fetched from scratch, unlike every other list screen in the
-  // app.
-  //
-  // The queryFn used to swallow every error into an empty array
-  // (`.catch(() => [])`), so a signed-out 401 or a real server failure
-  // rendered identically to a genuinely empty feed -- fixed to let
-  // react-query's isError surface instead, same fix as leaderboard.tsx's
-  // identical pattern.
-  //
-  // Keyed by user.id -- this is the signed-in caller's own follow graph's
-  // activity. Without it, an account switch within this query's 2-minute
-  // staleTime (this screen doesn't remount on sign-in/out) would read back
-  // the previous account's cached feed until the next natural refetch.
+  const user = useAuthStore((state) => state.user);
   const {
     data: events = [],
     isLoading: loading,
@@ -64,15 +50,6 @@ export default function FriendsFeedScreen() {
     enabled: !!user,
   });
 
-  // Cached data shows instantly on refocus; this just revalidates quietly
-  // in the background instead of resetting to a full loading state.
-  //
-  // Guarded on `user` here too, not just via the query's own `enabled` --
-  // react-query's `refetch()` is an explicit imperative trigger that runs
-  // the queryFn regardless of `enabled` (that flag only gates *automatic*
-  // fetches). Without this guard, a signed-out call (e.g. this effect
-  // re-firing right after sign-out, before this screen unmounts) would
-  // still issue a live request for this account-scoped feed.
   useFocusEffect(
     useCallback(() => {
       if (!user) return;
@@ -97,7 +74,7 @@ export default function FriendsFeedScreen() {
       <EmptyState
         icon="people-outline"
         title="Nothing here yet"
-        body="Follow people to see what they're ranking. This feed only shows activity from accounts you follow."
+        body="Follow people to see food finds and ranking activity from accounts you follow."
         ctaLabel="Find people"
         onCta={() => router.push('/leaderboard')}
       />
@@ -108,7 +85,7 @@ export default function FriendsFeedScreen() {
     <FlashList
       style={styles.container}
       data={events}
-      keyExtractor={(e) => e.id}
+      keyExtractor={(event) => event.id}
       contentContainerStyle={styles.list}
       refreshControl={
         <RefreshControl
@@ -119,20 +96,24 @@ export default function FriendsFeedScreen() {
       }
       renderItem={({ item }) => {
         const isRanking = item.event_type === 'ranked_place';
+        const isPost = item.event_type === 'posted_food';
         const score = item.payload?.score;
         const tier = item.payload?.tier;
+        const canOpenPlace = (isRanking || isPost) && !!item.place_id;
 
         return (
           <TouchableOpacity
             style={styles.row}
-            activeOpacity={isRanking && item.place_id ? 0.75 : 1}
-            disabled={!isRanking || !item.place_id}
+            activeOpacity={canOpenPlace ? 0.75 : 1}
+            disabled={!canOpenPlace}
             onPress={() => item.place_id && router.push(`/place/${item.place_id}`)}
             accessibilityRole="button"
             accessibilityLabel={
               isRanking
                 ? `${actorName(item)} ranked ${item.place_name ?? 'a place'}`
-                : `${actorName(item)} followed someone`
+                : isPost
+                  ? `${actorName(item)} shared a food find at ${item.place_name ?? 'a place'}`
+                  : `${actorName(item)} followed someone`
             }
           >
             {item.actor?.avatar_url ? (
@@ -158,6 +139,11 @@ export default function FriendsFeedScreen() {
                     {' ranked '}
                     <Text style={styles.subject}>{item.place_name ?? 'a place'}</Text>
                   </>
+                ) : isPost ? (
+                  <>
+                    {' shared '}
+                    <Text style={styles.subject}>{item.place_name ?? 'a food find'}</Text>
+                  </>
                 ) : (
                   <>
                     {' followed '}
@@ -168,6 +154,7 @@ export default function FriendsFeedScreen() {
                   </>
                 )}
               </Text>
+              {isPost ? <Text style={styles.postReaction}>{reactionCopy(item.payload?.reaction)}</Text> : null}
               <Text style={styles.time}>{relativeTime(item.created_at)}</Text>
             </View>
 
@@ -177,6 +164,8 @@ export default function FriendsFeedScreen() {
                   {formatScore(score)}
                 </Text>
               </View>
+            ) : isPost ? (
+              <Ionicons name="restaurant-outline" size={18} color={Colors.primary} />
             ) : (
               <Ionicons name="person-add-outline" size={16} color={Colors.textSecondary} />
             )}
@@ -189,9 +178,6 @@ export default function FriendsFeedScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
-  // FlashList's contentContainerStyle doesn't reliably support `gap`
-  // (unlike FlatList) -- https://github.com/Shopify/flash-list/issues/2097 --
-  // so inter-row spacing is applied via row's marginBottom instead.
   list: { padding: Spacing.md, paddingBottom: Spacing.xxl },
   row: {
     flexDirection: 'row',
@@ -211,6 +197,7 @@ const styles = StyleSheet.create({
   text: { color: Colors.textSecondary, fontSize: 14, lineHeight: 19 },
   actor: { color: Colors.text, fontWeight: '700' },
   subject: { color: Colors.text, fontWeight: '700' },
+  postReaction: { color: Colors.text, fontSize: 12, fontWeight: '700', marginTop: 2 },
   time: { color: Colors.textSecondary, fontSize: 12, marginTop: 2 },
   scorePill: {
     paddingHorizontal: Spacing.sm,
