@@ -26,6 +26,7 @@ from app.db.models.place import Place
 from app.db.models.place_image import PlaceImage
 from app.db.models.place_video import PlaceVideo
 from app.db.session import get_db
+from app.services.social.activity_service import record_posted_food, retract_posted_food
 from app.services.visit_evidence_service import retract_source, upsert_declared_source
 
 router = APIRouter(prefix="/contributions", tags=["contributions"])
@@ -159,7 +160,7 @@ def create_contribution(
     db: Session = Depends(get_db),
     user_id: str = Depends(get_current_user_id),
 ) -> FoodContribution:
-    """Commit one idempotent owner-scoped food contribution and declared visit."""
+    """Commit one idempotent owner-scoped contribution and its derived indexes."""
     existing = (
         db.query(FoodContribution)
         .filter(FoodContribution.user_id == user_id, FoodContribution.client_id == payload.client_id)
@@ -204,6 +205,15 @@ def create_contribution(
             source_ref=contribution.id,
             occurred_at=occurred_at,
         )
+        if payload.intent == INTENT_SOCIAL_POST:
+            record_posted_food(
+                db,
+                user_id=user_id,
+                place_id=payload.place_id,
+                contribution_id=contribution.id,
+                visibility=payload.visibility,
+                reaction=payload.reaction,
+            )
         db.commit()
     except IntegrityError:
         db.rollback()
@@ -254,7 +264,7 @@ def delete_contribution(
     db: Session = Depends(get_db),
     user_id: str = Depends(get_current_user_id),
 ) -> None:
-    """Soft-delete an owned contribution and retract only its visit source."""
+    """Soft-delete a contribution and retract its visit/social indexes."""
     contribution = (
         db.query(FoodContribution)
         .filter(FoodContribution.id == contribution_id, FoodContribution.user_id == user_id)
@@ -272,4 +282,6 @@ def delete_contribution(
         source="food_contribution",
         source_ref=contribution.id,
     )
+    if contribution.intent == INTENT_SOCIAL_POST:
+        retract_posted_food(db, user_id=user_id, contribution_id=contribution.id)
     db.commit()
