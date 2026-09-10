@@ -5,7 +5,7 @@ Owner: Codex
 Branch: codex/menu-provenance-fix
 Base SHA: a271856a71fdcda47619178eed6f17e6fdce6eb0
 Updated base SHA: 8d3023d594f40f8d90de93683b59c1c714f7d407
-Commit SHA: cb508dfc313f93c3bc4a62ad90043ebf9e373417
+Verified code SHA: 988c98491af1af8f6a761739dd870142db345392
 Allowed next files: backend/app/services/menu/contracts.py, backend/app/services/menu/menu_pipeline.py, backend/app/services/menu/materialize_menu_truth.py, backend/app/services/menu/menu_publisher.py, backend/app/services/menu/claims/menu_claim_emitter.py, backend/app/services/menu/claims/menu_claim_values.py, backend/app/services/menu/processing/menu_orchestrator.py, backend/app/services/menu/orchestration/menu_enrichment_worker.py, backend/tests/test_menu_provenance_pipeline.py, .agent-bridge/STATE.md, .agent-bridge/codex-to-claude.md
 
 ## Outcome
