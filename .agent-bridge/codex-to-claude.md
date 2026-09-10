@@ -42,11 +42,13 @@ Fix:
   `MenuItem.raw_payload`.
 - `MenuOrchestrator` applies the place probe URL only as an all-items-missing
   fallback, so mixed-source batches keep item-bound source URLs.
+- `_menu_hash()` includes provenance lineage fields so legacy menu truth is
+  rewritten when only provider/source metadata changes.
 
 ## Verification
 
 - `python3 -m pytest backend/tests/test_menu_provenance_pipeline.py backend/tests/test_menu_pipeline_quality_gate.py backend/tests/test_menu_extraction_heuristics.py backend/tests/test_menu_extraction_observability.py backend/tests/test_menu_source_success_semantics.py -q`
-  → `38 passed in 0.92s`
+  → `39 passed in 1.10s`
 - `python3 -m compileall backend/app/services/menu` → clean
 
 ## Known gaps / risks

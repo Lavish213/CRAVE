@@ -40,10 +40,12 @@ Fix on this branch:
   `MenuItem.raw_payload`.
 - `MenuOrchestrator` only applies a batch `_probe_url` fallback when every
   normalized item lacks its own source URL, avoiding mixed-source URL stamping.
+- `_menu_hash()` includes provenance lineage fields so materialization rewrites
+  legacy `PlaceTruth.sources_json` when only provenance changes.
 
 Verification:
 - `python3 -m pytest backend/tests/test_menu_provenance_pipeline.py backend/tests/test_menu_pipeline_quality_gate.py backend/tests/test_menu_extraction_heuristics.py backend/tests/test_menu_extraction_observability.py backend/tests/test_menu_source_success_semantics.py -q`
-  → `38 passed in 0.92s`
+  → `39 passed in 1.10s`
 - `python3 -m compileall backend/app/services/menu` → clean
 
 Next action: review/merge this provenance fix, then run a fresh reviewed

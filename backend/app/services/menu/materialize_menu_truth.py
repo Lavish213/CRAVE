@@ -209,6 +209,10 @@ def _menu_hash(menu: CanonicalMenu) -> str:
                     (item.currency or DEFAULT_CURRENCY).upper(),
                     (item.description or "").lower(),
                     item.fingerprint,
+                    item.provider or "",
+                    item.provider_item_id or "",
+                    item.source_type or "",
+                    item.source_url or "",
                 )
             )
 

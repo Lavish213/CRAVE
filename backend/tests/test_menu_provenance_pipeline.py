@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import json
 import uuid
 
 from app.db.models.menu_item import MenuItem
@@ -13,6 +15,22 @@ from app.services.menu.materialize_menu_truth import materialize_menu_truth
 from app.services.menu.menu_pipeline import process_extracted_menu
 from app.services.menu.menu_publisher import MenuPublisher, is_obvious_placeholder_item
 from app.services.menu.processing.menu_orchestrator import MenuOrchestrator
+
+
+def _legacy_menu_hash_without_lineage(items):
+    flat = [
+        (
+            (item["name"] or "").lower(),
+            item.get("price_cents"),
+            (item.get("currency") or "USD").upper(),
+            (item.get("description") or "").lower(),
+            item.get("fingerprint"),
+        )
+        for item in items
+    ]
+    flat.sort()
+    raw = json.dumps(flat, separators=(",", ":"), ensure_ascii=False)
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
 def test_placeholder_filter_is_narrow_and_requires_no_real_item_evidence():
@@ -311,6 +329,99 @@ def test_menu_claim_emitter_refuses_items_without_source_url_provenance():
     finally:
         db.rollback()
         db.query(PlaceClaim).filter(PlaceClaim.place_id == place_id).delete()
+        db.query(Place).filter(Place.id == place_id).delete()
+        db.commit()
+        db.close()
+
+
+def test_materialize_rewrites_legacy_truth_when_only_lineage_changes():
+    db = SessionLocal()
+    place_id = str(uuid.uuid4())
+    try:
+        db.add(Place(
+            id=place_id,
+            name=f"Legacy Truth Rewrite Test {place_id[:8]}",
+            city_id="00000000-0000-0000-0000-000000000001",
+        ))
+        legacy_items = []
+        for index, name in enumerate(("Taco", "Burrito"), start=1):
+            fingerprint = f"legacy-{index}"
+            legacy_items.append({
+                "name": name,
+                "section": "Mains",
+                "price_cents": 1000 + index,
+                "currency": "USD",
+                "description": f"Fresh {name.lower()}",
+                "fingerprint": fingerprint,
+            })
+            db.add(PlaceClaim(
+                place_id=place_id,
+                field="menu_item",
+                claim_key=f"item-{index}",
+                value_json={
+                    **legacy_items[-1],
+                    "provider": "toast",
+                    "external_menu_id": f"toast-{index}",
+                    "source_type": "provider",
+                    "source_url": "https://order.example/menu",
+                },
+                confidence=0.9,
+                source="toast",
+            ))
+
+        db.add(PlaceTruth(
+            place_id=place_id,
+            truth_type="menu",
+            truth_value="menu",
+            sources_json={
+                "schema_version": 3,
+                "built_at": "2026-09-01T00:00:00+00:00",
+                "menu_hash": _legacy_menu_hash_without_lineage(legacy_items),
+                "changes": {"added": 2, "removed": 0, "price_changed": 0},
+                "sections": [
+                    {
+                        "name": "Mains",
+                        "items": legacy_items,
+                    }
+                ],
+                "metadata": {
+                    "section_count": 1,
+                    "item_count": 2,
+                },
+            },
+            confidence=0.9,
+        ))
+        db.commit()
+
+        menu = materialize_menu_truth(db=db, place_id=place_id)
+        assert menu is not None
+        db.commit()
+
+        truth = db.query(PlaceTruth).filter(
+            PlaceTruth.place_id == place_id,
+            PlaceTruth.truth_type == "menu",
+        ).one()
+        serialized_items = [
+            item
+            for section in truth.sources_json["sections"]
+            for item in section["items"]
+        ]
+        assert {item["provider_item_id"] for item in serialized_items} == {
+            "toast-1",
+            "toast-2",
+        }
+        assert {item["provider"] for item in serialized_items} == {"toast"}
+        assert {item["source_type"] for item in serialized_items} == {"provider"}
+        assert {item["source_url"] for item in serialized_items} == {
+            "https://order.example/menu"
+        }
+        assert truth.sources_json["menu_hash"] != _legacy_menu_hash_without_lineage(
+            legacy_items
+        )
+    finally:
+        db.rollback()
+        db.query(PlaceClaim).filter(PlaceClaim.place_id == place_id).delete()
+        db.query(PlaceTruth).filter(PlaceTruth.place_id == place_id).delete()
         db.query(Place).filter(Place.id == place_id).delete()
         db.commit()
         db.close()
