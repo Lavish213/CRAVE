@@ -109,7 +109,8 @@ export default function TabLayout() {
       <Pressable
         onPress={() => router.push('/food-evidence')}
         accessibilityRole="button"
-        accessibilityLabel="Record food evidence"
+        accessibilityLabel="Add to CRAVE"
+        accessibilityHint="Log a meal privately or share a food find"
         style={({ pressed }) => [styles.recordAction, pressed && styles.recordActionPressed]}
       >
         <Ionicons name="add" size={28} color={Colors.background} />
