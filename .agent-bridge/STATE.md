@@ -3,8 +3,9 @@
 Status: ready-for-review
 Owner: Codex
 Branch: codex/menu-provenance-fix
-Head SHA: a271856 (`Merge pull request #243 from Lavish213/codex/osm-backfill-dedupe-claims`)
-Scope: repair the menu canary provenance loss found during the 10-place production canary review. Locked files: `backend/app/services/menu/menu_pipeline.py`, `backend/app/services/menu/claims/menu_claim_emitter.py`, `backend/app/services/menu/claims/menu_claim_values.py`, `backend/tests/test_menu_provenance_pipeline.py`, `.agent-bridge/STATE.md`, `.agent-bridge/codex-to-claude.md`.
+Base SHA: 8d3023d594f40f8d90de93683b59c1c714f7d407
+Head SHA: cb508dfc313f93c3bc4a62ad90043ebf9e373417 (`fix: close menu provenance review gaps`)
+Scope: repair the menu canary provenance loss found during the 10-place production canary review. Locked files: `backend/app/services/menu/contracts.py`, `backend/app/services/menu/menu_pipeline.py`, `backend/app/services/menu/materialize_menu_truth.py`, `backend/app/services/menu/menu_publisher.py`, `backend/app/services/menu/claims/menu_claim_emitter.py`, `backend/app/services/menu/claims/menu_claim_values.py`, `backend/app/services/menu/processing/menu_orchestrator.py`, `backend/app/services/menu/orchestration/menu_enrichment_worker.py`, `backend/tests/test_menu_provenance_pipeline.py`, `.agent-bridge/STATE.md`, `.agent-bridge/codex-to-claude.md`.
 
 ## Active task — menu provenance repair
 
@@ -33,10 +34,16 @@ Fix on this branch:
   caller source URL, and refuses anonymous menu claims when no provenance URL
   exists.
 - `build_menu_claim_payload()` falls back to item-level lineage fields.
+- `materialize_menu_truth()` maps claim `external_menu_id` back to canonical
+  `provider_item_id` and serializes it into menu truth.
+- `MenuPublisher` carries both `source_url` and `provider_item_id` in
+  `MenuItem.raw_payload`.
+- `MenuOrchestrator` only applies a batch `_probe_url` fallback when every
+  normalized item lacks its own source URL, avoiding mixed-source URL stamping.
 
 Verification:
 - `python3 -m pytest backend/tests/test_menu_provenance_pipeline.py backend/tests/test_menu_pipeline_quality_gate.py backend/tests/test_menu_extraction_heuristics.py backend/tests/test_menu_extraction_observability.py backend/tests/test_menu_source_success_semantics.py -q`
-  → `37 passed in 8.15s`
+  → `38 passed in 0.92s`
 - `python3 -m compileall backend/app/services/menu` → clean
 
 Next action: review/merge this provenance fix, then run a fresh reviewed

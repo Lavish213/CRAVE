@@ -134,6 +134,15 @@ class MenuPublisher:
                         )
                     )
 
+                    raw_payload = {
+                        key: value
+                        for key, value in {
+                            "source_url": item.get("source_url"),
+                            "provider_item_id": item.get("provider_item_id"),
+                        }.items()
+                        if value
+                    } or None
+
                     try:
                         db.add(
                             MenuItem(
@@ -155,9 +164,7 @@ class MenuPublisher:
                                 confidence_score=float(item.get("confidence") or 0.0),
                                 provider=item.get("provider"),
                                 source_type=item.get("source_type") or "truth",
-                                raw_payload={
-                                    "source_url": item.get("source_url"),
-                                } if item.get("source_url") else None,
+                                raw_payload=raw_payload,
                             )
                         )
                         created_count += 1

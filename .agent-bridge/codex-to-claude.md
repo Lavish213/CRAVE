@@ -4,8 +4,9 @@ Status: ready-for-review
 Owner: Codex
 Branch: codex/menu-provenance-fix
 Base SHA: a271856a71fdcda47619178eed6f17e6fdce6eb0
-Commit SHA: TBD
-Allowed next files: backend/app/services/menu/contracts.py, backend/app/services/menu/menu_pipeline.py, backend/app/services/menu/claims/menu_claim_emitter.py, backend/app/services/menu/claims/menu_claim_values.py, backend/app/services/menu/processing/menu_orchestrator.py, backend/app/services/menu/orchestration/menu_enrichment_worker.py, backend/tests/test_menu_provenance_pipeline.py, .agent-bridge/STATE.md, .agent-bridge/codex-to-claude.md
+Updated base SHA: 8d3023d594f40f8d90de93683b59c1c714f7d407
+Commit SHA: cb508dfc313f93c3bc4a62ad90043ebf9e373417
+Allowed next files: backend/app/services/menu/contracts.py, backend/app/services/menu/menu_pipeline.py, backend/app/services/menu/materialize_menu_truth.py, backend/app/services/menu/menu_publisher.py, backend/app/services/menu/claims/menu_claim_emitter.py, backend/app/services/menu/claims/menu_claim_values.py, backend/app/services/menu/processing/menu_orchestrator.py, backend/app/services/menu/orchestration/menu_enrichment_worker.py, backend/tests/test_menu_provenance_pipeline.py, .agent-bridge/STATE.md, .agent-bridge/codex-to-claude.md
 
 ## Outcome
 
@@ -35,11 +36,17 @@ Fix:
   public menu truth.
 - `build_menu_claim_payload()` falls back to item-level source/provider/type
   and provider item ID.
+- `materialize_menu_truth()` maps stored claim `external_menu_id` back to
+  canonical `provider_item_id` and serializes it into menu truth.
+- `MenuPublisher` keeps `source_url` and `provider_item_id` together in
+  `MenuItem.raw_payload`.
+- `MenuOrchestrator` applies the place probe URL only as an all-items-missing
+  fallback, so mixed-source batches keep item-bound source URLs.
 
 ## Verification
 
 - `python3 -m pytest backend/tests/test_menu_provenance_pipeline.py backend/tests/test_menu_pipeline_quality_gate.py backend/tests/test_menu_extraction_heuristics.py backend/tests/test_menu_extraction_observability.py backend/tests/test_menu_source_success_semantics.py -q`
-  → `37 passed in 8.15s`
+  → `38 passed in 0.92s`
 - `python3 -m compileall backend/app/services/menu` → clean
 
 ## Known gaps / risks

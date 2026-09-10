@@ -122,6 +122,10 @@ def _build_menu_items(
                 confidence_score=_extract_confidence(confidence),
                 fingerprint=fingerprint,
                 provider=_safe_str(payload.get("provider")),
+                provider_item_id=_safe_str(
+                    payload.get("provider_item_id")
+                    or payload.get("external_menu_id")
+                ),
                 source_type=_safe_str(payload.get("source_type")),
                 source_url=_safe_str(payload.get("source_url")),
             )
@@ -293,6 +297,7 @@ def _serialize_menu(menu: CanonicalMenu, previous_menu: Optional[dict]) -> dict:
                         "confidence": item.confidence_score,
                         "fingerprint": item.fingerprint,
                         "provider": item.provider,
+                        "provider_item_id": item.provider_item_id,
                         "source_type": item.source_type,
                         "source_url": item.source_url,
                     }

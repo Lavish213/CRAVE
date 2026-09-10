@@ -5,6 +5,7 @@ import uuid
 from app.db.models.menu_item import MenuItem
 from app.db.models.place import Place
 from app.db.models.place_claim import PlaceClaim
+from app.db.models.place_truth import PlaceTruth
 from app.db.session import SessionLocal
 from app.services.menu.claims.menu_claim_emitter import emit_menu_claims
 from app.services.menu.contracts import ExtractedMenuItem, NormalizedMenuItem
@@ -63,6 +64,7 @@ def test_menu_truth_and_publisher_preserve_item_lineage_but_never_publish_a_raw_
                     "description": f"Fresh {name.lower()}",
                     "image_url": f"https://cdn.example/{index}.jpg",
                     "provider": "toast",
+                    "external_menu_id": f"toast-{index}",
                     "source_type": "provider",
                     "source_url": "https://order.example/menu",
                 },
@@ -73,6 +75,30 @@ def test_menu_truth_and_publisher_preserve_item_lineage_but_never_publish_a_raw_
 
         menu = materialize_menu_truth(db=db, place_id=place_id)
         assert menu is not None
+        materialized_items = [
+            item
+            for section in menu.sections
+            for item in section.items
+        ]
+        assert {item.provider_item_id for item in materialized_items} == {
+            "toast-1",
+            "toast-2",
+        }
+
+        truth = db.query(PlaceTruth).filter(
+            PlaceTruth.place_id == place_id,
+            PlaceTruth.truth_type == "menu",
+        ).one()
+        serialized_items = [
+            item
+            for section in truth.sources_json["sections"]
+            for item in section["items"]
+        ]
+        assert {item["provider_item_id"] for item in serialized_items} == {
+            "toast-1",
+            "toast-2",
+        }
+
         assert MenuPublisher().publish(place_id=place_id, db=db) == 2
         db.commit()
 
@@ -89,11 +115,14 @@ def test_menu_truth_and_publisher_preserve_item_lineage_but_never_publish_a_raw_
         assert {row.raw_payload["source_url"] for row in rows} == {
             "https://order.example/menu"
         }
+        assert {row.raw_payload["provider_item_id"] for row in rows} == {
+            "toast-1",
+            "toast-2",
+        }
     finally:
         db.rollback()
         db.query(MenuItem).filter(MenuItem.place_id == place_id).delete()
         db.query(PlaceClaim).filter(PlaceClaim.place_id == place_id).delete()
-        from app.db.models.place_truth import PlaceTruth
         db.query(PlaceTruth).filter(PlaceTruth.place_id == place_id).delete()
         db.query(Place).filter(Place.id == place_id).delete()
         db.commit()
@@ -206,6 +235,20 @@ def test_orchestrator_run_with_items_publishes_item_source_url_from_extracted_it
             "provider-burrito",
         }
 
+        truth = db.query(PlaceTruth).filter(
+            PlaceTruth.place_id == place_id,
+            PlaceTruth.truth_type == "menu",
+        ).one()
+        serialized_items = [
+            item
+            for section in truth.sources_json["sections"]
+            for item in section["items"]
+        ]
+        assert {item["provider_item_id"] for item in serialized_items} == {
+            "provider-taco",
+            "provider-burrito",
+        }
+
         rows = db.query(MenuItem).filter(MenuItem.place_id == place_id).all()
         assert len(rows) == 2
         assert {row.provider for row in rows} == {"html"}
@@ -213,11 +256,14 @@ def test_orchestrator_run_with_items_publishes_item_source_url_from_extracted_it
         assert {row.raw_payload["source_url"] for row in rows} == {
             "https://restaurant.example/menu"
         }
+        assert {row.raw_payload["provider_item_id"] for row in rows} == {
+            "provider-taco",
+            "provider-burrito",
+        }
     finally:
         db.rollback()
         db.query(MenuItem).filter(MenuItem.place_id == place_id).delete()
         db.query(PlaceClaim).filter(PlaceClaim.place_id == place_id).delete()
-        from app.db.models.place_truth import PlaceTruth
         db.query(PlaceTruth).filter(PlaceTruth.place_id == place_id).delete()
         db.query(Place).filter(Place.id == place_id).delete()
         db.commit()
@@ -268,3 +314,48 @@ def test_menu_claim_emitter_refuses_items_without_source_url_provenance():
         db.query(Place).filter(Place.id == place_id).delete()
         db.commit()
         db.close()
+
+
+def test_orchestrator_source_url_fallback_only_when_entire_batch_needs_it():
+    orchestrator = MenuOrchestrator()
+
+    assert orchestrator._batch_source_url_fallback(
+        [
+            NormalizedMenuItem(
+                name="Taco",
+                section="Mains",
+                price_cents=1200,
+                currency="USD",
+                fingerprint="taco",
+            ),
+            NormalizedMenuItem(
+                name="Burrito",
+                section="Mains",
+                price_cents=1400,
+                currency="USD",
+                fingerprint="burrito",
+            ),
+        ],
+        "https://restaurant.example/menu",
+    ) == "https://restaurant.example/menu"
+
+    assert orchestrator._batch_source_url_fallback(
+        [
+            NormalizedMenuItem(
+                name="Taco",
+                section="Mains",
+                price_cents=1200,
+                currency="USD",
+                fingerprint="taco",
+                source_url="https://provider.example/taco",
+            ),
+            NormalizedMenuItem(
+                name="Burrito",
+                section="Mains",
+                price_cents=1400,
+                currency="USD",
+                fingerprint="burrito",
+            ),
+        ],
+        "https://restaurant.example/menu",
+    ) is None
