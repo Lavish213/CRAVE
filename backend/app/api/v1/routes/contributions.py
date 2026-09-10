@@ -9,19 +9,18 @@ from sqlalchemy.orm import Session
 
 from app.core.auth import require_api_key
 from app.core.rate_limit import rate_limit
+from app.core.time import normalize_utc
 from app.core.user_auth import get_current_user_id
 from app.db.models.food_contribution import (
     FoodContribution,
     INTENT_PRIVATE_LOG,
     INTENT_SOCIAL_POST,
-    REACTION_GOOD,
-    REACTION_LOVED,
-    REACTION_NOT_FOR_ME,
     STATUS_COMMITTED,
     STATUS_DELETED,
-    VISIBILITY_CONNECTIONS,
+    VALID_INTENTS,
+    VALID_REACTIONS,
+    VALID_VISIBILITIES,
     VISIBILITY_PRIVATE,
-    VISIBILITY_PUBLIC,
 )
 from app.db.models.place import Place
 from app.db.models.place_image import PlaceImage
@@ -33,6 +32,8 @@ router = APIRouter(prefix="/contributions", tags=["contributions"])
 
 
 class ContributionCreate(BaseModel):
+    """Client commit payload for one private food log or social post."""
+
     client_id: str = Field(min_length=1, max_length=64)
     place_id: str = Field(min_length=1, max_length=36)
     intent: str
@@ -45,11 +46,12 @@ class ContributionCreate(BaseModel):
 
     @model_validator(mode="after")
     def validate_semantics(self) -> "ContributionCreate":
-        if self.intent not in {INTENT_PRIVATE_LOG, INTENT_SOCIAL_POST}:
+        """Enforce Posting V2 privacy, media, and timestamp invariants."""
+        if self.intent not in VALID_INTENTS:
             raise ValueError("invalid contribution intent")
-        if self.reaction not in {None, REACTION_LOVED, REACTION_GOOD, REACTION_NOT_FOR_ME}:
+        if self.reaction is not None and self.reaction not in VALID_REACTIONS:
             raise ValueError("invalid reaction")
-        if self.visibility not in {VISIBILITY_PRIVATE, VISIBILITY_CONNECTIONS, VISIBILITY_PUBLIC}:
+        if self.visibility not in VALID_VISIBILITIES:
             raise ValueError("invalid visibility")
         if self.image_id and self.video_id:
             raise ValueError("a contribution may reference one media asset, not both")
@@ -63,12 +65,14 @@ class ContributionCreate(BaseModel):
         if self.occurred_at:
             if self.occurred_at.tzinfo is None or self.occurred_at.utcoffset() is None:
                 raise ValueError("occurred_at must include a timezone")
-            if self.occurred_at > datetime.now(timezone.utc):
+            if normalize_utc(self.occurred_at) > datetime.now(timezone.utc):
                 raise ValueError("occurred_at cannot be in the future")
         return self
 
 
 class ContributionOut(BaseModel):
+    """Owner-scoped representation of a committed contribution."""
+
     model_config = ConfigDict(from_attributes=True)
 
     id: str
@@ -87,17 +91,24 @@ class ContributionOut(BaseModel):
 
 
 def _normalized_caption(value: str | None) -> str | None:
+    """Collapse blank captions to None and trim meaningful copy."""
     return value.strip() if value and value.strip() else None
 
 
+def _normalized_occurred_at(value: datetime | None) -> datetime | None:
+    """Normalize database/client timestamps so SQLite and Postgres replay equally."""
+    return normalize_utc(value)
+
+
 def _assert_idempotent_replay(existing: FoodContribution, payload: ContributionCreate) -> None:
+    """Reject reuse of a client id when any immutable commit field changed."""
     expected = (
         payload.place_id,
         payload.intent,
         payload.reaction,
         _normalized_caption(payload.caption),
         payload.visibility,
-        payload.occurred_at,
+        _normalized_occurred_at(payload.occurred_at),
         payload.image_id,
         payload.video_id,
     )
@@ -107,7 +118,7 @@ def _assert_idempotent_replay(existing: FoodContribution, payload: ContributionC
         existing.reaction,
         existing.caption,
         existing.visibility,
-        existing.occurred_at,
+        _normalized_occurred_at(existing.occurred_at),
         existing.image_id,
         existing.video_id,
     )
@@ -115,9 +126,18 @@ def _assert_idempotent_replay(existing: FoodContribution, payload: ContributionC
         raise HTTPException(status_code=409, detail="client_id already used for different contribution data")
 
 
+def _assert_replayable(existing: FoodContribution, payload: ContributionCreate) -> FoodContribution:
+    """Return a safe idempotent replay or reject tombstoned/drifted rows."""
+    if existing.status == STATUS_DELETED:
+        raise HTTPException(status_code=409, detail="Contribution was deleted")
+    _assert_idempotent_replay(existing, payload)
+    return existing
+
+
 def _owned_media_or_404(
     db: Session, *, user_id: str, place_id: str, image_id: str | None, video_id: str | None
 ) -> None:
+    """Require referenced media to belong to this authenticated user and place."""
     if image_id:
         image = db.query(PlaceImage).filter(PlaceImage.id == image_id).one_or_none()
         if image is None or image.place_id != place_id or image.uploaded_by != user_id:
@@ -139,16 +159,14 @@ def create_contribution(
     db: Session = Depends(get_db),
     user_id: str = Depends(get_current_user_id),
 ) -> FoodContribution:
+    """Commit one idempotent owner-scoped food contribution and declared visit."""
     existing = (
         db.query(FoodContribution)
         .filter(FoodContribution.user_id == user_id, FoodContribution.client_id == payload.client_id)
         .one_or_none()
     )
     if existing is not None:
-        if existing.status == STATUS_DELETED:
-            raise HTTPException(status_code=409, detail="Contribution was deleted")
-        _assert_idempotent_replay(existing, payload)
-        return existing
+        return _assert_replayable(existing, payload)
 
     if db.query(Place.id).filter(Place.id == payload.place_id).first() is None:
         raise HTTPException(status_code=404, detail="Place not found")
@@ -161,6 +179,7 @@ def create_contribution(
         video_id=payload.video_id,
     )
 
+    occurred_at = _normalized_occurred_at(payload.occurred_at)
     contribution = FoodContribution(
         user_id=user_id,
         client_id=payload.client_id,
@@ -169,7 +188,7 @@ def create_contribution(
         reaction=payload.reaction,
         caption=_normalized_caption(payload.caption),
         visibility=payload.visibility,
-        occurred_at=payload.occurred_at,
+        occurred_at=occurred_at,
         image_id=payload.image_id,
         video_id=payload.video_id,
         status=STATUS_COMMITTED,
@@ -183,7 +202,7 @@ def create_contribution(
             place_id=payload.place_id,
             source="food_contribution",
             source_ref=contribution.id,
-            occurred_at=payload.occurred_at,
+            occurred_at=occurred_at,
         )
         db.commit()
     except IntegrityError:
@@ -195,8 +214,7 @@ def create_contribution(
         )
         if existing is None:
             raise
-        _assert_idempotent_replay(existing, payload)
-        return existing
+        return _assert_replayable(existing, payload)
     db.refresh(contribution)
     return contribution
 
@@ -211,6 +229,7 @@ def get_contribution(
     db: Session = Depends(get_db),
     user_id: str = Depends(get_current_user_id),
 ) -> FoodContribution:
+    """Read one non-deleted contribution owned by the authenticated user."""
     contribution = (
         db.query(FoodContribution)
         .filter(
@@ -235,6 +254,7 @@ def delete_contribution(
     db: Session = Depends(get_db),
     user_id: str = Depends(get_current_user_id),
 ) -> None:
+    """Soft-delete an owned contribution and retract only its visit source."""
     contribution = (
         db.query(FoodContribution)
         .filter(FoodContribution.id == contribution_id, FoodContribution.user_id == user_id)
