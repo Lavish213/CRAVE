@@ -10,6 +10,7 @@ from pydantic import ValidationError
 from app.api.v1.routes.contributions import ContributionCreate
 from app.core.rate_limit import rate_limit
 from app.core.user_auth import get_current_user_id
+from app.db.models.activity_event import ActivityEvent, EVENT_POSTED_FOOD
 from app.db.models.food_contribution import FoodContribution, STATUS_DELETED
 from app.db.models.place_image import PlaceImage
 from app.db.models.visit_evidence import VisitEvidence
@@ -55,6 +56,7 @@ def db():
 
 
 def _cleanup_user(db, user_id: str) -> None:
+    db.query(ActivityEvent).filter(ActivityEvent.user_id == user_id).delete(synchronize_session=False)
     db.query(VisitEvidence).filter(VisitEvidence.user_id == user_id).delete(synchronize_session=False)
     db.query(FoodContribution).filter(FoodContribution.user_id == user_id).delete(synchronize_session=False)
     db.query(PlaceImage).filter(PlaceImage.uploaded_by == user_id).delete(synchronize_session=False)
@@ -229,5 +231,61 @@ def test_authenticated_user_is_the_contribution_owner(db) -> None:
         row = db.get(FoodContribution, response.json()["id"])
         assert row is not None
         assert row.user_id == user_id
+    finally:
+        _cleanup_user(db, user_id)
+
+
+def test_social_contribution_creates_activity_pointer_and_delete_retracts_it(db) -> None:
+    user_id = f"social-contrib-{uuid.uuid4()}"
+    _as_user(user_id)
+    image = PlaceImage(
+        id=str(uuid.uuid4()),
+        place_id=PLACE_ID,
+        url="https://example.test/social.jpg",
+        uploaded_by=user_id,
+        content_type="food",
+    )
+    db.add(image)
+    db.commit()
+    try:
+        created = client.post(
+            "/api/v1/contributions",
+            json=_payload(
+                intent="social_post",
+                visibility="connections",
+                reaction="loved",
+                image_id=image.id,
+            ),
+        )
+        assert created.status_code == 201, created.text
+        contribution_id = created.json()["id"]
+        db.expire_all()
+        event = (
+            db.query(ActivityEvent)
+            .filter(
+                ActivityEvent.user_id == user_id,
+                ActivityEvent.event_type == EVENT_POSTED_FOOD,
+            )
+            .one()
+        )
+        assert event.place_id == PLACE_ID
+        assert event.payload == {
+            "contribution_id": contribution_id,
+            "visibility": "connections",
+            "reaction": "loved",
+        }
+
+        deleted = client.delete(f"/api/v1/contributions/{contribution_id}")
+        assert deleted.status_code == 204
+        db.expire_all()
+        assert (
+            db.query(ActivityEvent)
+            .filter(
+                ActivityEvent.user_id == user_id,
+                ActivityEvent.event_type == EVENT_POSTED_FOOD,
+            )
+            .count()
+            == 0
+        )
     finally:
         _cleanup_user(db, user_id)
