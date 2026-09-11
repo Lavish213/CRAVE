@@ -1,62 +1,139 @@
 # Active agent state
 
-Status: blocked
-Owner: Codex
-Branch: codex/osm-backfill-dedupe-claims
-Head SHA: bc92ea7 (`fix: dedupe osm backfill claims`)
-Scope: OSM hours/outdoor-seating production backfill execution from clean `origin/main`, plus the duplicate-claim script fix found by the real production run.
+## FRONTEND EXECUTION ORDER — LOCKED (2026-09-11)
 
-## Active blocker — OSM backfill production run
+A full frontend audit (verified line-by-line against `main`, not taken on
+faith — see that doc's "Grounding findings") plus its remediation strategy
+are now locked as the controlling order for all frontend work, superseding
+the old wave-numbered sequencing for frontend specifically. Full rationale,
+rules, Definition of Done, and grounding evidence live in
+`docs/doctrine/CRAVE_FRONTEND_EXECUTION_ORDER.md` — **read that file before
+claiming any frontend work below.** This section is the short pointer;
+that file is the source of truth for detail.
 
-Clean temp worktree was created from fresh `origin/main` at `2bd1bfa`.
-Railway was linked to production `CRAVE-scheduler`; `DATABASE_URL` was present
-via Railway variable injection and was never printed.
+Locked order:
+```
+Foundation Gate → Place Detail (proving slice) → Feed/Decision Session
+→ Search/Map (propagation-only) → Craves → Rank → Food Evidence/Add Spot
+→ Profile/Taste/social cleanup → Auth/Settings/Activity completion
+→ cross-app accessibility/E2E/release certification
+```
 
-Dry-run on merged `main` succeeded:
-- `osm_candidates_scanned=11239`
-- `candidates_touched=3663`
-- `claims_written=4321`
-- `places_affected=3658`
-- `dry_run=True`
+Method: vertical-slice migration, not infrastructure-first. Lock the
+minimum shared contracts (Foundation Gate) → prove them on Place Detail →
+extract only what's proven → propagate slice by slice, each one shipping a
+visibly better screen while migrating the architecture underneath it.
+Rejected alternative: 20 infrastructure tasks before touching a screen —
+too much invisible-progress risk and speculative-abstraction risk.
 
-The real run started, committed the early batches, then stopped on a
-production duplicate-claim edge case:
-- reached `progress: scanned=2500 claims_written=30 places_affected=27`
-- failed in the next batch with `psycopg2.errors.UniqueViolation` on the
-  existing `(place_id, field, claim_key)` uniqueness constraint
+**Scope boundary, read before touching Search or Map:** that slice may
+propagate shared contracts, reliability, data-state conventions, auth/
+error/query ownership, accessibility fixes, and integration hardening
+*only*. It must not redesign or reopen the certified Search Screen
+Contract or approved Search/Map UX without a new, proven, documented
+contract gap — Wave 5 (PRs #190-193) and the V1.5 design-audit fixes (PRs
+#225/#226/#229) stay certified.
 
-Interpretation: the script was idempotent across repeated runs, but not within
-one run when duplicate promoted OSM candidates pointed to the same place and
-produced the same deterministic claim before the session flushed. Earlier
-committed batches remain applied; the failing batch rolled back.
+Locked rules (full text in the doctrine doc): React Query migrates
+opportunistically per-route (not a mechanical 30-route pass), with
+key/cancellation/stale-time/account-isolation/error-semantics conventions
+locked at the Foundation Gate first; `catch {}` occurrences get classified
+individually (ignorable-cleanup / recoverable-background / user-actionable
+/ invariant), never blanket-banned or blanket-ignored;
+`RecommendationEvent` stays fact-only (no fabricated `reason_codes`/
+`model_version` ahead of a real ranking model); `crave://` stays as
+fallback under a new `https://` universal-link primary; E2E coverage is
+built journey-by-journey as each slice lands, not as one final sprint.
 
-Fix on this branch:
-- `backend/scripts/backfill_osm_hours_and_seating.py` now keeps an in-memory
-  `(place_id, field, claim_key)` set for claims scheduled in the current run.
-- `backend/tests/test_backfill_osm_hours_and_seating.py` adds a regression for
-  duplicate OSM candidates resolving to the same place.
+**Next action for this lane:** claim **Foundation Gate** in this file
+(owner, branch, base SHA, allowed files, verification plan) before writing
+any frontend code against this order. Do not start Place Detail before
+Foundation Gate's contracts are committed.
 
-Verification:
-- `python3 -m pytest backend/tests/test_backfill_osm_hours_and_seating.py -q`
-  → `5 passed in 0.43s`
-- patched production dry-run completed without crashing:
-  `candidates_touched=3634 claims_written=4289 places_affected=3631 dry_run=True`
+## Other active lanes (independent, not blocked by the above)
 
-Next action: review/merge this duplicate-claim fix, then rerun the OSM
-backfill for real. Do not run the patched writer against production from this
-unmerged branch unless the human explicitly authorizes that exact shortcut.
+### OSM backfill production run
 
-## Menu backlog canary status — 2026-09-09
+Status update, 2026-09-11: the duplicate-claim dedupe fix is **merged**
+(PR #243, SHA `a271856` on `main`) — confirmed directly by reading the
+merged `backend/scripts/backfill_osm_hours_and_seating.py` (the
+`scheduled_claim_keys` in-memory set is present). The original crash this
+fixed: a first real production attempt reached
+`scanned=2500 claims_written=30 places_affected=27` then hit
+`psycopg2.errors.UniqueViolation` on a duplicate deterministic claim
+within one run; those 30 claims stayed committed, the failing batch
+rolled back.
 
-Still not run. Additional verified blocker: current
+Codex has since relayed (2026-09-11, **not yet independently verified by
+this session** — no Railway/Postgres access here) that a fresh dry-run on
+the merged fix reproduced the original dry-run numbers exactly
+(`osm_candidates_scanned=11239`, `claims_written=4289` from
+`candidates_touched=3634`, `places_affected=3631`), then a real apply was
+started and was actively progressing batch-by-batch with no errors as of
+that report. **Do not treat this as complete** until: (a) the run reports
+a final done state with no crash, (b) an idempotent dry-run rerun
+afterward reports `claims_written=0`, and (c) a real `GET /place/{id}`
+spot-check on a known OSM place shows non-null `hours_status`/
+`outdoor_seating`. Whoever confirms all three should record the exact
+numbers and the spot-checked place id here, replacing this paragraph.
+
+### Menu backlog canary status
+
+Still not run. Verified blocker, unchanged: current
 `backend/scripts/run_menu_backlog_canary.py` requires exact `--place-ids` or
-`--place-ids-file`; the pasted `--run --confirm-count 10` command alone is
-insufficient. The docs require a reviewed exact 10-place list first.
+`--place-ids-file`; a bare `--run --confirm-count 10` is insufficient, and
+no reviewed 10-place cohort has been recorded anywhere durable yet.
 
-Next action for menu canary: once production DB access remains available,
-provide or build a reviewed 10-place ID file, preview it, then run with
+Next action: once production DB access is available, build/record a
+reviewed 10-place ID file, preview it, then run with
 `--place-ids-file <reviewed-file> --run --confirm-count 10` and review all
 outcomes immediately.
+
+### Menu item source provenance — PR #252
+
+Codex's own PR (`codex/menu-provenance-fix`, not this session's), fixing
+menu-item source lineage through canonicalization/claim emission and
+refusing anonymous claims with no source URL. CI green (8/8, including the
+previously-slow real-Postgres suite), CodeRabbit review requested.
+Explicitly holds off any new production menu-publish canary run until
+after merge + fresh authorization — correct posture, matches this file's
+own standing rule for canaries. Not this session's PR to merge; watch for
+its outcome, don't act on it uninvited.
+
+### Posting V2 composer stack (Codex, in progress — not yet merged)
+
+Building directly on this session's merged Posting V2-A (PR #244 backend
+SHA `e361e1b`, PR #245 frontend SHA `8d3023d`, both on `main`): seven PRs
+since 2026-09-09, none merged yet, all still draft —
+`#246` (fixes a real race left in the merged #245 draft store: candidate
+selection left `outcome='pending'`, letting a rapid existing-place tap
+steal the same draft's media — adds an `awaiting_place` outcome to close
+it), `#247` (doctrine freeze: `CRAVE_POSTING_MEDIA_V2_ARCHITECTURE.md`,
+a Posting screen contract, a backend contract — docs only), `#248`
+(composer state fields: intent/reaction/caption/visibility/occurredAt,
+persisted-store migration), `#249` (new `FoodContribution` model +
+`/api/v1/contributions` API — additive, isolated, own migration, CI
+green), `#250`/`#251` (unified composer frontend: `/posting-restaurant` +
+rewritten `food-evidence.tsx` composer, replacing the #245
+attach-immediately bridge), `#253` (the consolidated end-to-end version of
+the whole stack, backend + frontend together, directly against `main`).
+
+This session reviewed the stack (diffs read, not just descriptions) and
+found #246/#248/#249 correctly implemented and tested. #253 had a real,
+reproducible CI failure — `tsc` errors from stale `DraftOutcome` literals
+in `add-spot.test.tsx` plus a type mismatch in `friends-feed.tsx` — that
+had silently persisted across #250 and #253 (18+ hours, two PR iterations)
+because `tsc` failing meant the Jest step never even ran in CI. Fixed
+directly on `chatgpt/posting-v2-composer` (commit `846a3b1`): corrected
+the two stale literals, the `friends-feed.tsx` type mismatch, and fully
+rewrote both `add-spot.test.tsx` and `food-evidence.test.tsx` (which were
+still asserting entirely stale pre-composer copy/behavior — fixing the
+types alone would only have moved the failure to Jest). Verified: `tsc
+--noEmit` clean, full frontend suite green (50/50 suites, 533/533 tests),
+backend untouched and clean, and confirmed green in real CI afterward
+(8/8 checks on PR #253, including Frontend typecheck+tests). Not this
+session's PR stack to merge — it's Codex's active, still-evolving branch;
+this was a narrow CI-unblock, not a claim on the work.
 
 ## Previous compacted context
 
@@ -402,16 +479,18 @@ routes, dead-code/gap/broken-control checks, race-condition review.
 
 ## Next action
 
-Claim the next wave here before starting it — owner, branch, base SHA
-(must be current `main` or later), allowed files, and verification plan —
-per `.agent-bridge/PROTOCOL.md`. Two independent lanes are open: product
-implementation (start from `CRAVE_MASTER_CODEX_REMAINING_WORK.md` §3.4 —
-Wave 6, Craves intelligence — or §3.3's one remaining bullet, direct-mode
-Map ranking) and production data-coverage (see
-`.agent-bridge/claude-to-codex.md`'s current handoff, needs Railway/
-Supabase access). The Penpot design track (Feed/Decision Session first)
-is a separate workflow, not tracked as a Codex implementation wave claim
-here.
-This repo moves fast between syncs (Waves 3 and 4 both landed within one
-afternoon) — re-check `git log origin/main` before assuming this file is
-current.
+Superseded by the top of this file — **frontend work now follows
+`docs/doctrine/CRAVE_FRONTEND_EXECUTION_ORDER.md`** (Foundation Gate next),
+not the wave numbering this paragraph used to point to (Waves 0-7 are
+merged baseline, done, not reopened). Independent lanes still open:
+production data-coverage (OSM backfill apply in progress per Codex's
+relay, unverified here — see "Other active lanes" above; menu
+canary/population-coverage still need Railway/Supabase access — see
+`.agent-bridge/claude-to-codex.md`'s current handoff), and the Posting V2
+composer stack (Codex's, in progress, see above). The Penpot design track
+(Feed/Decision Session first) is a separate workflow.
+
+Claim any task here before starting it — owner, branch, base SHA (must be
+current `main` or later), allowed files, and verification plan — per
+`.agent-bridge/PROTOCOL.md`. This repo moves fast between syncs — re-check
+`git log origin/main` before assuming this file is current.
