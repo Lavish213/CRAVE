@@ -350,7 +350,24 @@ def test_tampered_comparison_token_rejected(db, city):
     _seed_ranking(db, user_id="alice", place_id=existing.id, tier="liked", score=8.0)
 
     result = ranking_service.start_ranking(db, user_id="alice", place_id=new.id, tier="liked")
-    tampered = result["comparison_token"][:-2] + "xx"
+    token = result["comparison_token"]
+    # Flip the second-to-last base64url character (not the last -- a
+    # JWT's HS256 signature is 32 bytes, which base64url-encodes to 43
+    # characters where the *final* character carries only 4 of its 6 bits
+    # of real signal, the other 2 always zero; several different
+    # characters there decode to an identical signature, so flipping only
+    # the last character (or replacing it with a fixed literal, as this
+    # test previously did with "xx") has a real chance of coincidentally
+    # producing a byte-identical, still-valid signature and an untampered
+    # token. Every character before the last one is fully 6-bit
+    # significant, so flipping it to a guaranteed-different value always
+    # changes the decoded signature bytes. Both the fixed-literal and
+    # naive-last-character versions of this test intermittently failed
+    # with "DID NOT RAISE RankingError" (observed in CI and locally,
+    # 2026-09-11).
+    second_to_last_char = token[-2]
+    flipped_char = "a" if second_to_last_char != "a" else "b"
+    tampered = token[:-2] + flipped_char + token[-1]
     with pytest.raises(RankingError, match="invalid or expired"):
         ranking_service.submit_comparison(db, token=tampered, winner="new")
 
