@@ -22,6 +22,13 @@ jest.mock('../src/stores/authStore', () => ({
 jest.mock('../src/api/social', () => ({
   fetchFriendsFeed: jest.fn(),
 }));
+jest.mock('../src/components/AuthSheet', () => {
+  const { Text } = require('react-native');
+  return {
+    AuthSheet: ({ visible }: { visible: boolean }) =>
+      visible ? <Text testID="auth-sheet-visible">auth</Text> : null,
+  };
+});
 
 const mockedUseAuthStore = useAuthStore as unknown as jest.Mock;
 const mockedFetchFriendsFeed = fetchFriendsFeed as jest.MockedFunction<typeof fetchFriendsFeed>;
@@ -70,6 +77,20 @@ describe('FriendsFeedScreen', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     setAuth({ id: 'me' });
+  });
+
+  it('shows a sign-in gate, not the generic empty state, while signed out', async () => {
+    // Previously this fell through to "Nothing here yet" / "Follow
+    // people..." -- indistinguishable from a signed-in user who just has
+    // no follows yet, and its CTA didn't mention signing in at all.
+    setAuth(null);
+    const { findByText, findByTestId, queryByText } = renderScreen();
+
+    expect(await findByText('Sign in to see friend activity')).toBeTruthy();
+    expect(queryByText('Nothing here yet')).toBeNull();
+
+    fireEvent.press(await findByText('Sign in'));
+    expect(await findByTestId('auth-sheet-visible')).toBeTruthy();
   });
 
   it('never fetches this account-scoped feed while signed out, even on focus/retry/refresh', async () => {
