@@ -12,6 +12,11 @@ import { useAuthStore } from '../src/stores/authStore';
 import { fetchPlaceDetail, PlaceOut } from '../src/api/places';
 import { Ranking, RankingStep, startRanking, submitComparison } from '../src/api/social';
 
+const mockRequestAuthGate = jest.fn();
+jest.mock('../src/stores/authGateStore', () => ({
+  requestAuthGate: (...args: unknown[]) => mockRequestAuthGate(...args),
+}));
+
 const mockPush = jest.fn();
 const mockBack = jest.fn();
 let mockPlaceId = 'place-A';
@@ -82,6 +87,27 @@ describe('RankPlaceScreen', () => {
     setAuth(null);
     const { findByText } = render(<RankPlaceScreen />);
     expect(await findByText('Sign in to rank places')).toBeTruthy();
+  });
+
+  it('wires the signed-out CTA into the shared contextual auth gate, not a dead end', async () => {
+    // Real gap this closes: this route previously showed a static message
+    // with no AuthSheet trigger at all, unlike the rest of the app's
+    // AuthGateHost pattern (see rank-home.tsx's identical usage). Tapping
+    // "Sign in" here must request the shared gate with enough context
+    // (the exact place) to land back on this same screen once signed in.
+    setAuth(null);
+    const { findByLabelText } = render(<RankPlaceScreen />);
+    fireEvent.press(await findByLabelText('Sign in'));
+
+    expect(mockRequestAuthGate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        reason: 'rank',
+        sourceRoute: '/rank/place-A',
+        targetIds: ['place-A'],
+        destination: '/rank/place-A',
+        idempotent: true,
+      }),
+    );
   });
 
   it('actually retries the place fetch on error, instead of just navigating back', async () => {
