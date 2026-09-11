@@ -1,5 +1,19 @@
 # Execution Brief — Waves 7-10 (2026-09-08)
 
+> **Superseded for sequencing, 2026-09-11.** This doc's Wave 7→8→9→10
+> *ordering* is historical — `docs/doctrine/CRAVE_FRONTEND_EXECUTION_ORDER.md`
+> is now the authoritative frontend execution order (Foundation Gate →
+> Place Detail proving slice → Feed/Decision → Search/Map propagation-only
+> → Craves → Rank → Food Evidence/Add Spot → Profile/Taste/social cleanup →
+> Auth/Settings/Activity completion → cross-app accessibility/E2E/release
+> certification). Wave 7 below is complete and unaffected. This brief's
+> **content** below each wave heading (the concrete findings on what's
+> buildable vs. genuinely blocked, and the non-negotiable operating rules)
+> remains accurate and still applies — read it for *what*, read the new
+> doctrine doc for *when/in what order*. "Where to resume right now" at
+> the bottom of this file is stale; ignore it in favor of the new doc's
+> own "Next action."
+
 Self-contained handoff for whichever Claude session picks up implementation
 after Wave 6 (Craves intelligence, **COMPLETE** as of PR #219). Written so a
 fresh session can resume without reconstructing scope from
@@ -235,5 +249,7 @@ the actual finish line, not "the code renders."
 
 ## Where to resume right now
 
-`.agent-bridge/STATE.md` claims Wave 7, sub-PR 1 (backend groundwork),
-not yet branched as of this doc's writing. Start there.
+Stale as of 2026-09-11 — Wave 7 finished long ago. See the superseding
+notice at the top of this file: `.agent-bridge/STATE.md`'s top section and
+`docs/doctrine/CRAVE_FRONTEND_EXECUTION_ORDER.md`'s own "Next action" are
+the current source for where to resume.
