@@ -52,8 +52,8 @@ Foundation Gate's contracts are committed.
 
 ### Foundation Gate progress (Claude, 2026-09-11)
 
-Status: in progress. Owner: Claude. Base: `main` post-#255/#256/#257
-(`40cc186`).
+Status: **PR #258 merged** (`03bc6cf`, merge commit on `main`). Owner:
+Claude. Base at merge time: `main` post-#255/#256/#257 (`40cc186`).
 
 **Real finding:** the `PendingIntent`/auth-gate contract the doctrine
 calls for already existed — `authGateStore.ts`'s `AuthResumeEnvelope`
@@ -94,7 +94,9 @@ existing one.
   - Verification: `tsc --noEmit` clean (0 `error TS` across the whole
     project), `place-detail.test.tsx` 35/35 (new signed-out-gate suite
     added), `record-video.test.tsx` 15/15 (new sign-in test added).
-    Awaiting CI/CodeRabbit on the updated PR #258.
+    CI green (7/7 real checks: Guard, Frontend, Backend x2, Analyze x2,
+    CodeQL), CodeRabbit skipped per repo policy (<10 stars, OSS), no open
+    review threads. Merged to `main` at `03bc6cf`.
 - **Auth-gate sweep completed this pass** (grepped every screen in
   `frontend/app` for `if (!user)` and `Sign in to`, not just the three
   screens already named above): Craves, Search/Map, Feed
