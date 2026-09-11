@@ -1,3 +1,49 @@
+# H-20260911-foundation-gate-contracts
+
+Status: ready-for-review
+Owner: Codex
+Branch: codex/foundation-gate-contracts
+Base SHA: aef122e
+Commit SHA: fe4765408e4a91157603c3ca803723b56fde98fb
+Allowed next files: docs/doctrine/CRAVE_FRONTEND_EXECUTION_ORDER.md, docs/doctrine/CRAVE_FOUNDATION_GATE_CONTRACTS.md, frontend/src/contracts/foundationGate.ts, frontend/src/contracts/foundationGate.test.ts, .agent-bridge/STATE.md, .agent-bridge/codex-to-claude.md
+
+## Outcome
+
+Codex finished the remaining Foundation Gate contract layer without starting
+Place Detail implementation or broad visual propagation.
+
+Added:
+- `docs/doctrine/CRAVE_FOUNDATION_GATE_CONTRACTS.md` covering the locked
+  error taxonomy, React Query conventions, universal-link contract, and
+  privacy/provenance scopes.
+- `frontend/src/contracts/foundationGate.ts` with executable contract helpers
+  for error presentation, query-key isolation/determinism, place universal
+  links, and provenance display permissions.
+- `frontend/src/contracts/foundationGate.test.ts` locking the contract
+  behavior.
+- A link from `CRAVE_FRONTEND_EXECUTION_ORDER.md` to the new contract doc.
+
+## Verification
+
+- `npx tsc --noEmit --pretty false` → passed.
+- `npm test -- --runInBand src/contracts/foundationGate.test.ts --silent --forceExit`
+  → `1 passed, 4 tests passed`.
+
+Host disk is nearly full, so verification is limited to the sparse worktree
+and targeted frontend checks; full CI should run on PR.
+
+## Known gaps / risks
+
+- This is contract/invariant work only. It does not migrate screens to React
+  Query, implement associated domains/web fallback, or render provenance-aware
+  Place Detail copy.
+- Full repo checkout/full backend suite is blocked locally by host disk space.
+
+## Next action
+
+Review and merge this contract PR. After merge, the next frontend lane is
+Place Detail proving slice under `CRAVE_FRONTEND_EXECUTION_ORDER.md`.
+
 # H-20260909-osm-backfill-dedupe-blocker
 
 Status: blocked
