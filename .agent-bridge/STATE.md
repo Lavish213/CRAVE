@@ -65,22 +65,46 @@ Rank Home. Foundation Gate's actual remaining work here was narrower than
 "design a new contract": find and close the screens that don't use the
 existing one.
 
-- **Done, PR #258** (branch `claude/foundation-gate-rank-auth-fix`):
-  `/rank/[placeId].tsx`'s signed-out state was a dead-end static message,
-  the one real gap of this kind found. Wired into `EmptyState` +
-  `requestAuthGate` (`reason: 'rank'`, already a valid enum value),
-  matching `rank-home.tsx`'s existing identical pattern exactly.
-  Verification: `tsc --noEmit` clean, full suite 50/50 suites, 523/523
-  tests (new dedicated test added). Awaiting CI/CodeRabbit.
-- **Not yet audited**: whether any *other* screen has the same
-  dead-end-instead-of-gate pattern beyond Rank. Craves/Search/Feed/Map/
-  Place Detail/Profile/Taste Profile/Friends/Leaderboard/Activity/
-  Settings/Food Evidence/Add Spot/Record Video were not individually
-  re-checked for this specific gap in this pass — only Rank was, because
-  it was the one already named in the grounding findings. A future
-  Foundation Gate session should grep every screen's own `if (!user)`
-  branch for one that renders a static message instead of calling
-  `requestAuthGate`/`useAuthAction`, not assume Rank was the only one.
+- **Done, PR #258** (branch `claude/foundation-gate-rank-auth-fix`,
+  now at `3a71bcd`):
+  - `/rank/[placeId].tsx`'s signed-out state was a dead-end static message,
+    the first gap of this kind found. Wired into `EmptyState` +
+    `requestAuthGate` (`reason: 'rank'`, already a valid enum value),
+    matching `rank-home.tsx`'s existing identical pattern exactly.
+  - `record-video/[placeId].tsx`'s signed-out state offered a "Go back"
+    button and *no sign-in mechanism at all* — worse than a dead end, an
+    exit. Now shows a "Sign in" button that opens `AuthSheet` inline
+    (`reason: 'default'`, no dedicated copy exists for this action).
+  - `place/[id].tsx` had **six separate dead-end sites in one screen** —
+    the largest single instance of this bug class found so far: `handleSave`
+    (silently no-op'd, not even a toast), `handleAddPhoto`,
+    `handleOpenMenuSubmit`, the "Save for tonight" ladder CTA, the "Rank it"
+    ladder CTA, "Report the main photo", and "Report an issue" all either
+    toasted "Sign in to..." with no way to act on it, or (handleSave) gave
+    no feedback whatsoever. All seven call sites now route through a new
+    local `gateSignIn` helper wrapping `requestAuthGate`
+    (`save`/`rank`/`default` reasons as appropriate; the Rank CTA carries
+    `destination: /rank/{id}` back to itself).
+  - All three fixes use `resume: () => undefined` (deliberate no-op) —
+    matches the established safe pattern: a `resume` closure captured at
+    gate-request time would close over that render's `user` (null),
+    so auto-resuming the mutation later would run on stale state.
+    Component-level `useAuthStore` subscriptions re-render the caller past
+    the signed-out branch instead; the user re-taps.
+  - Verification: `tsc --noEmit` clean (0 `error TS` across the whole
+    project), `place-detail.test.tsx` 35/35 (new signed-out-gate suite
+    added), `record-video.test.tsx` 15/15 (new sign-in test added).
+    Awaiting CI/CodeRabbit on the updated PR #258.
+- **Not yet audited**: whether any *other* screen still has this
+  dead-end-instead-of-gate pattern. Craves/Search/Feed/Map/Profile/Taste
+  Profile/Friends/Leaderboard/Activity/Settings/Food Evidence/Add Spot
+  were not individually re-checked for this specific gap in this pass —
+  Rank, Place Detail, and record-video were fixed because they were
+  either already named in the grounding findings or turned up while
+  auditing Place Detail's neighbors. A future Foundation Gate session
+  should grep every remaining screen's own `if (!user)` branch for one
+  that toasts/renders a static message instead of calling
+  `requestAuthGate`/`useAuthAction`.
 - **Still not started**: error taxonomy (offline/timeout/unauthorized/
   forbidden/not_found/rate_limited/server_error/invalid_data/unknown +
   UX mapping), React Query key/cancellation/stale-time/account-isolation
