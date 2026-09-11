@@ -1,3 +1,74 @@
+# H-20260910-ui-v2-mock-screens
+
+Status: ready-for-review
+Owner: Codex
+Branch: codex/ui-v2-mock-screens
+Base SHA: 8d3023d594f40f8d90de93683b59c1c714f7d407
+Commit SHA: pending PR head
+Allowed next files: frontend/app/(tabs)/index.tsx, frontend/src/screens/SearchScreen.tsx, frontend/src/screens/MapScreenCore.tsx, frontend/src/components/MapBottomSheet.tsx, frontend/app/settings.tsx, frontend/src/constants/colors.ts, frontend/src/components/CraveV2.tsx, .agent-bridge/STATE.md, .agent-bridge/codex-to-claude.md
+
+## Outcome
+
+Codex implemented the first real CRAVE UI V2 mock-screen slice in the Expo
+frontend, using the frozen dark/warm Search/Map north-star language without
+claiming full 16-state certification.
+
+What changed:
+- Added shared V2 primitives/tokens (`CraveV2.tsx`, warm/dark color tokens).
+- Reworked Home/Feed into a food-led V2 shell while preserving real feed,
+  saves, decision-session roles, impressions, and filtering.
+- Reworked Search home/results into the appetite-forward V2 direction with
+  dominant answer hierarchy, alternatives, reason labels, recent searches,
+  shortcuts, and existing submit/relaxation behavior preserved.
+- Reworked Map overlays and selected-place card toward the V2 visual language
+  while preserving Map candidate ownership, selection, saved state, and
+  instrumentation behavior.
+- Reworked Settings shell to match the same CRAVE visual direction while
+  preserving existing notification/account/delete behavior.
+- Follow-up truth audit removed static Unsplash placeholder hero/map images,
+  removed the false `Oakland, CA` fallback when no city/location exists, and
+  made the Map selected-card context label mode-specific instead of always
+  claiming `Search-owned candidate`.
+- Research-backed accessibility/interaction pass separated `V2PlaceCard`'s
+  open-place and save actions into distinct touch/accessibility targets, raised
+  Search clear/removable-constraint controls to 44pt minimums, and measured V2
+  token contrast.
+
+## Verification
+
+From `frontend/`, using a temporary local `node_modules` symlink to the main
+checkout dependencies, then removing it afterward:
+
+- `npx tsc --noEmit` → passed.
+- `npm test -- --runInBand __tests__/feed.test.tsx __tests__/search.test.tsx __tests__/search-decision-support.test.tsx __tests__/map.test.tsx __tests__/map-instrumentation.test.tsx __tests__/settings.test.tsx --silent --forceExit`
+  → `6 passed, 82 tests passed`.
+- `npm test -- --runInBand --silent --forceExit`
+  → `50 passed, 522 tests passed`.
+- Static scan across touched implementation files for mock/static north-star
+  leakage (`HERO_FOOD_IMAGE`, `MAP_TEXTURE_IMAGE`, `unsplash`,
+  `Search-owned candidate`, `Oakland, CA`, `mockup`, `fake`, `hardcoded`) →
+  no remaining matches.
+- V2 contrast spot-check: `craveMuted` is at least `7.88:1` on V2 dark
+  surfaces; `craveCream`, `craveGold`, `craveGoldDeep`, `craveGreen`, and
+  `error` all exceed AA normal-text contrast on the V2 dark surfaces.
+
+## Known gaps / non-claims
+
+- Not device/simulator verified yet.
+- Not a full 16-state Search/Map propagation or runtime accessibility proof.
+- Real-photo torture testing remains pending; production imagery may expose
+  additional composition issues.
+- Native map marker hit geometry/non-color selected-state behavior still needs
+  simulator/device verification.
+- Jest still needed `--forceExit` due the existing open-handle behavior in
+  this frontend test environment.
+
+## Next action
+
+Review the PR visually and on device/simulator. If accepted, follow with a
+separate Search/Map resilience/accessibility propagation branch rather than
+expanding this first implementation slice.
+
 # H-20260909-osm-backfill-dedupe-blocker
 
 Status: blocked
