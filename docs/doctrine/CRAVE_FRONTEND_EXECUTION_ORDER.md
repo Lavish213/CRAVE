@@ -86,15 +86,36 @@ context, image/menu provenance, sharing/deep links, errors, offline
 behavior, analytics. Build/fix it against the Foundation Gate contracts
 directly (not against a shared module yet).
 
-Also lands here, since they're Place Detail-scoped:
-- Contextual primary action (one moment-specific CTA, not six equal ones —
-  never-visited → Save; likely-there-now → "I'm here"; visited-not-ranked →
-  Rank; saved-and-nearby → Directions; recommendation session → Choose this).
-- "Report an issue" as a first-class, structured-signal correction path
-  (`closed` / `wrong_hours` / `wrong_menu` / `wrong_photo` / `wrong_location`
-  / `duplicate` / `other`), not just free text.
-- Provenance-aware copy: "Open until 10 PM" only when the underlying claim
-  actually supports that confidence; "Hours may have changed" otherwise.
+Also lands here, since they're Place Detail-scoped — **two of the three
+items below are already further along than an early pass at this doc
+assumed; verify current state before treating any of these as a
+from-scratch build:**
+- Contextual primary action ladder. **Partially done already**: Wave 7
+  shipped a single, visually-distinct primary CTA (not six equal buttons) —
+  visited → existing Rank CTA; not-visited-with-coordinates → Directions;
+  not-visited-no-coordinates → "Save for tonight" (`place/[id].tsx`'s
+  `rankCta` block, explicitly commented as Wave 7's adaptive ladder). Not
+  yet built: a "likely there now" state (e.g. proximity-based "I'm here")
+  and a recommendation-session-originated "Choose this" state — extend the
+  existing ladder for those, don't rebuild it.
+- "Report an issue" as a first-class, structured-signal correction path.
+  **Already done** — re-verify this before "fixing" it again. Current
+  `main` has both `ReportPhotoSheet` (photo-specific,
+  `/moderation/images/{id}/report`) and a separate `ReportPlaceSheet`
+  (`/moderation/places/{id}/report`, `PLACE_REPORT_REASONS`:
+  `wrong_hours` / `closed` / `duplicate` / `wrong_menu` / `wrong_info` /
+  `other`), both structured (not free text), both idempotent per user, both
+  landing in human review. An earlier draft of this document, sourced from
+  a stale closed-PR finding predating this fix, incorrectly listed this as
+  a current gap — corrected here after independent re-verification against
+  the actual component/API code, not the old finding's word.
+- Provenance-aware copy: real, still-open gap. Hours already never
+  fabricates a status (`hours_status` null → chip omitted entirely,
+  confirmed in the same file) — but a non-null hours claim renders with
+  full confidence regardless of how stale it is; there's no distinct
+  "may have changed" state between confident and absent. Menu has no
+  provenance signal at all (`has_menu` boolean only, no source/freshness
+  shown). This one still needs real work, on both fields.
 
 ### 3. Extraction
 
@@ -268,6 +289,14 @@ in the original audit thread, summarized here for traceability:
 - `taste-profile/[userId].tsx` renders `Top {100 - percentile}%` and a
   `{match_score}% taste match` — competitive percentile + taste-match score.
 - `user/[id].tsx` renders each ranked place with `rank_score`/`tier`.
+- **Correction, same pass**: a stale closed-PR (#127, opened 2026-09-02)
+  claimed Place Detail's "Report" action was still photo-only. Re-verified
+  directly against current code and found **false** — `ReportPlaceSheet` +
+  `/moderation/places/{id}/report` (`PLACE_REPORT_REASONS`: wrong_hours/
+  closed/duplicate/wrong_menu/wrong_info/other) already exist alongside
+  `ReportPhotoSheet`, fully structured and wired end to end. Recorded here
+  as a reminder to verify a closed/superseded PR's claims against current
+  code before reusing them, not just against `main`'s existence.
 - `rank/[placeId].tsx`'s signed-out state is a static "Sign in to rank
   places" message with no `AuthSheet`/resume trigger at all — unlike the
   rest of the app's `AuthGateHost` pattern.
