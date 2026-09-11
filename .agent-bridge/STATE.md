@@ -95,16 +95,33 @@ existing one.
     project), `place-detail.test.tsx` 35/35 (new signed-out-gate suite
     added), `record-video.test.tsx` 15/15 (new sign-in test added).
     Awaiting CI/CodeRabbit on the updated PR #258.
-- **Not yet audited**: whether any *other* screen still has this
-  dead-end-instead-of-gate pattern. Craves/Search/Feed/Map/Profile/Taste
-  Profile/Friends/Leaderboard/Activity/Settings/Food Evidence/Add Spot
-  were not individually re-checked for this specific gap in this pass —
-  Rank, Place Detail, and record-video were fixed because they were
-  either already named in the grounding findings or turned up while
-  auditing Place Detail's neighbors. A future Foundation Gate session
-  should grep every remaining screen's own `if (!user)` branch for one
-  that toasts/renders a static message instead of calling
-  `requestAuthGate`/`useAuthAction`.
+- **Auth-gate sweep completed this pass** (grepped every screen in
+  `frontend/app` for `if (!user)` and `Sign in to`, not just the three
+  screens already named above): Craves, Search/Map, Feed
+  (`(tabs)/index.tsx`), rank-home, add-spot, food-evidence, Profile, and
+  Leaderboard all already gate correctly via `AuthSheet`/`requestAuthGate`
+  — verified by reading each site, not assumed. `add-spot.tsx`'s
+  `handleConfirm` still has a bare `toast('Sign in to add a new spot')`
+  guard, but it's dead code in practice: the whole screen returns an
+  `AuthSheet`-gated empty state at the `state === 'unauthenticated'`
+  branch before that handler is ever reachable — left as-is, not a real
+  gap.
+  - **Found and fixed, same PR**: `friends-feed.tsx` had no signed-out
+    branch at all — its account-scoped query is simply `enabled: !!user`,
+    so signed out it fell through to the generic "Nothing here yet /
+    Follow people to see..." empty state, identical to what a genuinely
+    friendless signed-in user sees, with a "Find people" CTA that never
+    mentioned signing in. Now shows its own "Sign in to see friend
+    activity" gate first, same `EmptyState` + `AuthSheet` pattern as the
+    others. Test added (9/9 passing), `tsc --noEmit` clean.
+  - Also checked: Activity (`activity.tsx`) is a static "coming soon"
+    placeholder with no data fetching and nothing to gate; Settings
+    (`settings.tsx`) simply hides its ACCOUNT/DANGER ZONE sections when
+    signed out (`user ? ... : null`) rather than attempting and blocking
+    an action — neither is this bug class. No dedicated Taste Profile
+    route exists separately from `(tabs)/profile.tsx`, already covered
+    above. This closes out the sweep: every screen in `frontend/app` has
+    now been individually checked for this specific gap, not sampled.
 - **Still not started**: error taxonomy (offline/timeout/unauthorized/
   forbidden/not_found/rate_limited/server_error/invalid_data/unknown +
   UX mapping), React Query key/cancellation/stale-time/account-isolation
