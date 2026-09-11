@@ -205,6 +205,9 @@ export function foundationQueryKey(input: QueryKeyInput): readonly unknown[] {
   if (input.scope === 'user' && !input.userId) {
     throw new Error('User-scoped queries must include userId for account isolation.');
   }
+  if (input.scope !== 'user' && input.userId) {
+    throw new Error('Only user-scoped queries may include userId for account isolation.');
+  }
 
   return [
     'crave',

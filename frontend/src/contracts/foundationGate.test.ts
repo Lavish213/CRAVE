@@ -29,6 +29,11 @@ describe('Foundation Gate contracts', () => {
 
   it('locks account-isolated, deterministic query keys', () => {
     expect(() => foundationQueryKey({ scope: 'user', entity: 'saves' })).toThrow(/userId/);
+    expect(() => foundationQueryKey({
+      scope: 'place',
+      entity: 'detail',
+      userId: 'user-a',
+    })).toThrow(/Only user-scoped queries/);
     expect(JSON.stringify(foundationQueryKey({
       scope: 'place',
       entity: 'detail',

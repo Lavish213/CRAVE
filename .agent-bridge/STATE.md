@@ -4,6 +4,7 @@ Status: ready-for-review
 Owner: Codex
 Branch: codex/foundation-gate-contracts
 Base SHA: aef122e
+Commit SHA: fe4765408e4a91157603c3ca803723b56fde98fb
 Scope: finish the remaining Foundation Gate contracts: error taxonomy,
 React Query conventions, universal-link contract, and privacy/provenance
 scopes. No screen redesign, no Place Detail implementation, no production

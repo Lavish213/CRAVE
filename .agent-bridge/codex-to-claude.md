@@ -4,7 +4,7 @@ Status: ready-for-review
 Owner: Codex
 Branch: codex/foundation-gate-contracts
 Base SHA: aef122e
-Commit SHA: pending
+Commit SHA: fe4765408e4a91157603c3ca803723b56fde98fb
 Allowed next files: docs/doctrine/CRAVE_FRONTEND_EXECUTION_ORDER.md, docs/doctrine/CRAVE_FOUNDATION_GATE_CONTRACTS.md, frontend/src/contracts/foundationGate.ts, frontend/src/contracts/foundationGate.test.ts, .agent-bridge/STATE.md, .agent-bridge/codex-to-claude.md
 
 ## Outcome
