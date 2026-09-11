@@ -14,7 +14,6 @@ import type { SearchInterpretation } from '../api/search';
 import { getTierForPlace } from '../utils/scoring';
 import { logRecommendationEvent, logRecommendationEvents } from '../utils/recommendationEventQueue';
 import { Colors, Radius, Spacing } from '../constants/colors';
-import { PlaceCardCompact } from '../components/PlaceCardCompact';
 import type { SearchReasonRole } from '../components/DecisionStrip';
 import { CitySelectorStrip } from '../components/CitySelectorStrip';
 import { SkeletonRowList } from '../components/SkeletonCard';
@@ -26,6 +25,14 @@ import { useCravesStore } from '../stores/cravesStore';
 import { useRecentSearchesStore } from '../stores/recentSearchesStore';
 import { fetchMyRankings } from '../api/social';
 import { SearchScope, useDiscoveryContextStore } from '../stores/discoveryContextStore';
+import {
+  V2Chip,
+  V2Glow,
+  V2Hero,
+  V2PlaceCard,
+  V2Screen,
+  V2TopBar,
+} from '../components/CraveV2';
 
 function makeSearchSessionId(): string {
   return randomUUID();
@@ -342,43 +349,64 @@ export default function SearchScreen() {
   const showNoFilterMatches = searched && results.length > 0 && filteredResults.length === 0 && !rankedScopeLoading && !rankedScopeError;
   const canRenderResults = !showZeroState && !showNoResults && !showNoFilterMatches && !searchQuery.isError && !rankedScopeLoading && !rankedScopeError && filteredResults.length > 0;
 
+  useEffect(() => {
+    if (!canRenderResults) return;
+    const newlyExposed = filteredResults.filter((place) => !exposedIdsRef.current.has(place.id));
+    if (newlyExposed.length === 0) return;
+    newlyExposed.forEach((place) => exposedIdsRef.current.add(place.id));
+    logRecommendationEvents(newlyExposed.map((place) => ({
+      surface: 'search',
+      event_type: 'impression',
+      place_id: place.id,
+      position: results.findIndex((candidate) => candidate.id === place.id),
+      rank_percentile: place.rank_percentile,
+      query: debouncedQuery,
+      city_id: selectedCity?.id ?? null,
+      search_session_id: searchSessionIdRef.current,
+    })));
+  }, [canRenderResults, debouncedQuery, filteredResults, results, selectedCity?.id]);
+
+  const searchInput = (
+    <View style={styles.v2InputRow}>
+      <Ionicons name="search" size={18} color={Colors.craveMuted} />
+      <TextInput
+        style={styles.v2Input}
+        placeholder="Search for a dish, place, or vibe..."
+        placeholderTextColor={Colors.craveMuted}
+        value={query}
+        onChangeText={handleChange}
+        returnKeyType="search"
+        onSubmitEditing={() => {
+          const submitted = query.trim();
+          if (!submitted) return;
+          if (debounceRef.current) clearTimeout(debounceRef.current);
+          setSubmittedQuery(submitted);
+          setDebouncedQuery(submitted);
+          addRecentQuery(submitted);
+        }}
+        autoCorrect={false}
+        accessibilityLabel="Search input"
+      />
+      {query.length > 0 ? (
+        <TouchableOpacity style={styles.clearSearchButton} onPress={handleClear} accessibilityLabel="Clear search" accessibilityRole="button">
+          <Ionicons name="close" size={18} color={Colors.craveCream} />
+        </TouchableOpacity>
+      ) : (
+        <Ionicons name="mic-outline" size={18} color={Colors.craveCream} />
+      )}
+    </View>
+  );
+
   return (
-    <View style={styles.container}>
+    <V2Screen>
+      <V2Glow />
+      <V2TopBar location={selectedCity?.name ?? (userLocation ? 'Near you' : 'Search')} />
       <View style={styles.bar}>
         <View style={styles.barRow}>
-          <View style={[styles.inputRow, styles.inputRowFlex]}>
-            <Ionicons name="search" size={16} color={Colors.textSecondary} />
-            <TextInput
-              style={styles.input}
-              placeholder="Search places, cuisines…"
-              placeholderTextColor={Colors.textSecondary}
-              value={query}
-              onChangeText={handleChange}
-              returnKeyType="search"
-              onSubmitEditing={() => {
-                const submitted = query.trim();
-                if (!submitted) return;
-                // A pending debounce from onChangeText must not fire after
-                // this explicit submit already set debouncedQuery -- an
-                // identical late setDebouncedQuery is at best redundant,
-                // and firing after unmount is a real dangling-update bug.
-                if (debounceRef.current) clearTimeout(debounceRef.current);
-                setSubmittedQuery(submitted);
-                setDebouncedQuery(submitted);
-                addRecentQuery(submitted);
-              }}
-              autoCorrect={false}
-              accessibilityLabel="Search input"
-            />
-            {query.length > 0 && (
-              <TouchableOpacity onPress={handleClear} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} accessibilityLabel="Clear search" accessibilityRole="button">
-                <Ionicons name="close-circle" size={18} color={Colors.textSecondary} />
-              </TouchableOpacity>
-            )}
-          </View>
+          <View style={styles.inputRowFlex}>{searchInput}</View>
           {searched && results.length > 0 && (
             <TouchableOpacity style={styles.filterBtn} onPress={() => setFilterVisible(true)} accessibilityLabel="Filter results" accessibilityRole="button">
-              <Ionicons name="options-outline" size={20} color={hasActiveFilters(filters) ? Colors.primary : Colors.textSecondary} />
+              <Ionicons name="options-outline" size={20} color={hasActiveFilters(filters) ? Colors.craveGold : Colors.craveCream} />
             </TouchableOpacity>
           )}
         </View>
@@ -393,16 +421,16 @@ export default function SearchScreen() {
 
       {searched && searchData?.interpretation && (
         <View style={styles.interpretationPanel}>
-          <Text style={styles.interpretationTitle}>{searchData.interpretation.uncertain ? 'CHECK THIS SEARCH' : 'UNDERSTOOD'}</Text>
-          <Text style={styles.interpretationQuery}>Searching for {searchData.interpretation.lookup_query}</Text>
+          <Text style={styles.interpretationTitle}>{searchData.interpretation.uncertain ? 'CHECK THIS SEARCH' : 'FOOD FINDS YOU'}</Text>
+          <Text style={styles.interpretationQuery}>{searchData.interpretation.lookup_query}</Text>
           <View style={styles.constraintRow}>
             {searchData.interpretation.price_tier != null && (
-              <TouchableOpacity style={styles.constraintChip} onPress={() => removeInterpretedConstraint('price')} accessibilityLabel="Remove price constraint">
+              <TouchableOpacity style={styles.constraintChip} onPress={() => removeInterpretedConstraint('price')} accessibilityLabel="Remove price constraint" accessibilityRole="button">
                 <Text style={styles.constraintText}>{'$'.repeat(searchData.interpretation.price_tier)} ×</Text>
               </TouchableOpacity>
             )}
             {[...searchData.interpretation.required_categories, ...searchData.interpretation.context].map((key) => (
-              <TouchableOpacity key={key} style={styles.constraintChip} onPress={() => removeInterpretedConstraint(key)} accessibilityLabel={`Remove ${key.replace('_', ' ')} constraint`}>
+              <TouchableOpacity key={key} style={styles.constraintChip} onPress={() => removeInterpretedConstraint(key)} accessibilityLabel={`Remove ${key.replace('_', ' ')} constraint`} accessibilityRole="button">
                 <Text style={styles.constraintText}>{key.replace('_', ' ')} ×</Text>
               </TouchableOpacity>
             ))}
@@ -460,19 +488,33 @@ export default function SearchScreen() {
 
       {showZeroState && (
         <View style={styles.zeroState}>
-          <Text style={styles.zeroStateTitle}>What are you craving?</Text>
-          <TouchableOpacity
-            style={styles.shortcutChip}
-            onPress={() => applyShortcut(intentShortcut)}
-            accessibilityRole="button"
-            accessibilityLabel={`Search ${intentShortcut}`}
-          >
-            <Ionicons name="time-outline" size={14} color={Colors.primary} />
-            <Text style={styles.shortcutText}>{intentShortcut}</Text>
-          </TouchableOpacity>
+          <V2Hero title="What sounds good?" subtitle="Real food. Real places. Right now." />
+          <View style={styles.v2ShortcutPanel}>
+            <Text style={styles.zeroStateSectionLabel}>USEFUL NOW</Text>
+            <View style={styles.shortcutRow}>
+              <TouchableOpacity
+                style={styles.shortcutChip}
+                onPress={() => applyShortcut(intentShortcut)}
+                accessibilityRole="button"
+                accessibilityLabel={`Search ${intentShortcut}`}
+              >
+                <Ionicons name="time-outline" size={14} color={Colors.craveGold} />
+                <Text style={styles.shortcutText}>{intentShortcut}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.shortcutChip}
+                onPress={() => applyShortcut('late-night ramen near me')}
+                accessibilityRole="button"
+                accessibilityLabel="Search late-night ramen near me"
+              >
+                <Ionicons name="restaurant-outline" size={14} color={Colors.craveGold} />
+                <Text style={styles.shortcutText}>Late-night ramen</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
 
           {recentQueries.length > 0 && (
-            <>
+            <View style={styles.v2ShortcutPanel}>
               <Text style={styles.zeroStateSectionLabel}>RECENT SEARCHES</Text>
               <View style={styles.shortcutRow}>
                 {recentQueries.map((recent) => (
@@ -483,16 +525,18 @@ export default function SearchScreen() {
                     accessibilityRole="button"
                     accessibilityLabel={`Search ${recent} again`}
                   >
-                    <Ionicons name="time-outline" size={14} color={Colors.textSecondary} />
+                    <Ionicons name="time-outline" size={14} color={Colors.craveMuted} />
                     <Text style={styles.shortcutText}>{recent}</Text>
                   </TouchableOpacity>
                 ))}
               </View>
-            </>
+            </View>
           )}
 
-          <Text style={styles.zeroStateSectionLabel}>CITY</Text>
-          <CitySelectorStrip />
+          <View style={styles.v2ShortcutPanel}>
+            <Text style={styles.zeroStateSectionLabel}>CITY</Text>
+            <CitySelectorStrip />
+          </View>
         </View>
       )}
       {showBelowThreshold && <View style={styles.loadingRow}><Text style={styles.hintText}>Keep typing to search…</Text></View>}
@@ -536,11 +580,23 @@ export default function SearchScreen() {
           renderItem={({ item }) => {
             const position = results.findIndex((place) => place.id === item.id);
             const reason = searchReasonForResult(item, position, priceWasRelaxed);
+            const reasonLabel = reason === 'best_match'
+              ? 'Best match for you'
+              : reason === 'safer_pick'
+                ? 'Safer pick'
+                : 'Worth exploring';
+            const reasonCopy = reason === 'best_match'
+              ? 'Fits your search and stays inside the strongest evidence.'
+              : reason === 'safer_pick'
+                ? 'A grounded option with reliable place signals.'
+                : 'Different enough to compare without losing the craving.';
             return (
               <View style={styles.rowSpacer}>
-                <PlaceCardCompact
+                <V2PlaceCard
                   place={item}
-                  searchReason={reason}
+                  compact={position !== 0}
+                  label={reasonLabel}
+                  reason={reasonCopy}
                   onPress={() => {
                     logRecommendationEvent({
                       surface: 'search',
@@ -564,11 +620,19 @@ export default function SearchScreen() {
             );
           }}
           contentContainerStyle={styles.list}
-          refreshControl={<RefreshControl refreshing={searchQuery.isRefetching} onRefresh={() => searchQuery.refetch()} tintColor={Colors.primary} />}
+          refreshControl={<RefreshControl refreshing={searchQuery.isRefetching} onRefresh={() => searchQuery.refetch()} tintColor={Colors.craveGold} />}
           ListHeaderComponent={(
             <View style={styles.resultsHeader}>
-              <Text style={styles.resultCount}>{filteredResults.length} result{filteredResults.length !== 1 ? 's' : ''}{filteredResults.length !== results.length ? ` of ${results.length}` : ''}</Text>
+              <Text style={styles.v2ResultsTitle}>{debouncedQuery}</Text>
+              <Text style={styles.legacyResultCount}>{filteredResults.length} result{filteredResults.length !== 1 ? 's' : ''}</Text>
+              <Text style={styles.resultCount}>{filteredResults.length} place{filteredResults.length !== 1 ? 's' : ''} fit what you meant{filteredResults.length !== results.length ? ` · ${results.length} before filters` : ''}</Text>
+              <View style={styles.v2ChipRow}>
+                <V2Chip label={debouncedQuery} tone="selected" />
+                {userLocation ? <V2Chip label="Nearest first" icon="navigate-outline" /> : null}
+                {priceWasRelaxed ? <V2Chip label="Price relaxed" tone="warn" /> : null}
+              </View>
               <TouchableOpacity
+                style={styles.v2MapLink}
                 onPress={() => {
                   if (!searchData) return;
                   setSearchMapHandoff({
@@ -596,45 +660,86 @@ export default function SearchScreen() {
       )}
 
       <FilterSheet visible={filterVisible} onClose={() => setFilterVisible(false)} filters={filters} onChange={setFilters} availableCategories={availableCategories} />
-    </View>
+    </V2Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.background },
-  bar: { padding: Spacing.md, paddingBottom: Spacing.xs, gap: Spacing.xs },
+  container: { flex: 1, backgroundColor: Colors.craveInk },
+  bar: { paddingHorizontal: Spacing.md, paddingBottom: Spacing.xs, gap: Spacing.xs },
   barRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
   inputRowFlex: { flex: 1 },
-  filterBtn: { padding: Spacing.sm, minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
+  filterBtn: {
+    padding: Spacing.sm,
+    minWidth: 44,
+    minHeight: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: Radius.full,
+    borderWidth: 1,
+    borderColor: 'rgba(247,239,228,0.16)',
+    backgroundColor: 'rgba(247,239,228,0.06)',
+  },
   inputRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.surface, borderRadius: Radius.md, borderWidth: 1, borderColor: Colors.border, paddingHorizontal: Spacing.md, paddingVertical: 10, gap: Spacing.sm, minHeight: 46 },
   input: { flex: 1, color: Colors.text, fontSize: 15 },
-  cityContext: { color: Colors.textSecondary, fontSize: 12, fontWeight: '500', paddingLeft: Spacing.xs },
-  list: { padding: Spacing.md, paddingBottom: Spacing.xxl },
-  rowSpacer: { marginBottom: Spacing.sm },
+  v2InputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    minHeight: 52,
+    paddingHorizontal: Spacing.md,
+    gap: Spacing.sm,
+    borderRadius: Radius.full,
+    borderWidth: 1,
+    borderColor: 'rgba(247,239,228,0.16)',
+    backgroundColor: 'rgba(247,239,228,0.10)',
+  },
+  v2Input: {
+    flex: 1,
+    color: Colors.craveCream,
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  clearSearchButton: {
+    minWidth: 44,
+    minHeight: 44,
+    marginRight: -10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: Radius.full,
+  },
+  cityContext: { color: Colors.craveMuted, fontSize: 12, fontWeight: '700', paddingLeft: Spacing.xs },
+  zeroCityContext: { paddingHorizontal: Spacing.lg, paddingTop: Spacing.xs },
+  list: { padding: Spacing.md, paddingBottom: Spacing.xxl + 16 },
+  rowSpacer: { marginBottom: Spacing.md },
   loadingRow: { paddingVertical: 20, alignItems: 'center', gap: Spacing.sm },
-  hintText: { color: Colors.textSecondary, fontSize: 13 },
-  zeroState: { paddingHorizontal: Spacing.md, paddingTop: Spacing.sm, gap: Spacing.xs },
-  zeroStateTitle: { color: Colors.text, fontSize: 17, fontWeight: '800', marginBottom: Spacing.xs },
-  zeroStateSectionLabel: { color: Colors.textSecondary, fontSize: 11, fontWeight: '700', textTransform: 'uppercase', marginTop: Spacing.sm, marginBottom: Spacing.xs },
+  hintText: { color: Colors.craveMuted, fontSize: 13 },
+  zeroState: { paddingTop: Spacing.sm, gap: Spacing.md },
+  zeroStateTitle: { color: Colors.craveCream, fontSize: 17, fontWeight: '800', marginBottom: Spacing.xs },
+  zeroStateSectionLabel: { color: Colors.craveGold, fontSize: 11, fontWeight: '900', letterSpacing: 1.4, textTransform: 'uppercase', marginBottom: Spacing.xs },
+  v2ShortcutPanel: { paddingHorizontal: Spacing.md, gap: Spacing.sm },
   shortcutRow: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.xs },
-  shortcutChip: { flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 44, paddingHorizontal: Spacing.md, borderRadius: Radius.full, borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.surface, alignSelf: 'flex-start' },
-  shortcutText: { color: Colors.text, fontSize: 13, fontWeight: '600' },
-  interpretationPanel: { marginHorizontal: Spacing.md, marginBottom: Spacing.xs, padding: Spacing.sm, backgroundColor: Colors.surface, borderRadius: Radius.md, borderWidth: 1, borderColor: Colors.border },
-  interpretationTitle: { color: Colors.primary, fontSize: 10, fontWeight: '800', letterSpacing: 1.2 },
-  interpretationQuery: { color: Colors.text, fontSize: 13, fontWeight: '700', marginTop: 4 },
+  shortcutChip: { flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 44, paddingHorizontal: Spacing.md, borderRadius: Radius.full, borderWidth: 1, borderColor: 'rgba(247,239,228,0.14)', backgroundColor: 'rgba(247,239,228,0.07)', alignSelf: 'flex-start' },
+  shortcutText: { color: Colors.craveCream, fontSize: 13, fontWeight: '800' },
+  interpretationPanel: { marginHorizontal: Spacing.md, marginBottom: Spacing.xs, padding: Spacing.md, backgroundColor: 'rgba(16,26,24,0.86)', borderRadius: Radius.card, borderWidth: 1, borderColor: 'rgba(247,239,228,0.12)' },
+  interpretationTitle: { color: Colors.craveGold, fontSize: 10, fontWeight: '900', letterSpacing: 1.2 },
+  interpretationQuery: { color: Colors.craveCream, fontSize: 20, fontWeight: '900', marginTop: 4 },
   constraintRow: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.xs, marginTop: Spacing.xs },
-  constraintChip: { minHeight: 36, justifyContent: 'center', paddingHorizontal: Spacing.sm, borderRadius: Radius.full, backgroundColor: Colors.surfaceElevated },
-  constraintText: { color: Colors.textSecondary, fontSize: 12, fontWeight: '700', textTransform: 'capitalize' },
+  constraintChip: { minHeight: 44, justifyContent: 'center', paddingHorizontal: Spacing.md, borderRadius: Radius.full, backgroundColor: 'rgba(255,180,92,0.12)', borderWidth: 1, borderColor: 'rgba(255,180,92,0.24)' },
+  constraintText: { color: Colors.craveCream, fontSize: 12, fontWeight: '800', textTransform: 'capitalize' },
   constraintWarning: { color: Colors.error, fontSize: 12, lineHeight: 17, marginTop: Spacing.xs },
-  relaxationText: { color: Colors.textSecondary, fontSize: 12, lineHeight: 17, marginTop: Spacing.xs },
+  relaxationText: { color: Colors.craveMuted, fontSize: 12, lineHeight: 17, marginTop: Spacing.xs },
   scopeRow: { flexDirection: 'row', gap: Spacing.xs, paddingHorizontal: Spacing.md, paddingVertical: Spacing.xs },
-  scopeChip: { minHeight: 44, justifyContent: 'center', paddingHorizontal: Spacing.md, borderRadius: Radius.full, borderWidth: 1, borderColor: Colors.border },
-  scopeChipActive: { backgroundColor: Colors.primary, borderColor: Colors.primary },
-  scopeText: { color: Colors.textSecondary, fontSize: 13, fontWeight: '700' },
-  scopeTextActive: { color: Colors.background },
-  resultsHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingBottom: Spacing.sm },
-  resultCount: { color: Colors.textSecondary, fontSize: 11, fontWeight: '700', textTransform: 'uppercase' },
-  mapLink: { color: Colors.primary, fontSize: 13, fontWeight: '800' },
-  showMoreButton: { minHeight: 48, alignItems: 'center', justifyContent: 'center', marginTop: Spacing.sm, borderRadius: Radius.md, borderWidth: 1, borderColor: Colors.primary },
-  showMoreText: { color: Colors.primary, fontSize: 14, fontWeight: '800' },
+  scopeChip: { minHeight: 44, justifyContent: 'center', paddingHorizontal: Spacing.md, borderRadius: Radius.full, borderWidth: 1, borderColor: 'rgba(247,239,228,0.14)' },
+  scopeChipActive: { backgroundColor: Colors.craveCream, borderColor: Colors.craveCream },
+  scopeText: { color: Colors.craveMuted, fontSize: 13, fontWeight: '800' },
+  scopeTextActive: { color: Colors.craveInk },
+  resultsHeader: { gap: Spacing.sm, paddingBottom: Spacing.md },
+  v2ResultsTitle: { color: Colors.craveCream, fontSize: 30, lineHeight: 34, fontWeight: '900', letterSpacing: -0.8 },
+  legacyResultCount: { color: Colors.craveCream, fontSize: 13, fontWeight: '800' },
+  resultCount: { color: Colors.craveMuted, fontSize: 13, fontWeight: '800' },
+  v2ChipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.xs },
+  v2MapLink: { minHeight: 44, borderRadius: Radius.full, alignItems: 'center', justifyContent: 'center', backgroundColor: Colors.craveCream, marginTop: Spacing.xs },
+  mapLink: { color: Colors.craveInk, fontSize: 13, fontWeight: '900' },
+  showMoreButton: { minHeight: 48, alignItems: 'center', justifyContent: 'center', marginTop: Spacing.sm, borderRadius: Radius.full, borderWidth: 1, borderColor: Colors.craveCream },
+  showMoreText: { color: Colors.craveCream, fontSize: 14, fontWeight: '900' },
 });

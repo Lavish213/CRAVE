@@ -47,11 +47,12 @@ interface FeatureProps {
 
 interface Props {
   feature: FeatureProps | null;
+  contextLabel?: string;
   onOpen: (id: string) => void;
   onClose: () => void;
 }
 
-export function MapBottomSheet({ feature, onOpen, onClose }: Props) {
+export function MapBottomSheet({ feature, contextLabel = 'Map candidate', onOpen, onClose }: Props) {
   const translateY = useRef(new Animated.Value(0)).current;
 
   // Reset position whenever a new feature is selected — otherwise a sheet
@@ -124,7 +125,7 @@ export function MapBottomSheet({ feature, onOpen, onClose }: Props) {
         accessibilityLabel="Close"
         accessibilityRole="button"
       >
-        <Ionicons name="close" size={18} color={Colors.textSecondary} />
+        <Ionicons name="close" size={18} color={Colors.craveMuted} />
       </TouchableOpacity>
 
       <TouchableOpacity
@@ -144,17 +145,18 @@ export function MapBottomSheet({ feature, onOpen, onClose }: Props) {
           />
         ) : (
           <View style={[styles.thumb, styles.thumbFallback]}>
-            <Ionicons name="restaurant" size={24} color={Colors.textSecondary} />
+            <Ionicons name="restaurant" size={24} color={Colors.craveGold} />
           </View>
         )}
         <View style={styles.meta}>
-          <TierBadge tier={tier} />
+          <Text style={styles.contextLabel}>{contextLabel}</Text>
           <Text style={styles.name} numberOfLines={1}>{feature.name}</Text>
           {feature.category ? (
             <Text style={styles.category}>{feature.category}</Text>
           ) : null}
+          <TierBadge tier={tier} />
         </View>
-        <Ionicons name="chevron-forward" size={18} color={Colors.textSecondary} />
+        <Ionicons name="chevron-forward" size={18} color={Colors.craveMuted} />
       </TouchableOpacity>
     </Animated.View>
   );
@@ -166,13 +168,13 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
-    backgroundColor: Colors.surface,
-    borderTopLeftRadius: Radius.pill,
-    borderTopRightRadius: Radius.pill,
+    backgroundColor: 'rgba(8,16,15,0.96)',
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
     padding: Spacing.lg,
     paddingBottom: Spacing.xxl,
     borderTopWidth: 1,
-    borderColor: Colors.border,
+    borderColor: 'rgba(247,239,228,0.14)',
     ...Shadows.sheet,
   },
   grabber: {
@@ -180,7 +182,7 @@ const styles = StyleSheet.create({
     width: 36,
     height: 4,
     borderRadius: 2,
-    backgroundColor: Colors.border,
+    backgroundColor: 'rgba(247,239,228,0.20)',
     marginBottom: Spacing.sm,
     marginTop: -Spacing.sm,
   },
@@ -195,13 +197,20 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   row: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md, marginTop: Spacing.sm },
-  thumb: { width: 60, height: 60, borderRadius: Radius.sm },
+  thumb: { width: 76, height: 76, borderRadius: 18 },
   thumbFallback: {
-    backgroundColor: Colors.surfaceElevated,
+    backgroundColor: '#2A1E17',
     alignItems: 'center',
     justifyContent: 'center',
   },
   meta: { flex: 1, gap: Spacing.xs },
-  name: { color: Colors.text, fontSize: 16, fontWeight: '700' },
-  category: { color: Colors.textSecondary, fontSize: 13 },
+  contextLabel: {
+    color: Colors.craveGold,
+    fontSize: 11,
+    fontWeight: '900',
+    letterSpacing: 0.7,
+    textTransform: 'uppercase',
+  },
+  name: { color: Colors.craveCream, fontSize: 20, fontWeight: '900', letterSpacing: -0.2 },
+  category: { color: Colors.craveMuted, fontSize: 13, fontWeight: '700' },
 });

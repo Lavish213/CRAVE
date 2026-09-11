@@ -19,11 +19,9 @@ import { useCravesStore } from '../../src/stores/cravesStore';
 import { useToast } from '../../src/hooks/useToast';
 import { useRecommendations } from '../../src/hooks/useRecommendations';
 import { useLocation } from '../../src/hooks/useLocation';
-import { usePrefetchPlace } from '../../src/hooks/usePrefetchPlace';
-import { Colors, Spacing } from '../../src/constants/colors';
+import { Colors, Radius, Spacing } from '../../src/constants/colors';
 import { getTierForPlace } from '../../src/utils/scoring';
 import { logRecommendationEvent, logRecommendationEvents } from '../../src/utils/recommendationEventQueue';
-import { PlaceCard } from '../../src/components/PlaceCard';
 import { CitySelectorStrip } from '../../src/components/CitySelectorStrip';
 import { ErrorState } from '../../src/components/ErrorState';
 import { EmptyState } from '../../src/components/EmptyState';
@@ -33,6 +31,15 @@ import { useAuthStore } from '../../src/stores/authStore';
 import { AuthSheet } from '../../src/components/AuthSheet';
 import { useDecisionSession } from '../../src/hooks/useDecisionSession';
 import { DecisionReasonCode, DecisionRole, DecisionSessionCard } from '../../src/api/decisionSession';
+import {
+  V2BrandLine,
+  V2Glow,
+  V2Hero,
+  V2PlaceCard,
+  V2Screen,
+  V2TopBar,
+  v2PlaceImage,
+} from '../../src/components/CraveV2';
 
 const VIEWABILITY_CONFIG = { itemVisiblePercentThreshold: 50, minimumViewTime: 250 };
 const DISCOVERY_LIMIT = 4;
@@ -43,6 +50,12 @@ const DECISION_REASON_COPY: Record<DecisionReasonCode, string> = {
   close_by: 'Close by',
   underrated_pick: 'An underrated option worth considering',
   different_cuisine: 'Something different from your other picks',
+};
+
+const DECISION_ROLE_LABELS: Record<DecisionRole, string> = {
+  best_fit: 'Best fit',
+  safe_bet: 'Safe bet',
+  wildcard: 'Wildcard',
 };
 
 function decisionReason(card: DecisionSessionCard): string | undefined {
@@ -81,7 +94,6 @@ function uniquePlaces(
 
 export default function FeedScreen() {
   const router = useRouter();
-  const prefetchPlace = usePrefetchPlace();
   const selectedCity = useCityStore((s) => s.selectedCity);
   const initCities = useCityStore((s) => s.initCities);
   const { saves, addSave, removeSave, isSaved } = useCravesStore();
@@ -378,10 +390,10 @@ export default function FeedScreen() {
 
   const renderDecisionCard = (card: DecisionSessionCard, position: number) => (
     <View style={styles.rowSpacer}>
-      <PlaceCard
+      <V2PlaceCard
         place={card.place}
-        role={card.role}
-        reasonCaption={decisionReason(card)}
+        label={DECISION_ROLE_LABELS[card.role]}
+        reason={decisionReason(card) ?? 'A strong answer from real place signals.'}
         onPress={() => {
           logRecommendationEvent({
             surface: 'decision_session',
@@ -394,13 +406,13 @@ export default function FeedScreen() {
           });
           router.push(`/place/${card.place.id}?reason_role=${card.role}&reason_source=decision_session`);
         }}
-        onPressIn={() => prefetchPlace(card.place.id)}
         onSave={() => handleSave(card.place, 'decision_session', position, card.role)}
         saved={isSaved(card.place.id)}
-        style={styles.decisionCard}
       />
     </View>
   );
+
+  const heroPlace = decisionCards[0]?.place ?? places[0] ?? null;
 
   const decisionHeader = (
     <View style={styles.decisionSectionHeader}>
@@ -418,7 +430,7 @@ export default function FeedScreen() {
           accessibilityRole="button"
           accessibilityLabel="Retry Decision Session"
         >
-          <Ionicons name="refresh" size={16} color={Colors.text} />
+          <Ionicons name="refresh" size={16} color={Colors.craveCream} />
           <Text style={styles.decisionRetryText}>Decision Session unavailable. Retry</Text>
         </TouchableOpacity>
       ) : null}
@@ -426,26 +438,28 @@ export default function FeedScreen() {
   );
 
   return (
-    <View style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.wordmark}>CRAVE</Text>
-        <View style={styles.spacer} />
-        <TouchableOpacity
-          style={styles.filterBtn}
-          onPress={() => {
-            void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            setFilterVisible(true);
-          }}
-          accessibilityLabel="Filter discovery places"
-          accessibilityRole="button"
-        >
-          <Ionicons
-            name="options-outline"
-            size={20}
-            color={hasActiveFilters(filters) ? Colors.primary : Colors.textSecondary}
-          />
-        </TouchableOpacity>
-      </View>
+    <V2Screen>
+      <V2Glow />
+      <V2TopBar
+        location={selectedCity?.name ?? (userLocation ? 'Near you' : 'Choose a city')}
+        right={(
+          <TouchableOpacity
+            style={styles.filterBtn}
+            onPress={() => {
+              void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              setFilterVisible(true);
+            }}
+            accessibilityLabel="Filter discovery places"
+            accessibilityRole="button"
+          >
+            <Ionicons
+              name="options-outline"
+              size={20}
+              color={hasActiveFilters(filters) ? Colors.craveGold : Colors.craveCream}
+            />
+          </TouchableOpacity>
+        )}
+      />
 
       <CitySelectorStrip />
 
@@ -491,8 +505,14 @@ export default function FeedScreen() {
 
                 return (
                   <View style={styles.rowSpacer}>
-                    <PlaceCard
+                    <V2PlaceCard
                       place={row.place}
+                      compact
+                      reason={row.reason === 'taste_extension'
+                        ? 'Similar to places you already care about.'
+                        : row.reason === 'from_craves'
+                          ? 'Already in your Craves, still worth deciding on.'
+                          : 'Strong local signal without the obvious hype.'}
                       onPress={() => {
                         logRecommendationEvent({
                           surface: 'feed',
@@ -504,7 +524,6 @@ export default function FeedScreen() {
                         });
                         router.push(`/place/${row.place.id}`);
                       }}
-                      onPressIn={() => prefetchPlace(row.place.id)}
                       onSave={() => handleSave(row.place, 'feed', row.position)}
                       saved={isSaved(row.place.id)}
                     />
@@ -520,13 +539,25 @@ export default function FeedScreen() {
                 <RefreshControl
                   refreshing={isFetching && !isFetchingNextPage && initialLoaded}
                   onRefresh={handleRefresh}
-                  tintColor={Colors.primary}
+                  tintColor={Colors.craveGold}
                 />
               }
-              ListHeaderComponent={decisionHeader}
+              ListHeaderComponent={(
+                <View style={styles.v2FeedHeader}>
+                  <V2Hero
+                    title="What sounds good?"
+                    subtitle={heroPlace ? `${heroPlace.name} is ready to inspect.` : 'Food finds you before the list does.'}
+                    image={v2PlaceImage(heroPlace)}
+                  />
+                  <View style={styles.v2FeedIntro}>
+                    <V2BrandLine />
+                    {decisionHeader}
+                  </View>
+                </View>
+              )}
               ListFooterComponent={
                 isFetchingNextPage
-                  ? <ActivityIndicator color={Colors.primary} style={styles.listFooter} />
+                  ? <ActivityIndicator color={Colors.craveGold} style={styles.listFooter} />
                   : null
               }
             />
@@ -546,35 +577,43 @@ export default function FeedScreen() {
         onClose={() => setAuthVisible(false)}
         reason="save"
       />
-    </View>
+    </V2Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.background },
-  list: { paddingHorizontal: Spacing.md, paddingBottom: Spacing.xxl },
+  container: { flex: 1, backgroundColor: Colors.craveInk },
+  list: { paddingHorizontal: Spacing.md, paddingBottom: Spacing.xxl + 16 },
   rowSpacer: { marginBottom: Spacing.md },
   emptyWrap: { flex: 1, paddingHorizontal: Spacing.md },
+  v2FeedHeader: {
+    gap: Spacing.lg,
+    marginBottom: Spacing.sm,
+  },
+  v2FeedIntro: {
+    paddingHorizontal: Spacing.xs,
+    gap: Spacing.sm,
+  },
   decisionSectionHeader: {
     paddingTop: Spacing.md,
     paddingBottom: Spacing.lg,
   },
   decisionEyebrow: {
-    color: Colors.primary,
+    color: Colors.craveGold,
     fontSize: 12,
-    fontWeight: '800',
+    fontWeight: '900',
     letterSpacing: 1.6,
     marginBottom: Spacing.xs,
   },
   decisionHeading: {
-    color: Colors.text,
+    color: Colors.craveCream,
     fontSize: 28,
     fontWeight: '900',
     letterSpacing: -0.5,
     marginBottom: Spacing.xs,
   },
   decisionSubheading: {
-    color: Colors.textSecondary,
+    color: Colors.craveMuted,
     fontSize: 14,
     lineHeight: 20,
     maxWidth: 420,
@@ -587,7 +626,7 @@ const styles = StyleSheet.create({
     gap: Spacing.xs,
   },
   decisionRetryText: {
-    color: Colors.text,
+    color: Colors.craveCream,
     fontSize: 13,
     fontWeight: '700',
   },
@@ -597,13 +636,13 @@ const styles = StyleSheet.create({
     paddingBottom: Spacing.sm,
   },
   discoveryHeading: {
-    color: Colors.text,
+    color: Colors.craveCream,
     fontSize: 15,
     fontWeight: '900',
     letterSpacing: 1.2,
   },
   discoverySubheading: {
-    color: Colors.textSecondary,
+    color: Colors.craveMuted,
     fontSize: 13,
     lineHeight: 18,
     marginTop: 3,
@@ -617,13 +656,17 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
   },
-  wordmark: { fontSize: 26, fontWeight: '900', color: Colors.primary, letterSpacing: 3 },
+  wordmark: { fontSize: 26, fontWeight: '900', color: Colors.craveCream, letterSpacing: 3 },
   filterBtn: {
     padding: Spacing.sm,
     minWidth: 44,
     minHeight: 44,
     alignItems: 'center',
     justifyContent: 'center',
+    borderRadius: Radius.full,
+    borderWidth: 1,
+    borderColor: 'rgba(247,239,228,0.16)',
+    backgroundColor: 'rgba(247,239,228,0.06)',
   },
   spacer: { flex: 1 },
 });

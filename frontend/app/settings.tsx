@@ -11,6 +11,7 @@ import { useCityStore } from '../src/stores/cityStore';
 import { useAuthStore } from '../src/stores/authStore';
 import { useToast } from '../src/hooks/useToast';
 import { deleteMyAccount } from '../src/api/social';
+import { V2BrandLine, V2Glow } from '../src/components/CraveV2';
 import {
   getPushPermissionStatus,
   requestAndRegisterPush,
@@ -34,14 +35,14 @@ function Row({ icon, label, sublabel, onPress, rightEl, tint }: RowProps) {
   const content = (
     <View style={styles.row}>
       <View style={[styles.rowIcon, tint ? { backgroundColor: tint + '22' } : null]}>
-        <Ionicons name={icon} size={18} color={tint ?? Colors.textSecondary} />
+        <Ionicons name={icon} size={18} color={tint ?? Colors.craveGold} />
       </View>
       <View style={styles.rowBody}>
         <Text style={[styles.rowLabel, tint ? { color: tint } : null]}>{label}</Text>
         {sublabel ? <Text style={styles.rowSub}>{sublabel}</Text> : null}
       </View>
       {rightEl ?? (
-        onPress ? <Ionicons name="chevron-forward" size={16} color={Colors.textSecondary} /> : null
+        onPress ? <Ionicons name="chevron-forward" size={16} color={Colors.craveMuted} /> : null
       )}
     </View>
   );
@@ -164,16 +165,18 @@ export default function MoreScreen() {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+      <V2Glow />
       <View style={styles.header}>
         <Text style={styles.wordmark}>CRAVE</Text>
-        <Text style={styles.tagline}>Your cultural discovery engine</Text>
+        <Text style={styles.tagline}>Food finds you.</Text>
+        <V2BrandLine />
       </View>
 
       <SectionTitle title="CITY" />
       <View style={styles.card}>
         <View style={styles.row}>
           <View style={styles.rowIcon}>
-            <Ionicons name="location-outline" size={18} color={Colors.textSecondary} />
+            <Ionicons name="location-outline" size={18} color={Colors.craveGold} />
           </View>
           <View style={styles.rowBody}>
             <Text style={styles.rowLabel}>Current City</Text>
@@ -185,7 +188,7 @@ export default function MoreScreen() {
           icon="add-circle-outline"
           label="Add a new spot"
           sublabel="Found somewhere CRAVE doesn't have yet?"
-          tint={Colors.primary}
+          tint={Colors.craveGold}
           onPress={() => router.push('/add-spot')}
         />
       </View>
@@ -301,29 +304,32 @@ export default function MoreScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.background },
+  container: { flex: 1, backgroundColor: Colors.craveInk },
   content: { paddingBottom: 48 },
   header: {
     paddingHorizontal: Spacing.lg,
     paddingTop: Spacing.xl,
     paddingBottom: Spacing.lg,
+    gap: Spacing.xs,
   },
   wordmark: {
-    fontSize: 26,
+    fontSize: 32,
     fontWeight: '900',
-    color: Colors.primary,
-    letterSpacing: 3,
+    color: Colors.craveCream,
+    letterSpacing: 2.4,
   },
   tagline: {
-    fontSize: 13,
-    color: Colors.textSecondary,
-    fontWeight: '500',
+    fontSize: 30,
+    lineHeight: 34,
+    color: Colors.craveGold,
+    fontWeight: '800',
+    letterSpacing: -0.7,
     marginTop: Spacing.xs,
   },
   sectionTitle: {
     fontSize: 10,
-    fontWeight: '800',
-    color: Colors.textSecondary,
+    fontWeight: '900',
+    color: Colors.craveGold,
     letterSpacing: 1.5,
     textTransform: 'uppercase',
     paddingHorizontal: Spacing.lg,
@@ -332,10 +338,10 @@ const styles = StyleSheet.create({
   },
   card: {
     marginHorizontal: Spacing.lg,
-    backgroundColor: Colors.surface,
-    borderRadius: Radius.card,
+    backgroundColor: 'rgba(16,26,24,0.86)',
+    borderRadius: 22,
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: 'rgba(247,239,228,0.12)',
     overflow: 'hidden',
   },
   dangerSectionTitle: { color: Colors.error },
@@ -350,21 +356,21 @@ const styles = StyleSheet.create({
   rowIcon: {
     width: 32,
     height: 32,
-    borderRadius: Radius.sm,
-    backgroundColor: Colors.surfaceElevated,
+    borderRadius: Radius.full,
+    backgroundColor: 'rgba(255,180,92,0.10)',
     alignItems: 'center',
     justifyContent: 'center',
   },
   rowBody: { flex: 1, gap: Spacing.xs },
-  rowLabel: { fontSize: 15, fontWeight: '600', color: Colors.text },
-  rowSub: { fontSize: 12, color: Colors.textSecondary },
-  divider: { height: 1, backgroundColor: Colors.border, marginLeft: 56 },
-  version: { fontSize: 13, color: Colors.textSecondary, fontWeight: '500' },
+  rowLabel: { fontSize: 15, fontWeight: '800', color: Colors.craveCream },
+  rowSub: { fontSize: 12, color: Colors.craveMuted, fontWeight: '600' },
+  divider: { height: 1, backgroundColor: 'rgba(247,239,228,0.10)', marginLeft: 56 },
+  version: { fontSize: 13, color: Colors.craveMuted, fontWeight: '700' },
   footer: {
     textAlign: 'center',
-    color: Colors.textSecondary,
+    color: Colors.craveMuted,
     fontSize: 12,
-    fontWeight: '500',
+    fontWeight: '700',
     paddingTop: Spacing.xl,
     paddingBottom: Spacing.sm,
   },

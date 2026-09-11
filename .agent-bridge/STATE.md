@@ -1,10 +1,87 @@
 # Active agent state
 
-Status: blocked
+Status: paused-not-merge-ready
 Owner: Codex
-Branch: codex/osm-backfill-dedupe-claims
-Head SHA: bc92ea7 (`fix: dedupe osm backfill claims`)
-Scope: OSM hours/outdoor-seating production backfill execution from clean `origin/main`, plus the duplicate-claim script fix found by the real production run.
+Branch: codex/ui-v2-mock-screens
+Base SHA: 8d3023d594f40f8d90de93683b59c1c714f7d407
+Scope: implement the first UI V2 mock-screen slice: Home/Feed, Search, Results states inside Search, Map, and Settings visual shell using the frozen CRAVE north-star direction.
+Locked files: frontend/app/(tabs)/index.tsx, frontend/src/screens/SearchScreen.tsx, frontend/src/screens/MapScreenCore.tsx, frontend/src/components/MapBottomSheet.tsx, frontend/app/settings.tsx, frontend/src/constants/colors.ts, frontend/src/components/CraveV2.tsx, .agent-bridge/STATE.md, .agent-bridge/codex-to-claude.md.
+Verification: `npx tsc --noEmit` passed; focused frontend suite passed with `6 passed, 82 tests passed` using `npm test -- --runInBand __tests__/feed.test.tsx __tests__/search.test.tsx __tests__/search-decision-support.test.tsx __tests__/map.test.tsx __tests__/map-instrumentation.test.tsx __tests__/settings.test.tsx --silent --forceExit`; full frontend suite passed with `50 passed, 522 tests passed` using `npm test -- --runInBand --silent --forceExit`.
+Explicit exclusions: no production data jobs; no PR #252/admin merge; no full 16-state Search/Map proof; no claim of device-verified final UI.
+
+## Active task — UI V2 mock-screen implementation
+
+The Search/Map visual north star is frozen as direction, but the app screens
+still use the older component language. This branch implements a bounded
+first slice of that mock language in the real Expo app:
+
+- dark cinematic shell with warm CRAVE accent;
+- food/photo-led Home/Feed entry;
+- Search home with appetite-forward prompt;
+- Search results with one dominant answer plus alternatives;
+- Map styling/card treatment closer to the north star;
+- Settings shell updated to match the same visual language.
+
+Implemented:
+- shared V2 primitives in `frontend/src/components/CraveV2.tsx`;
+- warm/dark CRAVE tokens in `frontend/src/constants/colors.ts`;
+- Home/Feed V2 shell and decision cards while preserving real feed data,
+  decision roles, saves, impressions, and filters;
+- Search V2 home/results shell with appetite-forward copy, dominant answer
+  hierarchy, reason labels, recent/search shortcut behavior, and deterministic
+  impression logging;
+- Map V2 overlay/bottom-card treatment while preserving existing Map fetch,
+  selection, saved, and instrumentation behavior;
+- Settings V2 shell while preserving notification/account/delete controls.
+
+Known gaps:
+- no simulator/device screenshots or runtime accessibility proof yet;
+- no full 16-state Search/Map propagation/resilience board in code;
+- real production photography still needs torture/device proof;
+- `--forceExit` was required for the focused Jest command because of the
+  existing open-handle behavior in the test environment.
+
+Follow-up audit fixes:
+- removed static Unsplash hero/map placeholder URLs from the shared V2
+  primitives; Home/Search now use real place images when available and a
+  branded fallback when media is missing;
+- changed Home's no-city/no-location header from the false `Oakland, CA`
+  fallback to `Choose a city`;
+- changed the Map selected-card context label so only Search mode claims a
+  Search result; saved/city map modes now label themselves as `Saved place`
+  or `Nearby place`.
+- restructured `V2PlaceCard` so the open-place action and save action are
+  separate accessibility/touch targets rather than nested touchables;
+- raised Search clear and removable-constraint controls to 44pt minimum
+  targets with explicit button roles;
+- measured V2 token contrast: `craveMuted` is at least `7.88:1` on V2 dark
+  surfaces, and primary V2 text/accent tokens exceed AA normal-text contrast.
+
+Remaining runtime-only proof gaps:
+- Map native marker hit geometry/non-color selected-state proof still needs a
+  simulator/device pass;
+- Dynamic Type/VoiceOver traversal cannot be certified from Jest/static checks;
+- visual crop/real-photo torture proof still needs device screenshots.
+
+Doctrine reconciliation:
+- `origin/main` now locks `docs/doctrine/CRAVE_FRONTEND_EXECUTION_ORDER.md`
+  as the controlling order for frontend work.
+- That order requires Foundation Gate → Place Detail proving slice →
+  Feed/Decision Session → Search/Map propagation-only. It explicitly forbids
+  reopening/redesigning certified Search/Map UX without a proven contract gap.
+- This branch is therefore preserved as a useful implementation/reference
+  artifact, but it is **not merge-ready as-is**. Merging it before the relevant
+  slice would create a conflicting execution order.
+
+Next action: do not merge PR #254 until it is either closed as superseded or
+explicitly split/re-scoped under the locked frontend execution order. The next
+frontend lane should follow `CRAVE_FRONTEND_EXECUTION_ORDER.md`, not this
+visual-first branch.
+
+## Previous blocker — OSM backfill production run
+
+Status before this UI task: blocked on review/merge/rerun. Preserved here for
+context; this branch does not touch the OSM script or production data.
 
 ## Active blocker — OSM backfill production run
 
