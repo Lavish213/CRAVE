@@ -78,6 +78,9 @@ This is a contracts-and-invariants pass, not a "build every shared module"
 pass. Don't implement a piece of shared infrastructure until a real screen
 needs it.
 
+Foundation Gate contract artifact: `CRAVE_FOUNDATION_GATE_CONTRACTS.md`.
+Executable companion: `frontend/src/contracts/foundationGate.ts`.
+
 ### 2. Place Detail — proving slice
 
 Place Detail is the proving ground because it already touches every

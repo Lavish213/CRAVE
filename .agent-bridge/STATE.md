@@ -1,5 +1,24 @@
 # Active agent state
 
+Status: ready-for-review
+Owner: Codex
+Branch: codex/foundation-gate-contracts
+Base SHA: aef122e
+Scope: finish the remaining Foundation Gate contracts: error taxonomy,
+React Query conventions, universal-link contract, and privacy/provenance
+scopes. No screen redesign, no Place Detail implementation, no production
+data work.
+Locked files: docs/doctrine/CRAVE_FRONTEND_EXECUTION_ORDER.md,
+docs/doctrine/CRAVE_FOUNDATION_GATE_CONTRACTS.md,
+frontend/src/contracts/foundationGate.ts,
+frontend/src/contracts/foundationGate.test.ts,
+.agent-bridge/STATE.md, .agent-bridge/codex-to-claude.md.
+Verification: `npx tsc --noEmit --pretty false` passed; targeted Jest passed
+with `1 passed, 4 tests` for `src/contracts/foundationGate.test.ts`. Full repo
+checkout/full backend suite is blocked locally by host disk space (~115MB
+free before cleanup, ~256MB after removing one prunable temp worktree), so
+full CI should run on PR.
+
 ## FRONTEND EXECUTION ORDER — LOCKED (2026-09-11)
 
 A full frontend audit (verified line-by-line against `main`, not taken on
