@@ -32,6 +32,18 @@ export const Colors = {
   tierGem:         '#FFB800',
   tierSolid:       '#4CAF50',
   tierNew:         '#666666',
+  // UI V2 north-star accents — warm, food-led, and deliberately separate
+  // from the old cyan primary so the migration can happen screen-by-screen
+  // without silently changing older surfaces.
+  craveInk:         '#050908',
+  craveSurface:     '#08100F',
+  craveSurface2:    '#101A18',
+  craveLine:        '#22302D',
+  craveCream:       '#F7EFE4',
+  craveMuted:       '#B9AAA0',
+  craveGold:        '#FFB45C',
+  craveGoldDeep:    '#E8792F',
+  craveGreen:       '#7FD89A',
 } as const;
 
 export type ColorKey = keyof typeof Colors;

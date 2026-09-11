@@ -746,7 +746,7 @@ export default function MapScreen() {
             <Ionicons
               name="options-outline"
               size={20}
-              color={hasActiveFilters(filters) ? Colors.primary : Colors.text}
+              color={hasActiveFilters(filters) ? Colors.craveGold : Colors.craveCream}
             />
           </TouchableOpacity>
         )}
@@ -774,7 +774,7 @@ export default function MapScreen() {
 
       {mapLoading && (
         <View style={styles.mapBanner}>
-          <ActivityIndicator size="small" color={Colors.primary} />
+          <ActivityIndicator size="small" color={Colors.craveGold} />
         </View>
       )}
 
@@ -852,7 +852,7 @@ export default function MapScreen() {
           <Ionicons
             name={viewMode === 'saved' ? 'bookmark' : 'bookmark-outline'}
             size={20}
-            color={viewMode === 'saved' ? Colors.background : Colors.text}
+            color={viewMode === 'saved' ? Colors.craveInk : Colors.craveCream}
           />
         </TouchableOpacity>
       )}
@@ -864,12 +864,19 @@ export default function MapScreen() {
           accessibilityLabel="Recenter on my location"
           accessibilityRole="button"
         >
-          <Ionicons name="locate" size={22} color={Colors.text} />
+          <Ionicons name="locate" size={22} color={Colors.craveCream} />
         </TouchableOpacity>
       )}
 
       <MapBottomSheet
         feature={selectedFeature}
+        contextLabel={
+          viewMode === 'search'
+            ? 'Search result'
+            : viewMode === 'saved'
+              ? 'Saved place'
+              : 'Nearby place'
+        }
         onOpen={(id) => {
           const position = viewMode === 'search'
             ? searchMapHandoff?.items.findIndex((item) => item.id === id) ?? -1
@@ -903,7 +910,7 @@ export default function MapScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
+  container: { flex: 1, backgroundColor: Colors.craveInk },
   map: { flex: 1 },
   cityStrip: {
     position: 'absolute',
@@ -912,7 +919,9 @@ const styles = StyleSheet.create({
     right: 0,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: Colors.background + 'EE',
+    backgroundColor: 'rgba(5,9,8,0.90)',
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(247,239,228,0.10)',
   },
   cityStripScroll: { flex: 1 },
   filterBtn: {
@@ -921,15 +930,20 @@ const styles = StyleSheet.create({
     minHeight: 44,
     alignItems: 'center',
     justifyContent: 'center',
+    borderRadius: Radius.full,
+    borderWidth: 1,
+    borderColor: 'rgba(247,239,228,0.14)',
+    backgroundColor: 'rgba(247,239,228,0.07)',
+    marginRight: Spacing.sm,
   },
   mapBanner: {
     position: 'absolute',
     top: 60,
     alignSelf: 'center',
-    backgroundColor: Colors.surface,
+    backgroundColor: 'rgba(8,16,15,0.92)',
     borderRadius: Radius.pill,
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: 'rgba(247,239,228,0.16)',
     paddingHorizontal: Spacing.md,
     paddingVertical: Spacing.sm,
   },
@@ -940,9 +954,9 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: Colors.surface,
+    backgroundColor: 'rgba(8,16,15,0.88)',
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: 'rgba(247,239,228,0.16)',
     alignItems: 'center',
     justifyContent: 'center',
     ...Shadows.control,
@@ -954,24 +968,24 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: Colors.surface,
+    backgroundColor: 'rgba(8,16,15,0.88)',
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: 'rgba(247,239,228,0.16)',
     alignItems: 'center',
     justifyContent: 'center',
     ...Shadows.control,
   },
   savedToggleButtonActive: {
-    backgroundColor: Colors.primary,
-    borderColor: Colors.primary,
+    backgroundColor: Colors.craveCream,
+    borderColor: Colors.craveCream,
   },
   mapBannerText: {
-    color: Colors.textSecondary,
+    color: Colors.craveMuted,
     fontSize: 13,
-    fontWeight: '600',
+    fontWeight: '700',
   },
   searchContextBanner: { top: 60, maxWidth: '88%' },
-  searchContextText: { color: Colors.text, fontSize: 13, fontWeight: '700' },
-  searchAreaButton: { top: 60, borderColor: Colors.primary },
-  searchAreaText: { color: Colors.primary, fontSize: 14, fontWeight: '800' },
+  searchContextText: { color: Colors.craveCream, fontSize: 13, fontWeight: '800' },
+  searchAreaButton: { top: 60, borderColor: 'rgba(255,180,92,0.42)' },
+  searchAreaText: { color: Colors.craveGold, fontSize: 14, fontWeight: '900' },
 });
