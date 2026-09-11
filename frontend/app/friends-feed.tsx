@@ -154,7 +154,7 @@ export default function FriendsFeedScreen() {
                   </>
                 )}
               </Text>
-              {isPost ? <Text style={styles.postReaction}>{reactionCopy(item.payload?.reaction)}</Text> : null}
+              {isPost ? <Text style={styles.postReaction}>{reactionCopy(item.payload?.reaction ?? null)}</Text> : null}
               <Text style={styles.time}>{relativeTime(item.created_at)}</Text>
             </View>
 
