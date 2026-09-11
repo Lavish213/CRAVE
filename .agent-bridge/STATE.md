@@ -50,6 +50,47 @@ built journey-by-journey as each slice lands, not as one final sprint.
 any frontend code against this order. Do not start Place Detail before
 Foundation Gate's contracts are committed.
 
+### Foundation Gate progress (Claude, 2026-09-11)
+
+Status: in progress. Owner: Claude. Base: `main` post-#255/#256/#257
+(`40cc186`).
+
+**Real finding:** the `PendingIntent`/auth-gate contract the doctrine
+calls for already existed — `authGateStore.ts`'s `AuthResumeEnvelope`
+(`actionType`/`reason`/`sourceRoute`/`targetIds`/`payload`/`destination`/
+`idempotent`/`expiresAt`/`migrateAnonymous`/`revalidate`/`onInvalid`/
+`resume`) plus `AuthGateHost`/`resumePendingAuthAction` is essentially
+that contract, already built and already used by Save/Add Spot/posting/
+Rank Home. Foundation Gate's actual remaining work here was narrower than
+"design a new contract": find and close the screens that don't use the
+existing one.
+
+- **Done, PR #258** (branch `claude/foundation-gate-rank-auth-fix`):
+  `/rank/[placeId].tsx`'s signed-out state was a dead-end static message,
+  the one real gap of this kind found. Wired into `EmptyState` +
+  `requestAuthGate` (`reason: 'rank'`, already a valid enum value),
+  matching `rank-home.tsx`'s existing identical pattern exactly.
+  Verification: `tsc --noEmit` clean, full suite 50/50 suites, 523/523
+  tests (new dedicated test added). Awaiting CI/CodeRabbit.
+- **Not yet audited**: whether any *other* screen has the same
+  dead-end-instead-of-gate pattern beyond Rank. Craves/Search/Feed/Map/
+  Place Detail/Profile/Taste Profile/Friends/Leaderboard/Activity/
+  Settings/Food Evidence/Add Spot/Record Video were not individually
+  re-checked for this specific gap in this pass — only Rank was, because
+  it was the one already named in the grounding findings. A future
+  Foundation Gate session should grep every screen's own `if (!user)`
+  branch for one that renders a static message instead of calling
+  `requestAuthGate`/`useAuthAction`, not assume Rank was the only one.
+- **Still not started**: error taxonomy (offline/timeout/unauthorized/
+  forbidden/not_found/rate_limited/server_error/invalid_data/unknown +
+  UX mapping), React Query key/cancellation/stale-time/account-isolation
+  conventions (only 4 of ~30 routes use RQ at all today), the
+  `https://` universal-link contract (still `crave://`-only), and the
+  privacy/provenance scopes (private/shareable/display-identity/
+  explicit-opt-in; value/source/fetched_at/confidence for place data).
+  None of these were touched this pass — don't claim Foundation Gate
+  complete from the Rank fix alone.
+
 ## Other active lanes (independent, not blocked by the above)
 
 ### OSM backfill production run
