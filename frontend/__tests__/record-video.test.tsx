@@ -65,6 +65,10 @@ jest.mock('expo-haptics', () => ({
   impactAsync: jest.fn(),
   ImpactFeedbackStyle: { Medium: 'medium' },
 }));
+jest.mock('../src/components/AuthSheet', () => {
+  const { Text } = require('react-native');
+  return { AuthSheet: ({ visible }: { visible: boolean }) => (visible ? <Text testID="auth-sheet-visible">auth</Text> : null) };
+});
 
 const mockedUseCameraPermissions = useCameraPermissions as jest.Mock;
 const mockedUseMicrophonePermissions = useMicrophonePermissions as jest.Mock;
@@ -108,6 +112,18 @@ describe('RecordVideoScreen', () => {
 
     expect(getByText('Sign in to record a food video.')).toBeTruthy();
     expect(queryByTestId('camera-view')).toBeNull();
+  });
+
+  it('actually lets a signed-out user sign in, instead of only offering to leave', async () => {
+    // Real gap this closes: this screen previously offered only a "Go
+    // back" button here -- a dead end with no way to sign in at all,
+    // unlike every other capture-flow screen. Confirm the CTA now opens
+    // AuthSheet.
+    setAuthUser(null);
+    const { findByLabelText, findByTestId } = render(<RecordVideoScreen />);
+
+    fireEvent.press(await findByLabelText('Sign in'));
+    expect(await findByTestId('auth-sheet-visible')).toBeTruthy();
   });
 
   it('shows a Settings-recovery prompt instead of an inert "Allow Access" when permission is permanently blocked', async () => {

@@ -21,6 +21,7 @@ import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Colors, Radius, Spacing } from '../../src/constants/colors';
+import { AuthSheet } from '../../src/components/AuthSheet';
 import { BeatCueOverlay } from '../../src/components/BeatCueOverlay';
 import { VideoTemplateStrip } from '../../src/components/VideoTemplateStrip';
 import { useVideoTemplates } from '../../src/hooks/useVideoTemplates';
@@ -53,6 +54,7 @@ export default function RecordVideoScreen() {
 
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
   const [isRecording, setIsRecording] = useState(false);
+  const [authVisible, setAuthVisible] = useState(false);
   const [elapsedMs, setElapsedMs] = useState(0);
   const [saving, setSaving] = useState(false);
 
@@ -172,13 +174,26 @@ export default function RecordVideoScreen() {
   }
 
   if (!user) {
+    // Previously a dead end -- "Sign in to record a food video" with only
+    // a "Go back" button, no actual way to sign in from this screen at
+    // all. Matches food-evidence.tsx's identical local AuthSheet pattern
+    // (the other capture-flow screen) rather than the shared
+    // requestAuthGate/AuthGateHost mechanism, since there's no
+    // durable-draft action here to resume afterward -- the user just
+    // needs to sign in, then re-tap in to record.
     return (
       <View style={[styles.container, styles.centered]}>
         <Ionicons name="person-circle-outline" size={48} color={Colors.textSecondary} />
         <Text style={styles.permissionText}>Sign in to record a food video.</Text>
-        <TouchableOpacity style={styles.permissionButton} onPress={() => router.back()}>
-          <Text style={styles.permissionButtonText}>Go back</Text>
+        <TouchableOpacity
+          style={styles.permissionButton}
+          onPress={() => setAuthVisible(true)}
+          accessibilityRole="button"
+          accessibilityLabel="Sign in"
+        >
+          <Text style={styles.permissionButtonText}>Sign in</Text>
         </TouchableOpacity>
+        <AuthSheet visible={authVisible} onClose={() => setAuthVisible(false)} reason="default" />
       </View>
     );
   }

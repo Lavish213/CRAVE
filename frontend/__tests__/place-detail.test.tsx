@@ -61,6 +61,10 @@ jest.mock('../src/hooks/useImageStatusPoll', () => ({
   useImageStatusPoll: () => ({ status: null, error: null, moderationStatus: null }),
 }));
 jest.mock('../src/stores/authStore', () => ({ useAuthStore: jest.fn() }));
+const mockRequestAuthGate = jest.fn();
+jest.mock('../src/stores/authGateStore', () => ({
+  requestAuthGate: (...args: unknown[]) => mockRequestAuthGate(...args),
+}));
 jest.mock('../src/stores/cravesStore', () => {
   const state = {
     addSave: jest.fn(),
@@ -493,5 +497,107 @@ describe('PlaceDetailScreen — Wave 7 relationship hierarchy', () => {
 
     await findByText('Nari');
     expect(queryByText(/Outdoor seating/)).toBeNull();
+  });
+});
+
+describe('PlaceDetailScreen — signed-out actions route through the shared auth gate', () => {
+  // Previously every one of these was a dead end: a toast ("Sign in to
+  // ...") with no sign-in mechanism attached, or (handleSave) no
+  // feedback at all. They must now all call the shared contextual
+  // auth-gate contract (requestAuthGate) instead.
+  beforeEach(() => {
+    jest.clearAllMocks();
+    cravesStoreState.isSaved.mockReturnValue(false);
+    cravesStoreState.saves = [];
+    mockedUseAuthStore.mockImplementation((selector: (s: { user: unknown }) => unknown) =>
+      selector({ user: null }),
+    );
+    mockedGetCravesForPlace.mockResolvedValue([]);
+    mockedGetPlaceMenu.mockResolvedValue({ items: [], lastVerifiedAt: null } as any);
+    mockedFetchPlaceRelationship.mockResolvedValue(baseRelationship());
+    mockedUseLocalSearchParams.mockReturnValue({ id: 'place-1' });
+  });
+
+  it('gates the plain Save button instead of silently no-op-ing', async () => {
+    mockedFetchPlaceDetail.mockResolvedValue(basePlace());
+    const { findByLabelText } = renderScreen();
+
+    fireEvent.press(await findByLabelText('Save to Saves'));
+
+    expect(mockRequestAuthGate).toHaveBeenCalledWith(
+      expect.objectContaining({ actionType: 'save_place', reason: 'save', sourceRoute: '/place/place-1' }),
+    );
+  });
+
+  it('gates the "Save for tonight" ladder CTA', async () => {
+    mockedFetchPlaceDetail.mockResolvedValue(basePlace({ lat: null, lng: null }));
+    const { findByLabelText } = renderScreen();
+
+    fireEvent.press(await findByLabelText('Save for tonight'));
+
+    expect(mockRequestAuthGate).toHaveBeenCalledWith(
+      expect.objectContaining({ actionType: 'save_place', reason: 'save' }),
+    );
+  });
+
+  it('gates the "Rank it" ladder CTA with a destination back to this rank screen', async () => {
+    mockedFetchPlaceDetail.mockResolvedValue(basePlace());
+    cravesStoreState.saves = [{ ...basePlace(), visited: true, visited_at: '2026-09-01T00:00:00Z', notes: null }];
+    const { findByLabelText } = renderScreen();
+
+    fireEvent.press(await findByLabelText('Rank this place'));
+
+    expect(mockRequestAuthGate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actionType: 'open_rank_place',
+        reason: 'rank',
+        destination: '/rank/place-1',
+      }),
+    );
+    expect(mockRouterPush).not.toHaveBeenCalled();
+  });
+
+  it('gates adding a photo instead of silently no-op-ing into the picker', async () => {
+    mockedFetchPlaceDetail.mockResolvedValue(basePlace());
+    const { findByLabelText } = renderScreen();
+
+    fireEvent.press(await findByLabelText('Add a photo'));
+
+    expect(mockRequestAuthGate).toHaveBeenCalledWith(
+      expect.objectContaining({ actionType: 'add_place_photo' }),
+    );
+  });
+
+  it('gates suggesting a menu item', async () => {
+    mockedFetchPlaceDetail.mockResolvedValue(basePlace());
+    const { findByLabelText } = renderScreen();
+
+    fireEvent.press(await findByLabelText('Suggest menu items'));
+
+    expect(mockRequestAuthGate).toHaveBeenCalledWith(
+      expect.objectContaining({ actionType: 'suggest_menu_item' }),
+    );
+  });
+
+  it('gates reporting the main photo', async () => {
+    mockedFetchPlaceDetail.mockResolvedValue(basePlace({ image_ids: ['img-1'] }));
+    const { findByLabelText } = renderScreen();
+
+    fireEvent.press(await findByLabelText('Report the main photo'));
+
+    expect(mockRequestAuthGate).toHaveBeenCalledWith(
+      expect.objectContaining({ actionType: 'report_place_photo' }),
+    );
+  });
+
+  it('gates reporting a place issue', async () => {
+    mockedFetchPlaceDetail.mockResolvedValue(basePlace());
+    const { findByLabelText } = renderScreen();
+
+    fireEvent.press(await findByLabelText('Report an issue with this place'));
+
+    expect(mockRequestAuthGate).toHaveBeenCalledWith(
+      expect.objectContaining({ actionType: 'report_place_issue' }),
+    );
   });
 });

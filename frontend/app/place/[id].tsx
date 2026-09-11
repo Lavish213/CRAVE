@@ -24,6 +24,7 @@ import { getPlaceMenu, MenuItem } from '../../src/api/menu';
 import { CraveItem, getCravesForPlace } from '../../src/api/crave';
 import { useCravesStore } from '../../src/stores/cravesStore';
 import { useAuthStore } from '../../src/stores/authStore';
+import { requestAuthGate, type AuthGateReason } from '../../src/stores/authGateStore';
 import { useToast } from '../../src/hooks/useToast';
 import { useImagePicker } from '../../src/hooks/useImagePicker';
 import { useUploadImage } from '../../src/hooks/useUploadImage';
@@ -99,6 +100,24 @@ export default function PlaceDetailScreen() {
   const { addSave, removeSave, isSaved, saves, setSaveMemory } = useCravesStore();
   const user = useAuthStore((s) => s.user);
   const toast = useToast((s) => s.show);
+
+  // Shared entry point for every sign-in gate on this screen. Uses the
+  // contextual auth-gate contract (see authGateStore.ts) instead of a
+  // toast-and-dead-end -- resume is a no-op by design: auto-resuming the
+  // original mutation later would run it off a stale closure captured
+  // while `user` was still null, so we let the caller's own reactive
+  // `useAuthStore` subscription take it from there once signed in.
+  const gateSignIn = (actionType: string, reason: AuthGateReason = 'default', destination?: string) => {
+    requestAuthGate({
+      actionType,
+      reason,
+      sourceRoute: `/place/${id}`,
+      targetIds: id ? [id] : undefined,
+      destination,
+      idempotent: true,
+      resume: () => undefined,
+    });
+  };
   const { pick } = useImagePicker();
   const { upload } = useUploadImage();
   const userLocation = useLocation();
@@ -448,7 +467,10 @@ export default function PlaceDetailScreen() {
   }
 
   const handleSave = async () => {
-    if (!user) return;
+    if (!user) {
+      gateSignIn('save_place', 'save');
+      return;
+    }
     const saveMeta = {
       surface: 'place_detail' as const,
       rank_percentile: place.rank_percentile,
@@ -512,7 +534,7 @@ export default function PlaceDetailScreen() {
 
   const handleAddPhoto = async (photoType: 'food' | 'menu' = 'food') => {
     if (!user) {
-      toast('Sign in to add photos');
+      gateSignIn('add_place_photo', 'default');
       return;
     }
     try {
@@ -534,7 +556,7 @@ export default function PlaceDetailScreen() {
 
   const handleOpenMenuSubmit = () => {
     if (!user) {
-      toast('Sign in to suggest menu items');
+      gateSignIn('suggest_menu_item', 'default');
       return;
     }
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -754,10 +776,6 @@ export default function PlaceDetailScreen() {
           style={[styles.rankCta, saved ? styles.rankCtaRanked : null]}
           onPress={() => {
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-            if (!user) {
-              toast('Sign in to save places');
-              return;
-            }
             handleSave();
           }}
           activeOpacity={0.85}
@@ -784,7 +802,7 @@ export default function PlaceDetailScreen() {
           onPress={() => {
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
             if (!user) {
-              toast('Sign in to rank places');
+              gateSignIn('open_rank_place', 'rank', `/rank/${place.id}`);
               return;
             }
             router.push(`/rank/${place.id}`);
@@ -901,7 +919,7 @@ export default function PlaceDetailScreen() {
             onPress={() => {
               Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
               if (!user) {
-                toast('Sign in to report a photo');
+                gateSignIn('report_place_photo', 'default');
                 return;
               }
               setReportImageId(place.image_ids![0]);
@@ -923,7 +941,7 @@ export default function PlaceDetailScreen() {
           onPress={() => {
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
             if (!user) {
-              toast('Sign in to report an issue');
+              gateSignIn('report_place_issue', 'default');
               return;
             }
             setReportPlaceVisible(true);
