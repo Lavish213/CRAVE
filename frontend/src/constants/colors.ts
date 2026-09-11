@@ -16,12 +16,13 @@ export const Colors = {
   textSecondary:   '#8C8C8C',
   // textMuted (#555555, ~2-2.7:1 against every surface) fails WCAG AA
   // outright -- never use it for text or informational icons. The one
-  // legitimate remaining use is settings.tsx's two intentionally
-  // *disabled* "Coming soon" rows: WCAG 1.4.3 explicitly exempts inactive
-  // UI components from the contrast minimum, and those rows are paired
-  // with accessibilityState={{disabled:true}}, not relying on color
-  // alone. See ACCESSIBILITY_CONTRAST_AUDIT.md for the full audit this
-  // fix closes out.
+  // legitimate remaining use is settings.tsx's Notifications row when its
+  // status is genuinely "unavailable" (onPress unset, non-interactive):
+  // WCAG 1.4.3 explicitly exempts inactive UI components from the
+  // contrast minimum, and that row's tint change is paired with an
+  // unset onPress, not relying on color alone. See
+  // ACCESSIBILITY_CONTRAST_AUDIT.md for the full audit this fix closes
+  // out.
   textMuted:       '#555555',
   // Semantic
   success:         '#30D158',
