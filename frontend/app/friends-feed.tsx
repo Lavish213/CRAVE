@@ -23,6 +23,7 @@ import { Colors, Radius, Spacing } from '../src/constants/colors';
 import { EmptyState } from '../src/components/EmptyState';
 import { ErrorState } from '../src/components/ErrorState';
 import { SkeletonRowList } from '../src/components/SkeletonCard';
+import { AuthSheet } from '../src/components/AuthSheet';
 import { ActivityEvent, fetchFriendsFeed } from '../src/api/social';
 import { useAuthStore } from '../src/stores/authStore';
 import { formatScore, tierColor } from '../src/utils/rankScore';
@@ -37,6 +38,7 @@ function actorName(event: ActivityEvent): string {
 export default function FriendsFeedScreen() {
   const router = useRouter();
   const user = useAuthStore((s) => s.user);
+  const [authVisible, setAuthVisible] = React.useState(false);
   // Previously raw useState + useFocusEffect with no caching at all -- every
   // tab focus re-fetched from scratch, unlike every other list screen in the
   // app.
@@ -79,6 +81,28 @@ export default function FriendsFeedScreen() {
       refetch();
     }, [user, refetch]),
   );
+
+  // Previously fell through to the generic "Nothing here yet / Follow
+  // people to see..." empty state below (the query is disabled while
+  // signed out, so events stays [] with no loading/error state of its
+  // own) -- indistinguishable from a signed-in user who genuinely
+  // follows nobody yet, and its "Find people" CTA doesn't mention
+  // signing in at all. Same EmptyState + AuthSheet pattern as every
+  // other screen with this gap.
+  if (!user) {
+    return (
+      <>
+        <EmptyState
+          icon="people-outline"
+          title="Sign in to see friend activity"
+          body="Follow people who rank places to see what they're up to here."
+          ctaLabel="Sign in"
+          onCta={() => setAuthVisible(true)}
+        />
+        <AuthSheet visible={authVisible} onClose={() => setAuthVisible(false)} reason="default" />
+      </>
+    );
+  }
 
   if (loading) {
     return (

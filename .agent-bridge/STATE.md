@@ -50,6 +50,88 @@ built journey-by-journey as each slice lands, not as one final sprint.
 any frontend code against this order. Do not start Place Detail before
 Foundation Gate's contracts are committed.
 
+### Foundation Gate progress (Claude, 2026-09-11)
+
+Status: in progress. Owner: Claude. Base: `main` post-#255/#256/#257
+(`40cc186`).
+
+**Real finding:** the `PendingIntent`/auth-gate contract the doctrine
+calls for already existed — `authGateStore.ts`'s `AuthResumeEnvelope`
+(`actionType`/`reason`/`sourceRoute`/`targetIds`/`payload`/`destination`/
+`idempotent`/`expiresAt`/`migrateAnonymous`/`revalidate`/`onInvalid`/
+`resume`) plus `AuthGateHost`/`resumePendingAuthAction` is essentially
+that contract, already built and already used by Save/Add Spot/posting/
+Rank Home. Foundation Gate's actual remaining work here was narrower than
+"design a new contract": find and close the screens that don't use the
+existing one.
+
+- **Done, PR #258** (branch `claude/foundation-gate-rank-auth-fix`,
+  now at `3a71bcd`):
+  - `/rank/[placeId].tsx`'s signed-out state was a dead-end static message,
+    the first gap of this kind found. Wired into `EmptyState` +
+    `requestAuthGate` (`reason: 'rank'`, already a valid enum value),
+    matching `rank-home.tsx`'s existing identical pattern exactly.
+  - `record-video/[placeId].tsx`'s signed-out state offered a "Go back"
+    button and *no sign-in mechanism at all* — worse than a dead end, an
+    exit. Now shows a "Sign in" button that opens `AuthSheet` inline
+    (`reason: 'default'`, no dedicated copy exists for this action).
+  - `place/[id].tsx` had **six separate dead-end sites in one screen** —
+    the largest single instance of this bug class found so far: `handleSave`
+    (silently no-op'd, not even a toast), `handleAddPhoto`,
+    `handleOpenMenuSubmit`, the "Save for tonight" ladder CTA, the "Rank it"
+    ladder CTA, "Report the main photo", and "Report an issue" all either
+    toasted "Sign in to..." with no way to act on it, or (handleSave) gave
+    no feedback whatsoever. All seven call sites now route through a new
+    local `gateSignIn` helper wrapping `requestAuthGate`
+    (`save`/`rank`/`default` reasons as appropriate; the Rank CTA carries
+    `destination: /rank/{id}` back to itself).
+  - All three fixes use `resume: () => undefined` (deliberate no-op) —
+    matches the established safe pattern: a `resume` closure captured at
+    gate-request time would close over that render's `user` (null),
+    so auto-resuming the mutation later would run on stale state.
+    Component-level `useAuthStore` subscriptions re-render the caller past
+    the signed-out branch instead; the user re-taps.
+  - Verification: `tsc --noEmit` clean (0 `error TS` across the whole
+    project), `place-detail.test.tsx` 35/35 (new signed-out-gate suite
+    added), `record-video.test.tsx` 15/15 (new sign-in test added).
+    Awaiting CI/CodeRabbit on the updated PR #258.
+- **Auth-gate sweep completed this pass** (grepped every screen in
+  `frontend/app` for `if (!user)` and `Sign in to`, not just the three
+  screens already named above): Craves, Search/Map, Feed
+  (`(tabs)/index.tsx`), rank-home, add-spot, food-evidence, Profile, and
+  Leaderboard all already gate correctly via `AuthSheet`/`requestAuthGate`
+  — verified by reading each site, not assumed. `add-spot.tsx`'s
+  `handleConfirm` still has a bare `toast('Sign in to add a new spot')`
+  guard, but it's dead code in practice: the whole screen returns an
+  `AuthSheet`-gated empty state at the `state === 'unauthenticated'`
+  branch before that handler is ever reachable — left as-is, not a real
+  gap.
+  - **Found and fixed, same PR**: `friends-feed.tsx` had no signed-out
+    branch at all — its account-scoped query is simply `enabled: !!user`,
+    so signed out it fell through to the generic "Nothing here yet /
+    Follow people to see..." empty state, identical to what a genuinely
+    friendless signed-in user sees, with a "Find people" CTA that never
+    mentioned signing in. Now shows its own "Sign in to see friend
+    activity" gate first, same `EmptyState` + `AuthSheet` pattern as the
+    others. Test added (9/9 passing), `tsc --noEmit` clean.
+  - Also checked: Activity (`activity.tsx`) is a static "coming soon"
+    placeholder with no data fetching and nothing to gate; Settings
+    (`settings.tsx`) simply hides its ACCOUNT/DANGER ZONE sections when
+    signed out (`user ? ... : null`) rather than attempting and blocking
+    an action — neither is this bug class. No dedicated Taste Profile
+    route exists separately from `(tabs)/profile.tsx`, already covered
+    above. This closes out the sweep: every screen in `frontend/app` has
+    now been individually checked for this specific gap, not sampled.
+- **Still not started**: error taxonomy (offline/timeout/unauthorized/
+  forbidden/not_found/rate_limited/server_error/invalid_data/unknown +
+  UX mapping), React Query key/cancellation/stale-time/account-isolation
+  conventions (only 4 of ~30 routes use RQ at all today), the
+  `https://` universal-link contract (still `crave://`-only), and the
+  privacy/provenance scopes (private/shareable/display-identity/
+  explicit-opt-in; value/source/fetched_at/confidence for place data).
+  None of these were touched this pass — don't claim Foundation Gate
+  complete from the Rank fix alone.
+
 ## Other active lanes (independent, not blocked by the above)
 
 ### OSM backfill production run

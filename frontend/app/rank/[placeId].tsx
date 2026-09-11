@@ -27,9 +27,11 @@ import { captureRef } from 'react-native-view-shot';
 
 import { Colors, Radius, Spacing } from '../../src/constants/colors';
 import { ComparisonChoice } from '../../src/components/ComparisonChoice';
+import { EmptyState } from '../../src/components/EmptyState';
 import { ErrorState } from '../../src/components/ErrorState';
 import { ShareRankCard } from '../../src/components/ShareRankCard';
 import { fetchPlaceDetail, PlaceOut } from '../../src/api/places';
+import { requestAuthGate } from '../../src/stores/authGateStore';
 import {
   RankTier,
   Ranking,
@@ -257,14 +259,30 @@ export default function RankPlaceScreen() {
   };
 
   if (!user) {
+    // Unlike a dead-end message, this wires into the same contextual
+    // auth-gate every other account-owned action uses (AuthGateHost +
+    // authGateStore, see rank-home.tsx's identical pattern): tapping
+    // "Sign in" opens the shared AuthSheet, and once signed in this
+    // component's own useAuthStore subscription re-renders past this
+    // branch on its own -- resume is a no-op because we're already on
+    // the exact place this deep link pointed at, there's nothing further
+    // to navigate to.
     return (
-      <View style={styles.centered}>
-        <Ionicons name="person-circle-outline" size={44} color={Colors.textSecondary} />
-        <Text style={styles.emptyTitle}>Sign in to rank places</Text>
-        <Text style={styles.emptyBody}>
-          Your rankings are personal — they build your own ordered list.
-        </Text>
-      </View>
+      <EmptyState
+        icon="person-circle-outline"
+        title="Sign in to rank places"
+        body="Your rankings are personal — they build your own ordered list."
+        ctaLabel="Sign in"
+        onCta={() => requestAuthGate({
+          actionType: 'open_rank_place',
+          reason: 'rank',
+          sourceRoute: `/rank/${placeId}`,
+          targetIds: placeId ? [placeId] : undefined,
+          destination: placeId ? `/rank/${placeId}` : '/rank-home',
+          idempotent: true,
+          resume: () => undefined,
+        })}
+      />
     );
   }
 
@@ -512,8 +530,6 @@ const styles = StyleSheet.create({
     gap: Spacing.sm,
     padding: Spacing.xl,
   },
-  emptyTitle: { color: Colors.text, fontSize: 18, fontWeight: '700' },
-  emptyBody: { color: Colors.textSecondary, fontSize: 14, textAlign: 'center' },
 
   inlineError: {
     color: Colors.error,
