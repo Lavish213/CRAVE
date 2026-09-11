@@ -56,22 +56,12 @@ export async function updateMyProfile(patch: {
   return data;
 }
 
-// "Taste Profile" — the equivalent of Beli's own stats screen (total
-// places ranked, tier breakdown, favorite cuisine, top city, a global
-// percentile). Deliberately excludes Beli's "Match Score" (taste
-// compatibility with a specific friend) — that's being built alongside
-// the personalized-recommendations feature instead, which needs the
-// same user-similarity computation.
 export interface TasteProfile {
   total_ranked: number;
   tier_counts: { liked: number; fine: number; disliked: number };
   favorite_cuisine: string | null;
   top_city: { id: string; name: string; count: number } | null;
   percentile: number | null;
-  /** Taste-compatibility % with the viewer -- only present when the
-   * viewer is signed in and looking at someone else's profile; null if
-   * they haven't shared enough ranked places for the number to mean
-   * anything yet. */
   match_score: number | null;
 }
 
@@ -163,7 +153,6 @@ export async function deleteMyAccount(): Promise<{
 // Rankings
 // ---------------------------------------------------------------------------
 
-/** Matches PlaceRanking's tiers — see backend app/db/models/place_ranking.py. */
 export type RankTier = 'liked' | 'fine' | 'disliked';
 
 export interface Ranking {
@@ -175,12 +164,6 @@ export interface Ranking {
   visited_at: string | null;
 }
 
-// "X of your friends ranked this" — the direct equivalent of Beli's
-// friend-rating feature. Separate call from the main place-detail fetch
-// since that response is cached globally by place_id (shared across
-// every viewer) — this one is per-viewer (scoped to the caller's own
-// follow graph) and deliberately never cached, same pattern as
-// getCravesForPlace's separate "seen on social" call.
 export interface FriendRanking {
   user_id: string;
   username: string;
@@ -197,23 +180,12 @@ export async function fetchFriendRankings(placeId: string): Promise<FriendRankin
   return Array.isArray(data?.rankings) ? data.rankings : [];
 }
 
-/**
- * A ranking hydrated with enough of its place to render a list row without
- * a follow-up request per item. List endpoints return this; the ranking
- * flow's own result returns the bare `Ranking`.
- */
 export interface RankedPlace extends Ranking {
   name: string | null;
   primary_image_url: string | null;
   city_id: string | null;
 }
 
-/**
- * Either the ranking finished immediately (first place in that tier — nothing
- * to compare against), or the backend wants a head-to-head answered before it
- * can place it. The caller drives the loop by POSTing the token back with a
- * winner until `status` comes back as 'ranked'.
- */
 export type RankingStep =
   | { status: 'ranked'; ranking: Ranking }
   | { status: 'comparing'; comparison_token: string; opponent_place_id: string };
@@ -260,7 +232,6 @@ export async function deleteRanking(placeId: string): Promise<void> {
 // Friends feed
 // ---------------------------------------------------------------------------
 
-/** Minimal identity shape the feed/leaderboard embed so rows are readable. */
 export interface ActorRef {
   id: string;
   username: string | null;
@@ -272,13 +243,19 @@ export interface ActivityEvent {
   id: string;
   user_id: string;
   actor: ActorRef | null;
-  event_type: 'ranked_place' | 'followed_user';
+  event_type: 'ranked_place' | 'followed_user' | 'posted_food';
   place_id: string | null;
   place_name: string | null;
   place_image_url: string | null;
   target_user_id: string | null;
   target_user: ActorRef | null;
-  payload: { tier?: RankTier; score?: number } | null;
+  payload: {
+    tier?: RankTier;
+    score?: number;
+    contribution_id?: string;
+    visibility?: 'connections' | 'public';
+    reaction?: 'loved' | 'good' | 'not_for_me' | null;
+  } | null;
   created_at: string;
 }
 
@@ -336,7 +313,6 @@ export const REPORT_REASONS: { value: ReportReason; label: string }[] = [
   { value: 'other', label: 'Something else' },
 ];
 
-/** Idempotent per user — reporting twice returns 'already_reported'. */
 export async function reportImage(
   imageId: string,
   reason: ReportReason,
@@ -349,10 +325,6 @@ export async function reportImage(
   return data;
 }
 
-// Place-level reporting -- wrong hours, closed, duplicate, wrong menu,
-// wrong info. Distinct from reportImage above (that's specifically for
-// a bad/wrong photo); this is for something wrong about the place
-// itself. See app/api/v1/routes/moderation.py's place-report endpoints.
 export type PlaceReportReason =
   | 'wrong_hours'
   | 'closed'
@@ -362,15 +334,14 @@ export type PlaceReportReason =
   | 'other';
 
 export const PLACE_REPORT_REASONS: { value: PlaceReportReason; label: string }[] = [
-  { value: 'wrong_hours', label: 'Hours are wrong' },
-  { value: 'closed', label: "This place has closed" },
-  { value: 'duplicate', label: 'Duplicate listing' },
-  { value: 'wrong_menu', label: 'Menu is wrong or outdated' },
-  { value: 'wrong_info', label: 'Other info is wrong' },
+  { value: 'wrong_hours', label: 'Wrong hours' },
+  { value: 'closed', label: 'Permanently closed' },
+  { value: 'duplicate', label: 'Duplicate place' },
+  { value: 'wrong_menu', label: 'Wrong menu' },
+  { value: 'wrong_info', label: 'Wrong information' },
   { value: 'other', label: 'Something else' },
 ];
 
-/** Idempotent per user -- reporting twice returns 'already_reported'. */
 export async function reportPlace(
   placeId: string,
   reason: PlaceReportReason,

@@ -8,24 +8,26 @@ import { NearbyCandidate, confirmNewSpot, searchNearby } from '../src/api/nearby
 import type { PostingDraft } from '../src/stores/postingDraftStore';
 
 const mockPush = jest.fn();
+const mockReplace = jest.fn();
+const mockBack = jest.fn();
 let mockDraftId: string | undefined;
 jest.mock('expo-router', () => ({
-  useRouter: () => ({ push: mockPush }),
+  useRouter: () => ({ push: mockPush, replace: mockReplace, back: mockBack }),
   useLocalSearchParams: () => ({ draftId: mockDraftId }),
 }));
 jest.mock('../src/stores/authStore', () => ({ useAuthStore: jest.fn() }));
 jest.mock('../src/api/nearby', () => ({ searchNearby: jest.fn(), confirmNewSpot: jest.fn() }));
 
 let mockDrafts: PostingDraft[] = [];
-const mockAttachDraftToPlace = jest.fn();
+const mockSetDraftPlace = jest.fn();
 const mockSetDraftCandidate = jest.fn();
 jest.mock('../src/stores/postingDraftStore', () => ({
   usePostingDraftStore: (selector: (s: {
     drafts: PostingDraft[];
-    attachDraftToPlace: (...args: unknown[]) => unknown;
+    setDraftPlace: (...args: unknown[]) => unknown;
     setDraftCandidate: (...args: unknown[]) => unknown;
   }) => unknown) =>
-    selector({ drafts: mockDrafts, attachDraftToPlace: mockAttachDraftToPlace, setDraftCandidate: mockSetDraftCandidate }),
+    selector({ drafts: mockDrafts, setDraftPlace: mockSetDraftPlace, setDraftCandidate: mockSetDraftCandidate }),
 }));
 
 jest.mock('expo-location', () => ({
@@ -66,6 +68,7 @@ function makeCandidate(overrides: Partial<NearbyCandidate> = {}): NearbyCandidat
 }
 
 function makeDraft(overrides: Partial<PostingDraft> = {}): PostingDraft {
+  const now = Date.now();
   return {
     id: 'draft-1',
     ownerId: 'user-1',
@@ -73,10 +76,17 @@ function makeDraft(overrides: Partial<PostingDraft> = {}): PostingDraft {
     kind: 'photo',
     mimeType: 'image/jpeg',
     fileSize: 500000,
+    uploadedMediaId: null,
     restaurantRef: { type: 'unresolved' },
-    outcome: 'pending',
+    intent: 'social_post',
+    reaction: null,
+    caption: '',
+    visibility: null,
+    occurredAt: null,
+    outcome: 'editing',
     lastError: null,
-    createdAt: Date.now(),
+    createdAt: now,
+    updatedAt: now,
     ...overrides,
   };
 }
@@ -94,7 +104,7 @@ describe('AddSpotScreen', () => {
   it('shows an unauthenticated prompt and opens AuthSheet without requesting location', async () => {
     setAuth(null);
     const { findByText, findByTestId } = render(<AddSpotScreen />);
-    expect(await findByText('Sign in to add a new spot.')).toBeTruthy();
+    expect(await findByText('Sign in to add a missing restaurant.')).toBeTruthy();
     expect(mockedRequestPermission).not.toHaveBeenCalled();
     fireEvent.press(await findByText('Sign in'));
     expect(await findByTestId('auth-sheet-visible')).toBeTruthy();
@@ -103,18 +113,18 @@ describe('AddSpotScreen', () => {
   it('stays locating while auth is hydrating', () => {
     setAuth(null, true);
     const { getByText, queryByText } = render(<AddSpotScreen />);
-    expect(getByText('Finding your location…')).toBeTruthy();
-    expect(queryByText('Sign in to add a new spot.')).toBeNull();
+    expect(getByText('Finding nearby places…')).toBeTruthy();
+    expect(queryByText('Sign in to add a missing restaurant.')).toBeNull();
   });
 
   it('shows a requestable permission-denied state with a working retry', async () => {
     setAuth({ id: 'user-1' });
     mockedRequestPermission.mockResolvedValue({ status: 'denied', canAskAgain: true });
     const { findByText } = render(<AddSpotScreen />);
-    expect(await findByText('Location access is needed to find spots near you.')).toBeTruthy();
+    expect(await findByText('Location helps CRAVE find nearby missing places.')).toBeTruthy();
     mockedRequestPermission.mockResolvedValue({ status: 'granted', canAskAgain: true });
     fireEvent.press(await findByText('Try again'));
-    expect(await findByText("Nothing found within range. Try again once you're closer.")).toBeTruthy();
+    expect(await findByText('Nothing nearby matched.')).toBeTruthy();
   });
 
   it('routes permanently blocked location permission to OS Settings instead of a dead retry loop', async () => {
@@ -122,7 +132,7 @@ describe('AddSpotScreen', () => {
     mockedRequestPermission.mockResolvedValue({ status: 'denied', canAskAgain: false });
     const openSettings = jest.spyOn(Linking, 'openSettings').mockResolvedValue(undefined);
     const { findByText, queryByText } = render(<AddSpotScreen />);
-    expect(await findByText(/Location access is turned off for CRAVE/)).toBeTruthy();
+    expect(await findByText('Enable location in Settings to find nearby missing places.')).toBeTruthy();
     expect(queryByText('Try again')).toBeNull();
     fireEvent.press(await findByText('Open Settings'));
     expect(openSettings).toHaveBeenCalledTimes(1);
@@ -134,7 +144,7 @@ describe('AddSpotScreen', () => {
     setAuth({ id: 'user-1' });
     mockedSearchNearby.mockRejectedValueOnce(new Error('network'));
     const { findByText } = render(<AddSpotScreen />);
-    expect(await findByText("Couldn't search nearby spots.")).toBeTruthy();
+    expect(await findByText("Couldn't search nearby places.")).toBeTruthy();
     mockedSearchNearby.mockResolvedValueOnce([makeCandidate({ name: 'Recovered Spot' })]);
     fireEvent.press(await findByText('Try again'));
     expect(await findByText('Recovered Spot')).toBeTruthy();
@@ -143,10 +153,10 @@ describe('AddSpotScreen', () => {
   it('shows the empty-range message when nothing is found', async () => {
     setAuth({ id: 'user-1' });
     const { findByText } = render(<AddSpotScreen />);
-    expect(await findByText("Nothing found within range. Try again once you're closer.")).toBeTruthy();
+    expect(await findByText('Nothing nearby matched.')).toBeTruthy();
   });
 
-  it('opens an already-in-CRAVE candidate directly', async () => {
+  it('opens an already-in-CRAVE candidate directly when there is no draft', async () => {
     setAuth({ id: 'user-1' });
     mockedSearchNearby.mockResolvedValue([makeCandidate({ name: 'Existing Place', already_in_crave: true, place_id: 'place-123' })]);
     const { findByLabelText } = render(<AddSpotScreen />);
@@ -160,12 +170,12 @@ describe('AddSpotScreen', () => {
     mockedSearchNearby.mockResolvedValue([makeCandidate({ name: 'New Spot' })]);
     mockedConfirmNewSpot.mockResolvedValue({ status: 'pending', candidate_id: 'c1', confidence_score: 0.4 });
     const { findByLabelText, findByText } = render(<AddSpotScreen />);
-    const confirmBtn = await findByLabelText('Confirm this is New Spot');
+    const confirmBtn = await findByLabelText('Submit New Spot for verification');
     await act(async () => { fireEvent.press(confirmBtn); });
     expect(mockedConfirmNewSpot).toHaveBeenCalledWith(expect.objectContaining({ name: 'New Spot', external_id: 'ext-1' }));
     expect(await findByText('Submitted')).toBeTruthy();
     expect(mockToastShow).toHaveBeenCalledWith(expect.stringContaining('added as a signal'));
-    fireEvent.press(await findByLabelText('Confirm this is New Spot'));
+    fireEvent.press(await findByLabelText('Submit New Spot for verification'));
     expect(mockedConfirmNewSpot).toHaveBeenCalledTimes(1);
   });
 
@@ -174,7 +184,7 @@ describe('AddSpotScreen', () => {
     mockedSearchNearby.mockResolvedValue([makeCandidate({ name: 'Flaky Spot' })]);
     mockedConfirmNewSpot.mockRejectedValue(new Error('Duplicate submission'));
     const { findByLabelText, findByText, queryByText } = render(<AddSpotScreen />);
-    const confirmBtn = await findByLabelText('Confirm this is Flaky Spot');
+    const confirmBtn = await findByLabelText('Submit Flaky Spot for verification');
     await act(async () => { fireEvent.press(confirmBtn); });
     expect(mockToastShow).toHaveBeenCalledWith('Duplicate submission');
     expect(queryByText('Submitted')).toBeNull();
@@ -186,7 +196,7 @@ describe('AddSpotScreen', () => {
     mockedSearchNearby.mockResolvedValue([makeCandidate({ external_id: 'shared', name: 'Some Spot' })]);
     mockedConfirmNewSpot.mockResolvedValue({ status: 'pending', candidate_id: 'c1', confidence_score: 0.4 });
     const { findByLabelText, findByText, rerender } = render(<AddSpotScreen />);
-    const confirmBtn = await findByLabelText('Confirm this is Some Spot');
+    const confirmBtn = await findByLabelText('Submit Some Spot for verification');
     await act(async () => { fireEvent.press(confirmBtn); });
     expect(await findByText('Submitted')).toBeTruthy();
     setAuth({ id: 'user-B' });
@@ -200,54 +210,56 @@ describe('AddSpotScreen', () => {
       mockedSearchNearby.mockResolvedValue([makeCandidate({ name: 'Plain Spot' })]);
       const { findByText, queryByText } = render(<AddSpotScreen />);
       expect(await findByText('Plain Spot')).toBeTruthy();
-      expect(queryByText(/saved — tap a place below/)).toBeNull();
+      expect(queryByText('Draft saved · no recapture required')).toBeNull();
     });
 
-    it('attaches a pending photo draft when opening an already-in-CRAVE place, instead of dropping it', async () => {
+    it('selects an already-in-CRAVE place for a draft instead of opening it directly, then returns to the composer', async () => {
       mockDraftId = 'draft-1';
       mockDrafts = [makeDraft({ id: 'draft-1', kind: 'photo' })];
       setAuth({ id: 'user-1' });
       mockedSearchNearby.mockResolvedValue([makeCandidate({ name: 'Existing Place', already_in_crave: true, place_id: 'place-123' })]);
 
       const { findByText, findByLabelText } = render(<AddSpotScreen />);
-      expect(await findByText('Photo saved — tap a place below to attach it.')).toBeTruthy();
+      expect(await findByText('Draft saved · no recapture required')).toBeTruthy();
 
-      fireEvent.press(await findByLabelText('Open Existing Place'));
+      fireEvent.press(await findByLabelText('Select Existing Place'));
 
-      expect(mockAttachDraftToPlace).toHaveBeenCalledWith('draft-1', 'place-123');
-      expect(mockPush).toHaveBeenCalledWith('/place/place-123');
+      expect(mockSetDraftPlace).toHaveBeenCalledWith('draft-1', 'place-123', 'Existing Place');
+      expect(mockToastShow).toHaveBeenCalledWith('Existing Place selected');
+      expect(mockReplace).toHaveBeenCalledWith({ pathname: '/food-evidence', params: { draftId: 'draft-1' } });
+      expect(mockPush).not.toHaveBeenCalledWith('/place/place-123');
     });
 
-    it('attaches a pending video draft when opening an already-in-CRAVE place', async () => {
+    it('shows the pending-draft banner for a video draft too', async () => {
       mockDraftId = 'draft-2';
       mockDrafts = [makeDraft({ id: 'draft-2', kind: 'video' })];
       setAuth({ id: 'user-1' });
       mockedSearchNearby.mockResolvedValue([makeCandidate({ name: 'Existing Place', already_in_crave: true, place_id: 'place-123' })]);
 
       const { findByText, findByLabelText } = render(<AddSpotScreen />);
-      expect(await findByText('Video saved — tap a place below to attach it.')).toBeTruthy();
+      expect(await findByText('Draft saved · no recapture required')).toBeTruthy();
 
-      fireEvent.press(await findByLabelText('Open Existing Place'));
+      fireEvent.press(await findByLabelText('Select Existing Place'));
 
-      expect(mockAttachDraftToPlace).toHaveBeenCalledWith('draft-2', 'place-123');
+      expect(mockSetDraftPlace).toHaveBeenCalledWith('draft-2', 'place-123', 'Existing Place');
     });
 
-    it('only shows the pending-draft banner while the draft is actually pending', async () => {
-      // The double-claim guard itself lives in the store (see
-      // postingDraftStore.test.ts's own "does not double-attach" coverage),
-      // not the component -- this only checks the component's display
-      // logic, which does gate on outcome.
+    it('still shows the pending-draft banner while a previous commit is in flight', async () => {
+      // The exclusivity guard itself lives in the store (see
+      // postingDraftStore.test.ts), not this component -- this only checks
+      // the component's own display logic, which renders the banner off of
+      // draft presence, not draft.outcome.
       mockDraftId = 'draft-1';
-      mockDrafts = [makeDraft({ id: 'draft-1', outcome: 'attaching' })];
+      mockDrafts = [makeDraft({ id: 'draft-1', outcome: 'committing' })];
       setAuth({ id: 'user-1' });
       mockedSearchNearby.mockResolvedValue([makeCandidate({ name: 'Existing Place', already_in_crave: true, place_id: 'place-123' })]);
 
-      const { findByText, queryByText } = render(<AddSpotScreen />);
+      const { findByText } = render(<AddSpotScreen />);
       await findByText('Existing Place');
-      expect(queryByText(/saved — tap a place below/)).toBeNull();
+      expect(await findByText('Draft saved · no recapture required')).toBeTruthy();
     });
 
-    it('does not silently drop a pending draft when confirming a brand-new candidate -- records the candidate reference instead', async () => {
+    it('does not silently drop a draft when confirming a brand-new candidate -- records the candidate reference and returns to the composer', async () => {
       // confirmNewSpot() only ever returns a candidate_id (a DiscoveryCandidate,
       // not a Place), so there is no place_id yet to attach the draft to on
       // this branch -- this must not pretend it uploaded, and must not lose
@@ -260,14 +272,13 @@ describe('AddSpotScreen', () => {
       mockedConfirmNewSpot.mockResolvedValue({ status: 'pending', candidate_id: 'cand-9', confidence_score: 0.4 });
 
       const { findByLabelText } = render(<AddSpotScreen />);
-      const confirmBtn = await findByLabelText('Confirm this is New Spot');
+      const confirmBtn = await findByLabelText('Submit New Spot for verification');
       await act(async () => { fireEvent.press(confirmBtn); });
 
-      expect(mockAttachDraftToPlace).not.toHaveBeenCalled();
+      expect(mockSetDraftPlace).not.toHaveBeenCalled();
       expect(mockSetDraftCandidate).toHaveBeenCalledWith('draft-1', 'cand-9', 'New Spot');
-      expect(mockToastShow).toHaveBeenCalledWith(
-        expect.stringContaining("will attach automatically once it's live"),
-      );
+      expect(mockToastShow).toHaveBeenCalledWith("Restaurant submitted. Your draft is safe while we're verifying it.");
+      expect(mockReplace).toHaveBeenCalledWith({ pathname: '/food-evidence', params: { draftId: 'draft-1' } });
     });
 
     it('shows the plain confirm toast (no draft-specific copy) when there is no pending draft', async () => {
@@ -276,7 +287,7 @@ describe('AddSpotScreen', () => {
       mockedConfirmNewSpot.mockResolvedValue({ status: 'pending', candidate_id: 'cand-9', confidence_score: 0.4 });
 
       const { findByLabelText } = render(<AddSpotScreen />);
-      const confirmBtn = await findByLabelText('Confirm this is New Spot');
+      const confirmBtn = await findByLabelText('Submit New Spot for verification');
       await act(async () => { fireEvent.press(confirmBtn); });
 
       expect(mockSetDraftCandidate).not.toHaveBeenCalled();
