@@ -2,24 +2,27 @@
 
 Status: ready-for-review
 Owner: Codex
-Branch: codex/place-detail-proving-slice
-Base SHA: 4d065c1
-Commit SHA: aec75009b14b7609c0175e60d1e80b37636e3bea
-Scope: Place Detail proving slice for the locked Foundation Gate contracts:
-audit the current Place Detail screen against provenance/error/query/link
-contracts and implement the smallest real app improvement that proves the
-contracts without redesigning the screen.
-Locked files: frontend/app/place/[id].tsx,
-frontend/__tests__/place-detail.test.tsx,
-frontend/src/contracts/foundationGate.ts,
-frontend/src/contracts/foundationGate.test.ts,
-.agent-bridge/STATE.md, .agent-bridge/codex-to-claude.md.
-Verification: `npm test -- --runInBand __tests__/place-detail.test.tsx
-src/contracts/foundationGate.test.ts --silent --forceExit` passed
-(`2 passed, 41 tests`). `npx tsc --noEmit --pretty false` passed. Full
-frontend Jest was attempted; touched suites passed, but unrelated
-`__tests__/profile.test.tsx` hit pre-existing timeout/text-query failures.
-Backend/production-data work is explicitly out of scope.
+Branch: codex/feed-decision-session
+Base SHA: 7bf81bda3dab274f00ec5db35c68c8235f7a3c2f
+Commit SHA: 84f7cd6
+Scope: Feed / Decision Session vertical-slice audit and narrow implementation
+against the locked frontend execution order, Feed screen contract, Foundation
+Gate contracts, and the merged Place Detail proving patterns. Verify the full
+Feed -> Place -> outcome handoff and produce an evidence-backed defect log.
+Locked files: frontend/app/(tabs)/index.tsx, frontend/__tests__/feed.test.tsx,
+frontend/src/hooks/useDecisionSession.ts,
+frontend/src/hooks/useDecisionSession.test.tsx,
+frontend/src/hooks/useRecommendations.ts,
+frontend/src/hooks/useRecommendations.test.tsx,
+frontend/src/api/decisionSession.ts, frontend/src/api/decisionSession.test.ts,
+frontend/src/api/places.ts, frontend/src/components/PlaceCard.tsx,
+.agent-bridge/STATE.md, and .agent-bridge/codex-to-claude.md.
+Verification: focused Feed/Decision Session/API tests passed (4 suites,
+25 tests); `npx tsc --noEmit --pretty false` passed; full frontend Jest passed
+(51 suites, 541 tests). PR CI, CodeQL, CodeRabbit, and final PR-head audit are
+still required before a merge-ready verdict.
+Explicit exclusions: no Search/Map redesign or edits; no revival of PR #254;
+no new recommender architecture; no backend or production-data changes.
 
 ## FRONTEND EXECUTION ORDER — LOCKED (2026-09-11)
 
