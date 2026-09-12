@@ -44,6 +44,7 @@ import { ReportPlaceSheet } from '../../src/components/ReportPlaceSheet';
 import { MenuSubmissionSheet } from '../../src/components/MenuSubmissionSheet';
 import { TierBadge } from '../../src/components/TierBadge';
 import { ErrorState } from '../../src/components/ErrorState';
+import { STALE_TIME, foundationQueryKey, placeUniversalLink } from '../../src/contracts/foundationGate';
 
 const HEADER_RIGHT_BTN = {
   marginRight: 4,
@@ -124,9 +125,9 @@ export default function PlaceDetailScreen() {
   const cities = useCityStore((s) => s.cities);
 
   const { data: place, isLoading, isError, error, refetch } = useQuery({
-    queryKey: ['place', id],
+    queryKey: foundationQueryKey({ scope: 'place', entity: 'detail', params: { id } }),
     queryFn: () => fetchPlaceDetail(id!),
-    staleTime: 5 * 60 * 1000,  // 5 min
+    staleTime: STALE_TIME.normal,
     enabled: !!id,
   });
 
@@ -143,9 +144,11 @@ export default function PlaceDetailScreen() {
   // key was cached — the account boundary would depend on the clock,
   // not the account.
   const { data: myRankings } = useQuery({
-    queryKey: ['myRankings', user?.id],
+    queryKey: user
+      ? foundationQueryKey({ scope: 'user', entity: 'myRankings', userId: user.id })
+      : ['crave', 'user', 'myRankings', null, null],
     queryFn: fetchMyRankings,
-    staleTime: 60 * 1000,
+    staleTime: STALE_TIME.short,
     enabled: !!user,
   });
   const myRanking = myRankings?.find((r) => r.place_id === id);
@@ -156,10 +159,17 @@ export default function PlaceDetailScreen() {
   // in it (see GET /place/{id}/relationship's own docstring). Signed-out
   // visitors get no relationship data -- never_visited framing only.
   const { data: relationship } = useQuery({
-    queryKey: ['placeRelationship', id, user?.id],
+    queryKey: user
+      ? foundationQueryKey({
+          scope: 'user',
+          entity: 'placeRelationship',
+          userId: user.id,
+          params: { id },
+        })
+      : ['crave', 'user', 'placeRelationship', null, null],
     queryFn: () => fetchPlaceRelationship(id!),
     enabled: !!id && !!user,
-    staleTime: 30 * 1000,
+    staleTime: STALE_TIME.short,
   });
 
   const [reportImageId, setReportImageId] = useState<string | null>(null);
@@ -319,23 +329,15 @@ export default function PlaceDetailScreen() {
   const handleShare = useCallback(() => {
     if (!place) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    // Deep link, not yet a universal link -- opens directly to this place
-    // for anyone who already has CRAVE installed (the common case for
-    // sharing with another CRAVE user); does nothing useful for someone
-    // without the app, since there's no web domain/hosting to fall back
-    // to yet (confirmed: no associatedDomains/intentFilters configured,
-    // no CORS web origin anywhere in backend config -- CRAVE is
-    // native-app-only today). A true universal link needs that domain
-    // stood up first; tracked as a real, separate infra dependency, not
-    // faked here with a link that would 404.
-    const deepLink = `crave://place/${place.id}`;
+    const placeLink = placeUniversalLink(place.id);
     const cityLabel = place.address ? place.address.split(',').pop()?.trim() ?? 'your city' : 'your city';
     Share.share({
-      message: `${place.name} — ${place.category ?? 'Restaurant'} in ${cityLabel}. Found on CRAVE.\n${deepLink}`,
+      message: `${place.name} — ${place.category ?? 'Restaurant'} in ${cityLabel}. Found on CRAVE.\n${placeLink.primaryUrl}`,
       // iOS shares `url` as its own share-sheet item, independent of
-      // `message` -- Android's Share module only reads `message`/`title`,
-      // so the link above is embedded in the message text for both.
-      ...(Platform.OS === 'ios' ? { url: deepLink } : null),
+      // `message` -- Android's Share module only reads `message`/`title`.
+      // Keep the HTTPS URL primary per the Foundation Gate contract; the
+      // crave:// scheme remains the internal/native fallback.
+      ...(Platform.OS === 'ios' ? { url: placeLink.primaryUrl } : null),
     });
   }, [place]);
 
@@ -404,6 +406,7 @@ export default function PlaceDetailScreen() {
         ? `Closed · Opens ${formatClockTime(place.hours_next_change)}`
         : 'Closed now'
       : null;
+  const hoursProvenanceLabel = hoursLabel ? 'Hours are based on saved place data and may have changed.' : null;
   // "no" and unknown both render nothing -- a positive claim ("outdoor
   // seating") is worth a badge; the absence of one isn't worth asserting
   // as a fact this app is confident about.
@@ -607,9 +610,10 @@ export default function PlaceDetailScreen() {
           stale, when it doesn't (see CRAVE_PLACE_DETAIL_SPEC.md §3.2,
           previously a real backend gap, closed by this data source). */}
       {(price || distanceLabel || hoursLabel || hasOutdoorSeating || (place.lat && place.lng)) ? (
+        <>
         <View style={styles.decisionStrip}>
           {hoursLabel ? (
-            <View accessible accessibilityLabel={hoursLabel}>
+            <View accessible accessibilityLabel={`${hoursLabel}. ${hoursProvenanceLabel}`}>
               <Text
                 style={[styles.decisionChip, place.hours_status === 'closed' && styles.decisionChipClosed]}
                 importantForAccessibility="no"
@@ -653,6 +657,10 @@ export default function PlaceDetailScreen() {
             </TouchableOpacity>
           ) : null}
         </View>
+        {hoursProvenanceLabel ? (
+          <Text style={styles.provenanceNote}>{hoursProvenanceLabel}</Text>
+        ) : null}
+        </>
       ) : null}
 
       {/* Wave 7 (Screen Contract §6.6): a relationship-status block once
@@ -1017,12 +1025,12 @@ export default function PlaceDetailScreen() {
       <View style={styles.menuSection}>
         <View style={styles.menuTitleRow}>
           <Text style={styles.sectionTitle} accessibilityRole="header">What to get</Text>
-          {/* Previously computed and stored (Place.last_menu_updated_at)
-              but never shown — a menu verified yesterday and one untouched
-              for eight months rendered identically. */}
-          {!menuLoading && menuItems.length > 0 && menuVerifiedAt ? (
+          {/* Foundation Gate provenance: a menu with a known refresh date
+              says when it was updated; a menu with items but no timestamp
+              must not imply recent verification. */}
+          {!menuLoading && menuItems.length > 0 ? (
             <Text style={styles.menuVerified}>
-              Verified {relativeTime(menuVerifiedAt)}
+              {menuVerifiedAt ? `Menu updated ${relativeTime(menuVerifiedAt)}` : 'Menu freshness unknown'}
             </Text>
           ) : null}
         </View>
@@ -1337,6 +1345,13 @@ const styles = StyleSheet.create({
     letterSpacing: 0.3,
   },
   menuVerified: { color: Colors.textSecondary, fontSize: 12 },
+  provenanceNote: {
+    color: Colors.textSecondary,
+    fontSize: 12,
+    paddingHorizontal: Spacing.lg,
+    marginTop: -6,
+    marginBottom: Spacing.sm,
+  },
   noMenu: { color: Colors.textSecondary, fontSize: 14, paddingVertical: 8 },
   menuErrorWrap: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
   menuRetryBtn: { minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' },

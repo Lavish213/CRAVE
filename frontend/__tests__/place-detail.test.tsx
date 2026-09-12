@@ -165,10 +165,10 @@ describe('PlaceDetailScreen — visual-pass regression coverage', () => {
 
   it('renders identity as a header and "why this fits" with a real percentile', async () => {
     mockedFetchPlaceDetail.mockResolvedValue(basePlace());
-    const { getByText, findByText } = renderScreen();
+    const { getAllByText, findAllByText, getByText } = renderScreen();
 
-    await findByText('Nari');
-    expect(getByText('Nari').props.accessibilityRole).toBe('header');
+    await findAllByText('Nari');
+    expect(getAllByText('Nari')[0].props.accessibilityRole).toBe('header');
     expect(getByText(/top 3% in San Francisco|CRAVE Pick/)).toBeTruthy();
   });
 
@@ -440,7 +440,7 @@ describe('PlaceDetailScreen — Wave 7 relationship hierarchy', () => {
     }));
   });
 
-  it('includes a deep link to this place in the native share payload', async () => {
+  it('uses the Foundation Gate HTTPS place link in the native share payload', async () => {
     mockedFetchPlaceDetail.mockResolvedValue(basePlace());
     const shareSpy = jest.spyOn(Share, 'share').mockResolvedValue({ action: 'sharedAction' } as any);
 
@@ -453,17 +453,22 @@ describe('PlaceDetailScreen — Wave 7 relationship hierarchy', () => {
     fireEvent.press(getByLabelText('Share this place'));
 
     expect(shareSpy).toHaveBeenCalledWith(expect.objectContaining({
+      message: expect.stringContaining('https://crave.app/place/place-1'),
+    }));
+    expect(shareSpy).not.toHaveBeenCalledWith(expect.objectContaining({
       message: expect.stringContaining('crave://place/place-1'),
     }));
   });
 
-  it('shows an open-now chip with the next close time when hours_status is open', async () => {
+  it('shows an open-now chip with provenance copy when hours_status is open', async () => {
     mockedFetchPlaceDetail.mockResolvedValue(basePlace({
       hours_status: 'open', hours_next_change: '2026-09-09T17:00:00-07:00',
     }));
-    const { findByText } = renderScreen();
+    const { findByText, findByLabelText } = renderScreen();
 
     expect(await findByText(/Open now · Closes/)).toBeTruthy();
+    expect(await findByText('Hours are based on saved place data and may have changed.')).toBeTruthy();
+    expect(await findByLabelText(/Hours are based on saved place data/)).toBeTruthy();
   });
 
   it('shows a closed chip with the next open time when hours_status is closed', async () => {
@@ -497,6 +502,30 @@ describe('PlaceDetailScreen — Wave 7 relationship hierarchy', () => {
 
     await findByText('Nari');
     expect(queryByText(/Outdoor seating/)).toBeNull();
+  });
+
+  it('does not imply menu freshness when menu items lack a verification timestamp', async () => {
+    mockedFetchPlaceDetail.mockResolvedValue(basePlace());
+    mockedGetPlaceMenu.mockResolvedValue({
+      items: [{ id: 'm1', name: 'Pad Thai', description: null, price: null, category: null }],
+      lastVerifiedAt: null,
+    } as any);
+    const { findByText, queryByText } = renderScreen();
+
+    expect(await findByText('Menu freshness unknown')).toBeTruthy();
+    expect(queryByText(/Verified/)).toBeNull();
+  });
+
+  it('labels dated menu evidence as updated, not freshly verified', async () => {
+    mockedFetchPlaceDetail.mockResolvedValue(basePlace());
+    mockedGetPlaceMenu.mockResolvedValue({
+      items: [{ id: 'm1', name: 'Pad Thai', description: null, price: null, category: null }],
+      lastVerifiedAt: '2026-09-10T12:00:00Z',
+    } as any);
+    const { findByText, queryByText } = renderScreen();
+
+    expect(await findByText(/Menu updated/)).toBeTruthy();
+    expect(queryByText(/Verified/)).toBeNull();
   });
 });
 
