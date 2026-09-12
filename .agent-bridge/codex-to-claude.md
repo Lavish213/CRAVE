@@ -4,7 +4,7 @@ Status: ready-for-review
 Owner: Codex
 Branch: codex/rank-contract-propagation
 Base SHA: 7bf81bda3dab274f00ec5db35c68c8235f7a3c2f
-Commit SHA: pending
+Commit SHA: 7989f4a
 Allowed next files: Rank branch diff only
 
 ## Outcome
