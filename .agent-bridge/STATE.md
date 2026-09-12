@@ -2,23 +2,24 @@
 
 Status: ready-for-review
 Owner: Codex
-Branch: codex/foundation-gate-contracts
-Base SHA: aef122e
-Commit SHA: fe4765408e4a91157603c3ca803723b56fde98fb
-Scope: finish the remaining Foundation Gate contracts: error taxonomy,
-React Query conventions, universal-link contract, and privacy/provenance
-scopes. No screen redesign, no Place Detail implementation, no production
-data work.
-Locked files: docs/doctrine/CRAVE_FRONTEND_EXECUTION_ORDER.md,
-docs/doctrine/CRAVE_FOUNDATION_GATE_CONTRACTS.md,
+Branch: codex/place-detail-proving-slice
+Base SHA: 4d065c1
+Commit SHA: aec75009b14b7609c0175e60d1e80b37636e3bea
+Scope: Place Detail proving slice for the locked Foundation Gate contracts:
+audit the current Place Detail screen against provenance/error/query/link
+contracts and implement the smallest real app improvement that proves the
+contracts without redesigning the screen.
+Locked files: frontend/app/place/[id].tsx,
+frontend/__tests__/place-detail.test.tsx,
 frontend/src/contracts/foundationGate.ts,
 frontend/src/contracts/foundationGate.test.ts,
 .agent-bridge/STATE.md, .agent-bridge/codex-to-claude.md.
-Verification: `npx tsc --noEmit --pretty false` passed; targeted Jest passed
-with `1 passed, 4 tests` for `src/contracts/foundationGate.test.ts`. Full repo
-checkout/full backend suite is blocked locally by host disk space (~115MB
-free before cleanup, ~256MB after removing one prunable temp worktree), so
-full CI should run on PR.
+Verification: `npm test -- --runInBand __tests__/place-detail.test.tsx
+src/contracts/foundationGate.test.ts --silent --forceExit` passed
+(`2 passed, 41 tests`). `npx tsc --noEmit --pretty false` passed. Full
+frontend Jest was attempted; touched suites passed, but unrelated
+`__tests__/profile.test.tsx` hit pre-existing timeout/text-query failures.
+Backend/production-data work is explicitly out of scope.
 
 ## FRONTEND EXECUTION ORDER — LOCKED (2026-09-11)
 
