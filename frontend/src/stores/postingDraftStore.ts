@@ -107,12 +107,12 @@ interface PostingDraftStore {
   }) => Promise<PostingDraft>;
 
   // User identified an existing CRAVE place -- attach now.
-  attachDraftToPlace: (draftId: string, placeId: string) => Promise<void>;
+  attachDraftToPlace: (draftId: string, placeId: string, ownerId: string) => Promise<boolean>;
 
   // User identified a place CRAVE doesn't have yet -- confirmNewSpot()
   // already ran; this just records the reference so it can resolve later.
   // Media stays exactly where it is; nothing is attached yet.
-  setDraftCandidate: (draftId: string, candidateId: string, displayName: string) => void;
+  setDraftCandidate: (draftId: string, candidateId: string, displayName: string, ownerId: string) => void;
 
   // Check every pending candidate-ref draft owned by userId against the
   // backend; auto-attach any that have been promoted to a place.
@@ -155,7 +155,7 @@ export const usePostingDraftStore = create<PostingDraftStore>()(
         return draft;
       },
 
-      setDraftCandidate: (draftId, candidateId, displayName) => {
+      setDraftCandidate: (draftId, candidateId, displayName, ownerId) => {
         // Guarded on 'pending' for the same reason attachDraftToPlace is
         // below -- zustand's set/get are synchronous, so two rapid taps on
         // two different candidates (one "Open" on an already-listed place,
@@ -165,7 +165,7 @@ export const usePostingDraftStore = create<PostingDraftStore>()(
         // the next tap's handler starts) has already flipped the outcome
         // away from 'pending' by the time the second one checks.
         const draft = get().drafts.find((d) => d.id === draftId);
-        if (!draft || draft.outcome !== 'pending') return;
+        if (!draft || draft.ownerId !== ownerId || draft.outcome !== 'pending') return;
         set({
           drafts: get().drafts.map((d) =>
             d.id === draftId
@@ -175,14 +175,15 @@ export const usePostingDraftStore = create<PostingDraftStore>()(
         });
       },
 
-      attachDraftToPlace: async (draftId, placeId) => {
+      attachDraftToPlace: async (draftId, placeId, ownerId) => {
         const draft = get().drafts.find((d) => d.id === draftId);
         // 'pending' only -- this single check is what makes it safe for
         // both the "Open" button (attachDraftToPlace) and the "This is it"
         // button (setDraftCandidate) to race against each other, and safe
         // for resolvePendingCandidates to call this on a draft a user is
         // simultaneously tapping "Open" on elsewhere.
-        if (!draft || draft.outcome !== 'pending') return;
+        const retryingFailedPlace = draft?.outcome === 'failed' && draft.restaurantRef.type === 'place';
+        if (!draft || draft.ownerId !== ownerId || (draft.outcome !== 'pending' && !retryingFailedPlace)) return false;
 
         set({
           drafts: get().drafts.map((d) =>
@@ -225,6 +226,7 @@ export const usePostingDraftStore = create<PostingDraftStore>()(
           }
 
           set({ drafts: get().drafts.filter((d) => d.id !== draftId) });
+          return true;
         } catch (err) {
           const message = err instanceof Error ? err.message : "Couldn't attach your media to this place";
           set({
@@ -233,6 +235,7 @@ export const usePostingDraftStore = create<PostingDraftStore>()(
             ),
           });
           useToast.getState().show(message);
+          return false;
         }
       },
 
@@ -257,7 +260,7 @@ export const usePostingDraftStore = create<PostingDraftStore>()(
                   ),
                 });
               } else if (result.resolved && result.place_id) {
-                await get().attachDraftToPlace(draft.id, result.place_id);
+                await get().attachDraftToPlace(draft.id, result.place_id, userId);
               }
               // Neither resolved nor blocked yet -- stays 'pending', check again next foreground.
             } catch {

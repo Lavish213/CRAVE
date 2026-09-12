@@ -46,6 +46,7 @@ export default function AddSpotScreen() {
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
   const [confirmedIds, setConfirmedIds] = useState<Set<string>>(new Set());
   const [authVisible, setAuthVisible] = useState(false);
+  const [openingPlaceId, setOpeningPlaceId] = useState<string | null>(null);
 
   // Carried over from food-evidence.tsx's "Continue" button -- a durable
   // PostingDraft (photo or video already persisted locally, well before
@@ -55,7 +56,9 @@ export default function AddSpotScreen() {
   // nothing pending, not an error -- the rest of this screen works
   // identically either way.
   const { draftId } = useLocalSearchParams<{ draftId?: string }>();
-  const draft = usePostingDraftStore((s) => (draftId ? s.drafts.find((d) => d.id === draftId) : undefined));
+  const draft = usePostingDraftStore((s) =>
+    draftId && user ? s.drafts.find((d) => d.id === draftId && d.ownerId === user.id) : undefined
+  );
   const attachDraftToPlace = usePostingDraftStore((s) => s.attachDraftToPlace);
   const setDraftCandidate = usePostingDraftStore((s) => s.setDraftCandidate);
 
@@ -142,7 +145,7 @@ export default function AddSpotScreen() {
       // {id}/status once promoted, without the user having to come back
       // and redo anything.
       if (draft) {
-        setDraftCandidate(draft.id, confirmResult.candidate_id, candidate.name);
+        setDraftCandidate(draft.id, confirmResult.candidate_id, candidate.name, user.id);
         toast(
           `Got it — added as a signal. It'll appear once confirmed by more activity. Your ${draft.kind} will attach automatically once it's live.`,
         );
@@ -241,7 +244,7 @@ export default function AddSpotScreen() {
         get submitted as a signal toward being added.
       </Text>
 
-      {draft && draft.outcome === 'pending' ? (
+      {draft && (draft.outcome === 'pending' || draft.outcome === 'failed') ? (
         <View style={styles.mediaBanner}>
           <Ionicons
             name={draft.kind === 'photo' ? 'image-outline' : 'videocam-outline'}
@@ -249,7 +252,9 @@ export default function AddSpotScreen() {
             color={Colors.primary}
           />
           <Text style={styles.mediaBannerText}>
-            {draft.kind === 'photo' ? 'Photo' : 'Video'} saved — tap a place below to attach it.
+            {draft.outcome === 'failed'
+              ? `${draft.kind === 'photo' ? 'Photo' : 'Video'} is still saved. Tap a listed place to retry.`
+              : `${draft.kind === 'photo' ? 'Photo' : 'Video'} saved — tap a place below to attach it.`}
           </Text>
         </View>
       ) : null}
@@ -281,14 +286,25 @@ export default function AddSpotScreen() {
                     // against a double-claim (see its own comment) -- no
                     // component-level ref needed here anymore.
                     if (draft && candidate.place_id) {
-                      void attachDraftToPlace(draft.id, candidate.place_id);
+                      if (openingPlaceId) return;
+                      setOpeningPlaceId(candidate.place_id);
+                      void attachDraftToPlace(draft.id, candidate.place_id, user!.id).then((attached) => {
+                        if (attached) router.push(`/place/${candidate.place_id}`);
+                        setOpeningPlaceId(null);
+                      });
+                      return;
                     }
                     router.push(`/place/${candidate.place_id}`);
                   }}
+                  disabled={openingPlaceId !== null}
                   accessibilityRole="button"
                   accessibilityLabel={`Open ${candidate.name}`}
                 >
-                  <Text style={styles.actionLabel}>Open</Text>
+                  {openingPlaceId === candidate.place_id ? (
+                    <ActivityIndicator size="small" color={Colors.primary} />
+                  ) : (
+                    <Text style={styles.actionLabel}>{draft?.outcome === 'failed' ? 'Retry & open' : 'Open'}</Text>
+                  )}
                   <Ionicons name="arrow-forward" size={16} color={Colors.primary} />
                 </TouchableOpacity>
               ) : (
