@@ -69,12 +69,19 @@ export async function fetchPlaces(params: {
   page_size?: number;
   cursor?: string | null;
   pagination?: 'offset' | 'cursor';
+  signal?: AbortSignal;
 }): Promise<PlacesResponse> {
-  const { pagination = 'offset', ...query } = params;
+  const { pagination = 'offset', signal, ...query } = params;
   const endpoint = pagination === 'cursor' ? '/api/v1/places/feed' : '/api/v1/places';
-  const { data } = await client.get<PlacesResponse>(endpoint, { params: query });
+  const { data } = await client.get<PlacesResponse>(endpoint, {
+    params: query,
+    ...(signal ? { signal } : {}),
+  });
   if (__DEV__) console.log('[API] FEED_RAW', { total: data?.total, count: data?.items?.length, sample: data?.items?.[0] });
-  const items = Array.isArray(data?.items) ? data.items.map(normalizePlaceOut) : [];
+  if (!data || !Array.isArray(data.items)) {
+    throw new Error('Invalid places response: items must be an array.');
+  }
+  const items = data.items.map(normalizePlaceOut);
   if (__DEV__) console.log('[API] FEED_NORMALIZED', { count: items.length, sample: items[0] ? { id: items[0].id, category: items[0].category, categories: items[0].categories } : null });
   return {
     total: data?.total ?? 0,
@@ -127,10 +134,14 @@ export async function fetchTrending(cityId: string): Promise<PlaceOut[]> {
 // Personalized "For You" recommendations -- collaborative filtering over
 // shared PlaceRanking rows (see backend recommendation_service.py).
 // Requires auth; callers should only invoke this when a user is signed in.
-export async function fetchRecommendations(limit = 20): Promise<PlaceOut[]> {
+export async function fetchRecommendations(limit = 20, signal?: AbortSignal): Promise<PlaceOut[]> {
   const { data } = await client.get<{ items: PlaceOut[] }>('/api/v1/recommendations', {
     params: { limit },
+    ...(signal ? { signal } : {}),
   });
-  const items = Array.isArray(data?.items) ? data.items : [];
+  if (!data || !Array.isArray(data.items)) {
+    throw new Error('Invalid recommendations response: items must be an array.');
+  }
+  const items = data.items;
   return items.map(normalizePlaceOut);
 }

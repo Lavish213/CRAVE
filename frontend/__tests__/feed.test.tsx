@@ -29,7 +29,7 @@ jest.mock('../src/hooks/useLocation', () => ({
   useLocation: () => null,
 }));
 jest.mock('../src/hooks/useRecommendations', () => ({
-  useRecommendations: () => [],
+  useRecommendations: () => ({ data: [], isError: false, refetch: jest.fn().mockResolvedValue(undefined) }),
 }));
 jest.mock('../src/hooks/useDecisionSession', () => ({
   useDecisionSession: jest.fn(),
@@ -206,11 +206,18 @@ describe('FeedScreen', () => {
 
     expect(await findByText('HOLE-IN-THE-WALL')).toBeTruthy();
     expect(await findByLabelText(/^gem1,/)).toBeTruthy();
-    expect(queryByLabelText(/^crave1,/)).toBeNull();
-    expect(queryByLabelText(/^solid1,/)).toBeNull();
+    expect(await findByLabelText(/^crave1,/)).toBeTruthy();
+    expect(await findByLabelText(/^solid1,/)).toBeTruthy();
+    expect(await findByText('MORE TO DISCOVER')).toBeTruthy();
     expect(queryByText('CRAVE Picks')).toBeNull();
     expect(queryByText('Hidden Gems')).toBeNull();
     expect(queryByText('Worth Knowing')).toBeNull();
+  });
+
+  it('renders the bounded discovery end state after the final cursor page', async () => {
+    mockedFetchPlaces.mockResolvedValue(page([makePlace('p0', 0.5)]));
+    const { findByText } = renderScreen();
+    expect(await findByText('That’s everything new today.')).toBeTruthy();
   });
 
   it('logs one bounded impression batch for the first visible discovery set, and does not re-log on an unrelated re-render', async () => {

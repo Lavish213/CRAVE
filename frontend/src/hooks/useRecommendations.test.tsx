@@ -1,4 +1,6 @@
 import { renderHook, waitFor } from '@testing-library/react-native';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import React, { PropsWithChildren } from 'react';
 import { fetchRecommendations, PlaceOut } from '../api/places';
 import { useAuthStore } from '../stores/authStore';
 import { useRecommendations } from './useRecommendations';
@@ -17,6 +19,13 @@ function setUser(user: { id: string } | null): void {
   );
 }
 
+function createWrapper() {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return function Wrapper({ children }: PropsWithChildren) {
+    return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
+  };
+}
+
 describe('useRecommendations', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -25,23 +34,24 @@ describe('useRecommendations', () => {
   });
 
   it('loads recommendations for an authenticated enabled consumer', async () => {
-    const { result } = renderHook(() => useRecommendations());
-    await waitFor(() => expect(result.current).toEqual([PLACE]));
+    const { result } = renderHook(() => useRecommendations(), { wrapper: createWrapper() });
+    await waitFor(() => expect(result.current.data).toEqual([PLACE]));
     expect(mockedFetchRecommendations).toHaveBeenCalledTimes(1);
+    expect(mockedFetchRecommendations).toHaveBeenCalledWith(20, expect.any(AbortSignal));
   });
 
   it('does no hidden network work when the consumer is disabled', async () => {
-    const { result } = renderHook(() => useRecommendations(false));
+    const { result } = renderHook(() => useRecommendations(false), { wrapper: createWrapper() });
     await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(result.current).toEqual([]);
+    expect(result.current.data).toBeUndefined();
     expect(mockedFetchRecommendations).not.toHaveBeenCalled();
   });
 
   it('does not fetch while signed out', async () => {
     setUser(null);
-    const { result } = renderHook(() => useRecommendations());
+    const { result } = renderHook(() => useRecommendations(), { wrapper: createWrapper() });
     await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(result.current).toEqual([]);
+    expect(result.current.data).toBeUndefined();
     expect(mockedFetchRecommendations).not.toHaveBeenCalled();
   });
 
@@ -53,7 +63,7 @@ describe('useRecommendations', () => {
 
     const { result, rerender } = renderHook(
       ({ enabled }: { enabled: boolean }) => useRecommendations(enabled),
-      { initialProps: { enabled: true } },
+      { initialProps: { enabled: true }, wrapper: createWrapper() },
     );
     expect(mockedFetchRecommendations).toHaveBeenCalledTimes(1);
 
@@ -61,6 +71,19 @@ describe('useRecommendations', () => {
     resolveRequest([PLACE]);
     await new Promise((resolve) => setTimeout(resolve, 0));
 
-    expect(result.current).toEqual([]);
+    expect(result.current.data).toBeUndefined();
+  });
+
+  it('does not reuse one account recommendation cache for another account', async () => {
+    const wrapper = createWrapper();
+    const { result, rerender } = renderHook(() => useRecommendations(), { wrapper });
+    await waitFor(() => expect(result.current.data).toEqual([PLACE]));
+
+    setUser({ id: 'user-2' });
+    mockedFetchRecommendations.mockResolvedValueOnce([{ ...PLACE, id: 'place-2' }]);
+    rerender({});
+
+    await waitFor(() => expect(result.current.data?.[0]?.id).toBe('place-2'));
+    expect(mockedFetchRecommendations).toHaveBeenCalledTimes(2);
   });
 });

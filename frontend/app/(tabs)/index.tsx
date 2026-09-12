@@ -33,6 +33,7 @@ import { useAuthStore } from '../../src/stores/authStore';
 import { AuthSheet } from '../../src/components/AuthSheet';
 import { useDecisionSession } from '../../src/hooks/useDecisionSession';
 import { DecisionReasonCode, DecisionRole, DecisionSessionCard } from '../../src/api/decisionSession';
+import { foundationQueryKey, STALE_TIME } from '../../src/contracts/foundationGate';
 
 const VIEWABILITY_CONFIG = { itemVisiblePercentThreshold: 50, minimumViewTime: 250 };
 const DISCOVERY_LIMIT = 4;
@@ -50,7 +51,7 @@ function decisionReason(card: DecisionSessionCard): string | undefined {
   return reason ? DECISION_REASON_COPY[reason] : undefined;
 }
 
-type DiscoveryReason = 'taste_extension' | 'hole_in_wall' | 'from_craves';
+type DiscoveryReason = 'taste_extension' | 'hole_in_wall' | 'from_craves' | 'discover_new';
 
 interface DiscoverySection {
   reason: DiscoveryReason;
@@ -89,7 +90,8 @@ export default function FeedScreen() {
   const user = useAuthStore((s) => s.user);
 
   const userLocation = useLocation();
-  const recommendations = useRecommendations(Boolean(user));
+  const recommendationsQuery = useRecommendations(Boolean(user));
+  const recommendations = recommendationsQuery.data ?? [];
   const decisionSession = useDecisionSession();
   const decisionCards = decisionSession.data?.cards ?? [];
 
@@ -113,18 +115,21 @@ export default function FeedScreen() {
     isFetching,
     isFetchingNextPage,
     isError,
+    isRefetchError,
+    dataUpdatedAt,
     refetch,
   } = useInfiniteQuery({
-    queryKey: ['feed', feedParams],
-    queryFn: ({ pageParam }) =>
+    queryKey: foundationQueryKey({ scope: selectedCity ? 'city' : 'session', entity: 'feed', params: feedParams }),
+    queryFn: ({ pageParam, signal }) =>
       fetchPlaces({
         ...feedParams,
         pagination: 'cursor',
         cursor: pageParam,
+        signal,
       }),
     initialPageParam: null as string | null,
     getNextPageParam: (lastPage) => lastPage.next_cursor ?? undefined,
-    staleTime: 2 * 60 * 1000,
+    staleTime: STALE_TIME.normal,
   });
 
   const places = useMemo(() => {
@@ -183,7 +188,11 @@ export default function FeedScreen() {
 
   const handleRefresh = () => {
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    void Promise.all([refetch(), decisionSession.refetch()]);
+    void Promise.all([
+      refetch(),
+      decisionSession.refetch(),
+      ...(user ? [recommendationsQuery.refetch()] : []),
+    ]);
   };
 
   const handleEndReached = () => {
@@ -242,6 +251,16 @@ export default function FeedScreen() {
         title: 'FROM YOUR CRAVES',
         subtitle: 'Places you already wanted to try that still deserve a decision.',
         places: fromCraves,
+      });
+    }
+
+    const discoveryTail = uniquePlaces(filteredPlaces, excluded, Number.POSITIVE_INFINITY);
+    if (discoveryTail.length > 0) {
+      sections.push({
+        reason: 'discover_new',
+        title: 'MORE TO DISCOVER',
+        subtitle: 'The rest of today’s nearby options, with a real end to the list.',
+        places: discoveryTail,
       });
     }
 
@@ -422,6 +441,22 @@ export default function FeedScreen() {
           <Text style={styles.decisionRetryText}>Decision Session unavailable. Retry</Text>
         </TouchableOpacity>
       ) : null}
+      {recommendationsQuery.isError && user ? (
+        <TouchableOpacity
+          style={styles.decisionRetry}
+          onPress={() => void recommendationsQuery.refetch()}
+          accessibilityRole="button"
+          accessibilityLabel="Retry personalized discovery"
+        >
+          <Ionicons name="refresh" size={16} color={Colors.text} />
+          <Text style={styles.decisionRetryText}>Personalized discovery unavailable. Retry</Text>
+        </TouchableOpacity>
+      ) : null}
+      {(isRefetchError || decisionSession.isRefetchError) && dataUpdatedAt > 0 ? (
+        <Text style={styles.staleNotice} accessibilityRole="alert">
+          Showing saved results from {new Date(dataUpdatedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}.
+        </Text>
+      ) : null}
     </View>
   );
 
@@ -527,7 +562,9 @@ export default function FeedScreen() {
               ListFooterComponent={
                 isFetchingNextPage
                   ? <ActivityIndicator color={Colors.primary} style={styles.listFooter} />
-                  : null
+                  : !hasNextPage
+                    ? <Text style={styles.endState}>That’s everything new today.</Text>
+                    : null
               }
             />
           )}
@@ -591,6 +628,12 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
   },
+  staleNotice: {
+    color: Colors.textSecondary,
+    fontSize: 13,
+    lineHeight: 18,
+    marginTop: Spacing.sm,
+  },
   decisionCard: { marginBottom: 0 },
   discoveryHeader: {
     paddingTop: Spacing.lg,
@@ -609,6 +652,13 @@ const styles = StyleSheet.create({
     marginTop: 3,
   },
   listFooter: { margin: Spacing.lg },
+  endState: {
+    color: Colors.textSecondary,
+    fontSize: 14,
+    lineHeight: 20,
+    textAlign: 'center',
+    paddingVertical: Spacing.xl,
+  },
   skeletonWrap: { flex: 1, paddingHorizontal: 12, paddingTop: 10 },
   header: {
     paddingHorizontal: Spacing.lg,
