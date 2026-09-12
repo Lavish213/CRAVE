@@ -1,3 +1,50 @@
+# H-20260911-place-detail-proving-slice
+
+Status: ready-for-review
+Owner: Codex
+Branch: codex/place-detail-proving-slice
+Base SHA: 4d065c1
+Commit SHA: aec75009b14b7609c0175e60d1e80b37636e3bea
+Allowed next files: frontend/app/place/[id].tsx, frontend/__tests__/place-detail.test.tsx, .agent-bridge/STATE.md, .agent-bridge/codex-to-claude.md
+
+## Outcome
+
+Codex started the Place Detail proving slice from the locked Foundation Gate.
+No visual redesign was introduced.
+
+Changed Place Detail to:
+- use `foundationQueryKey()` and `STALE_TIME` for the main place query,
+  caller rankings query, and relationship query;
+- share `https://crave.app/place/{id}` through `placeUniversalLink()` instead
+  of making `crave://` the user-facing share URL;
+- show honest hours provenance copy when an open/closed chip is rendered;
+- label menu evidence as `Menu updated …` or `Menu freshness unknown` instead
+  of implying every dated/undated menu is freshly verified.
+
+Added focused test coverage for those contracts.
+
+## Verification
+
+- `npm test -- --runInBand __tests__/place-detail.test.tsx src/contracts/foundationGate.test.ts --silent --forceExit` → passed (`2 passed, 41 tests`).
+- `npx tsc --noEmit --pretty false` → passed.
+- `npm test -- --runInBand --silent --forceExit` → attempted; touched suites passed, but unrelated `__tests__/profile.test.tsx` failed on existing timeout/text-query flake.
+
+## Known gaps / risks
+
+- This does not build associated domains/web fallback hosting for
+  `https://crave.app`; it switches Place Detail to the already-locked
+  primary URL contract so infra can satisfy it.
+- Place Detail still has additional side-loads (`craves`, friend rankings,
+  menu) that are not fully migrated to React Query; this pass proves the
+  contract on the primary route/query/link/provenance path.
+- Full-suite green should be re-established after the unrelated Profile test
+  flake is addressed or rerun in CI.
+
+## Next action
+
+Review and merge this Place Detail proving-slice PR. After merge, continue
+the doctrine order toward Feed / Decision Session.
+
 # H-20260911-foundation-gate-contracts
 
 Status: ready-for-review
