@@ -46,6 +46,8 @@ import {
   tierColor,
 } from '../../src/utils/rankScore';
 import { useAuthStore } from '../../src/stores/authStore';
+import { queryClient } from '../../src/lib/queryClient';
+import { foundationQueryKey } from '../../src/contracts/foundationGate';
 
 type Stage = 'tier' | 'comparing' | 'done';
 
@@ -88,6 +90,7 @@ export default function RankPlaceScreen() {
   // card can honestly show without inventing a stat the app doesn't track.
   const [beatOpponentName, setBeatOpponentName] = useState<string | null>(null);
   const [sharing, setSharing] = useState(false);
+  const [shareError, setShareError] = useState<string | null>(null);
   const shareCardRef = useRef<View>(null);
 
   // expo-router can reuse this screen instance across a placeId change
@@ -115,7 +118,7 @@ export default function RankPlaceScreen() {
   }, []);
 
   useEffect(() => {
-    if (!placeId) return;
+    if (!placeId || !user?.id) return;
     const myGeneration = ++placeGenerationRef.current;
     // A submission still in flight for the *previous* place must not go
     // on blocking this (new) place's own tier/comparison controls until
@@ -134,7 +137,7 @@ export default function RankPlaceScreen() {
     setRound(0);
     setBeatOpponentName(null);
     loadPlace(placeId, myGeneration);
-  }, [placeId, loadPlace]);
+  }, [placeId, user?.id, loadPlace]);
 
   // The opponent id from the most recent comparison step -- kept
   // separately from the resolved `opponent` object so a failed detail
@@ -182,6 +185,12 @@ export default function RankPlaceScreen() {
       setOpponent(null);
       setOpponentError(false);
       opponentPlaceIdRef.current = null;
+      if (user?.id) {
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: foundationQueryKey({ scope: 'user', entity: 'rankQueue', userId: user.id, params: { limit: 30 } }) }),
+          queryClient.invalidateQueries({ queryKey: foundationQueryKey({ scope: 'user', entity: 'myRankings', userId: user.id }) }),
+        ]);
+      }
       return;
     }
 
@@ -193,7 +202,7 @@ export default function RankPlaceScreen() {
     // The backend returns only an id — the head-to-head needs a photo and a
     // name to be a real comparison, so resolve it.
     await loadOpponent(step.opponent_place_id, myGeneration);
-  }, [loadOpponent]);
+  }, [loadOpponent, user?.id]);
 
   const handlePickTier = async (picked: RankTier) => {
     if (!placeId || submittingRef.current) return;
@@ -212,8 +221,10 @@ export default function RankPlaceScreen() {
       setStage('tier');
       setTier(null);
     } finally {
-      submittingRef.current = false;
-      setBusy(false);
+      if (myGeneration === placeGenerationRef.current) {
+        submittingRef.current = false;
+        setBusy(false);
+      }
     }
   };
 
@@ -235,24 +246,39 @@ export default function RankPlaceScreen() {
     } catch (err: any) {
       if (myGeneration !== placeGenerationRef.current) return;
       const detail = err?.response?.data?.detail;
-      setError(detail ?? "Couldn't record that comparison.");
+      if (typeof detail === 'string' && /invalid|expired comparison token/i.test(detail)) {
+        setToken(null);
+        setOpponent(null);
+        setOpponentError(false);
+        opponentPlaceIdRef.current = null;
+        setStage('tier');
+        setTier(null);
+        setRound(0);
+        setError('That comparison expired. Choose a tier to start again.');
+      } else {
+        setError(detail ?? "Couldn't record that comparison.");
+      }
     } finally {
-      submittingRef.current = false;
-      setBusy(false);
+      if (myGeneration === placeGenerationRef.current) {
+        submittingRef.current = false;
+        setBusy(false);
+      }
     }
   };
 
   const handleShare = async () => {
     if (sharing) return;
     setSharing(true);
+    setShareError(null);
     try {
       const uri = await captureRef(shareCardRef, { format: 'png', quality: 1 });
       if (await Sharing.isAvailableAsync()) {
         await Sharing.shareAsync(uri, { mimeType: 'image/png', dialogTitle: 'Share your ranking' });
+      } else {
+        setShareError("Sharing isn't available on this device.");
       }
     } catch {
-      // Best-effort — a failed share shouldn't block anything else on this
-      // screen, there's nothing else useful to do with the error here.
+      setShareError("Couldn't share this ranking. Try again.");
     } finally {
       setSharing(false);
     }
@@ -335,12 +361,14 @@ export default function RankPlaceScreen() {
 
           <TouchableOpacity
             style={styles.primaryBtn}
-            onPress={() => router.push('/profile')}
+            onPress={() => router.push('/rank-home')}
             accessibilityRole="button"
             accessibilityLabel="See my list"
           >
             <Text style={styles.primaryBtnText}>See my list</Text>
           </TouchableOpacity>
+
+          {shareError ? <Text style={styles.inlineError}>{shareError}</Text> : null}
 
           <TouchableOpacity
             style={styles.shareBtn}

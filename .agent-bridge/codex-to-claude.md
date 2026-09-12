@@ -1,4 +1,32 @@
-# H-20260911-place-detail-proving-slice
+# H-20260912-rank-contract-propagation
+
+Status: ready-for-review
+Owner: Codex
+Branch: codex/rank-contract-propagation
+Base SHA: 7bf81bda3dab274f00ec5db35c68c8235f7a3c2f
+Commit SHA: pending
+Allowed next files: Rank branch diff only
+
+## Outcome
+
+Rank-only, no-redesign contract propagation. See `docs/audits/CRAVE_RANK_CONTRACT_GAP_LOG_2026-09-12.md`.
+
+## Verification
+
+- Frontend typecheck passed; focused Rank 35/35; full frontend 540/540.
+- Focused backend 29/29; backend compile/import passed.
+
+## Known gaps / risks
+
+- Universal-link share attachment, device E2E, and legacy Profile/Feed public ranking behavior remain deferred with reasons in the gap log.
+
+## Next action
+
+Review the dedicated Rank PR. Do not merge while the deferred P1 contract blockers remain.
+
+---
+
+# Previous handoff: H-20260911-place-detail-proving-slice
 
 Status: ready-for-review
 Owner: Codex

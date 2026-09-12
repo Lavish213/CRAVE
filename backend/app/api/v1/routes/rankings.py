@@ -21,7 +21,7 @@ from app.services.query.place_image_visibility_query import get_primary_image_ur
 from app.services.recommendations.recommendation_event_service import record_rank_outcome
 from app.services.social.activity_service import record_ranked_place
 from app.services.social.block_service import is_blocked
-from app.services.visit_evidence_service import latest_rank_eligible_by_place
+from app.services.visit_evidence_service import latest_rank_eligible_by_place, rank_eligible_visit_for_place
 
 router = APIRouter(prefix="/rankings", tags=["rankings"])
 
@@ -122,10 +122,16 @@ def start_ranking(
     db: Session = Depends(get_db),
     user_id: str = Depends(get_current_user_id),
 ):
+    eligible_visit = rank_eligible_visit_for_place(
+        db, user_id=user_id, place_id=payload.place_id,
+    )
+    if eligible_visit is None:
+        raise HTTPException(status_code=403, detail="Rank requires a declared or verified visit.")
+
     try:
         result = ranking_service.start_ranking(
             db, user_id=user_id, place_id=payload.place_id, tier=payload.tier,
-            visited_at=payload.visited_at, note=payload.note, tags=payload.tags,
+            visited_at=eligible_visit.occurred_at, note=payload.note, tags=payload.tags,
         )
     except RankingError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
