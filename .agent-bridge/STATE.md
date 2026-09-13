@@ -1,5 +1,48 @@
 # Active agent state
 
+Status: PR #289 open, CI/CodeRabbit pending
+Owner: Claude
+Branch: claude/craves-propagation-289
+Base SHA: 4525a81 (origin/main tip after PR #288)
+Scope: Craves is next in `CRAVE_FRONTEND_EXECUTION_ORDER.md`'s locked
+order. User said "finish craves" directly. Confirmed via fresh
+`git fetch`/`git branch -a`/PR listing/`git log --all -- frontend/app/
+(tabs)/craves.tsx` that nothing from Codex's separately-relayed live
+Craves session ever reached `origin` -- proceeded as a propagation-only
+pass (no redesign) against Codex's own relayed audit checklist.
+- Fixed `useCravesReasoned.ts`: ad-hoc `['craves-reasoned', ...]` query
+  key / magic-number staleTime / no cancellation -> `foundationQueryKey`
+  (`scope:'user', entity:'cravesReasoned'`), `STALE_TIME.normal` (an
+  exact match for the old `2*60*1000`), `AbortSignal` threaded through
+  a new `fetchCravesReasoned({..., signal})` param -- same pattern as
+  `rank-home.tsx`'s `fetchRankQueue`.
+- Fixed `craves.tsx`'s `cravesError`/`placeSavesError`: were plain
+  booleans rendering hardcoded generic copy, unlike the store's own
+  already-classified `savesError`. Now `string | null` via the shared
+  `errorMessageFor` taxonomy.
+- Fixed a real, previously-unread `degraded` flag: `fetchCravesReasoned`
+  already returned `degraded: true` on malformed backend data, but
+  `craves.tsx` never checked it anywhere -- Feed's Decision Session
+  (`(tabs)/index.tsx`) surfaces this exact flag as a confidence-drop
+  subheading; Craves silently didn't. Threaded through the
+  `reasoned-header` row, reused Feed's copy verbatim.
+- Audited `cravesStore.ts` (saves list + save/remove mutations)
+  independently against the full checklist -- account-generation
+  guards, per-place mutation tokens, offline-queue idempotency with
+  account-scoped flush on retry, no swallowed failures -- already meets
+  the doctrine bar. No changes made; would have been unscoped rewrite
+  risk with no confirmed gap.
+Locked files: none yet -- narrow scope, closing once CI/CodeRabbit clear.
+Verification: `npx tsc --noEmit` clean. `npx jest --ci` -> 57/57 suites,
+552/552 tests (2 pre-existing `craves.test.tsx` assertions updated to
+match the now-correct classified copy against a mocked plain
+`Error('network')`; 1 new test for the degraded-subheading behavior).
+Backend untouched.
+Next action: merge PR #289 once CI is green and CodeRabbit
+review/threads are clear, then update this entry's Status/Commit SHA.
+
+---
+
 Status: merged
 Owner: Claude
 Branch: claude/rebase-rank-262, claude/fix-rank-262-test,
