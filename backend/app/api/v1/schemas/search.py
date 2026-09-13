@@ -17,6 +17,7 @@ class SearchInterpretationOut(BaseModel):
     hard_constraints: List[str] = Field(default_factory=list)
     unsupported_hard_constraints: List[str] = Field(default_factory=list)
     context: List[str] = Field(default_factory=list)
+    required_amenities: List[str] = Field(default_factory=list)
     uncertain: bool = False
 
 

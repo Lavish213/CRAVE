@@ -162,7 +162,7 @@ export default function AddSpotScreen() {
   if (state === 'locating' || state === 'searching') {
     return (
       <View style={styles.centered}>
-        <ActivityIndicator size="large" color={Colors.primary} />
+        <ActivityIndicator size="large" color={Colors.brand} />
         <Text style={styles.statusText}>
           {state === 'locating' ? 'Finding your location…' : 'Searching nearby…'}
         </Text>
@@ -246,7 +246,7 @@ export default function AddSpotScreen() {
           <Ionicons
             name={draft.kind === 'photo' ? 'image-outline' : 'videocam-outline'}
             size={18}
-            color={Colors.primary}
+            color={Colors.brand}
           />
           <Text style={styles.mediaBannerText}>
             {draft.kind === 'photo' ? 'Photo' : 'Video'} saved — tap a place below to attach it.
@@ -289,7 +289,7 @@ export default function AddSpotScreen() {
                   accessibilityLabel={`Open ${candidate.name}`}
                 >
                   <Text style={styles.actionLabel}>Open</Text>
-                  <Ionicons name="arrow-forward" size={16} color={Colors.primary} />
+                  <Ionicons name="arrow-forward" size={16} color={Colors.brand} />
                 </TouchableOpacity>
               ) : (
                 <TouchableOpacity
@@ -335,7 +335,7 @@ const styles = StyleSheet.create({
     padding: Spacing.md,
     borderRadius: Radius.card,
     borderWidth: 1,
-    borderColor: Colors.primary,
+    borderColor: Colors.brand,
     backgroundColor: Colors.surface,
     marginBottom: Spacing.lg,
   },

@@ -190,7 +190,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     height: 50,
-    backgroundColor: 'rgba(0,0,0,0.75)',
+    backgroundColor: Colors.mediaScrim,
   },
   tierBadge: { position: 'absolute', top: Spacing.sm, left: Spacing.sm },
   saveBtn: {
@@ -201,7 +201,7 @@ const styles = StyleSheet.create({
     height: 44,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(0,0,0,0.45)',
+    backgroundColor: Colors.mediaScrimSoft,
     borderRadius: Radius.pill,
     zIndex: 1,
   },
@@ -223,7 +223,7 @@ const styles = StyleSheet.create({
   chip: {
     paddingHorizontal: 8,
     paddingVertical: 3,
-    backgroundColor: Colors.border,
+    backgroundColor: Colors.chipBg,
     borderRadius: Radius.pill,
   },
   chipText: {
@@ -233,7 +233,7 @@ const styles = StyleSheet.create({
   imageFallback: {
     width: '100%',
     height: IMAGE_HEIGHT,
-    backgroundColor: Colors.surfaceElevated,
+    backgroundColor: Colors.surfaceWarm,
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,

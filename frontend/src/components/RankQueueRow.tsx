@@ -52,7 +52,7 @@ function RankQueueRowImpl({ item, onPress }: Props) {
 
       <View style={styles.action}>
         <Text style={styles.actionText}>Rank</Text>
-        <Ionicons name="chevron-forward" size={16} color={Colors.primary} />
+        <Ionicons name="chevron-forward" size={16} color={Colors.brand} />
       </View>
     </TouchableOpacity>
   );
@@ -82,5 +82,5 @@ const styles = StyleSheet.create({
   name: { ...Typography.label, color: Colors.text },
   visit: { ...Typography.caption, color: Colors.textSecondary },
   action: { flexDirection: 'row', alignItems: 'center', gap: Spacing.xs },
-  actionText: { ...Typography.caption, color: Colors.primary, fontWeight: '700' },
+  actionText: { ...Typography.caption, color: Colors.brand, fontWeight: '700' },
 });

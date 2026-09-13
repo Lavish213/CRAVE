@@ -94,9 +94,12 @@ describe('UserProfileScreen', () => {
     // EmptyState as a genuine 404, with no retry -- a transient
     // infrastructure failure is not the same product truth, and unlike
     // a real 404, it's retryable.
+    // A bare network Error (no `.response`) is now classified as a
+    // genuine offline failure -- see errorMessageFor in
+    // src/utils/errorMessage.ts.
     mockedFetchProfile.mockRejectedValue(new Error('network'));
     const { findByText, queryByText } = render(<UserProfileScreen />);
-    expect(await findByText("Couldn't load this profile")).toBeTruthy();
+    expect(await findByText("Can't reach CRAVE — check your connection.")).toBeTruthy();
     expect(queryByText('Profile not found')).toBeNull();
   });
 
@@ -121,7 +124,7 @@ describe('UserProfileScreen', () => {
     // good data -- the flag never cleared for a same-identity attempt.
     mockedFetchProfile.mockRejectedValueOnce(new Error('network'));
     const { findByText, findByLabelText, queryByText } = render(<UserProfileScreen />);
-    expect(await findByText("Couldn't load this profile")).toBeTruthy();
+    expect(await findByText("Can't reach CRAVE — check your connection.")).toBeTruthy();
 
     mockedFetchProfile.mockResolvedValue(makeProfile());
     await act(async () => {
@@ -129,7 +132,7 @@ describe('UserProfileScreen', () => {
     });
 
     expect(await findByText('Alice')).toBeTruthy();
-    expect(queryByText("Couldn't load this profile")).toBeNull();
+    expect(queryByText("Can't reach CRAVE — check your connection.")).toBeNull();
   });
 
   it('hides the follow button and options menu on your own profile', async () => {
@@ -250,7 +253,7 @@ describe('UserProfileScreen', () => {
 
     const { findByText, queryByText } = render(<UserProfileScreen />);
 
-    expect(await findByText("Couldn't load ranked places")).toBeTruthy();
+    expect(await findByText("Can't reach CRAVE — check your connection.")).toBeTruthy();
     expect(queryByText("@alice hasn't ranked anything yet.")).toBeNull();
   });
 
@@ -260,7 +263,7 @@ describe('UserProfileScreen', () => {
 
     const { findByText, queryByLabelText } = render(<UserProfileScreen />);
 
-    expect(await findByText("Couldn't load relationship controls")).toBeTruthy();
+    expect(await findByText("Can't reach CRAVE — check your connection.")).toBeTruthy();
     expect(queryByLabelText('Follow alice')).toBeNull();
     expect(queryByLabelText('More options')).toBeNull();
   });

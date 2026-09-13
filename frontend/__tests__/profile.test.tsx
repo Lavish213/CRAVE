@@ -77,10 +77,12 @@ describe('ProfileScreen', () => {
   });
 
   it('does not mistake a failed profile request for a missing username', async () => {
+    // A bare network Error (no `.response`) is now classified as a genuine
+    // offline failure -- see errorMessageFor in src/utils/errorMessage.ts.
     setAuthedUser({ id: 'user-1' });
     mockedFetchMyProfile.mockRejectedValue(new Error('network'));
     const { findByText, queryByText } = render(<ProfileScreen />);
-    expect(await findByText("Couldn't load your profile")).toBeTruthy();
+    expect(await findByText("Can't reach CRAVE — check your connection.")).toBeTruthy();
     expect(queryByText('Pick a username')).toBeNull();
   });
 

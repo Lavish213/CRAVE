@@ -474,7 +474,7 @@ const styles = StyleSheet.create({
   wordmark: {
     fontSize: 13,
     fontWeight: '900',
-    color: Colors.primary,
+    color: Colors.brand,
     letterSpacing: 3,
     marginBottom: Spacing.md,
   },

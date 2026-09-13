@@ -1,19 +1,31 @@
 // src/constants/colors.ts
 export const Colors = {
-  // UI chrome
-  primary:         '#38BDF8',
-  background:      '#0A0A0A',
-  surface:         '#1A1A1A',
-  surfaceElevated: '#252525',
-  border:          '#2A2A2A',
-  text:            '#FFFFFF',
+  // CRAVE UI V2 visual foundation.
+  //
+  // Keep the legacy keys (`primary`, `background`, etc.) while adding
+  // meaning-first aliases. That lets the app move toward the mockup's warm
+  // food-led direction without forcing every caller to treat amber as "brand,
+  // selection, warning, cluster, CTA, and proof" at the same time.
+  primary:         '#F4A845',
+  onPrimary:       '#080604',
+  brand:           '#F4A845',
+  brandSoft:       '#3A2815',
+  brandMuted:      '#B97928',
+  background:      '#050807',
+  backgroundRaised:'#0A100E',
+  surface:         '#101715',
+  surfaceElevated: '#18211E',
+  surfaceWarm:     '#241914',
+  border:          '#2B3833',
+  borderSubtle:    '#1E2925',
+  text:            '#FFF8EF',
   // Bumped from #888888 (2026-08-26) -- the old value cleared AA-normal
   // (4.5:1) on `background`/`surface` but fell to 4.32:1 on
   // `surfaceElevated`, the one surface where it actually mattered most
   // (see ACCESSIBILITY_CONTRAST_AUDIT.md). #8c8c8c clears 4.5:1 against
   // all three surfaces (4.56:1 on the tightest, surfaceElevated) with a
   // 4-unit change invisible as a design shift.
-  textSecondary:   '#8C8C8C',
+  textSecondary:   '#B8B0A6',
   // textMuted (#555555, ~2-2.7:1 against every surface) fails WCAG AA
   // outright -- never use it for text or informational icons. The one
   // legitimate remaining use is settings.tsx's Notifications row when its
@@ -23,16 +35,37 @@ export const Colors = {
   // unset onPress, not relying on color alone. See
   // ACCESSIBILITY_CONTRAST_AUDIT.md for the full audit this fix closes
   // out.
-  textMuted:       '#555555',
+  textMuted:       '#7B736A',
+  textDisabled:    '#5A554F',
+  actionPrimary:   '#F4A845',
+  onActionPrimary: '#080604',
+  actionSecondary: '#1B2421',
+  selectedBg:      '#F4A845',
+  selectedText:    '#080604',
+  selectedBorder:  '#F7C16E',
+  chipBg:          '#141D1A',
+  chipActiveBg:    '#2F2114',
+  chipActiveText:  '#FFD79A',
+  mediaScrim:      'rgba(0,0,0,0.68)',
+  mediaScrimSoft:  'rgba(0,0,0,0.42)',
+  sheetScrim:      'rgba(0,0,0,0.68)',
+  overlayDim:      'rgba(0,0,0,0.54)',
+  onMedia:         '#FFFFFF',
   // Semantic
   success:         '#30D158',
-  warning:         '#FF9F0A',
+  warning:         '#F59E0B',
+  stale:           '#DCA34B',
+  hardConstraint:  '#EF4444',
+  destructive:     '#DC2626',
   error:           '#FF453A',
+  mapSelected:     '#F4A845',
+  mapUnselected:   '#A7B0AA',
+  mapCluster:      '#F4A845',
   // Tier — canonical values, imported by scoring.ts and map.tsx
-  tierCravePick:   '#FF4D00',
-  tierGem:         '#FFB800',
-  tierSolid:       '#4CAF50',
-  tierNew:         '#666666',
+  tierCravePick:   '#FF7A1A',
+  tierGem:         '#F4A845',
+  tierSolid:       '#5DCC7A',
+  tierNew:         '#7D8983',
 } as const;
 
 export type ColorKey = keyof typeof Colors;

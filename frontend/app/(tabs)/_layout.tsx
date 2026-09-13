@@ -15,7 +15,7 @@ function TabIcon({ focused, iconFocused, iconUnfocused }: {
     <Ionicons
       name={focused ? iconFocused : iconUnfocused}
       size={24}
-      color={focused ? Colors.primary : Colors.textSecondary}
+      color={focused ? Colors.brand : Colors.textSecondary}
     />
   );
 }
@@ -34,7 +34,7 @@ export default function TabLayout() {
             height: 80,
             paddingBottom: Spacing.lg,
           },
-          tabBarActiveTintColor: Colors.primary,
+          tabBarActiveTintColor: Colors.brand,
           tabBarInactiveTintColor: Colors.textSecondary,
           headerStyle: { backgroundColor: Colors.background },
           headerTintColor: Colors.text,
@@ -112,7 +112,7 @@ export default function TabLayout() {
         accessibilityLabel="Record food evidence"
         style={({ pressed }) => [styles.recordAction, pressed && styles.recordActionPressed]}
       >
-        <Ionicons name="add" size={28} color={Colors.background} />
+        <Ionicons name="add" size={28} color={Colors.onActionPrimary} />
       </Pressable>
     </View>
   );
@@ -136,7 +136,7 @@ const styles = StyleSheet.create({
     borderRadius: Radius.pill,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: Colors.primary,
+    backgroundColor: Colors.actionPrimary,
     shadowColor: '#000000',
     shadowOpacity: 0.28,
     shadowRadius: 8,

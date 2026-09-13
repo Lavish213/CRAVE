@@ -22,16 +22,16 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { Colors, Spacing, Radius } from '../constants/colors';
-import { detectSourceType, submitPlaceSave, submitShare } from '../api/crave';
+import { detectSourceType, submitPlaceSave, submitShare, suggestPlace } from '../api/crave';
 import { useLocation } from '../hooks/useLocation';
 
 interface Props {
   visible: boolean;
   onClose: () => void;
-  onSubmitted?: () => void;
+  onSubmitted?: (mode: Mode) => void;
 }
 
-type Mode = 'link' | 'name';
+type Mode = 'link' | 'name' | 'suggest';
 
 const PLATFORM_LABEL: Record<string, string> = {
   tiktok: 'TikTok',
@@ -46,6 +46,7 @@ export function ShareLinkSheet({ visible, onClose, onSubmitted }: Props) {
   const [mode, setMode] = useState<Mode>('link');
   const [url, setUrl] = useState('');
   const [name, setName] = useState('');
+  const [cityHint, setCityHint] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -56,11 +57,13 @@ export function ShareLinkSheet({ visible, onClose, onSubmitted }: Props) {
 
   const trimmed = url.trim();
   const trimmedName = name.trim();
+  const trimmedCityHint = cityHint.trim();
   const detected = trimmed.length > 10 ? detectSourceType(trimmed) : null;
 
   const reset = () => {
     setUrl('');
     setName('');
+    setCityHint('');
     setError(null);
   };
 
@@ -88,7 +91,7 @@ export function ShareLinkSheet({ visible, onClose, onSubmitted }: Props) {
       await submitShare(trimmed);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       reset();
-      onSubmitted?.();
+      onSubmitted?.('link');
       onClose();
     } catch (err: any) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
@@ -118,13 +121,43 @@ export function ShareLinkSheet({ visible, onClose, onSubmitted }: Props) {
       await submitPlaceSave(trimmedName, { lat: location?.lat, lng: location?.lng });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       reset();
-      onSubmitted?.();
+      onSubmitted?.('name');
       onClose();
     } catch (err: any) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       const status = err?.response?.status;
       if (status === 401) {
         setError('Sign in to add a place');
+      } else if (status === 429) {
+        setError("You're doing that too fast — wait a moment and try again.");
+      } else {
+        setError("Couldn't submit that. Try again.");
+      }
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleSubmitSuggest = async () => {
+    if (trimmedName.length < 2) {
+      setError('Enter the name of the place');
+      return;
+    }
+
+    setSubmitting(true);
+    setError(null);
+    try {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      await suggestPlace(trimmedName, trimmedCityHint || undefined);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      reset();
+      onSubmitted?.('suggest');
+      onClose();
+    } catch (err: any) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      const status = err?.response?.status;
+      if (status === 401) {
+        setError('Sign in to suggest a place');
       } else if (status === 429) {
         setError("You're doing that too fast — wait a moment and try again.");
       } else {
@@ -161,11 +194,15 @@ export function ShareLinkSheet({ visible, onClose, onSubmitted }: Props) {
         </TouchableOpacity>
 
         <View style={styles.identity}>
-          <Text style={styles.title}>{mode === 'link' ? 'Share a link' : 'Add a place'}</Text>
+          <Text style={styles.title}>
+            {mode === 'link' ? 'Share a link' : mode === 'name' ? 'Add a place' : 'Suggest a place'}
+          </Text>
           <Text style={styles.body}>
             {mode === 'link'
               ? "Paste a TikTok, Instagram, YouTube, or article link about a restaurant. We'll match it to the place automatically."
-              : "No link? Just tell us the name — we'll do the rest."}
+              : mode === 'name'
+              ? "No link? Just tell us the name — we'll do the rest."
+              : "Know the name but not exactly where? Suggest it — once enough people suggest the same place, we'll add it."}
           </Text>
         </View>
 
@@ -192,6 +229,17 @@ export function ShareLinkSheet({ visible, onClose, onSubmitted }: Props) {
           >
             <Text style={[styles.modeBtnText, mode === 'name' && styles.modeBtnTextActive]}>Just the name</Text>
           </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.modeBtn, mode === 'suggest' && styles.modeBtnActive]}
+            onPress={() => {
+              setMode('suggest');
+              setError(null);
+            }}
+            accessibilityRole="button"
+            accessibilityLabel="Switch to suggest mode"
+          >
+            <Text style={[styles.modeBtnText, mode === 'suggest' && styles.modeBtnTextActive]}>Suggest</Text>
+          </TouchableOpacity>
         </View>
 
         {mode === 'link' ? (
@@ -217,7 +265,7 @@ export function ShareLinkSheet({ visible, onClose, onSubmitted }: Props) {
               </View>
             ) : null}
           </View>
-        ) : (
+        ) : mode === 'name' ? (
           <View style={styles.inputWrap}>
             <TextInput
               style={styles.input}
@@ -233,13 +281,41 @@ export function ShareLinkSheet({ visible, onClose, onSubmitted }: Props) {
               accessibilityLabel="Place name"
             />
           </View>
+        ) : (
+          <View style={styles.inputWrap}>
+            <TextInput
+              style={styles.input}
+              placeholder="Restaurant name"
+              placeholderTextColor={Colors.textSecondary}
+              value={name}
+              onChangeText={(v) => {
+                setName(v);
+                if (error) setError(null);
+              }}
+              autoCapitalize="words"
+              editable={!submitting}
+              accessibilityLabel="Place name"
+            />
+            <TextInput
+              style={styles.input}
+              placeholder="City (optional)"
+              placeholderTextColor={Colors.textSecondary}
+              value={cityHint}
+              onChangeText={setCityHint}
+              autoCapitalize="words"
+              editable={!submitting}
+              accessibilityLabel="City"
+            />
+          </View>
         )}
 
         {error ? <Text style={styles.error}>{error}</Text> : null}
 
         <TouchableOpacity
           style={[styles.submitBtn, submitting && styles.submitBtnDisabled]}
-          onPress={mode === 'link' ? handleSubmitLink : handleSubmitName}
+          onPress={
+            mode === 'link' ? handleSubmitLink : mode === 'name' ? handleSubmitName : handleSubmitSuggest
+          }
           disabled={submitting}
           activeOpacity={0.85}
           accessibilityRole="button"
@@ -257,7 +333,7 @@ export function ShareLinkSheet({ visible, onClose, onSubmitted }: Props) {
 }
 
 const styles = StyleSheet.create({
-  backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.65)' },
+  backdrop: { flex: 1, backgroundColor: Colors.sheetScrim },
   sheet: {
     backgroundColor: Colors.surface,
     borderTopLeftRadius: Radius.card,
@@ -307,9 +383,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderRadius: Radius.pill,
   },
-  modeBtnActive: { backgroundColor: Colors.primary },
+  modeBtnActive: { backgroundColor: Colors.selectedBg },
   modeBtnText: { fontSize: 13, fontWeight: '700', color: Colors.textSecondary },
-  modeBtnTextActive: { color: Colors.background },
+  modeBtnTextActive: { color: Colors.selectedText },
   inputWrap: { paddingHorizontal: Spacing.xl, gap: Spacing.sm },
   input: {
     height: 52,
@@ -326,9 +402,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: Radius.pill,
-    backgroundColor: Colors.primary + '22',
+    backgroundColor: Colors.chipActiveBg,
   },
-  platformChipText: { fontSize: 12, fontWeight: '700', color: Colors.primary },
+  platformChipText: { fontSize: 12, fontWeight: '700', color: Colors.chipActiveText },
   error: {
     color: Colors.error,
     fontSize: 13,
@@ -340,10 +416,10 @@ const styles = StyleSheet.create({
     marginHorizontal: Spacing.xl,
     height: 52,
     borderRadius: Radius.md,
-    backgroundColor: Colors.primary,
+    backgroundColor: Colors.actionPrimary,
     alignItems: 'center',
     justifyContent: 'center',
   },
   submitBtnDisabled: { opacity: 0.6 },
-  submitBtnText: { fontSize: 16, fontWeight: '700', color: Colors.background },
+  submitBtnText: { fontSize: 16, fontWeight: '700', color: Colors.onActionPrimary },
 });

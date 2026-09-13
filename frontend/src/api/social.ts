@@ -397,3 +397,18 @@ export async function reportPlace(
   });
   return data;
 }
+
+// Video reporting reuses the exact same reason set as image reports --
+// see backend/app/db/models/video_report.py's VALID_REPORT_REASONS, which
+// is byte-for-byte the same frozenset as image_report.py's.
+export async function reportVideo(
+  videoId: string,
+  reason: ReportReason,
+  note?: string,
+): Promise<{ status: string; withheld?: boolean }> {
+  const { data } = await client.post(`/api/v1/moderation/videos/${videoId}/report`, {
+    reason,
+    note: note ?? null,
+  });
+  return data;
+}

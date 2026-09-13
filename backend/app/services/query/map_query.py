@@ -218,9 +218,6 @@ def fetch_places_for_map(
     }
 
 
-get_map_places = fetch_places_for_map
-
-
 # --- GeoJSON / Mapbox support ---
 
 def _assign_tier(score: float, rank_percentile: Optional[float]) -> str:

@@ -15,6 +15,7 @@ import { getTierForPlace } from '../utils/scoring';
 import { logRecommendationEvent, logRecommendationEvents } from '../utils/recommendationEventQueue';
 import { Colors, Radius, Spacing } from '../constants/colors';
 import { PlaceCardCompact } from '../components/PlaceCardCompact';
+import { PlaceCard } from '../components/PlaceCard';
 import type { SearchReasonRole } from '../components/DecisionStrip';
 import { CitySelectorStrip } from '../components/CitySelectorStrip';
 import { SkeletonRowList } from '../components/SkeletonCard';
@@ -23,9 +24,12 @@ import { EmptyState } from '../components/EmptyState';
 import { FilterSheet, FilterState, EMPTY_FILTERS, hasActiveFilters } from '../components/FilterSheet';
 import { useAuthStore } from '../stores/authStore';
 import { useCravesStore } from '../stores/cravesStore';
+import { useToast } from '../hooks/useToast';
 import { useRecentSearchesStore } from '../stores/recentSearchesStore';
 import { fetchMyRankings } from '../api/social';
 import { SearchScope, useDiscoveryContextStore } from '../stores/discoveryContextStore';
+import { foundationQueryKey, STALE_TIME } from '../contracts/foundationGate';
+import { errorMessageFor } from '../utils/errorMessage';
 
 function makeSearchSessionId(): string {
   return randomUUID();
@@ -77,6 +81,12 @@ export function intentShortcutForHour(hour: number): string {
 interface ZeroResultInfo {
   title: string;
   body: string;
+  /** Required (hard, dietary/allergy) constraints that stay active either
+   * way -- shown alongside relaxKey/relaxLabel so an explicit relax offer
+   * never reads as "we gave up on everything you asked for" (SM-05/06's
+   * Required-vs-Preferred recovery contract). Absent when there's nothing
+   * required to distinguish from what's being offered for removal. */
+  keeping?: string[];
   /** Present only when a specific, safe-to-relax constraint exists to
    * offer removing. Absent (not a fabricated fallback) when none does. */
   relaxKey?: string;
@@ -106,9 +116,16 @@ export function zeroResultInfo(
   }
 
   // required_categories are always the dietary/allergy phrases the
-  // interpreter also records as hard_constraints (see query_interpreter.py)
-  // -- never offered here. context entries (near_me/date_night/open_late/
+  // interpreter also records as hard_constraints (see query_interpreter.py).
+  // required_amenities (outdoor seating, ...) carry the same never-relaxed
+  // standing but are filtered against a plain Place-truth column, not a
+  // category join -- a separate field, same treatment here. Neither is
+  // ever offered below. context entries (near_me/date_night/open_late/
   // quick) and an unrelaxed price tier are the only genuinely soft signals.
+  const requiredLabels = [
+    ...interpretation.required_categories,
+    ...interpretation.required_amenities.map((key) => key.replace(/_/g, ' ')),
+  ];
   const hardSet = new Set(interpretation.hard_constraints);
   const candidates: { key: string; label: string }[] = [];
   if (interpretation.price_tier != null && !priceWasRelaxed) {
@@ -123,8 +140,25 @@ export function zeroResultInfo(
     return {
       title: 'No results with these filters',
       body: `No matches with ${target.label}.`,
+      keeping: requiredLabels.length > 0 ? requiredLabels : undefined,
       relaxKey: target.key,
       relaxLabel: target.label,
+    };
+  }
+
+  // A supported dietary/allergy category (Vegan, Halal, ...) or a required
+  // amenity (outdoor seating) is enforced server-side and never auto-
+  // relaxed (contract §9/§16) -- if it's the only active constraint left
+  // once price/context are ruled out, it's the honest, specific reason for
+  // zero results. Naming it beats the vague generic fallback below, which
+  // gave no way to act on it (SM-05's required-constraint recovery
+  // contract: name what's blocking, don't silently relax it, but don't
+  // stay silent about it either).
+  if (requiredLabels.length > 0) {
+    return {
+      title: 'No results',
+      body: `No ${requiredLabels.join(' + ')} matches nearby right now.`,
+      keeping: requiredLabels,
     };
   }
 
@@ -168,13 +202,15 @@ const CONSTRAINT_PATTERNS: Record<string, RegExp> = {
   Halal: /\bhalal\b/gi,
   Kosher: /\bkosher\b/gi,
   'Gluten Free': /\bgluten[-\s]?free\b/gi,
+  outdoor_seating: /\b(?:patio|outdoor\s+seating)\b/gi,
 };
 
 export default function SearchScreen() {
   const router = useRouter();
   const prefetchPlace = usePrefetchPlace();
   const user = useAuthStore((state) => state.user);
-  const saves = useCravesStore((state) => state.saves);
+  const { saves, addSave, removeSave, isSaved } = useCravesStore();
+  const toast = useToast((state) => state.show);
   const selectedCity = useCityStore((state) => state.selectedCity);
   const setSearchMapHandoff = useDiscoveryContextStore((state) => state.setSearchMapHandoff);
   const locationState = useLocationStatus();
@@ -223,7 +259,17 @@ export default function SearchScreen() {
   const effectivePageSize = filtersActive ? SEARCH_MAX_PAGE_SIZE : resultLimit;
 
   const searchQuery = useQuery({
-    queryKey: ['search', debouncedQuery, userLocation?.lat, userLocation?.lng, effectiveRadiusMiles, effectivePageSize],
+    queryKey: foundationQueryKey({
+      scope: 'public',
+      entity: 'search',
+      params: {
+        query: debouncedQuery,
+        lat: userLocation?.lat,
+        lng: userLocation?.lng,
+        radiusMiles: effectiveRadiusMiles,
+        pageSize: effectivePageSize,
+      },
+    }),
     queryFn: ({ signal }) => searchPlaces({
       query: debouncedQuery,
       lat: userLocation?.lat,
@@ -232,22 +278,28 @@ export default function SearchScreen() {
       page_size: effectivePageSize,
     }, signal),
     enabled: debouncedQuery.length >= 2,
-    staleTime: 60_000,
+    staleTime: STALE_TIME.short,
   });
 
+  // Same key shape place/[id].tsx already uses for this exact query --
+  // sharing the cache entry instead of each screen fetching/caching its
+  // own separate copy of the caller's rankings.
   const rankingQuery = useQuery({
-    queryKey: ['myRankings', user?.id ?? null, 'search-scope'],
+    queryKey: user
+      ? foundationQueryKey({ scope: 'user', entity: 'myRankings', userId: user.id })
+      : ['crave', 'user', 'myRankings', null, null],
     queryFn: fetchMyRankings,
     enabled: Boolean(user) && scope === 'ranked',
-    staleTime: 60_000,
+    staleTime: STALE_TIME.short,
   });
 
   const searchData = searchQuery.data;
   const results = searchData?.items ?? [];
   const rankings = rankingQuery.data ?? [];
   const searched = debouncedQuery.length >= 2 && !searchQuery.isLoading && searchData !== undefined;
+  const searchInitialError = searchQuery.isError && searchData === undefined;
   const rankedScopeLoading = scope === 'ranked' && rankingQuery.isLoading;
-  const rankedScopeError = scope === 'ranked' && rankingQuery.isError;
+  const rankedScopeError = scope === 'ranked' && rankingQuery.isError && rankingQuery.data === undefined;
 
   useEffect(() => {
     if (submittedQuery && submittedQuery === debouncedQuery && searchData?.exact_match_id) {
@@ -321,6 +373,29 @@ export default function SearchScreen() {
     handleChange(query.replace(pattern, ' ').replace(/\s+/g, ' ').trim());
   };
 
+  const handleSave = async (place: PlaceOut, position: number) => {
+    if (!user) {
+      toast('Sign in to save places');
+      return;
+    }
+
+    const meta = {
+      surface: 'search' as const,
+      position,
+      rank_percentile: place.rank_percentile,
+      city_id: selectedCity?.id ?? null,
+    };
+
+    if (isSaved(place.id)) {
+      const err = await removeSave(place.id, user.id, meta);
+      toast(err ?? 'Removed from Saves');
+      return;
+    }
+
+    const err = await addSave(place, user.id, meta);
+    toast(err ?? 'Saved');
+  };
+
   /** Zero-state shortcut tap (recent search or the time-relevant intent
    * shortcut) -- a deliberate, explicit search, so it searches immediately
    * rather than waiting out the normal debounce, and it's recorded like any
@@ -338,9 +413,9 @@ export default function SearchScreen() {
 
   const showZeroState = query.length === 0 && !searchQuery.isLoading;
   const showBelowThreshold = query.length > 0 && query.length < 2;
-  const showNoResults = searched && results.length === 0 && !searchQuery.isError;
+  const showNoResults = searched && results.length === 0 && !searchInitialError;
   const showNoFilterMatches = searched && results.length > 0 && filteredResults.length === 0 && !rankedScopeLoading && !rankedScopeError;
-  const canRenderResults = !showZeroState && !showNoResults && !showNoFilterMatches && !searchQuery.isError && !rankedScopeLoading && !rankedScopeError && filteredResults.length > 0;
+  const canRenderResults = !showZeroState && !showNoResults && !showNoFilterMatches && !searchInitialError && !rankedScopeLoading && !rankedScopeError && filteredResults.length > 0;
 
   return (
     <View style={styles.container}>
@@ -378,7 +453,7 @@ export default function SearchScreen() {
           </View>
           {searched && results.length > 0 && (
             <TouchableOpacity style={styles.filterBtn} onPress={() => setFilterVisible(true)} accessibilityLabel="Filter results" accessibilityRole="button">
-              <Ionicons name="options-outline" size={20} color={hasActiveFilters(filters) ? Colors.primary : Colors.textSecondary} />
+              <Ionicons name="options-outline" size={20} color={hasActiveFilters(filters) ? Colors.brand : Colors.textSecondary} />
             </TouchableOpacity>
           )}
         </View>
@@ -401,7 +476,27 @@ export default function SearchScreen() {
                 <Text style={styles.constraintText}>{'$'.repeat(searchData.interpretation.price_tier)} ×</Text>
               </TouchableOpacity>
             )}
-            {[...searchData.interpretation.required_categories, ...searchData.interpretation.context].map((key) => (
+            {searchData.interpretation.required_categories.map((key) => (
+              <TouchableOpacity
+                key={key}
+                style={[styles.constraintChip, styles.constraintChipRequired]}
+                onPress={() => removeInterpretedConstraint(key)}
+                accessibilityLabel={`Remove ${key.replace('_', ' ')} constraint, required`}
+              >
+                <Text style={[styles.constraintText, styles.constraintTextRequired]}>{key.replace('_', ' ')} · Required ×</Text>
+              </TouchableOpacity>
+            ))}
+            {searchData.interpretation.required_amenities.map((key) => (
+              <TouchableOpacity
+                key={key}
+                style={[styles.constraintChip, styles.constraintChipRequired]}
+                onPress={() => removeInterpretedConstraint(key)}
+                accessibilityLabel={`Remove ${key.replace(/_/g, ' ')} constraint, required`}
+              >
+                <Text style={[styles.constraintText, styles.constraintTextRequired]}>{key.replace(/_/g, ' ')} · Required ×</Text>
+              </TouchableOpacity>
+            ))}
+            {searchData.interpretation.context.map((key) => (
               <TouchableOpacity key={key} style={styles.constraintChip} onPress={() => removeInterpretedConstraint(key)} accessibilityLabel={`Remove ${key.replace('_', ' ')} constraint`}>
                 <Text style={styles.constraintText}>{key.replace('_', ' ')} ×</Text>
               </TouchableOpacity>
@@ -456,7 +551,17 @@ export default function SearchScreen() {
       )}
 
       {searchQuery.isLoading && <View style={styles.list}><SkeletonRowList count={5} /></View>}
-      {searchQuery.isError && !searchQuery.isLoading && <ErrorState message="Couldn't search right now." onRetry={() => searchQuery.refetch()} />}
+      {searchInitialError && !searchQuery.isLoading && (
+        <ErrorState
+          message={errorMessageFor(searchQuery.error, "Couldn't search right now.")}
+          onRetry={() => searchQuery.refetch()}
+        />
+      )}
+      {searchQuery.isRefetchError && searchQuery.dataUpdatedAt > 0 && (
+        <View style={styles.staleNotice} accessibilityRole="alert">
+          <Text style={styles.staleNoticeText}>Showing saved search results — pull to retry.</Text>
+        </View>
+      )}
 
       {showZeroState && (
         <View style={styles.zeroState}>
@@ -467,7 +572,7 @@ export default function SearchScreen() {
             accessibilityRole="button"
             accessibilityLabel={`Search ${intentShortcut}`}
           >
-            <Ionicons name="time-outline" size={14} color={Colors.primary} />
+            <Ionicons name="time-outline" size={14} color={Colors.brand} />
             <Text style={styles.shortcutText}>{intentShortcut}</Text>
           </TouchableOpacity>
 
@@ -499,19 +604,36 @@ export default function SearchScreen() {
       {showNoResults && (() => {
         const info = zeroResultInfo(searchData?.interpretation, priceWasRelaxed);
         return (
-          <EmptyState
-            icon="search-outline"
-            title={info.title}
-            body={info.body}
-            ctaLabel={info.relaxKey ? `Remove ${info.relaxLabel}` : undefined}
-            onCta={info.relaxKey ? () => removeInterpretedConstraint(info.relaxKey!) : undefined}
-          />
+          <>
+            {info.keeping && info.keeping.length > 0 && (
+              <View style={styles.keepingRow}>
+                <Text style={styles.keepingLabel}>Keeping (required)</Text>
+                <View style={styles.keepingChips}>
+                  {info.keeping.map((label) => (
+                    <View key={label} style={styles.keepingChip}>
+                      <Text style={styles.keepingChipText}>{label}</Text>
+                    </View>
+                  ))}
+                </View>
+              </View>
+            )}
+            <EmptyState
+              icon="search-outline"
+              title={info.title}
+              body={info.body}
+              ctaLabel={info.relaxKey ? `Remove ${info.relaxLabel}` : undefined}
+              onCta={info.relaxKey ? () => removeInterpretedConstraint(info.relaxKey!) : undefined}
+            />
+          </>
         );
       })()}
 
       {rankedScopeLoading && <View style={styles.list}><SkeletonRowList count={4} /></View>}
       {rankedScopeError && (
-        <ErrorState message="Couldn't load your ranked places." onRetry={() => rankingQuery.refetch()} />
+        <ErrorState
+          message={errorMessageFor(rankingQuery.error, "Couldn't load your ranked places.")}
+          onRetry={() => rankingQuery.refetch()}
+        />
       )}
 
       {showNoFilterMatches && (
@@ -536,35 +658,56 @@ export default function SearchScreen() {
           renderItem={({ item }) => {
             const position = results.findIndex((place) => place.id === item.id);
             const reason = searchReasonForResult(item, position, priceWasRelaxed);
+            const openPlace = () => {
+              logRecommendationEvent({
+                surface: 'search',
+                event_type: 'click',
+                place_id: item.id,
+                position,
+                rank_percentile: item.rank_percentile,
+                query: debouncedQuery,
+                city_id: selectedCity?.id ?? null,
+                search_session_id: searchSessionIdRef.current,
+              });
+              router.push(
+                reason
+                  ? `/place/${item.id}?reason_role=${reason}&reason_source=search`
+                  : `/place/${item.id}`,
+              );
+            };
+            if (position === 0) {
+              return (
+                <View style={styles.heroResult}>
+                  <PlaceCard
+                    place={item}
+                    fitLabel={reason === 'best_match' ? 'Best match for you' : reason === 'safer_pick' ? 'Safer pick' : 'Worth exploring'}
+                    reasonCaption={reason === 'best_match'
+                      ? 'Fits this search best without relaxing what you asked for.'
+                      : reason === 'safer_pick'
+                        ? 'Strong match with reliable place signals.'
+                        : 'A useful alternative if you want another direction.'}
+                    reasonSource="search"
+                    saved={isSaved(item.id)}
+                    onSave={() => void handleSave(item, position)}
+                    onPress={openPlace}
+                    onPressIn={() => prefetchPlace(item.id)}
+                  />
+                </View>
+              );
+            }
             return (
               <View style={styles.rowSpacer}>
                 <PlaceCardCompact
                   place={item}
                   searchReason={reason}
-                  onPress={() => {
-                    logRecommendationEvent({
-                      surface: 'search',
-                      event_type: 'click',
-                      place_id: item.id,
-                      position,
-                      rank_percentile: item.rank_percentile,
-                      query: debouncedQuery,
-                      city_id: selectedCity?.id ?? null,
-                      search_session_id: searchSessionIdRef.current,
-                    });
-                    router.push(
-                      reason
-                        ? `/place/${item.id}?reason_role=${reason}&reason_source=search`
-                        : `/place/${item.id}`,
-                    );
-                  }}
+                  onPress={openPlace}
                   onPressIn={() => prefetchPlace(item.id)}
                 />
               </View>
             );
           }}
           contentContainerStyle={styles.list}
-          refreshControl={<RefreshControl refreshing={searchQuery.isRefetching} onRefresh={() => searchQuery.refetch()} tintColor={Colors.primary} />}
+          refreshControl={<RefreshControl refreshing={searchQuery.isRefetching} onRefresh={() => searchQuery.refetch()} tintColor={Colors.brand} />}
           ListHeaderComponent={(
             <View style={styles.resultsHeader}>
               <Text style={styles.resultCount}>{filteredResults.length} result{filteredResults.length !== 1 ? 's' : ''}{filteredResults.length !== results.length ? ` of ${results.length}` : ''}</Text>
@@ -606,11 +749,14 @@ const styles = StyleSheet.create({
   barRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
   inputRowFlex: { flex: 1 },
   filterBtn: { padding: Spacing.sm, minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
+  staleNotice: { paddingHorizontal: Spacing.md, paddingVertical: Spacing.xs },
+  staleNoticeText: { color: Colors.textSecondary, fontSize: 13, lineHeight: 18 },
   inputRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.surface, borderRadius: Radius.md, borderWidth: 1, borderColor: Colors.border, paddingHorizontal: Spacing.md, paddingVertical: 10, gap: Spacing.sm, minHeight: 46 },
   input: { flex: 1, color: Colors.text, fontSize: 15 },
   cityContext: { color: Colors.textSecondary, fontSize: 12, fontWeight: '500', paddingLeft: Spacing.xs },
   list: { padding: Spacing.md, paddingBottom: Spacing.xxl },
   rowSpacer: { marginBottom: Spacing.sm },
+  heroResult: { marginBottom: Spacing.lg },
   loadingRow: { paddingVertical: 20, alignItems: 'center', gap: Spacing.sm },
   hintText: { color: Colors.textSecondary, fontSize: 13 },
   zeroState: { paddingHorizontal: Spacing.md, paddingTop: Spacing.sm, gap: Spacing.xs },
@@ -620,21 +766,28 @@ const styles = StyleSheet.create({
   shortcutChip: { flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 44, paddingHorizontal: Spacing.md, borderRadius: Radius.full, borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.surface, alignSelf: 'flex-start' },
   shortcutText: { color: Colors.text, fontSize: 13, fontWeight: '600' },
   interpretationPanel: { marginHorizontal: Spacing.md, marginBottom: Spacing.xs, padding: Spacing.sm, backgroundColor: Colors.surface, borderRadius: Radius.md, borderWidth: 1, borderColor: Colors.border },
-  interpretationTitle: { color: Colors.primary, fontSize: 10, fontWeight: '800', letterSpacing: 1.2 },
+  interpretationTitle: { color: Colors.brand, fontSize: 10, fontWeight: '800', letterSpacing: 1.2 },
   interpretationQuery: { color: Colors.text, fontSize: 13, fontWeight: '700', marginTop: 4 },
   constraintRow: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.xs, marginTop: Spacing.xs },
   constraintChip: { minHeight: 36, justifyContent: 'center', paddingHorizontal: Spacing.sm, borderRadius: Radius.full, backgroundColor: Colors.surfaceElevated },
+  constraintChipRequired: { borderWidth: 1, borderColor: Colors.hardConstraint },
   constraintText: { color: Colors.textSecondary, fontSize: 12, fontWeight: '700', textTransform: 'capitalize' },
+  constraintTextRequired: { color: Colors.hardConstraint },
   constraintWarning: { color: Colors.error, fontSize: 12, lineHeight: 17, marginTop: Spacing.xs },
   relaxationText: { color: Colors.textSecondary, fontSize: 12, lineHeight: 17, marginTop: Spacing.xs },
+  keepingRow: { paddingHorizontal: Spacing.md, paddingTop: Spacing.md, gap: 6 },
+  keepingLabel: { color: Colors.textSecondary, fontSize: 11, fontWeight: '700', textTransform: 'uppercase' },
+  keepingChips: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.xs },
+  keepingChip: { minHeight: 32, justifyContent: 'center', paddingHorizontal: Spacing.sm, borderRadius: Radius.full, borderWidth: 1, borderColor: Colors.hardConstraint, backgroundColor: Colors.surfaceElevated },
+  keepingChipText: { color: Colors.hardConstraint, fontSize: 12, fontWeight: '700', textTransform: 'capitalize' },
   scopeRow: { flexDirection: 'row', gap: Spacing.xs, paddingHorizontal: Spacing.md, paddingVertical: Spacing.xs },
   scopeChip: { minHeight: 44, justifyContent: 'center', paddingHorizontal: Spacing.md, borderRadius: Radius.full, borderWidth: 1, borderColor: Colors.border },
-  scopeChipActive: { backgroundColor: Colors.primary, borderColor: Colors.primary },
+  scopeChipActive: { backgroundColor: Colors.selectedBg, borderColor: Colors.selectedBorder },
   scopeText: { color: Colors.textSecondary, fontSize: 13, fontWeight: '700' },
-  scopeTextActive: { color: Colors.background },
+  scopeTextActive: { color: Colors.selectedText },
   resultsHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingBottom: Spacing.sm },
   resultCount: { color: Colors.textSecondary, fontSize: 11, fontWeight: '700', textTransform: 'uppercase' },
-  mapLink: { color: Colors.primary, fontSize: 13, fontWeight: '800' },
-  showMoreButton: { minHeight: 48, alignItems: 'center', justifyContent: 'center', marginTop: Spacing.sm, borderRadius: Radius.md, borderWidth: 1, borderColor: Colors.primary },
-  showMoreText: { color: Colors.primary, fontSize: 14, fontWeight: '800' },
+  mapLink: { color: Colors.brand, fontSize: 13, fontWeight: '800' },
+  showMoreButton: { minHeight: 48, alignItems: 'center', justifyContent: 'center', marginTop: Spacing.sm, borderRadius: Radius.md, borderWidth: 1, borderColor: Colors.brand },
+  showMoreText: { color: Colors.brand, fontSize: 14, fontWeight: '800' },
 });
