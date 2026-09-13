@@ -122,6 +122,8 @@ def start_ranking(
     db: Session = Depends(get_db),
     user_id: str = Depends(get_current_user_id),
 ):
+    if db.query(Place.id).filter(Place.id == payload.place_id).first() is None:
+        raise HTTPException(status_code=400, detail="place not found")
     eligible_visit = rank_eligible_visit_for_place(
         db, user_id=user_id, place_id=payload.place_id,
     )

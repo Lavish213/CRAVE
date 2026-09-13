@@ -14,7 +14,7 @@ Rank-only, no-redesign contract propagation. See `docs/audits/CRAVE_RANK_CONTRAC
 ## Verification
 
 - Frontend typecheck passed; focused Rank 35/35; full frontend 540/540.
-- Focused backend 29/29; backend compile/import passed.
+- Focused backend 57/57; backend compile/import passed.
 
 ## Known gaps / risks
 

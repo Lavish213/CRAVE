@@ -32,12 +32,23 @@ from app.db.models.place_ranking import PlaceRanking
 from app.db.models.activity_event import ActivityEvent
 from app.db.models.recommendation_event import RecommendationEvent
 from app.db.models.hitlist_save import HitlistSave
+from app.db.models.visit_evidence import VisitEvidence
 
 client = TestClient(app)
 
 
 def _as_user(user_id: str):
     app.dependency_overrides[get_current_user_id] = lambda: user_id
+
+
+def _declare_visit(db, *, user_id: str, place_id: str, occurred_at=None):
+    when = occurred_at or datetime.now(timezone.utc)
+    db.add(VisitEvidence(
+        user_id=user_id, place_id=place_id, tier="declared", source="route_test",
+        source_ref=str(uuid.uuid4()), occurred_at=when, confirmed_at=when,
+        factual_history=True, recommendation_influence=True,
+    ))
+    db.commit()
 
 
 # GET /profile/{user_id} and GET /profile/{user_id}/taste depend on
@@ -94,6 +105,9 @@ def city(db):
     ).delete(synchronize_session=False)
     db.query(PlaceRanking).filter(
         PlaceRanking.place_id.in_(db.query(Place.id).filter(Place.city_id == c.id))
+    ).delete(synchronize_session=False)
+    db.query(VisitEvidence).filter(
+        VisitEvidence.place_id.in_(db.query(Place.id).filter(Place.city_id == c.id))
     ).delete(synchronize_session=False)
     db.query(HitlistSave).filter(
         HitlistSave.place_id.in_(db.query(Place.id).filter(Place.city_id == c.id))
@@ -203,7 +217,10 @@ def test_start_ranking_first_in_tier_returns_ranked_immediately(city):
         setup_db.commit()
         setup_db.refresh(place)
 
-    _as_user(f"route-test-ranker-{uuid.uuid4().hex[:8]}")
+    user_id = f"route-test-ranker-{uuid.uuid4().hex[:8]}"
+    with SessionLocal() as setup_db:
+        _declare_visit(setup_db, user_id=user_id, place_id=place.id)
+    _as_user(user_id)
     resp = client.post("/api/v1/rankings", json={"place_id": place.id, "tier": "liked"})
     assert resp.status_code == 201
     body = resp.json()
@@ -230,6 +247,7 @@ def test_start_ranking_logs_a_completed_rank_event_to_the_ledger(city, db):
         setup_db.refresh(place)
 
     user_id = f"route-test-ranker-{uuid.uuid4().hex[:8]}"
+    _declare_visit(db, user_id=user_id, place_id=place.id)
     _as_user(user_id)
     resp = client.post("/api/v1/rankings", json={"place_id": place.id, "tier": "liked"})
     assert resp.status_code == 201
@@ -261,6 +279,7 @@ def test_completed_ranking_marks_only_existing_owned_save_visited(city, db):
         ))
     db.commit()
 
+    _declare_visit(db, user_id=owner, place_id=place.id)
     _as_user(owner)
     resp = client.post("/api/v1/rankings", json={"place_id": place.id, "tier": "liked"})
     assert resp.status_code == 201
@@ -280,6 +299,7 @@ def test_completed_ranking_does_not_create_a_save(city, db):
     db.commit()
     user_id = f"route-test-unsaved-{uuid.uuid4().hex[:8]}"
 
+    _declare_visit(db, user_id=user_id, place_id=place.id)
     _as_user(user_id)
     resp = client.post("/api/v1/rankings", json={"place_id": place.id, "tier": "liked"})
     assert resp.status_code == 201
@@ -310,6 +330,7 @@ def test_completed_ranking_does_not_mark_a_discovery_intake_row_visited(city, db
     ))
     db.commit()
 
+    _declare_visit(db, user_id=user_id, place_id=place.id)
     _as_user(user_id)
     resp = client.post("/api/v1/rankings", json={"place_id": place.id, "tier": "liked"})
     assert resp.status_code == 201
@@ -344,6 +365,7 @@ def test_completed_ranking_preserves_an_earlier_visited_at(city, db):
     db.add(save)
     db.commit()
 
+    _declare_visit(db, user_id=user_id, place_id=place.id, occurred_at=save.visited_at)
     _as_user(user_id)
     resp = client.post("/api/v1/rankings", json={"place_id": place.id, "tier": "liked"})
     assert resp.status_code == 201
@@ -371,6 +393,7 @@ def test_comparison_completion_marks_existing_save_visited(city, db):
     ))
     db.commit()
 
+    _declare_visit(db, user_id=user_id, place_id=new.id)
     _as_user(user_id)
     result = client.post(
         "/api/v1/rankings", json={"place_id": new.id, "tier": "liked"},

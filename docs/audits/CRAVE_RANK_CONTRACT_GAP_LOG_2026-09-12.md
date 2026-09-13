@@ -20,5 +20,6 @@ Scope: Rank only, no redesign. Base: `origin/main` at `7bf81bd`.
 
 - PR #258 shared `AuthGateHost` / `requestAuthGate` integration remains present for Rank Home and `/rank/[placeId]`; it was not rebuilt.
 - PR #257's tampered-token regression remains present and passes in the focused backend suite.
+- Existing HTTP integration tests now create explicit visit evidence instead of bypassing the production eligibility contract.
 - Comparison tokens remain signed, user-bound, short-lived, and final comparison replay remains idempotent.
 - Rank remains comparison-based and does not compute position client-side or introduce confidence/taste claims.

@@ -10,7 +10,7 @@ stale workflow/cache guards, expired-token restart, share failure visibility,
 and Rank Home completion routing. Exact files and deferrals are recorded in
 `docs/audits/CRAVE_RANK_CONTRACT_GAP_LOG_2026-09-12.md`.
 Verification: frontend typecheck passed; focused Rank 35/35; full frontend
-51 suites / 540 tests passed; focused backend 29/29 passed; backend
+51 suites / 540 tests passed; focused backend 57/57 passed; backend
 compile/import passed.
 
 ## FRONTEND EXECUTION ORDER — LOCKED (2026-09-11)
