@@ -15,4 +15,15 @@ describe('native app configuration', () => {
       expect.objectContaining({ enableBackgroundRemoteNotifications: true }),
     ]);
   });
+
+  it('registers crave.app universal-link destinations on both native platforms', () => {
+    expect(appConfig.expo.ios.associatedDomains).toContain('applinks:crave.app');
+    expect(appConfig.expo.android.intentFilters).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        action: 'VIEW',
+        autoVerify: true,
+        category: expect.arrayContaining(['BROWSABLE', 'DEFAULT']),
+      }),
+    ]));
+  });
 });

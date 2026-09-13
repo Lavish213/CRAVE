@@ -118,4 +118,11 @@ describe('RankHomeScreen', () => {
     expect(await findByText("Can't reach CRAVE — check your connection.")).toBeTruthy();
     expect(await findByText('Loved Place')).toBeTruthy();
   });
+
+  it('does not mislabel a failed queue fetch as a genuinely empty Rank', async () => {
+    mockedQueue.mockRejectedValue(new Error('queue offline'));
+    const { findByText, queryByText } = renderScreen();
+    expect(await findByText("Can't reach CRAVE — check your connection.")).toBeTruthy();
+    expect(queryByText('Your Rank starts after a real visit')).toBeNull();
+  });
 });

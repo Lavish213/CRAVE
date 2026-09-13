@@ -240,8 +240,8 @@ export async function submitComparison(
   return data;
 }
 
-export async function fetchMyRankings(): Promise<RankedPlace[]> {
-  const { data } = await client.get<{ rankings: RankedPlace[] }>('/api/v1/rankings/me');
+export async function fetchMyRankings(options?: { signal?: AbortSignal }): Promise<RankedPlace[]> {
+  const { data } = await client.get<{ rankings: RankedPlace[] }>('/api/v1/rankings/me', { signal: options?.signal });
   return data.rankings ?? [];
 }
 
@@ -287,6 +287,21 @@ export async function fetchFriendsFeed(limit = 30, offset = 0): Promise<Activity
     params: { limit, offset },
   });
   return data.events ?? [];
+}
+
+export async function fetchMyActivity(
+  limit = 30,
+  offset = 0,
+  signal?: AbortSignal,
+): Promise<ActivityEvent[]> {
+  const { data } = await client.get<{ events: ActivityEvent[] }>('/api/v1/feed/activity', {
+    params: { limit, offset },
+    signal,
+  });
+  if (!data || !Array.isArray(data.events)) {
+    throw new Error('Invalid activity response: events must be an array.');
+  }
+  return data.events;
 }
 
 // ---------------------------------------------------------------------------

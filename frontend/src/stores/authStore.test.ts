@@ -87,6 +87,40 @@ describe('useAuthStore.init', () => {
     expect(useAuthStore.getState().user).toEqual(fakeUser);
     expect(useAuthStore.getState().loading).toBe(false);
   });
+
+  it('clears account-scoped state when auth switches directly between users', () => {
+    let capturedCallback: ((event: string, session: any) => void) | undefined;
+    mockedSupabase.auth.getSession.mockResolvedValue({ data: { session: null } });
+    mockedSupabase.auth.onAuthStateChange.mockImplementation((cb: any) => {
+      capturedCallback = cb;
+      return { data: { subscription: { unsubscribe: jest.fn() } } };
+    });
+    useAuthStore.setState({ user: { id: 'account-a' } as any, loading: false });
+
+    useAuthStore.getState().init();
+    capturedCallback?.('SIGNED_IN', { user: { id: 'account-b' } });
+
+    expect(mockQueryClientClear).toHaveBeenCalledTimes(1);
+    expect(mockClearSaves).toHaveBeenCalledTimes(1);
+    expect(useAuthStore.getState().user?.id).toBe('account-b');
+  });
+
+  it('does not let a late session-restore result overwrite a newer auth event', async () => {
+    let resolveSession!: (value: any) => void;
+    let capturedCallback: ((event: string, session: any) => void) | undefined;
+    mockedSupabase.auth.getSession.mockReturnValue(new Promise((resolve) => { resolveSession = resolve; }));
+    mockedSupabase.auth.onAuthStateChange.mockImplementation((cb: any) => {
+      capturedCallback = cb;
+      return { data: { subscription: { unsubscribe: jest.fn() } } };
+    });
+
+    useAuthStore.getState().init();
+    capturedCallback?.('SIGNED_IN', { user: { id: 'new-user' } });
+    resolveSession({ data: { session: { user: { id: 'stale-user' } } } });
+    await Promise.resolve();
+
+    expect(useAuthStore.getState().user?.id).toBe('new-user');
+  });
 });
 
 describe('useAuthStore.signOut', () => {

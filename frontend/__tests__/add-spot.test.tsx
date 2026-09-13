@@ -86,6 +86,7 @@ describe('AddSpotScreen', () => {
     jest.clearAllMocks();
     mockDraftId = undefined;
     mockDrafts = [];
+    mockAttachDraftToPlace.mockResolvedValue(true);
     mockedRequestPermission.mockResolvedValue({ status: 'granted', canAskAgain: true });
     mockedGetPosition.mockResolvedValue({ coords: { latitude: 37.7749, longitude: -122.4194 } });
     mockedSearchNearby.mockResolvedValue([]);
@@ -212,9 +213,9 @@ describe('AddSpotScreen', () => {
       const { findByText, findByLabelText } = render(<AddSpotScreen />);
       expect(await findByText('Photo saved — tap a place below to attach it.')).toBeTruthy();
 
-      fireEvent.press(await findByLabelText('Open Existing Place'));
+      await act(async () => { fireEvent.press(await findByLabelText('Open Existing Place')); });
 
-      expect(mockAttachDraftToPlace).toHaveBeenCalledWith('draft-1', 'place-123');
+      expect(mockAttachDraftToPlace).toHaveBeenCalledWith('draft-1', 'place-123', 'user-1');
       expect(mockPush).toHaveBeenCalledWith('/place/place-123');
     });
 
@@ -227,9 +228,9 @@ describe('AddSpotScreen', () => {
       const { findByText, findByLabelText } = render(<AddSpotScreen />);
       expect(await findByText('Video saved — tap a place below to attach it.')).toBeTruthy();
 
-      fireEvent.press(await findByLabelText('Open Existing Place'));
+      await act(async () => { fireEvent.press(await findByLabelText('Open Existing Place')); });
 
-      expect(mockAttachDraftToPlace).toHaveBeenCalledWith('draft-2', 'place-123');
+      expect(mockAttachDraftToPlace).toHaveBeenCalledWith('draft-2', 'place-123', 'user-1');
     });
 
     it('only shows the pending-draft banner while the draft is actually pending', async () => {
@@ -245,6 +246,20 @@ describe('AddSpotScreen', () => {
       const { findByText, queryByText } = render(<AddSpotScreen />);
       await findByText('Existing Place');
       expect(queryByText(/saved — tap a place below/)).toBeNull();
+    });
+
+    it('does not expose or attach a draft owned by another account', async () => {
+      mockDraftId = 'draft-1';
+      mockDrafts = [makeDraft({ id: 'draft-1', ownerId: 'user-2' })];
+      setAuth({ id: 'user-1' });
+      mockedSearchNearby.mockResolvedValue([makeCandidate({ name: 'Existing Place', already_in_crave: true, place_id: 'place-123' })]);
+
+      const { findByLabelText, queryByText } = render(<AddSpotScreen />);
+      const open = await findByLabelText('Open Existing Place');
+      expect(queryByText(/saved — tap a place below/)).toBeNull();
+      fireEvent.press(open);
+      expect(mockAttachDraftToPlace).not.toHaveBeenCalled();
+      expect(mockPush).toHaveBeenCalledWith('/place/place-123');
     });
 
     it('does not silently drop a pending draft when confirming a brand-new candidate -- records the candidate reference instead', async () => {
@@ -264,7 +279,7 @@ describe('AddSpotScreen', () => {
       await act(async () => { fireEvent.press(confirmBtn); });
 
       expect(mockAttachDraftToPlace).not.toHaveBeenCalled();
-      expect(mockSetDraftCandidate).toHaveBeenCalledWith('draft-1', 'cand-9', 'New Spot');
+      expect(mockSetDraftCandidate).toHaveBeenCalledWith('draft-1', 'cand-9', 'New Spot', 'user-1');
       expect(mockToastShow).toHaveBeenCalledWith(
         expect.stringContaining("will attach automatically once it's live"),
       );

@@ -14,9 +14,9 @@ import { SkeletonRowList } from '../src/components/SkeletonCard';
 import { Colors, Spacing, Typography } from '../src/constants/colors';
 import { useAuthStore } from '../src/stores/authStore';
 import { requestAuthGate } from '../src/stores/authGateStore';
+import { foundationQueryKey, STALE_TIME } from '../src/contracts/foundationGate';
 import { RANK_HOME_TIER_LABELS, RankHomeTier, rankHomeTier } from '../src/utils/rankScore';
 import { errorMessageFor } from '../src/utils/errorMessage';
-import { foundationQueryKey } from '../src/contracts/foundationGate';
 
 const TIER_ORDER: RankHomeTier[] = ['elite', 'love', 'good'];
 
@@ -25,21 +25,19 @@ export default function RankHomeScreen() {
   const user = useAuthStore((state) => state.user);
 
   const queueQuery = useQuery({
-    queryKey: user
-      ? foundationQueryKey({ scope: 'user', entity: 'rankQueue', userId: user.id })
-      : ['crave', 'user', 'rankQueue', null, null],
-    queryFn: () => fetchRankQueue(),
+    queryKey: user ? foundationQueryKey({ scope: 'user', entity: 'rankQueue', userId: user.id, params: { limit: 30 } }) : ['crave', 'user', 'rankQueue', null, null],
+    queryFn: ({ signal }) => fetchRankQueue(30, signal),
     enabled: Boolean(user?.id),
+    staleTime: STALE_TIME.short,
   });
   // Same key shape place/[id].tsx and SearchScreen.tsx already use for this
   // exact query -- shares the cache entry across all three instead of each
   // screen independently fetching/caching the same response.
   const rankingsQuery = useQuery({
-    queryKey: user
-      ? foundationQueryKey({ scope: 'user', entity: 'myRankings', userId: user.id })
-      : ['crave', 'user', 'myRankings', null, null],
-    queryFn: fetchMyRankings,
+    queryKey: user ? foundationQueryKey({ scope: 'user', entity: 'myRankings', userId: user.id }) : ['crave', 'user', 'myRankings', null, null],
+    queryFn: ({ signal }) => fetchMyRankings({ signal }),
     enabled: Boolean(user?.id),
+    staleTime: STALE_TIME.short,
   });
 
   if (!user) {
@@ -79,11 +77,11 @@ export default function RankHomeScreen() {
     return <View style={styles.loading}><SkeletonRowList count={5} /></View>;
   }
 
-  if (queueQuery.isError && rankingsQuery.isError) {
+  if (queueQuery.isError && rankingsQuery.isError && queue.length === 0 && rankings.length === 0) {
     return <ErrorState message="Couldn't load Rank" onRetry={refresh} />;
   }
 
-  if (queue.length === 0 && rankings.length === 0) {
+  if (!queueQuery.isError && !rankingsQuery.isError && queue.length === 0 && rankings.length === 0) {
     return (
       <EmptyState
         icon="podium-outline"
