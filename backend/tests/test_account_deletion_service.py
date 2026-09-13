@@ -18,6 +18,7 @@ from app.db.models.recommendation_event import (
     SURFACE_CRAVES,
     RecommendationEvent,
 )
+from app.db.models.share_save_preference import ShareSavePreference
 from app.db.models.user_block import UserBlock
 from app.db.models.user_follow import UserFollow
 from app.db.models.user_profile import UserProfile
@@ -63,6 +64,7 @@ def test_delete_account_removes_profile_social_and_personal_rows(db, user_id, mo
     db.add(HitlistSuggestion(user_id=user_id, place_name="Suggested Place"))
     db.add(HitlistDedupKey(user_id=user_id, dedup_key=f"key:{uuid.uuid4()}"))
     db.add(CraveItem(url="https://example.com/food", submitted_by=user_id))
+    db.add(ShareSavePreference(user_id=user_id, place_id="00000000-0000-0000-0000-000000000002"))
     db.add(ActivityEvent(user_id=user_id, event_type=EVENT_FOLLOWED_USER, target_user_id=other))
     db.add(RecommendationEvent(user_id=user_id, surface=SURFACE_CRAVES, event_type=EVENT_SAVE))
     db.commit()
@@ -93,6 +95,7 @@ def test_delete_account_removes_profile_social_and_personal_rows(db, user_id, mo
     assert db.query(HitlistSuggestion).filter(HitlistSuggestion.user_id == user_id).count() == 0
     assert db.query(HitlistDedupKey).filter(HitlistDedupKey.user_id == user_id).count() == 0
     assert db.query(CraveItem).filter(CraveItem.submitted_by == user_id).count() == 0
+    assert db.query(ShareSavePreference).filter(ShareSavePreference.user_id == user_id).count() == 0
     assert db.query(ActivityEvent).filter(ActivityEvent.user_id == user_id).count() == 0
     assert db.query(RecommendationEvent).filter(RecommendationEvent.user_id == user_id).count() == 0
     assert not follow_service.is_following(db, follower_id=user_id, followee_id=other)
