@@ -293,6 +293,7 @@ describe('SearchScreen — Reason Block labeling (Search Screen Contract §6)', 
     act(() => getByLabelText('Search input').props.onChangeText('ramen'));
 
     expect(await findByText('Best match for you')).toBeTruthy();
+    expect(await findByText('Fits this search best without relaxing what you asked for.')).toBeTruthy();
     expect(await findByText('Safer pick')).toBeTruthy();
     expect(await findByText('Worth exploring')).toBeTruthy();
   });

@@ -29,8 +29,11 @@ Verification: static visual-token audit performed (`#38BDF8` old cyan now has
 0 frontend occurrences; remaining `Colors.primary` callers recorded as follow-up
 migration leads); `cd frontend && npx tsc --noEmit --pretty false` passed;
 focused Search/Map/Feed/Place Detail suite passed (6 suites, 112 tests); full
-frontend Jest passed (54 suites, 561 tests). Screenshot/device proof not captured
-in this environment; still required before claiming visual final/device-verified.
+frontend Jest passed (54 suites, 561 tests). Follow-up Search hero propagation:
+`npm test -- --runInBand __tests__/search.test.tsx
+__tests__/search-decision-support.test.tsx --silent --forceExit` passed (2
+suites, 35 tests). Screenshot/device proof not captured in this environment;
+still required before claiming visual final/device-verified.
 Explicit exclusions: production data jobs, backend routes/services, recommender
 model behavior, Search/Map ranking/product-contract changes, paid data sources,
 and deleting stale remote branches.

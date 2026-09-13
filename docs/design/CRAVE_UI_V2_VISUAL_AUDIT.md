@@ -122,12 +122,16 @@ Mostly dark already, but still utility/dashboard-like in places. These should be
 - Migrated common sheet backdrops to `sheetScrim`.
 - Migrated selected city/filter/template/share chips to selected/chip tokens.
 - Migrated core CTA text on amber to `onActionPrimary`.
+- Propagated Search result hierarchy one step toward the north star: the first
+  result now renders as a dominant food-forward `PlaceCard`, while supporting
+  results remain compact rows. Ranking/order is unchanged.
 
 ## Remaining known gaps after first pass
 
 - 28 `Colors.primary` callers remain and should be migrated to semantic roles in follow-up sweeps.
 - 11 files still contain raw `rgba/rgb` overlays, mostly media/special-effect layers.
-- Search/Map screen composition does not yet visually match the north star.
+- Search/Map screen composition is partially propagated but does not yet fully
+  match the north star.
 - No simulator/device screenshots captured yet in this environment.
 - Dynamic Type, VoiceOver order, and reduced-motion proof remain open.
 - Some raw color literals are legitimate but need review/documentation.
