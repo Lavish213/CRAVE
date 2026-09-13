@@ -1,38 +1,55 @@
 # Active agent state
 
-Status: merged
+Status: ready-for-review
 Owner: Claude
-Branch: claude/video-report-and-record-gate (merged, PR #269)
-Base SHA: 755f02b (origin/main tip after PR #260/#261/#265)
-Commit SHA: 6bf511e (merge commit on origin/main)
-Scope: End-to-end wiring audit (explicit user ask: "audit project end to
-end make sue no gaps and everything is wired up connected working stress
-test nuke it log all") -- introspected FastAPI's actual route table
-(`app.openapi()["paths"]`, 95 routes) against every frontend caller
-(`grep -rn "client\.(get|post|put|patch|delete)"` across frontend/src),
-classified every gap, then fixed the one confirmed real, mechanical,
-in-pattern gap found: PlaceVideoGallery.tsx had a fully-built backend
-video-report endpoint with zero frontend caller, and a toast-only
-signed-out dead end on "Record a video" (same bug class as this
-session's earlier Rank/record-video/Place Detail/Friends Feed fixes,
-missed then because that sweep only grepped frontend/app, never
-frontend/src/components).
-Locked files: frontend/src/api/social.ts,
-frontend/src/components/PlaceVideoGallery.tsx,
-frontend/src/components/ReportVideoSheet.tsx (new),
-frontend/__tests__/place-video-gallery.test.tsx (new).
-Verification: PR #269 merged (`6bf511e`) -- CI green on the final head
-(Guard, Frontend, Backend x2, Analyze x2, CodeQL all success; Supabase
-Preview skipped as always), CodeRabbit skipped per repo policy (<10
-stars), no open review threads. `npx tsc --noEmit` clean. `npx jest --ci`
--> 52/52 suites, 546/546 tests (post #260/#261/#265 baseline). Backend
-`python -m pytest -q` -> 1115 passed, 2 skipped (unrelated baseline check,
-confirms no backend regressions from any concurrent work).
-Explicit exclusions: no Search/Map redesign; no revival of PR #254; no
-backend changes (the video-report endpoint already existed, fully built);
-no fix attempted yet for the two other gaps this audit found (see "Route-
-wiring audit findings" below) -- those need a product decision, not a
-mechanical wire-up.
+Branch: claude/search-map-foundation-gate-propagation
+Base SHA: 1bb402d (origin/main tip after PR #269/#270/#271)
+Commit SHA: b7c9248
+Scope: Search/Map propagation-only slice, per the locked doctrine's
+explicit scope boundary (docs/doctrine/CRAVE_FRONTEND_EXECUTION_ORDER.md
+-- "may propagate shared frontend contracts... auth/error/query
+ownership... only. Must not redesign."). Brought SearchScreen.tsx's two
+useQuery keys into foundationQueryKey() shape (one now shares a cache
+entry with place/[id].tsx's identical myRankings query instead of
+double-fetching), and fixed undifferentiated error copy in both
+SearchScreen.tsx and MapScreenCore.tsx: a 429 previously showed the same
+generic "couldn't load" message as a genuine offline failure in both
+screens, even though client.ts's interceptor already rewrites
+`error.message` for a 429 -- that rewritten message was being silently
+discarded at the render layer. No UI/layout/component change; same
+screens, same banners, same buttons, only query-key shape and error
+copy.
+Locked files: frontend/src/screens/SearchScreen.tsx,
+frontend/src/screens/MapScreenCore.tsx, frontend/__tests__/search.test.tsx,
+frontend/__tests__/map.test.tsx.
+Verification: PR #272 opened. `npx tsc --noEmit` clean. `npx jest --ci`
+-> 53/53 suites, 558/558 tests, including 4 new tests (429 + offline
+copy, Search and Map) and 2 pre-existing tests fixed (their mocked
+rejections had no `.response`, so they're now correctly classified
+offline instead of matching the old generic-error copy -- rewritten to
+reject with a real `{ response: { status: 500 } }` shape instead).
+Explicit exclusions: no visual/layout change to either screen; did not
+migrate Map's manual useState/useEffect fetching to TanStack Query
+(permitted opportunistically by doctrine, not required -- judged Map's
+fetch logic too tightly coupled to non-server state, e.g. view modes,
+clustering, camera animation, for a clean migration in this pass); did
+not investigate privacy/provenance scope propagation into Search/Map
+result cards (unscoped, flagged as a possible future gap, not verified
+either way).
+
+## Prior completed work (compacted)
+
+- **PR #269** (merged `6bf511e`): route-wiring audit (video-report
+  wiring + record-video auth gate). See "Route-wiring audit findings"
+  below for full detail, still current.
+- **PR #271** (merged `1bb402d`): wired `hitlist/delete` (trash icon on
+  Craves "Added" rows) and `hitlist/suggest` (new "Suggest" mode in
+  ShareLinkSheet -- name + city, no coordinates). Confirmed the
+  corroboration/promotion pipeline the user described (suggestions
+  accumulate confidence per distinct contributor via
+  candidate_store_v2.py's corroboration_keys, auto-promote at
+  promotion_orchestrator_v2.py's 0.72 threshold) already exists exactly
+  as intended -- no backend changes needed, just frontend wiring.
 
 ## Route-wiring audit findings (Claude, 2026-09-13)
 
