@@ -2,6 +2,61 @@
 
 Status: merged
 Owner: Claude
+Branch: claude/rebase-search-map-268, claude/rebase-feed-decision-session (both merged, can be deleted)
+Base SHA: bf673a5 (origin/main tip after PR #285)
+Scope: Codex ran out of usage mid-session before it could open PRs for two
+already-finished, ready-for-review branches it had pushed to origin
+(`codex/search-map-contract-propagation`, `codex/feed-decision-session` --
+both logged in `codex-to-claude.md` as `ready-for-review`, "Next action:
+Open the dedicated PR ... Do not merge"). User confirmed Codex could not
+finish and asked Claude to close both out.
+- `codex/search-map-contract-propagation` already had an open PR (#268),
+  but its base (`755f02b`) predated PRs #281/#283/#285 -- most notably my
+  own already-merged PR #272 (`b7c9248`/`d7c8bb2`), which independently
+  propagated overlapping Foundation Gate query-key/error-taxonomy fixes
+  into the same two screens. Rebased the branch onto current `main` in a
+  scratch worktree; resolved 3 real conflicts in `SearchScreen.tsx` by
+  keeping whichever side was more complete rather than picking one
+  wholesale -- Codex's initial-vs-refetch error split (preserves stale
+  cached results instead of blanking them on a background refresh
+  failure) combined with my own already-shipped `errorMessageFor()`
+  classification and the `myRankings` cache-sharing key `place/[id].tsx`
+  already uses. `search.test.tsx`'s two "collided" test blocks were both
+  kept (complementary, not actually conflicting). Force-pushed the merge
+  as a fast-forward onto the existing PR head so #268 kept its history/
+  comments. Full frontend suite reverified post-merge: 55/55 suites,
+  571/571 tests; `tsc --noEmit` clean. CodeRabbit review clean (no
+  threads). Merged `ab6ef80`.
+- `codex/feed-decision-session` had no PR yet. Same rebase treatment: 3
+  conflicts (`STATE.md` -- took main's; `(tabs)/index.tsx` -- kept main's
+  `errorMessageFor` import/destructure and `Colors.brand`, both needed by
+  code Codex's side didn't touch; `PlaceCard.tsx` -- kept main's
+  `Colors.mediaScrimSoft` token over Codex's hardcoded `rgba(0,0,0,0.45)`,
+  confirmed Codex's actual fix -- the Save control no longer nested inside
+  the card's own touchable, real 44x44 target -- survived the merge
+  untouched). Opened as PR #286, requested CodeRabbit, verified full
+  suite post-merge: 54/54 suites, 566/566 tests; `tsc --noEmit` clean.
+  CodeRabbit clean (no threads). Merged `b33fbd2`.
+Locked files: none -- closed.
+Verification: see per-branch notes above; both merges independently
+full-suite-clean on top of each other (rebased #268 after #286 landed,
+re-confirmed zero new conflicts before merging).
+Next action: none from me on these two. Codex's other open, older PRs
+(#262-267, Rank/Food-Evidence/Profile-Taste/Auth-Settings-Activity/
+Social-share-loop hardening) were not touched -- out of scope for this
+"Codex ran out of usage, finish what's already done" ask; each should be
+checked for the same current-`main` staleness before merge whenever
+someone picks them up next, using this handoff's rebase approach as the
+template. The OSM backfill dedupe fix Codex flagged as blocked
+(`codex/osm-backfill-dedupe-claims`) turned out to already be merged
+(PR #243, 2026-09-09) -- the only remaining step there is rerunning the
+real production backfill from current `main`, which needs Railway
+production DB access this repo-only session does not have.
+
+---
+
+Status: merged
+Owner: Claude
 Branch: claude/amenity-search-constraint (merged, can be deleted)
 Base SHA: 4b5509a (origin/main tip after PR #282)
 Commit SHA: ea035da (merge commit on origin/main)
