@@ -272,7 +272,7 @@ export default function TasteProfileScreen() {
         )}
         {!isSelf && taste.match_score !== null && (
           <View style={styles.heroTile}>
-            <Text style={[styles.heroValue, { color: Colors.primary }]}>
+            <Text style={[styles.heroValue, { color: Colors.brand }]}>
               {taste.match_score}%
             </Text>
             <Text style={styles.heroLabel}>taste match</Text>
@@ -294,7 +294,7 @@ export default function TasteProfileScreen() {
 
       {taste.favorite_cuisine && (
         <View style={styles.card}>
-          <Ionicons name="restaurant-outline" size={20} color={Colors.primary} />
+          <Ionicons name="restaurant-outline" size={20} color={Colors.brand} />
           <View style={styles.cardMeta}>
             <Text style={styles.cardLabel}>Favorite cuisine</Text>
             <Text style={styles.cardValue}>{taste.favorite_cuisine}</Text>
@@ -304,7 +304,7 @@ export default function TasteProfileScreen() {
 
       {taste.top_city && (
         <View style={styles.card}>
-          <Ionicons name="location-outline" size={20} color={Colors.primary} />
+          <Ionicons name="location-outline" size={20} color={Colors.brand} />
           <View style={styles.cardMeta}>
             <Text style={styles.cardLabel}>Top city</Text>
             <Text style={styles.cardValue}>
@@ -341,7 +341,7 @@ const styles = StyleSheet.create({
   heroLabel: { color: Colors.textSecondary, fontSize: 12, marginTop: 2, fontWeight: '600' },
   section: { gap: Spacing.sm },
   sectionLabel: {
-    color: Colors.primary,
+    color: Colors.brand,
     fontSize: 11,
     fontWeight: '800',
     letterSpacing: 1.2,

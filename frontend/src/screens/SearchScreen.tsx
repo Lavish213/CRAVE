@@ -421,7 +421,7 @@ export default function SearchScreen() {
           </View>
           {searched && results.length > 0 && (
             <TouchableOpacity style={styles.filterBtn} onPress={() => setFilterVisible(true)} accessibilityLabel="Filter results" accessibilityRole="button">
-              <Ionicons name="options-outline" size={20} color={hasActiveFilters(filters) ? Colors.primary : Colors.textSecondary} />
+              <Ionicons name="options-outline" size={20} color={hasActiveFilters(filters) ? Colors.brand : Colors.textSecondary} />
             </TouchableOpacity>
           )}
         </View>
@@ -515,7 +515,7 @@ export default function SearchScreen() {
             accessibilityRole="button"
             accessibilityLabel={`Search ${intentShortcut}`}
           >
-            <Ionicons name="time-outline" size={14} color={Colors.primary} />
+            <Ionicons name="time-outline" size={14} color={Colors.brand} />
             <Text style={styles.shortcutText}>{intentShortcut}</Text>
           </TouchableOpacity>
 
@@ -636,7 +636,7 @@ export default function SearchScreen() {
             );
           }}
           contentContainerStyle={styles.list}
-          refreshControl={<RefreshControl refreshing={searchQuery.isRefetching} onRefresh={() => searchQuery.refetch()} tintColor={Colors.primary} />}
+          refreshControl={<RefreshControl refreshing={searchQuery.isRefetching} onRefresh={() => searchQuery.refetch()} tintColor={Colors.brand} />}
           ListHeaderComponent={(
             <View style={styles.resultsHeader}>
               <Text style={styles.resultCount}>{filteredResults.length} result{filteredResults.length !== 1 ? 's' : ''}{filteredResults.length !== results.length ? ` of ${results.length}` : ''}</Text>

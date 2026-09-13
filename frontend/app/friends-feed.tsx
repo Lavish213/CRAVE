@@ -145,7 +145,7 @@ export default function FriendsFeedScreen() {
         <RefreshControl
           refreshing={refreshing}
           onRefresh={() => user && refetch()}
-          tintColor={Colors.primary}
+          tintColor={Colors.brand}
         />
       }
       renderItem={({ item }) => {

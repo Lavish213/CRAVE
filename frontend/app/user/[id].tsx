@@ -407,7 +407,7 @@ export default function UserProfileScreen() {
                   accessibilityRole="button"
                   accessibilityLabel={isSelf ? 'View your Taste Profile' : `View ${profile.username}'s Taste Profile`}
                 >
-                  <Ionicons name="restaurant-outline" size={16} color={Colors.primary} />
+                  <Ionicons name="restaurant-outline" size={16} color={Colors.brand} />
                   <Text style={styles.tasteProfileLinkText}>
                     {isSelf ? 'Your Taste Profile' : 'Taste Profile'}
                   </Text>
@@ -466,7 +466,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     paddingHorizontal: Spacing.lg,
   },
-  unblockLink: { color: Colors.primary, fontSize: 14, fontWeight: '700' },
+  unblockLink: { color: Colors.brand, fontSize: 14, fontWeight: '700' },
   header: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md },
   avatar: { width: 64, height: 64, borderRadius: Radius.full, backgroundColor: Colors.surfaceElevated },
   avatarFallback: { alignItems: 'center', justifyContent: 'center' },
@@ -481,15 +481,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
-    backgroundColor: Colors.primary,
+    backgroundColor: Colors.actionPrimary,
     borderRadius: Radius.pill,
     paddingVertical: 12,
     minHeight: 46,
     borderWidth: 1,
-    borderColor: Colors.primary,
+    borderColor: Colors.selectedBorder,
   },
   followingBtn: { backgroundColor: 'transparent', borderColor: Colors.border },
-  followBtnText: { color: '#FFFFFF', fontSize: 15, fontWeight: '800' },
+  followBtnText: { color: Colors.onActionPrimary, fontSize: 15, fontWeight: '800' },
   followingBtnText: { color: Colors.text },
   headline: { color: Colors.text, fontSize: 16, fontWeight: '700', marginTop: Spacing.sm },
   tasteProfileLink: {
@@ -498,7 +498,7 @@ const styles = StyleSheet.create({
     gap: Spacing.xs,
     marginTop: Spacing.sm,
   },
-  tasteProfileLinkText: { flex: 1, color: Colors.primary, fontSize: 14, fontWeight: '700' },
+  tasteProfileLinkText: { flex: 1, color: Colors.brand, fontSize: 14, fontWeight: '700' },
   emptyText: { color: Colors.textSecondary, fontSize: 14 },
   list: { gap: Spacing.sm },
 });

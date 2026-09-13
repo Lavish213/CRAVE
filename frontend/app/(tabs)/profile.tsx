@@ -52,7 +52,7 @@ function StatTile({
   const inner = (
     <View style={styles.statTile}>
       <View style={styles.statValueRow}>
-        {icon ? <Ionicons name={icon} size={16} color={Colors.primary} /> : null}
+        {icon ? <Ionicons name={icon} size={16} color={Colors.brand} /> : null}
         <Text style={styles.statValue}>{value}</Text>
       </View>
       <Text style={styles.statLabel}>{label}</Text>
@@ -214,7 +214,7 @@ export default function ProfileScreen() {
       style={styles.container}
       contentContainerStyle={styles.content}
       refreshControl={
-        <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={Colors.primary} />
+        <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={Colors.brand} />
       }
     >
       <View style={styles.header}>
@@ -267,7 +267,7 @@ export default function ProfileScreen() {
 
       {!rankingsError && !unlocked ? (
         <View style={styles.unlockCard}>
-          <Ionicons name="sparkles-outline" size={18} color={Colors.primary} />
+          <Ionicons name="sparkles-outline" size={18} color={Colors.brand} />
           <Text style={styles.unlockText}>
             Rank {remaining} more {remaining === 1 ? 'place' : 'places'} to give CRAVE a stronger read on your taste.
           </Text>
@@ -281,7 +281,7 @@ export default function ProfileScreen() {
         accessibilityLabel="Open Rank"
       >
         <View style={styles.rankIcon}>
-          <Ionicons name="podium-outline" size={22} color={Colors.primary} />
+          <Ionicons name="podium-outline" size={22} color={Colors.brand} />
         </View>
         <View style={styles.rankMeta}>
           <Text style={styles.rankTitle}>Rank</Text>
@@ -303,7 +303,7 @@ export default function ProfileScreen() {
           accessibilityRole="button"
           accessibilityLabel="Friends activity"
         >
-          <Ionicons name="people-outline" size={18} color={Colors.primary} />
+          <Ionicons name="people-outline" size={18} color={Colors.brand} />
           <Text style={styles.linkBtnText}>Friends</Text>
         </TouchableOpacity>
         <TouchableOpacity
@@ -312,7 +312,7 @@ export default function ProfileScreen() {
           accessibilityRole="button"
           accessibilityLabel="Leaderboard"
         >
-          <Ionicons name="trophy-outline" size={18} color={Colors.primary} />
+          <Ionicons name="trophy-outline" size={18} color={Colors.brand} />
           <Text style={styles.linkBtnText}>Leaderboard</Text>
         </TouchableOpacity>
         {!rankingsError && rankings.length > 0 ? (
@@ -322,7 +322,7 @@ export default function ProfileScreen() {
             accessibilityRole="button"
             accessibilityLabel="Your Taste Profile"
           >
-            <Ionicons name="restaurant-outline" size={18} color={Colors.primary} />
+            <Ionicons name="restaurant-outline" size={18} color={Colors.brand} />
             <Text style={styles.linkBtnText}>Taste Profile</Text>
           </TouchableOpacity>
         ) : null}
@@ -403,5 +403,5 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.surface,
     minHeight: 44,
   },
-  linkBtnText: { color: Colors.primary, fontSize: 14, fontWeight: '700' },
+  linkBtnText: { color: Colors.brand, fontSize: 14, fontWeight: '700' },
 });

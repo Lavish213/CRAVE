@@ -243,7 +243,7 @@ export function MenuSubmissionSheet({ visible, placeId, onClose, onSubmitted }: 
             accessibilityRole="button"
             accessibilityLabel="Add another item"
           >
-            <Ionicons name="add" size={16} color={Colors.primary} />
+            <Ionicons name="add" size={16} color={Colors.brand} />
             <Text style={styles.addItemText}>Add another item</Text>
           </TouchableOpacity>
         </ScrollView>

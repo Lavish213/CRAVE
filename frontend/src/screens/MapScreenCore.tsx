@@ -758,7 +758,7 @@ export default function MapScreen() {
             <Ionicons
               name="options-outline"
               size={20}
-              color={hasActiveFilters(filters) ? Colors.primary : Colors.text}
+              color={hasActiveFilters(filters) ? Colors.brand : Colors.text}
             />
           </TouchableOpacity>
         )}
@@ -786,7 +786,7 @@ export default function MapScreen() {
 
       {mapLoading && (
         <View style={styles.mapBanner}>
-          <ActivityIndicator size="small" color={Colors.primary} />
+          <ActivityIndicator size="small" color={Colors.brand} />
         </View>
       )}
 

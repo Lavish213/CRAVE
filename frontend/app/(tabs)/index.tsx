@@ -484,7 +484,7 @@ export default function FeedScreen() {
           <Ionicons
             name="options-outline"
             size={20}
-            color={hasActiveFilters(filters) ? Colors.primary : Colors.textSecondary}
+            color={hasActiveFilters(filters) ? Colors.brand : Colors.textSecondary}
           />
         </TouchableOpacity>
       </View>
@@ -562,13 +562,13 @@ export default function FeedScreen() {
                 <RefreshControl
                   refreshing={isFetching && !isFetchingNextPage && initialLoaded}
                   onRefresh={handleRefresh}
-                  tintColor={Colors.primary}
+                  tintColor={Colors.brand}
                 />
               }
               ListHeaderComponent={decisionHeader}
               ListFooterComponent={
                 isFetchingNextPage
-                  ? <ActivityIndicator color={Colors.primary} style={styles.listFooter} />
+                  ? <ActivityIndicator color={Colors.brand} style={styles.listFooter} />
                   : !hasNextPage
                     ? <Text style={styles.endState}>That’s everything new today.</Text>
                     : null
@@ -604,7 +604,7 @@ const styles = StyleSheet.create({
     paddingBottom: Spacing.lg,
   },
   decisionEyebrow: {
-    color: Colors.primary,
+    color: Colors.brand,
     fontSize: 12,
     fontWeight: '800',
     letterSpacing: 1.6,
@@ -674,7 +674,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
   },
-  wordmark: { fontSize: 26, fontWeight: '900', color: Colors.primary, letterSpacing: 3 },
+  wordmark: { fontSize: 26, fontWeight: '900', color: Colors.brand, letterSpacing: 3 },
   filterBtn: {
     padding: Spacing.sm,
     minWidth: 44,
