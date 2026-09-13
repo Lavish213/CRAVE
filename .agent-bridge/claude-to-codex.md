@@ -1,3 +1,124 @@
+# H-20260913-eas-credentials-for-universal-links
+
+Status: blocked
+Owner: Codex
+Branch: none yet -- create one off current `main` when you have real
+values to commit (e.g. `claude/universal-link-credentials` or similar;
+this is a two-constant follow-up, not a redesign).
+Base SHA: 689c6a2 (origin/main tip after PR #299)
+Commit SHA: none
+Allowed next files: `backend/app/api/v1/routes/universal_links.py`
+only -- exactly the two constants named below, nothing else in that
+file or elsewhere.
+
+## Outcome
+
+PR #298 (merged `8825b81`) built the full server side of universal
+links (`https://crave.app/place/{id}` etc. actually opening the app
+instead of 404ing): the two platform verification files
+(`/.well-known/apple-app-site-association`, `/.well-known/
+assetlinks.json`) and real HTML fallback pages for anyone without the
+app installed. The client side (`app.json`'s `associatedDomains`/
+`intentFilters`, `foundationGate.ts`'s `placeUniversalLink()` already
+used by Place Detail's share button and `PlaceCard`'s long-press share)
+was already in place before that PR.
+
+**What's blocking this from actually working end to end**: both
+verification files currently ship placeholder values --
+`_APPLE_TEAM_ID` and `_ANDROID_SHA256_FINGERPRINT` at the top of
+`backend/app/api/v1/routes/universal_links.py`. Until real values
+replace them, neither iOS nor Android will verify `crave.app` as
+allowed to open the app -- a tapped link silently falls through to the
+web fallback page instead, with no visible error anywhere to say why.
+
+This session (Claude, repo-only sandbox) cannot retrieve either value:
+`curl https://api.expo.dev` gets a 403 from this sandbox's own egress
+proxy (org policy, confirmed twice, not transient), and `eas whoami`
+reports not logged in with no way to authenticate here. If your
+environment has real EAS/Expo network access and login, you can finish
+this in ~10 minutes; if not, mark it blocked again and say so plainly
+rather than guessing at either value -- per PROTOCOL.md's own failure-
+recovery rule, never fabricate a missing credential.
+
+## What to actually do
+
+Known identifiers (from the user directly, already correct -- no need
+to re-derive these):
+- Android package: `com.crave.app`
+- EAS project ID: `337fbfd9-8f48-49e8-ac45-0908055f5d35`
+- Expo owner: `lavish213`
+- iOS bundle identifier: `com.crave.app` (see `frontend/app.json`)
+- Build profiles already configured in `frontend/eas.json`:
+  `development`, `development-simulator`, `preview`, `production`
+  (the `production` profile is the one whose credentials matter here)
+
+Steps:
+1. `cd frontend && eas login` (needs the account that owns EAS project
+   `337fbfd9-8f48-49e8-ac45-0908055f5d35` / Expo owner `lavish213` --
+   ask the user for access if you don't have it; don't guess a login).
+2. **Android SHA-256 fingerprint**: `eas credentials --platform
+   android`, select the `production` profile's keystore, copy its
+   SHA-256 certificate fingerprint. If no production Android keystore
+   exists yet, `eas credentials` will offer to generate one -- that's
+   fine and expected for a pre-first-build project, just make sure
+   it's the `production` profile's credential, not `preview`/
+   `development`. **If Google Play App Signing is enabled** (only
+   possible after at least one real Play Console upload), the
+   fingerprint that actually matters is the Play Console "App signing
+   key certificate" one, not the local upload-key one EAS shows --
+   check Play Console > Setup > App integrity if a Play Console
+   listing already exists; if not, the EAS upload-key fingerprint is
+   the only one there is yet, and this file's value will need updating
+   again later once Play App Signing is turned on.
+3. **Apple Team ID**: `eas credentials --platform ios` (look for the
+   distribution certificate / provisioning profile's Team ID), or the
+   Apple Developer account's Membership page directly if EAS has no
+   iOS credentials configured yet. Format needed is exactly
+   `<TEAM_ID>.com.crave.app` (a 10-character alphanumeric Team ID
+   prefixed to the existing bundle id, e.g. `ABCDE12345.com.crave.app`).
+4. Edit `backend/app/api/v1/routes/universal_links.py`: replace
+   `_APPLE_TEAM_ID = "REPLACE_WITH_APPLE_TEAM_ID"` and
+   `_ANDROID_SHA256_FINGERPRINT = "REPLACE_WITH_ANDROID_SHA256_
+   FINGERPRINT"` with the two real values. Nothing else in that file
+   needs to change -- the routes, tests, and fallback pages are already
+   correct and already passing (`backend/tests/test_universal_links.py`
+   covers all of them).
+5. Run the existing test suite (`python -m pytest
+   tests/test_universal_links.py -q` at minimum, full `pytest -q`
+   before opening a PR) to confirm nothing broke, then open a normal
+   PR against `main` per the usual protocol.
+
+**Do not** run an actual `eas build` unless the user separately asks
+for a real app build/submission -- that's a distinct, much bigger step
+(signing, store submission) this handoff is not asking for. Retrieving
+credentials via `eas credentials` does not require a build to already
+exist for Android (it can generate one); for iOS it may require an
+existing distribution certificate/provisioning profile, which itself
+may need a first `eas build --platform ios --profile production` run
+if none exists yet -- if you hit that wall, stop and ask the user
+before kicking off a real signed build on their behalf.
+
+## Known gaps / risks
+
+- Neither the Apple Team ID nor the Android SHA-256 fingerprint is
+  stored anywhere in this repo (confirmed by the user directly) -- both
+  must come from a live `eas credentials` session or the respective
+  developer console.
+- Once DNS actually points `crave.app` at the Railway backend (the
+  user's own infra step, not code), a real on-device tap-through test
+  on both platforms is the only way to confirm the whole chain works
+  end to end -- not verifiable from any sandbox.
+
+## Next action
+
+Retrieve both real values per the steps above and push the two-line
+follow-up. If you hit a wall this repo-only session already hit (no
+network/login), say so plainly in this file rather than guessing --
+per PROTOCOL.md, a missing credential is a `blocked` status, never a
+fabricated value.
+
+---
+
 # H-20260913-universal-link-setup
 
 Status: resolved -- merged (needs real credentials before it's load-bearing)
