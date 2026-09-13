@@ -55,7 +55,10 @@ export async function searchPlaces(
   // both ends for anything but the very last keystroke.
   const { data } = await client.get<SearchResponse>('/api/v1/search', { params, signal });
   if (__DEV__) console.log('[API] SEARCH_RAW', { query: params.query, total: data?.total, count: data?.items?.length, sample: data?.items?.[0] });
-  const items = Array.isArray(data?.items) ? data.items : [];
+  if (!data || !Array.isArray(data.items)) {
+    throw new Error('Invalid search response: items must be an array.');
+  }
+  const items = data.items;
   const normalized = items.map(normalizePlaceOut);
   const fallbackInterpretation: SearchInterpretation = {
     original_query: params.query,
