@@ -14,6 +14,7 @@ import {
 } from '../api/saves';
 import { logRecommendationEvent } from '../utils/recommendationEventQueue';
 import { RecommendationSurface } from '../api/recommendationEvents';
+import { errorMessageFor } from '../utils/errorMessage';
 
 export interface SaveEventMeta {
   surface?: RecommendationSurface;
@@ -79,13 +80,14 @@ function _errorShape(err: unknown): ErrorShape {
   return err as ErrorShape;
 }
 
+// 401 is its own sentinel ('auth_required') rather than routed through
+// errorMessageFor's fallback -- craves.tsx checks for that exact string to
+// show the sign-in gate instead of a generic ErrorState. Every other status
+// defers to the shared taxonomy so the 429/offline copy stays one source of
+// truth across the app.
 function _classifyError(err: unknown, fallback: string): string {
-  const shaped = _errorShape(err);
-  const status = shaped.response?.status;
-  if (status === 401) return 'auth_required';
-  if (status === 429) return "You're doing that too fast — wait a moment and try again.";
-  if (!shaped.response) return "Can't reach CRAVE — check your connection.";
-  return fallback;
+  if (_errorShape(err).response?.status === 401) return 'auth_required';
+  return errorMessageFor(err, fallback);
 }
 
 const _pendingSaves = new Set<string>();
