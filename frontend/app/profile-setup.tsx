@@ -134,7 +134,7 @@ export default function ProfileSetupScreen() {
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <Text style={styles.title}>Pick your handle</Text>
         <Text style={styles.subtitle}>
-          Choose the identity people can use to find you. Your private food history and Taste Profile stay separate.
+          Choose the identity people can use to find you. Your food history and Taste Profile both remain private.
         </Text>
 
         <View style={styles.field}>

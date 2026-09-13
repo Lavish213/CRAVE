@@ -51,4 +51,21 @@ describe('ProfileScreen food identity', () => {
     const { findByText } = render(<ProfileScreen />);
     expect(await findByText('Your private Taste Profile is temporarily unavailable.')).toBeTruthy();
   });
+
+  it('uses supported aggregates instead of qualitative ranking claims', async () => {
+    mockedRankings.mockResolvedValue([
+      { place_id: 'p1', name: 'One', tier: 'liked', rank_score: 8, note: null, tags: null, visited_at: null, primary_image_url: null, city_id: 'oak' },
+      { place_id: 'p2', name: 'Two', tier: 'fine', rank_score: 5, note: null, tags: null, visited_at: null, primary_image_url: null, city_id: 'oak' },
+    ]);
+    mockedTaste.mockResolvedValue({
+      total_ranked: 2,
+      tier_counts: { liked: 1, fine: 1, disliked: 0 },
+      favorite_cuisine: null,
+      top_city: { id: 'oak', name: 'Oakland', count: 2 },
+    });
+
+    const { findByText, queryByText } = render(<ProfileScreen />);
+    expect(await findByText('2 places ranked. Most of your food history is in Oakland.')).toBeTruthy();
+    expect(queryByText(/You know what you like|Your list is taking shape/)).toBeNull();
+  });
 });

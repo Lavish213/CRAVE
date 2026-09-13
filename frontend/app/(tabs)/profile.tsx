@@ -32,7 +32,6 @@ import {
 } from '../../src/api/social';
 import {
   RECOMMENDATION_THRESHOLD,
-  rankedListHeadline,
   recommendationProgress,
 } from '../../src/utils/rankScore';
 
@@ -198,8 +197,8 @@ export default function ProfileScreen() {
           {tasteError || rankingsError
             ? 'Your private Taste Profile is temporarily unavailable.'
             : taste?.top_city
-              ? `${rankedListHeadline(rankings.length)} Most of your food history is in ${taste.top_city.name}.`
-              : `${rankedListHeadline(rankings.length)} CRAVE is still learning your taste.`}
+              ? `${rankings.length} ${rankings.length === 1 ? 'place' : 'places'} ranked. Most of your food history is in ${taste.top_city.name}.`
+              : `${rankings.length} ${rankings.length === 1 ? 'place' : 'places'} ranked. CRAVE is still learning your taste.`}
         </Text>
         <Ionicons name="chevron-forward" size={18} color={Colors.textSecondary} />
       </TouchableOpacity>
