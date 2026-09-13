@@ -26,7 +26,120 @@ Review the dedicated Rank PR. Do not merge while the deferred P1 contract blocke
 
 ---
 
-# Previous handoff: H-20260911-place-detail-proving-slice
+# H-20260912-search-map-propagation
+
+Status: ready-for-review
+Owner: Codex
+Branch: codex/search-map-contract-propagation
+Base SHA: 755f02b
+Commit SHA: f888f281668fb224b5beb33f5effc13d0f57a175
+Allowed next files: none pending PR review
+
+## Outcome
+
+Completed the Search/Map propagation-only lane without changing the certified
+information architecture, visual hierarchy, candidate semantics, constraints,
+or ranking ownership. Search still owns the displayed candidate order and Map
+still consumes that exact set in handoff mode; Map panning still requires the
+explicit Search-this-area action before results change.
+
+Defect/gap log:
+
+- P1 fixed — malformed Search payloads were normalized to `[]`, making an
+  invalid/failing response indistinguishable from a real empty result. Root:
+  permissive API normalization. Files: `frontend/src/api/search.ts`,
+  `frontend/src/api/search.test.ts`.
+- P1 fixed — malformed city/saved Map payloads likewise became empty maps.
+  Root: `normalizeMapFeatures` permissively accepts unknown input. Files:
+  `frontend/src/api/map.ts`, `frontend/src/api/map.test.ts`.
+- P1 fixed — superseded Map requests were ignored by request id but continued
+  consuming network/backend work, and a request could still complete after the
+  screen lost all location context. Root: no AbortController ownership. Files:
+  `frontend/src/screens/MapScreenCore.tsx`, `frontend/src/api/map.ts`,
+  `frontend/__tests__/map.test.tsx`, `frontend/src/api/map.test.ts`.
+- P2 fixed — Search and its account-scoped ranking filter used ad-hoc keys.
+  Root: the certified route predated Foundation Gate propagation. File:
+  `frontend/src/screens/SearchScreen.tsx`.
+- P2 fixed — a Search background refresh failure could suppress cached results
+  instead of labeling them stale. Root: initial and refetch error states were
+  conflated. Files: `frontend/src/screens/SearchScreen.tsx`,
+  `frontend/__tests__/search.test.tsx`.
+- P2 deferred — direct/city Map results still lack an explicit server ranking-
+  context identifier. Current doctrine/data DTOs expose no bounded truthful
+  context to propagate; adding one here would invent ranking ownership or a
+  backend contract. Search-handoff Map is not affected and preserves Search's
+  candidate set/order exactly.
+- P2 deferred — device/VoiceOver/Dynamic Type and real Search -> Map -> Place
+  E2E certification were not run on this host. Existing component regression
+  coverage verifies the candidate handoff, explicit area search, location
+  denial copy, failure-vs-empty, analytics facts/dedupe, and navigation.
+
+## Verification
+
+- `npm test -- --runInBand __tests__/search.test.tsx __tests__/search-decision-support.test.tsx __tests__/map.test.tsx __tests__/map-instrumentation.test.tsx src/api/search.test.ts src/api/map.test.ts --silent --forceExit` -> 6 suites, 63 tests passed.
+- `npx tsc --noEmit --pretty false` -> passed.
+- `npm test -- --runInBand --silent --forceExit` -> 52 suites, 547 tests passed.
+
+## Known gaps / risks
+
+- The two deferred P2 items above are explicit; neither was hidden behind fake
+  data or a client-only ranking implementation.
+- PR CI/CodeQL and CodeRabbit still need actual-head verification.
+
+## Next action
+
+Open the dedicated PR, request CodeRabbit, resolve every still-valid actionable
+finding, verify CI/CodeQL and the actual PR head, then report MERGE-READY or
+BLOCKED. Do not merge.
+
+---
+
+# H-20260912-feed-decision-session
+
+Status: ready-for-review
+Owner: Codex
+Branch: codex/feed-decision-session
+Base SHA: 7bf81bda3dab274f00ec5db35c68c8235f7a3c2f
+Commit SHA: 84f7cd6
+Allowed next files: none pending PR review
+
+## Outcome
+
+Propagated the Foundation Gate contracts through Feed and Decision Session
+without redesigning the approved hierarchy. Query keys and stale times now use
+the shared contract; remote requests receive cancellation signals; malformed
+payloads fail instead of becoming false empty states; personalized
+recommendations use account-isolated TanStack Query state; stale/retry and
+bounded-end states are explicit; the discovery tail no longer silently drops
+valid candidates; and PlaceCard's Save control is no longer nested inside the
+card control and now has a 44x44 target.
+
+## Verification
+
+- `npm test -- --runInBand __tests__/feed.test.tsx src/hooks/useDecisionSession.test.tsx src/hooks/useRecommendations.test.tsx src/api/decisionSession.test.ts --silent --forceExit` -> passed (4 suites, 25 tests).
+- `npx tsc --noEmit --pretty false` -> passed.
+- `npm test -- --runInBand --silent --forceExit` -> passed (51 suites, 541 tests).
+
+## Known gaps / risks
+
+- Reject/replace-only-rejected, the two-full-set-rejection prompt, context-chip
+  direct asks, and a durable session identifier require a literal backend
+  recommendation/session contract that the Feed doctrine explicitly lists as
+  unresolved. They were not fabricated client-side.
+- The personalized social rail remains blocked on its explicitly unresolved
+  migration contract; the current friends feed is chronological.
+- Device/E2E verification, PR CI/CodeQL, CodeRabbit, and final PR-head audit
+  remain required before merge.
+
+## Next action
+
+Push/open the dedicated Feed PR, request review, inspect every check and
+actionable finding, and perform a final audit of the actual PR head. Do not
+merge silently.
+
+---
+
+# H-20260911-place-detail-proving-slice
 
 Status: ready-for-review
 Owner: Codex

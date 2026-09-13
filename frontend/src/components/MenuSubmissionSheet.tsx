@@ -243,7 +243,7 @@ export function MenuSubmissionSheet({ visible, placeId, onClose, onSubmitted }: 
             accessibilityRole="button"
             accessibilityLabel="Add another item"
           >
-            <Ionicons name="add" size={16} color={Colors.primary} />
+            <Ionicons name="add" size={16} color={Colors.brand} />
             <Text style={styles.addItemText}>Add another item</Text>
           </TouchableOpacity>
         </ScrollView>
@@ -270,7 +270,7 @@ export function MenuSubmissionSheet({ visible, placeId, onClose, onSubmitted }: 
 }
 
 const styles = StyleSheet.create({
-  backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.65)' },
+  backdrop: { flex: 1, backgroundColor: Colors.sheetScrim },
   sheet: {
     backgroundColor: Colors.surface,
     borderTopLeftRadius: Radius.card,
@@ -348,7 +348,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     marginBottom: Spacing.md,
   },
-  addItemText: { color: Colors.primary, fontSize: 14, fontWeight: '700' },
+  addItemText: { color: Colors.brand, fontSize: 14, fontWeight: '700' },
   error: {
     color: Colors.error,
     fontSize: 13,
@@ -366,10 +366,10 @@ const styles = StyleSheet.create({
     marginHorizontal: Spacing.xl,
     height: 52,
     borderRadius: Radius.md,
-    backgroundColor: Colors.primary,
+    backgroundColor: Colors.actionPrimary,
     alignItems: 'center',
     justifyContent: 'center',
   },
   submitBtnDisabled: { opacity: 0.6 },
-  submitBtnText: { fontSize: 16, fontWeight: '700', color: Colors.background },
+  submitBtnText: { fontSize: 16, fontWeight: '700', color: Colors.onActionPrimary },
 });

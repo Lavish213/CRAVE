@@ -106,6 +106,8 @@ describe('RankHomeScreen', () => {
   });
 
   it('keeps usable ranked data visible when only the queue request fails', async () => {
+    // A bare network Error (no `.response`) is now classified as a genuine
+    // offline failure -- see errorMessageFor in src/utils/errorMessage.ts.
     mockedQueue.mockRejectedValue(new Error('queue offline'));
     mockedRankings.mockResolvedValue([
       { place_id: 'rank-1', name: 'Loved Place', tier: 'liked', rank_score: 8.8, note: null, tags: null, visited_at: null, primary_image_url: null, city_id: 'city-1' },
@@ -113,7 +115,7 @@ describe('RankHomeScreen', () => {
 
     const { findByText } = renderScreen();
     await waitFor(() => expect(mockedQueue).toHaveBeenCalled());
-    expect(await findByText("Couldn't load places waiting to be ranked")).toBeTruthy();
+    expect(await findByText("Can't reach CRAVE — check your connection.")).toBeTruthy();
     expect(await findByText('Loved Place')).toBeTruthy();
   });
 

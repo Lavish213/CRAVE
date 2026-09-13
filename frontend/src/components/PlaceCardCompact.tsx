@@ -148,7 +148,7 @@ const styles = StyleSheet.create({
     width: 64,
     height: 64,
     borderRadius: Radius.sm,
-    backgroundColor: Colors.surfaceElevated,
+    backgroundColor: Colors.surfaceWarm,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -167,7 +167,7 @@ const styles = StyleSheet.create({
   chip: {
     paddingHorizontal: 7,
     paddingVertical: 2,
-    backgroundColor: Colors.border,
+    backgroundColor: Colors.chipBg,
     borderRadius: 10,
   },
   chipText: { fontSize: 11, color: Colors.textSecondary },

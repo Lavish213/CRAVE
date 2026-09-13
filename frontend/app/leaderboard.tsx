@@ -29,6 +29,7 @@ import { AuthSheet } from '../src/components/AuthSheet';
 import { LeaderboardRow, fetchLeaderboard } from '../src/api/social';
 import { withImageWidth, AVATAR_IMAGE_WIDTH } from '../src/utils/imageUrl';
 import { useAuthStore } from '../src/stores/authStore';
+import { errorMessageFor } from '../src/utils/errorMessage';
 
 type Scope = 'global' | 'friends';
 
@@ -71,6 +72,7 @@ export default function LeaderboardScreen() {
     data: rows = [],
     isLoading: loading,
     isError,
+    error,
     isRefetching: refreshing,
     refetch,
   } = useQuery({
@@ -138,7 +140,10 @@ export default function LeaderboardScreen() {
           <SkeletonRowList count={7} avatar />
         </View>
       ) : isError ? (
-        <ErrorState message="Couldn't load the leaderboard" onRetry={() => canFetch && refetch()} />
+        <ErrorState
+          message={errorMessageFor(error, "Couldn't load the leaderboard")}
+          onRetry={() => canFetch && refetch()}
+        />
       ) : rows.length === 0 ? (
         <EmptyState
           icon="trophy-outline"
@@ -158,7 +163,7 @@ export default function LeaderboardScreen() {
             <RefreshControl
               refreshing={refreshing}
               onRefresh={() => canFetch && refetch()}
-              tintColor={Colors.primary}
+              tintColor={Colors.brand}
             />
           }
           renderItem={({ item }) => {
@@ -238,9 +243,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     minHeight: 40,
   },
-  toggleBtnActive: { backgroundColor: Colors.primary },
+  toggleBtnActive: { backgroundColor: Colors.selectedBg },
   toggleText: { color: Colors.textSecondary, fontSize: 14, fontWeight: '700' },
-  toggleTextActive: { color: '#FFFFFF' },
+  toggleTextActive: { color: Colors.onActionPrimary },
 
   // FlashList's contentContainerStyle doesn't reliably support `gap`
   // (unlike FlatList) -- https://github.com/Shopify/flash-list/issues/2097 --
@@ -257,7 +262,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.border,
   },
-  rowMe: { borderColor: Colors.primary },
+  rowMe: { borderColor: Colors.selectedBorder },
   rank: {
     color: Colors.textSecondary,
     fontSize: 16,
@@ -270,7 +275,7 @@ const styles = StyleSheet.create({
   avatarInitial: { color: Colors.text, fontSize: 16, fontWeight: '800' },
   meta: { flex: 1 },
   name: { color: Colors.text, fontSize: 15, fontWeight: '700' },
-  you: { color: Colors.primary, fontSize: 12, fontWeight: '800' },
+  you: { color: Colors.brand, fontSize: 12, fontWeight: '800' },
   handle: { color: Colors.textSecondary, fontSize: 12, marginTop: 1 },
   countWrap: { alignItems: 'flex-end' },
   count: { color: Colors.text, fontSize: 17, fontWeight: '800' },

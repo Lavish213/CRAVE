@@ -121,7 +121,7 @@ describe('MapScreen — onMapReady / spurious first-region fix', () => {
       interpretation: {
         original_query: 'ramen near me', lookup_query: 'ramen', price_tier: null,
         required_categories: [], hard_constraints: [], unsupported_hard_constraints: [],
-        context: ['near_me'], uncertain: false,
+        context: ['near_me'], required_amenities: [], uncertain: false,
       },
       items: [
         SEARCH_PLACE,
@@ -235,16 +235,28 @@ describe('MapScreen — onMapReady / spurious first-region fix', () => {
     });
 
     expect(mockedFetch).toHaveBeenCalledTimes(1);
+    const firstSignal = mockedFetch.mock.calls[0][1];
+    expect(firstSignal).toEqual(expect.any(AbortSignal));
+    expect(firstSignal?.aborted).toBe(false);
     fireEvent.press(getByLabelText('Search this map area'));
     await waitFor(() => expect(mockedFetch).toHaveBeenCalledTimes(2));
     const [, secondCallArgs] = mockedFetch.mock.calls.map((c) => c[0]);
+    const secondSignal = mockedFetch.mock.calls[1][1];
+    expect(firstSignal?.aborted).toBe(true);
+    expect(secondSignal?.aborted).toBe(false);
     expect(secondCallArgs.lat).toBeCloseTo(37.9, 5);
     expect(secondCallArgs.lng).toBeCloseTo(-122.6, 5);
   });
 
   it('shows a retryable error banner on fetch failure, and retry re-issues the same request', async () => {
     mockedFetch.mockReset();
-    mockedFetch.mockRejectedValueOnce(new Error('Request failed with status code 500'));
+    // A real backend error response (status 500), not a bare network
+    // Error -- the latter is now classified as offline (no `.response`
+    // at all) and shows different copy; see errorMessageFor in
+    // MapScreenCore.tsx.
+    const serverErr: any = new Error('Request failed with status code 500');
+    serverErr.response = { status: 500 };
+    mockedFetch.mockRejectedValueOnce(serverErr);
     mockedFetch.mockResolvedValueOnce([REAL_FEATURE]);
 
     const { findByText, getByLabelText } = render(<MapScreen />);
@@ -263,6 +275,26 @@ describe('MapScreen — onMapReady / spurious first-region fix', () => {
     expect(secondArgs.lng).toBeCloseTo(firstArgs.lng, 5);
     expect(firstArgs.radius_km).toBeDefined();
     expect(secondArgs.radius_km).toBeCloseTo(firstArgs.radius_km as number, 5);
+  });
+
+  it('shows offline-specific banner copy for a genuine connectivity failure (no response at all)', async () => {
+    mockedFetch.mockReset();
+    mockedFetch.mockRejectedValueOnce(new Error('network unreachable'));
+
+    const { findByText } = render(<MapScreen />);
+
+    expect(await findByText("Can't reach CRAVE — check your connection.")).toBeTruthy();
+  });
+
+  it('shows the rate-limit-specific banner on a 429, instead of the generic load-failure copy', async () => {
+    mockedFetch.mockReset();
+    const rateLimited: any = new Error('Rate limit reached. Please wait a moment.');
+    rateLimited.response = { status: 429 };
+    mockedFetch.mockRejectedValueOnce(rateLimited);
+
+    const { findByText } = render(<MapScreen />);
+
+    expect(await findByText("You're doing that too fast — wait a moment and try again.")).toBeTruthy();
   });
 
   it('labels retained pins as stale when a later viewport request fails', async () => {

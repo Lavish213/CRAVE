@@ -51,4 +51,10 @@ describe('searchPlaces', () => {
       signal: undefined,
     });
   });
+
+  it('rejects a malformed payload instead of reporting a false empty result', async () => {
+    mockedGet.mockResolvedValueOnce({ data: { items: null } });
+
+    await expect(searchPlaces({ query: 'ramen' })).rejects.toThrow('items must be an array');
+  });
 });

@@ -33,6 +33,8 @@ import { useAuthStore } from '../../src/stores/authStore';
 import { AuthSheet } from '../../src/components/AuthSheet';
 import { useDecisionSession } from '../../src/hooks/useDecisionSession';
 import { DecisionReasonCode, DecisionRole, DecisionSessionCard } from '../../src/api/decisionSession';
+import { foundationQueryKey, STALE_TIME } from '../../src/contracts/foundationGate';
+import { errorMessageFor } from '../../src/utils/errorMessage';
 
 const VIEWABILITY_CONFIG = { itemVisiblePercentThreshold: 50, minimumViewTime: 250 };
 const DISCOVERY_LIMIT = 4;
@@ -50,7 +52,7 @@ function decisionReason(card: DecisionSessionCard): string | undefined {
   return reason ? DECISION_REASON_COPY[reason] : undefined;
 }
 
-type DiscoveryReason = 'taste_extension' | 'hole_in_wall' | 'from_craves';
+type DiscoveryReason = 'taste_extension' | 'hole_in_wall' | 'from_craves' | 'discover_new';
 
 interface DiscoverySection {
   reason: DiscoveryReason;
@@ -89,7 +91,8 @@ export default function FeedScreen() {
   const user = useAuthStore((s) => s.user);
 
   const userLocation = useLocation();
-  const recommendations = useRecommendations(Boolean(user));
+  const recommendationsQuery = useRecommendations(Boolean(user));
+  const recommendations = recommendationsQuery.data ?? [];
   const decisionSession = useDecisionSession();
   const decisionCards = decisionSession.data?.cards ?? [];
 
@@ -113,18 +116,22 @@ export default function FeedScreen() {
     isFetching,
     isFetchingNextPage,
     isError,
+    error,
+    isRefetchError,
+    dataUpdatedAt,
     refetch,
   } = useInfiniteQuery({
-    queryKey: ['feed', feedParams],
-    queryFn: ({ pageParam }) =>
+    queryKey: foundationQueryKey({ scope: selectedCity ? 'city' : 'session', entity: 'feed', params: feedParams }),
+    queryFn: ({ pageParam, signal }) =>
       fetchPlaces({
         ...feedParams,
         pagination: 'cursor',
         cursor: pageParam,
+        signal,
       }),
     initialPageParam: null as string | null,
     getNextPageParam: (lastPage) => lastPage.next_cursor ?? undefined,
-    staleTime: 2 * 60 * 1000,
+    staleTime: STALE_TIME.normal,
   });
 
   const places = useMemo(() => {
@@ -142,6 +149,11 @@ export default function FeedScreen() {
 
   const total = data?.pages[0]?.total ?? 0;
   const initialLoaded = data !== undefined || isError;
+  const staleDataUpdatedAt = Math.max(
+    isRefetchError ? dataUpdatedAt : 0,
+    decisionSession.isRefetchError ? decisionSession.dataUpdatedAt : 0,
+    recommendationsQuery.isRefetchError ? recommendationsQuery.dataUpdatedAt : 0,
+  );
 
   if (__DEV__ && data) {
     const lastPage = data.pages[data.pages.length - 1];
@@ -183,7 +195,11 @@ export default function FeedScreen() {
 
   const handleRefresh = () => {
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    void Promise.all([refetch(), decisionSession.refetch()]);
+    void Promise.all([
+      refetch(),
+      decisionSession.refetch(),
+      ...(user ? [recommendationsQuery.refetch()] : []),
+    ]);
   };
 
   const handleEndReached = () => {
@@ -242,6 +258,16 @@ export default function FeedScreen() {
         title: 'FROM YOUR CRAVES',
         subtitle: 'Places you already wanted to try that still deserve a decision.',
         places: fromCraves,
+      });
+    }
+
+    const discoveryTail = uniquePlaces(filteredPlaces, excluded, Number.POSITIVE_INFINITY);
+    if (discoveryTail.length > 0) {
+      sections.push({
+        reason: 'discover_new',
+        title: 'MORE TO DISCOVER',
+        subtitle: 'The rest of today’s nearby options, with a real end to the list.',
+        places: discoveryTail,
       });
     }
 
@@ -422,6 +448,22 @@ export default function FeedScreen() {
           <Text style={styles.decisionRetryText}>Decision Session unavailable. Retry</Text>
         </TouchableOpacity>
       ) : null}
+      {recommendationsQuery.isError && user ? (
+        <TouchableOpacity
+          style={styles.decisionRetry}
+          onPress={() => void recommendationsQuery.refetch()}
+          accessibilityRole="button"
+          accessibilityLabel="Retry personalized discovery"
+        >
+          <Ionicons name="refresh" size={16} color={Colors.text} />
+          <Text style={styles.decisionRetryText}>Personalized discovery unavailable. Retry</Text>
+        </TouchableOpacity>
+      ) : null}
+      {staleDataUpdatedAt > 0 ? (
+        <Text style={styles.staleNotice} accessibilityRole="alert">
+          Showing saved results from {new Date(staleDataUpdatedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}.
+        </Text>
+      ) : null}
     </View>
   );
 
@@ -442,7 +484,7 @@ export default function FeedScreen() {
           <Ionicons
             name="options-outline"
             size={20}
-            color={hasActiveFilters(filters) ? Colors.primary : Colors.textSecondary}
+            color={hasActiveFilters(filters) ? Colors.brand : Colors.textSecondary}
           />
         </TouchableOpacity>
       </View>
@@ -454,7 +496,7 @@ export default function FeedScreen() {
       ) : (
         <Animated.View style={[{ flex: 1 }, { opacity: feedOpacity }]}>
           {isError && decisionCards.length === 0 ? (
-            <ErrorState message="Couldn't load places" onRetry={() => void refetch()} />
+            <ErrorState message={errorMessageFor(error, "Couldn't load places")} onRetry={() => void refetch()} />
           ) : isCatchingUpForFilter ? (
             <View style={styles.skeletonWrap}><SkeletonFeed count={4} /></View>
           ) : rows.length === 0 ? (
@@ -520,14 +562,16 @@ export default function FeedScreen() {
                 <RefreshControl
                   refreshing={isFetching && !isFetchingNextPage && initialLoaded}
                   onRefresh={handleRefresh}
-                  tintColor={Colors.primary}
+                  tintColor={Colors.brand}
                 />
               }
               ListHeaderComponent={decisionHeader}
               ListFooterComponent={
                 isFetchingNextPage
-                  ? <ActivityIndicator color={Colors.primary} style={styles.listFooter} />
-                  : null
+                  ? <ActivityIndicator color={Colors.brand} style={styles.listFooter} />
+                  : !hasNextPage
+                    ? <Text style={styles.endState}>That’s everything new today.</Text>
+                    : null
               }
             />
           )}
@@ -560,7 +604,7 @@ const styles = StyleSheet.create({
     paddingBottom: Spacing.lg,
   },
   decisionEyebrow: {
-    color: Colors.primary,
+    color: Colors.brand,
     fontSize: 12,
     fontWeight: '800',
     letterSpacing: 1.6,
@@ -591,6 +635,12 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
   },
+  staleNotice: {
+    color: Colors.textSecondary,
+    fontSize: 13,
+    lineHeight: 18,
+    marginTop: Spacing.sm,
+  },
   decisionCard: { marginBottom: 0 },
   discoveryHeader: {
     paddingTop: Spacing.lg,
@@ -609,6 +659,13 @@ const styles = StyleSheet.create({
     marginTop: 3,
   },
   listFooter: { margin: Spacing.lg },
+  endState: {
+    color: Colors.textSecondary,
+    fontSize: 14,
+    lineHeight: 20,
+    textAlign: 'center',
+    paddingVertical: Spacing.xl,
+  },
   skeletonWrap: { flex: 1, paddingHorizontal: 12, paddingTop: 10 },
   header: {
     paddingHorizontal: Spacing.lg,
@@ -617,7 +674,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
   },
-  wordmark: { fontSize: 26, fontWeight: '900', color: Colors.primary, letterSpacing: 3 },
+  wordmark: { fontSize: 26, fontWeight: '900', color: Colors.brand, letterSpacing: 3 },
   filterBtn: {
     padding: Spacing.sm,
     minWidth: 44,

@@ -109,8 +109,9 @@ def get_hitlist(
     """
     Was GET /{user_id} — a path param nobody verified, so anyone could pull
     anyone else's hitlist. Changed to /me: the id always comes from the
-    verified token now. (Confirmed unused by the shipped frontend, which
-    calls /saves instead — see CRAVE_REMEDIATION_PLAN.md section A.)
+    verified token now. Used directly by the shipped frontend's
+    getMyPlaceSaves() (src/api/crave.ts), which backs the Craves "Added"
+    section.
     """
     items = get_user_hitlist(
         db=db,
