@@ -247,6 +247,7 @@ export default function MapScreen() {
   const [mapError, setMapError] = useState(false);
   const [pendingSearchRegion, setPendingSearchRegion] = useState<Region | null>(null);
   const requestIdRef = useRef(0);
+  const requestAbortRef = useRef<AbortController | null>(null);
   const lastFetchCoverageRef = useRef<FetchCoverage | null>(null);
 
   const currentFeatureContextKey = viewMode === 'saved'
@@ -277,6 +278,21 @@ export default function MapScreen() {
   const [mapRegion, setMapRegion] = useState<Region>(initialRegion);
   const lastAttemptRef = useRef<FetchCoverage | null>(null);
 
+  useEffect(() => () => requestAbortRef.current?.abort(), []);
+
+  const cancelActiveRequest = useCallback(() => {
+    requestAbortRef.current?.abort();
+    requestAbortRef.current = null;
+    requestIdRef.current += 1;
+  }, []);
+
+  const beginRequest = useCallback(() => {
+    requestAbortRef.current?.abort();
+    const controller = new AbortController();
+    requestAbortRef.current = controller;
+    return { requestId: ++requestIdRef.current, signal: controller.signal };
+  }, []);
+
   const fitFeatures = useCallback((items: NormalizedMapFeature[], animated: boolean) => {
     if (items.length === 0) return;
     const coordinates = items.map((feature) => ({
@@ -303,7 +319,7 @@ export default function MapScreen() {
     // every existing call site here keeps its original (unwidened)
     // behavior untouched.
     (lat: number, lng: number, radiusKm: number, widen: boolean = false) => {
-      const myRequestId = ++requestIdRef.current;
+      const { requestId: myRequestId, signal } = beginRequest();
       const requestContextKey = `city:${selectedCity?.id ?? 'nearby'}`;
       lastAttemptRef.current = { lat, lng, radiusKm };
       setMapError(false);
@@ -314,7 +330,7 @@ export default function MapScreen() {
         lng,
         radius_km: radiusKm,
         ...(widen ? { limit: MAX_MAP_FETCH_LIMIT } : {}),
-      })
+      }, signal)
         .then((normalized) => {
           if (myRequestId !== requestIdRef.current) return;
           if (__DEV__) {
@@ -358,7 +374,7 @@ export default function MapScreen() {
           setMapLoading(false);
         });
     },
-    [selectedCity?.id],
+    [beginRequest, selectedCity?.id],
   );
 
   // Re-fetch at the wider limit the moment a filter first becomes active
@@ -403,7 +419,7 @@ export default function MapScreen() {
       }];
     });
     const contextKey = `search:${searchMapHandoff.query}:${searchMapHandoff.scope}`;
-    requestIdRef.current += 1;
+    cancelActiveRequest();
     setViewMode('search');
     setFeatures(mapped);
     setFeaturesContextKey(contextKey);
@@ -411,11 +427,12 @@ export default function MapScreen() {
     setMapLoading(false);
     setMapError(false);
     fitFeatures(mapped, true);
-  }, [fitFeatures, searchMapHandoff]);
+  }, [cancelActiveRequest, fitFeatures, searchMapHandoff]);
 
   useEffect(() => {
     if (viewMode !== 'city') return;
     if (!selectedCity && !userLocation) {
+      cancelActiveRequest();
       setFeatures([]);
       setFeaturesContextKey(null);
       setMapLoaded(false);
@@ -430,7 +447,7 @@ export default function MapScreen() {
     setFeaturesContextKey(null);
     setMapLoaded(false);
     loadFeatures(mapLat, mapLng, prefetchRadiusKmForRegion(cityToRegion(mapLat, mapLng)));
-  }, [selectedCity?.id, mapLat, mapLng, loadFeatures, userLocation?.lat, userLocation?.lng, viewMode]);
+  }, [cancelActiveRequest, selectedCity?.id, mapLat, mapLng, loadFeatures, userLocation?.lat, userLocation?.lng, viewMode]);
 
   useEffect(() => {
     if (viewMode !== 'city') return;
@@ -441,11 +458,11 @@ export default function MapScreen() {
   }, [selectedCity?.id, mapLat, mapLng, viewMode]);
 
   const loadSavedPlaces = useCallback(() => {
-    const myRequestId = ++requestIdRef.current;
+    const { requestId: myRequestId, signal } = beginRequest();
     const requestContextKey = `saved:${user?.id ?? 'signed-out'}`;
     setMapError(false);
     setMapLoading(true);
-    fetchSavedPlacesGeoJSON()
+    fetchSavedPlacesGeoJSON(signal)
       .then((normalized) => {
         if (myRequestId !== requestIdRef.current) return;
         if (__DEV__) console.log('[MAP] SAVED_FEATURES_LOADED', { count: normalized.length });
@@ -484,7 +501,7 @@ export default function MapScreen() {
         if (myRequestId !== requestIdRef.current) return;
         setMapLoading(false);
       });
-  }, [user?.id]);
+  }, [beginRequest, user?.id]);
 
   useEffect(() => {
     if (viewMode !== 'saved') return;

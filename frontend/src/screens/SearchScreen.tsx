@@ -26,6 +26,7 @@ import { useCravesStore } from '../stores/cravesStore';
 import { useRecentSearchesStore } from '../stores/recentSearchesStore';
 import { fetchMyRankings } from '../api/social';
 import { SearchScope, useDiscoveryContextStore } from '../stores/discoveryContextStore';
+import { foundationQueryKey, STALE_TIME } from '../contracts/foundationGate';
 
 function makeSearchSessionId(): string {
   return randomUUID();
@@ -223,7 +224,17 @@ export default function SearchScreen() {
   const effectivePageSize = filtersActive ? SEARCH_MAX_PAGE_SIZE : resultLimit;
 
   const searchQuery = useQuery({
-    queryKey: ['search', debouncedQuery, userLocation?.lat, userLocation?.lng, effectiveRadiusMiles, effectivePageSize],
+    queryKey: foundationQueryKey({
+      scope: 'public',
+      entity: 'search',
+      params: {
+        query: debouncedQuery,
+        lat: userLocation?.lat,
+        lng: userLocation?.lng,
+        radius_miles: effectiveRadiusMiles,
+        page_size: effectivePageSize,
+      },
+    }),
     queryFn: ({ signal }) => searchPlaces({
       query: debouncedQuery,
       lat: userLocation?.lat,
@@ -232,22 +243,25 @@ export default function SearchScreen() {
       page_size: effectivePageSize,
     }, signal),
     enabled: debouncedQuery.length >= 2,
-    staleTime: 60_000,
+    staleTime: STALE_TIME.short,
   });
 
   const rankingQuery = useQuery({
-    queryKey: ['myRankings', user?.id ?? null, 'search-scope'],
+    queryKey: user?.id
+      ? foundationQueryKey({ scope: 'user', entity: 'rankings', userId: user.id, params: { consumer: 'search-scope' } })
+      : ['crave', 'user', 'rankings', 'search-scope', 'signed-out'],
     queryFn: fetchMyRankings,
     enabled: Boolean(user) && scope === 'ranked',
-    staleTime: 60_000,
+    staleTime: STALE_TIME.short,
   });
 
   const searchData = searchQuery.data;
   const results = searchData?.items ?? [];
   const rankings = rankingQuery.data ?? [];
   const searched = debouncedQuery.length >= 2 && !searchQuery.isLoading && searchData !== undefined;
+  const searchInitialError = searchQuery.isError && searchData === undefined;
   const rankedScopeLoading = scope === 'ranked' && rankingQuery.isLoading;
-  const rankedScopeError = scope === 'ranked' && rankingQuery.isError;
+  const rankedScopeError = scope === 'ranked' && rankingQuery.isError && rankingQuery.data === undefined;
 
   useEffect(() => {
     if (submittedQuery && submittedQuery === debouncedQuery && searchData?.exact_match_id) {
@@ -338,9 +352,9 @@ export default function SearchScreen() {
 
   const showZeroState = query.length === 0 && !searchQuery.isLoading;
   const showBelowThreshold = query.length > 0 && query.length < 2;
-  const showNoResults = searched && results.length === 0 && !searchQuery.isError;
+  const showNoResults = searched && results.length === 0 && !searchInitialError;
   const showNoFilterMatches = searched && results.length > 0 && filteredResults.length === 0 && !rankedScopeLoading && !rankedScopeError;
-  const canRenderResults = !showZeroState && !showNoResults && !showNoFilterMatches && !searchQuery.isError && !rankedScopeLoading && !rankedScopeError && filteredResults.length > 0;
+  const canRenderResults = !showZeroState && !showNoResults && !showNoFilterMatches && !searchInitialError && !rankedScopeLoading && !rankedScopeError && filteredResults.length > 0;
 
   return (
     <View style={styles.container}>
@@ -456,7 +470,12 @@ export default function SearchScreen() {
       )}
 
       {searchQuery.isLoading && <View style={styles.list}><SkeletonRowList count={5} /></View>}
-      {searchQuery.isError && !searchQuery.isLoading && <ErrorState message="Couldn't search right now." onRetry={() => searchQuery.refetch()} />}
+      {searchInitialError && !searchQuery.isLoading && <ErrorState message="Couldn't search right now." onRetry={() => searchQuery.refetch()} />}
+      {searchQuery.isRefetchError && searchQuery.dataUpdatedAt > 0 && (
+        <View style={styles.staleNotice} accessibilityRole="alert">
+          <Text style={styles.staleNoticeText}>Showing saved search results — pull to retry.</Text>
+        </View>
+      )}
 
       {showZeroState && (
         <View style={styles.zeroState}>
@@ -606,6 +625,8 @@ const styles = StyleSheet.create({
   barRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
   inputRowFlex: { flex: 1 },
   filterBtn: { padding: Spacing.sm, minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
+  staleNotice: { paddingHorizontal: Spacing.md, paddingVertical: Spacing.xs },
+  staleNoticeText: { color: Colors.textSecondary, fontSize: 13, lineHeight: 18 },
   inputRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.surface, borderRadius: Radius.md, borderWidth: 1, borderColor: Colors.border, paddingHorizontal: Spacing.md, paddingVertical: 10, gap: Spacing.sm, minHeight: 46 },
   input: { flex: 1, color: Colors.text, fontSize: 15 },
   cityContext: { color: Colors.textSecondary, fontSize: 12, fontWeight: '500', paddingLeft: Spacing.xs },

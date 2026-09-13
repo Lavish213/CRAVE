@@ -6,6 +6,7 @@
 // re-logged for the same query, but exposure tracking does reset for a
 // genuinely new one.
 import React from 'react';
+import { RefreshControl } from 'react-native';
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import SearchScreen from '../app/(tabs)/search';
@@ -149,6 +150,23 @@ describe('SearchScreen — debounce, clear, and retry', () => {
 
     await waitFor(() => expect(mockedSearchPlaces).toHaveBeenCalledTimes(2));
     expect(await findByText('1 result')).toBeTruthy();
+  });
+
+  it('keeps cached results visible and labels them stale when refresh fails', async () => {
+    mockedSearchPlaces
+      .mockResolvedValueOnce(makeSearchResult([makePlace('p0')]))
+      .mockRejectedValueOnce(new Error('offline'));
+    const { getByLabelText, findByText, UNSAFE_getByType } = renderScreen();
+
+    act(() => getByLabelText('Search input').props.onChangeText('ramen'));
+    expect(await findByText('1 result')).toBeTruthy();
+
+    await act(async () => {
+      await UNSAFE_getByType(RefreshControl).props.onRefresh();
+    });
+
+    expect(await findByText('Showing saved search results — pull to retry.')).toBeTruthy();
+    expect(getByLabelText(/^p0,/)).toBeTruthy();
   });
 });
 

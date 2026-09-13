@@ -1,30 +1,27 @@
 # Active agent state
 
-Status: merged
+Status: ready-for-review
 Owner: Codex
-Branch: codex/feed-decision-session
-Base SHA: 7bf81bda3dab274f00ec5db35c68c8235f7a3c2f
-Commit SHA: b178f09c528254e0f64519c1add48e578a029d4a
-Scope: Feed / Decision Session vertical-slice audit and narrow implementation
-against the locked frontend execution order, Feed screen contract, Foundation
-Gate contracts, and the merged Place Detail proving patterns. Verify the full
-Feed -> Place -> outcome handoff and produce an evidence-backed defect log.
-Locked files: frontend/app/(tabs)/index.tsx, frontend/__tests__/feed.test.tsx,
-frontend/src/hooks/useDecisionSession.ts,
-frontend/src/hooks/useDecisionSession.test.tsx,
-frontend/src/hooks/useRecommendations.ts,
-frontend/src/hooks/useRecommendations.test.tsx,
-frontend/src/api/decisionSession.ts, frontend/src/api/decisionSession.test.ts,
-frontend/src/api/places.ts, frontend/src/components/PlaceCard.tsx,
+Branch: codex/search-map-contract-propagation
+Base SHA: 755f02b
+Commit SHA: f888f281668fb224b5beb33f5effc13d0f57a175
+Scope: Search/Map propagation-only audit and bounded production hardening
+against the locked frontend execution order and certified Search/Map UX.
+Locked files: frontend/app/(tabs)/search.tsx, frontend/app/(tabs)/map.tsx,
+frontend/src/screens/SearchScreen.tsx, frontend/src/screens/MapScreenCore.tsx,
+frontend/src/api/search.ts, frontend/src/api/map.ts,
+frontend/__tests__/search.test.tsx, frontend/__tests__/search-decision-support.test.tsx,
+frontend/__tests__/map.test.tsx, frontend/__tests__/map-instrumentation.test.tsx,
+frontend/src/api/search.test.ts, frontend/src/api/map.test.ts,
 .agent-bridge/STATE.md, and .agent-bridge/codex-to-claude.md.
-Verification: PR #261 merged by squash as `b178f09` after final review fixes.
-Updated PR-head CI and CodeQL passed. CodeRabbit's two actionable Feed findings
-were resolved/outdated after commit `bc01c29`. Local verification on the final
-branch head passed the focused Feed/Foundation suites (5 suites, 30 tests),
-`npx tsc --noEmit --pretty false`, and full frontend Jest (51 suites, 542
-tests).
-Explicit exclusions: no Search/Map redesign or edits; no revival of PR #254;
-no new recommender architecture; no backend or production-data changes.
+Verification: focused Search/Map/API suites passed (6 suites, 63 tests);
+`npx tsc --noEmit --pretty false` passed; full frontend Jest passed (52 suites,
+547 tests). PR CI/CodeQL, CodeRabbit, and a final actual-head diff audit remain
+required before the binary merge-readiness verdict.
+Explicit exclusions: no Search/Map redesign or information-architecture,
+visual-hierarchy, candidate-semantics, or ranking-ownership changes; no PR
+#254 or Posting V2 changes; no broad React Query migration; no backend/data
+changes unless a concrete bounded contract gap proves them indispensable.
 
 ## FRONTEND EXECUTION ORDER — LOCKED (2026-09-11)
 
