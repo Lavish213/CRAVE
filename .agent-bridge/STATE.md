@@ -2,6 +2,57 @@
 
 Status: merged
 Owner: Claude
+Branch: claude/core5-mockup-home-settings (merged, can be deleted)
+Base SHA: a8f463f (origin/main tip after PR #289)
+Commit SHA: 804abbc (PR #291, squash-merged)
+Scope: user asked to "implement mock screens" from
+`docs/design/CRAVE_CORE_5_SCREEN_MOCKUPS.md` (a warmer/premium/food-photo-led
+direction across Home/Search/Results/Map/Settings, explicitly marked "not
+Penpot implementation-ready"). Clarified scope with the user directly since
+Search/Map/Results are locked/certified in
+`CRAVE_FRONTEND_EXECUTION_ORDER.md` and the mockup's own light/cream palette
+would clash with the app's shipped dark UI V2 theme if applied to only two
+screens:
+- Only Home ((tabs)/index.tsx) and Settings (settings.tsx) touched --
+  user confirmed these are the two NOT under the Search/Map lock.
+- Home: user explicitly chose "visual restyle only, keep all
+  functionality" over matching the mockup's much simpler literal layout
+  (one craving prompt + one hero card + a small grid) -- the real Home
+  tab has a contract-backed Decision Session (Best Fit/Safe Bet/Wildcard)
+  plus a multi-section discovery feed built earlier this session, and
+  matching the mockup literally would have meant hiding/removing that
+  real functionality. Restyled only: the "DECISION SESSION" eyebrow is
+  now a rounded pill chip (`Colors.chipActiveBg`/`chipActiveText`)
+  instead of bare caps text, and the heading uses the shared
+  `Typography.headline` role instead of a one-off inline size.
+- Settings: header restyled from a plain "CRAVE" wordmark + small
+  tagline to the mockup's actual two-line hierarchy -- small "SETTINGS"
+  eyebrow + bold "Make CRAVE fit you." headline, via `Typography.headline`.
+  Did NOT add the mockup's "Dietary & allergies" preferences row -- no
+  such settings screen exists yet (dietary handling lives in Search's
+  interpreter/FilterSheet only), so it would have been a dead control.
+- Did NOT attempt the mockup's literal cream/light theme -- flipping
+  just two screens to light while the rest of the app (Search/Map/
+  Craves/Rank/Profile/Place Detail) stays dark UI V2 would read as a
+  broken half-migrated app when switching tabs. Kept the existing dark
+  token system, pulled over only the typographic hierarchy and pill/
+  badge visual language.
+Locked files: none -- closed.
+Verification: `npx tsc --noEmit` clean. `npx jest --ci` -> 57/57 suites,
+552/552 tests, no assertions needed updating. CI green (Guard, Frontend,
+both Backend jobs, both Analyze jobs, CodeQL); CodeRabbit actually ran
+this time (not rate-limited) -- zero actionable comments, only a
+docstring-coverage nudge this repo has never acted on for simple render
+helpers (consistent with every prior PR this session).
+Next action: none from me. The other four Core 5 mockup screens
+(Search, Results, Map) remain untouched by design -- certified/locked;
+revisit only with a new, proven, documented contract gap per doctrine,
+or explicit user direction to supersede the lock.
+
+---
+
+Status: merged
+Owner: Claude
 Branch: claude/craves-propagation-289 (merged, can be deleted)
 Base SHA: 4525a81 (origin/main tip after PR #288)
 Commit SHA: a8f463f (PR #289, squash-merged)

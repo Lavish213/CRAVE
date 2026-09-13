@@ -1,3 +1,71 @@
+# H-20260913-core5-mockup-home-settings
+
+Status: resolved -- merged
+Owner: Claude
+Branch: claude/core5-mockup-home-settings (merged, can be deleted)
+Base SHA: a8f463f (origin/main tip after PR #289)
+Commit SHA: 804abbc (PR #291, squash-merged)
+Allowed next files: none -- closed.
+
+## Context
+
+User asked to "implement mock screens." Found two candidate boards in
+`docs/design/`: `CRAVE_CORE_5_SCREEN_MOCKUPS.md` (Home/Search/Results/
+Map/Settings, warmer direction) and `SEARCH_MAP_V15_SCREEN_MOCKUPS.md`
+(16-state Search/Map board, mostly already implemented via PRs #225/
+#226/#229). User picked the Core 5 board. Both boards say "not Penpot
+implementation-ready" in their own text.
+
+## What I found and did
+
+Search/Map/Results in that board are locked/certified in
+`CRAVE_FRONTEND_EXECUTION_ORDER.md` ("must not redesign... without a new,
+proven, documented contract gap") -- flagged this conflict to the user
+directly rather than silently redesigning a certified screen or silently
+skipping the ask. User confirmed: only Home + Settings, the two screens
+not under that lock.
+
+Home's mockup is a much simpler screen (one craving prompt, one hero
+card, a small nearby grid) than the real Home tab, which has a
+contract-backed Decision Session plus a multi-section discovery feed.
+Flagged this too rather than assuming; user chose visual restyle only,
+preserving all existing functionality/IA.
+
+Implemented:
+- Home: "DECISION SESSION" eyebrow -> rounded pill chip
+  (`chipActiveBg`/`chipActiveText`); heading -> shared
+  `Typography.headline` role instead of a one-off inline size.
+- Settings: header copy/hierarchy -> mockup's actual "SETTINGS" eyebrow
+  + "Make CRAVE fit you." headline (also `Typography.headline`),
+  replacing the plain wordmark + secondary tagline.
+
+Deliberately not done: the mockup's "Dietary & allergies" settings row
+(no destination screen exists -- would be a dead control); the mockup's
+literal cream/light color scheme (would fragment the app's visual
+identity across tabs, since every other screen stays dark UI V2); Home's
+literal simpler layout (would have meant removing real, contract-backed
+functionality).
+
+## Known gaps / risks
+
+- The other three Core 5 mockup screens (Search, Results, Map) remain
+  untouched -- certified/locked, correctly out of scope.
+- Real food photography (the mockup's own top self-critique) not
+  attempted -- no asset pipeline exists in this app.
+- The mockup's literal light/cream theme was not implemented anywhere;
+  if the user actually wants a full app-wide theme flip at some point,
+  that is a much larger, separate, explicit undertaking (all screens at
+  once, to avoid a half-migrated look) -- not started here.
+
+## Next action
+
+None from me. If the user wants Search/Map/Results' mockup direction
+pursued too, that requires either a new proven contract gap or explicit
+sign-off to supersede the existing certification -- ask before touching
+those three.
+
+---
+
 # H-20260913-craves-propagation
 
 Status: resolved -- merged
