@@ -1,3 +1,51 @@
+# H-20260913-profile-taste-error-taxonomy
+
+Status: ready-for-review
+Owner: Claude
+Branch: claude/profile-taste-error-taxonomy
+Base SHA: 04cfaa9 (origin/main tip after PR #273)
+Commit SHA: 5ee9674
+Allowed next files: none from me further on this -- PR #274 is open
+(https://github.com/Lavish213/CRAVE/pull/274), subscribed for CI/review
+events.
+
+## Outcome
+
+Closes the gap PR #273 flagged: `user/[id].tsx`, `taste-profile/
+[userId].tsx`, and `(tabs)/profile.tsx` had `.catch(() => null)` sites
+that discarded the real error object entirely (not just its message),
+so #273's new `errorMessageFor()` classifier had nothing to classify on
+these three screens. Captured each real error via an outer-scope
+closure variable inside the `.catch()`, then classified it with
+`errorMessageFor()` once the surrounding `Promise.all` settled. Same
+429/offline/generic-fallback taxonomy as every other screen fixed this
+pass. No UI/layout change.
+
+## Verification
+
+- `npx tsc --noEmit` -> clean
+- `npx jest --ci` -> 54/54 suites, 561/561 tests, including 11
+  pre-existing assertions fixed (mocked rejections had no `.response`,
+  so they're now correctly classified offline instead of matching the
+  old generic fallback copy)
+
+## Known gaps / risks
+
+- None identified for this three-screen fix specifically.
+- **Separate, more important finding**: this session's designated
+  branch for this lane, `claude/project-grade-systems-review-4ot7d0`,
+  turned out to be ~200 commits behind `main` and was not used for this
+  PR (opened off `main` directly instead, per explicit user direction).
+  Full detail in `.agent-bridge/STATE.md`'s "Coordination note,
+  2026-09-13" -- next owner of this lane should reconcile or retire
+  that branch before building on it.
+
+## Next action
+
+Merge #274 once CI is green (standing instruction this session: "merge
+it once green"). No further action needed from Codex on this specific
+fix.
+
 # H-20260913-video-report-wiring-audit
 
 Status: ready-for-review
