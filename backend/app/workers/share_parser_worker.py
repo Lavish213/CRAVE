@@ -34,6 +34,7 @@ import httpx
 from bs4 import BeautifulSoup
 from rapidfuzz import fuzz
 from sqlalchemy import and_, or_, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.db.session import SessionLocal
@@ -41,6 +42,7 @@ from app.db.models.crave_item import CraveItem
 from app.db.models.place import Place
 from app.db.models.place_signal import PlaceSignal
 from app.db.models.hitlist_save import HitlistSave
+from app.db.models.share_save_preference import ShareSavePreference
 from app.services.social.oembed_client import get_oembed_data
 from app.services.discovery.discovery_service import ingest_candidate_v2
 
@@ -314,6 +316,109 @@ def _clear_retry_state(item: CraveItem) -> None:
     item.next_retry_at = None
 
 
+def _auto_save_matched_item(db: Session, item: CraveItem, place: Place) -> bool:
+    """Add the normal save for a matched share unless the user opted out.
+
+    Callers own the transaction. This is deliberately the same dedup key used
+    by ``POST /saves`` so the saved-places map needs no parallel social layer.
+    """
+    if not item.submitted_by:
+        return False
+
+    preference = db.get(
+        ShareSavePreference,
+        {"user_id": item.submitted_by, "place_id": place.id},
+    )
+    if preference:
+        logger.info(
+            "share_auto_save_suppressed id=%s user_id=%s place_id=%s",
+            item.id, item.submitted_by, place.id,
+        )
+        return False
+
+    dedup = f"save:{item.submitted_by}:{place.id}"
+    existing_save = (
+        db.query(HitlistSave)
+        .filter(
+            HitlistSave.user_id == item.submitted_by,
+            HitlistSave.dedup_key == dedup,
+        )
+        .one_or_none()
+    )
+    if existing_save:
+        return False
+
+    db.add(HitlistSave(
+        user_id=item.submitted_by,
+        place_name=place.name,
+        place_id=place.id,
+        resolution_status="resolved",
+        dedup_key=dedup,
+        source_platform=item.source_type,
+        source_url=item.url,
+    ))
+    return True
+
+
+def reconcile_matched_share_saves(db: Session, limit: int = BATCH_SIZE) -> int:
+    """Repair historic matched shares that predate atomic match-and-save.
+
+    The pass is idempotent and respects ``ShareSavePreference``. It never
+    changes match state or re-fetches a URL, so it is safe to run every worker
+    cycle in small batches.
+    """
+    has_normal_save = (
+        select(HitlistSave.id)
+        .where(
+            HitlistSave.user_id == CraveItem.submitted_by,
+            HitlistSave.place_id == CraveItem.matched_place_id,
+            HitlistSave.dedup_key.like("save:%"),
+        )
+        .exists()
+    )
+    has_opted_out = (
+        select(ShareSavePreference.user_id)
+        .where(
+            ShareSavePreference.user_id == CraveItem.submitted_by,
+            ShareSavePreference.place_id == CraveItem.matched_place_id,
+        )
+        .exists()
+    )
+    items = (
+        db.execute(
+            select(CraveItem)
+            .where(
+                CraveItem.status == "matched",
+                CraveItem.submitted_by.isnot(None),
+                CraveItem.matched_place_id.isnot(None),
+                ~has_normal_save,
+                ~has_opted_out,
+            )
+            .order_by(CraveItem.processed_at.asc(), CraveItem.created_at.asc())
+            .limit(limit)
+        )
+        .scalars()
+        .all()
+    )
+    repaired = 0
+    for item in items:
+        place = db.get(Place, item.matched_place_id)
+        if not place or not place.is_active:
+            continue
+        try:
+            if _auto_save_matched_item(db, item, place):
+                db.commit()
+                repaired += 1
+                logger.info(
+                    "share_auto_save_reconciled id=%s user_id=%s place_id=%s",
+                    item.id, item.submitted_by, place.id,
+                )
+        except Exception:
+            db.rollback()
+            logger.exception("share_auto_save_reconcile_failed id=%s", item.id)
+    return repaired
+
+
 # ---------------------------------------------------------------------------
 # Single-item processor
 # ---------------------------------------------------------------------------
@@ -387,7 +492,9 @@ def _process_item(db: Session, item: CraveItem) -> None:
         item.status = "matched"
         _clear_retry_state(item)
 
-        # Create a PlaceSignal so this URL feeds into the ranking pipeline
+        # Create a PlaceSignal and the user's save before committing either
+        # outcome. A signal duplicate is an expected idempotency case and is
+        # contained in a savepoint; it must never roll back the outer match.
         signal = PlaceSignal(
             place_id=place_id,
             signal_type="creator",
@@ -398,74 +505,24 @@ def _process_item(db: Session, item: CraveItem) -> None:
             signal_class="discovery",
         )
         try:
-            db.add(signal)
-            db.flush()   # let DB raise IntegrityError if duplicate signal
-        except Exception as exc:
-            # Duplicate signal — that's fine, still mark as matched
-            db.rollback()
-            # Re-apply item fields explicitly after rollback so they are not lost
-            item.matched_place_id = place_id
-            item.status = "matched"
-            item.match_confidence = confidence
-            item.processed_at = now
-            _clear_retry_state(item)
+            with db.begin_nested():
+                db.add(signal)
+                db.flush()
+        except IntegrityError as exc:
             logger.debug("share_signal_duplicate id=%s error=%s", item.id, exc)
+
+        place = db.get(Place, place_id)
+        if not place:
+            raise RuntimeError(f"matched share place disappeared: {place_id}")
+        auto_saved = _auto_save_matched_item(db, item, place)
         db.commit()
         logger.info(
-            "share_matched id=%s place_id=%s confidence=%.2f",
+            "share_matched id=%s place_id=%s confidence=%.2f auto_saved=%s",
             item.id,
             place_id,
             confidence,
+            auto_saved,
         )
-
-        # Auto-save the matched place to the submitter's personal list.
-        # Before this, matching a share to a real place did nothing for
-        # the person who shared it beyond showing up in their pending
-        # items — they'd have to separately find and save the place
-        # themselves. This is the actual behavior competing apps in this
-        # space advertise ("share a video, it's on your map"): sharing
-        # should BE saving, not a separate step. Mirrors saves.py's
-        # create_save exactly (same "save:{user_id}:{place_id}" dedup_key
-        # convention) so the result is indistinguishable from a manual
-        # save — shows up in GET /saves, can be un-saved via DELETE
-        # /saves/{place_id}, etc. In its own try/except and commit,
-        # independent of the PlaceSignal handling above, so a failure
-        # here can never affect the "matched" status that's already
-        # committed.
-        if item.submitted_by:
-            try:
-                dedup = f"save:{item.submitted_by}:{place_id}"
-                existing_save = (
-                    db.query(HitlistSave)
-                    .filter(
-                        HitlistSave.user_id == item.submitted_by,
-                        HitlistSave.dedup_key == dedup,
-                    )
-                    .one_or_none()
-                )
-                if not existing_save:
-                    place = db.get(Place, place_id)
-                    if place:
-                        db.add(HitlistSave(
-                            user_id=item.submitted_by,
-                            place_name=place.name,
-                            place_id=place_id,
-                            resolution_status="resolved",
-                            dedup_key=dedup,
-                            source_platform=item.source_type,
-                            source_url=item.url,
-                        ))
-                        db.commit()
-                        logger.info(
-                            "share_auto_saved id=%s user_id=%s place_id=%s",
-                            item.id, item.submitted_by, place_id,
-                        )
-            except Exception as exc:
-                db.rollback()
-                logger.warning(
-                    "share_auto_save_failed id=%s user_id=%s place_id=%s error=%s",
-                    item.id, item.submitted_by, place_id, exc,
-                )
     else:
         item.status = "unmatched"
         _schedule_retry(item, now)
@@ -522,9 +579,10 @@ def run_share_parser(db: Session | None = None, limit: int = BATCH_SIZE) -> dict
     if own_session:
         db = SessionLocal()
 
-    summary = {"processed": 0, "matched": 0, "unmatched": 0, "error": 0}
+    summary = {"processed": 0, "matched": 0, "unmatched": 0, "error": 0, "reconciled": 0}
 
     try:
+        summary["reconciled"] = reconcile_matched_share_saves(db, limit=limit)
         now = datetime.now(timezone.utc)
         # 'pending' items are always eligible (first attempt). 'error'/
         # 'unmatched' items are only picked up once their backoff window has

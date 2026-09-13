@@ -30,7 +30,9 @@ from app.core.user_auth import get_current_user_id
 from app.core.rate_limit import rate_limit
 from app.db.session import get_db
 from app.db.models.hitlist_save import HitlistSave
+from app.db.models.crave_item import CraveItem
 from app.db.models.place import Place
+from app.db.models.share_save_preference import ShareSavePreference
 from app.api.v1.schemas.places import PlaceOut
 from app.api.v1.schemas.map import GeoJSONFeatureCollection
 from app.services.query.place_image_visibility_query import get_primary_image_urls_bulk
@@ -48,6 +50,14 @@ _VISIT_SOURCE = "save_memory"
 
 def _dedup_key(user_id: str, place_id: str) -> str:
     return f"{_DEDUP_PREFIX}:{user_id}:{place_id}"
+
+
+def _clear_share_auto_save_opt_out(db: Session, user_id: str, place_id: str) -> None:
+    """An explicit save is a newer preference than an earlier unsave."""
+    db.query(ShareSavePreference).filter(
+        ShareSavePreference.user_id == user_id,
+        ShareSavePreference.place_id == place_id,
+    ).delete(synchronize_session=False)
 
 
 # -------------------------------------------------------
@@ -130,6 +140,8 @@ def create_save(
         .one_or_none()
     )
     if existing:
+        _clear_share_auto_save_opt_out(db, user_id, payload.place_id)
+        db.commit()
         logger.debug("save_already_exists user_id=%s place_id=%s", user_id, payload.place_id)
         return {"status": "already_saved", "id": existing.id}
 
@@ -155,6 +167,7 @@ def create_save(
         reason_source=payload.reason_source,
     )
     db.add(save)
+    _clear_share_auto_save_opt_out(db, user_id, payload.place_id)
     db.commit()
 
     logger.info("save_created user_id=%s place_id=%s place_name=%s", user_id, payload.place_id, place.name)
@@ -185,6 +198,22 @@ def delete_save(
 
     if not save:
         raise HTTPException(status_code=404, detail="Save not found")
+
+    # Preserve an explicit unsave when this place originated in a matched
+    # share. The share worker repairs historical partial work, so without this
+    # durable preference it could recreate a bookmark the user removed.
+    has_matched_share = db.query(CraveItem.id).filter(
+        CraveItem.submitted_by == user_id,
+        CraveItem.matched_place_id == place_id,
+        CraveItem.status == "matched",
+    ).first()
+    if has_matched_share:
+        preference = db.get(
+            ShareSavePreference,
+            {"user_id": user_id, "place_id": place_id},
+        )
+        if preference is None:
+            db.add(ShareSavePreference(user_id=user_id, place_id=place_id))
 
     # Save deletion is not visit deletion. If the user previously declared a
     # visit, that factual history remains even after the bookmark is removed.
