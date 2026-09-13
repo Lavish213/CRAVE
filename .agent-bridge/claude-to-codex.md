@@ -1,3 +1,75 @@
+# H-20260913-craves-propagation
+
+Status: PR #289 open, CI/review pending
+Owner: Claude
+Branch: claude/craves-propagation-289
+Base SHA: 4525a81 (origin/main tip after PR #288)
+Commit SHA: e52025c (pre-merge; will update once merged)
+Allowed next files: none -- narrow, closing.
+
+## Context
+
+User said "finish craves" directly. Fresh `git fetch`/`git branch -a`/PR
+list/`git log --all -- frontend/app/(tabs)/craves.tsx` confirmed nothing
+from your (Codex's) live Craves session referenced in an earlier relayed
+transcript ever reached `origin` -- the most recent commit touching the
+Craves screen is still the already-merged `ef91789` (UI V2 semantic
+sweep). So I did the propagation pass myself rather than wait further,
+using your own relayed audit checklist as the scope, treating it as
+controlling: propagation/reliability/integration-cleanup only, no
+redesign, preserve approved UX/IA/reasoned-subset behavior.
+
+## What I found and did
+
+Audited `craves.tsx`, `useCravesReasoned.ts`, `crave.ts`, and
+`cravesStore.ts` end-to-end against your checklist before touching
+anything. Three real, narrow gaps confirmed and fixed:
+
+- `useCravesReasoned.ts` had an ad-hoc `['craves-reasoned', ...]` query
+  key, a magic-number `staleTime` (`2 * 60 * 1000` -- turned out to be an
+  exact match for `STALE_TIME.normal`), and no cancellation signal at
+  all. Replaced with `foundationQueryKey({scope:'user',
+  entity:'cravesReasoned', userId, params:{lat,lng}})`,
+  `STALE_TIME.normal`, and an `AbortSignal` threaded through
+  `fetchCravesReasoned` (new optional `signal` param) -- exactly
+  `rank-home.tsx`'s existing pattern for `fetchRankQueue`.
+- `craves.tsx`'s `cravesError`/`placeSavesError` were plain booleans
+  rendering hardcoded generic copy, unlike `useCravesStore`'s own
+  already-classified `savesError`. Both are now `string | null`,
+  classified via the shared `errorMessageFor` taxonomy.
+- `fetchCravesReasoned`'s `degraded: true` fallback (set when the
+  backend returns malformed `cards`) was computed and returned but
+  `craves.tsx` never read it anywhere -- Feed's Decision Session
+  (`(tabs)/index.tsx`) surfaces this same flag as an honest
+  confidence-drop subheading; Craves silently didn't. Threaded
+  `reasonedQuery.data?.degraded` onto the `reasoned-header` row and
+  reused Feed's exact copy.
+
+`cravesStore.ts` (the `saves` list + save/remove mutations) was
+independently audited against the full checklist -- account-generation
+guards, per-place mutation tokens, offline-queue idempotency with
+account-scoped flush, no swallowed failures -- and found to already meet
+the doctrine bar. No changes made there; touching it would have been
+unscoped rewrite risk for no confirmed gap.
+
+## Known gaps / risks
+
+- Not re-verified this pass (no gap surfaced on read, so left alone to
+  keep this narrow): visit-graduation evidence semantics, backend
+  authorization boundaries on `/craves`/`/hitlist` routes, full
+  accessibility/Dynamic-Type pass, and the `save`-row-vs-`reasoned-card`-row
+  asymmetry in whether `reason_role`/`reason_source` nav params are
+  passed to Place Detail (reasoned-card does; plain save-row navigation
+  doesn't) -- worth a second look if you pick Craves back up, but not
+  confirmed as a bug this pass.
+
+## Next action
+
+None from me once PR #289 merges. Update this entry's Commit SHA and
+Status once merge completes.
+
+---
+
 # H-20260913-finish-five-stale-open-prs
 
 Status: resolved -- all five merged

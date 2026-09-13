@@ -202,7 +202,7 @@ describe('CravesScreen — async truth and exposure instrumentation', () => {
     mockedGetCraveItems.mockRejectedValue(new Error('network'));
 
     const { findByText, queryByText } = renderScreen();
-    expect(await findByText(/Couldn't load Craves right now/)).toBeTruthy();
+    expect(await findByText(/Can't reach CRAVE — check your connection\./)).toBeTruthy();
     expect(queryByText('Start your food memory')).toBeNull();
   });
 
@@ -213,7 +213,7 @@ describe('CravesScreen — async truth and exposure instrumentation', () => {
     mockedGetMyPlaceSaves.mockRejectedValue(new Error('network'));
 
     const { findByText, queryByText } = renderScreen();
-    expect(await findByText(/Couldn't load added places right now/)).toBeTruthy();
+    expect(await findByText(/Can't reach CRAVE — check your connection\./)).toBeTruthy();
     expect(queryByText('Start your food memory')).toBeNull();
   });
 
@@ -366,6 +366,20 @@ describe('CravesScreen — async truth and exposure instrumentation', () => {
     expect(await findByText('Try one of these')).toBeTruthy();
     expect(await findByText('Reasoned Pick')).toBeTruthy();
     expect(await findByText('All saves')).toBeTruthy();
+    // degraded: true above -- honest confidence-drop copy, not the default.
+    expect(
+      await findByText('Confidence is lower right now, so these are the best answers CRAVE can support.'),
+    ).toBeTruthy();
+  });
+
+  it('shows the default reasoned-subset subheading when the response is not degraded', async () => {
+    mockedFetchCravesReasoned.mockResolvedValue({
+      cards: [makeReasonedCard()],
+      degraded: false,
+    });
+
+    const { findByText } = renderScreen();
+    expect(await findByText('From your saved places, right now')).toBeTruthy();
   });
 
   it('logs a reasoned-card click with its decision role', async () => {

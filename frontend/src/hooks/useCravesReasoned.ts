@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { fetchCravesReasoned } from '../api/crave';
 import { useAuthStore } from '../stores/authStore';
 import { useLocation } from './useLocation';
+import { foundationQueryKey, STALE_TIME } from '../contracts/foundationGate';
 
 /**
  * Craves Screen Contract §5/§6's "reasoned subset" -- the same
@@ -14,9 +15,16 @@ export function useCravesReasoned() {
   const location = useLocation();
 
   return useQuery({
-    queryKey: ['craves-reasoned', user?.id, location?.lat, location?.lng],
-    queryFn: () => fetchCravesReasoned({ lat: location?.lat, lng: location?.lng }),
+    queryKey: user
+      ? foundationQueryKey({
+          scope: 'user',
+          entity: 'cravesReasoned',
+          userId: user.id,
+          params: { lat: location?.lat, lng: location?.lng },
+        })
+      : ['crave', 'user', 'cravesReasoned', null, null],
+    queryFn: ({ signal }) => fetchCravesReasoned({ lat: location?.lat, lng: location?.lng, signal }),
     enabled: Boolean(user),
-    staleTime: 2 * 60 * 1000,
+    staleTime: STALE_TIME.normal,
   });
 }
