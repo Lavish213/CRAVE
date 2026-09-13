@@ -114,6 +114,70 @@ composition):
 decision mechanic look and feel like when it becomes the hero of the
 Feed — not just "which visual style is nicest."
 
+## Round 2 (2026-09-06)
+
+Four Feed concepts generated under the Round 1 constraints (Photography
+× Decision Intelligence × Dark CRAVE × No Stars × No Swipe UI), all
+correctly honoring the hard constraints this time — no star ratings, no
+swipe gesture anywhere: **A. Hero Recommendation** (single full-bleed
+card, one "Best Fit" pick, "Why this fits you" reasoning, Not for me /
+Save), **B. Decision Session** (three-tier vertical list — best fit /
+safe bet / wildcard — each with reasoning chips), **C. Head-to-Head**
+(two candidate cards side by side, "Choose" under each, "Why these
+two?" reasoning below), **D. Curated Queue** (denser filtered list,
+tier badges instead of stars).
+
+### PROMOTE
+
+- **B, as the primary direction.** Not a new concept — it's Round 1's
+  promoted Decision Session direction, refined: same three-tier logic
+  (best fit/safe bet/wildcard) the backend's Decision Session API
+  already produces, now in dark mode with tier chips instead of
+  match-percentage badges. Worth naming plainly: calling this one of
+  "four structurally different interpretations" oversells it — it's
+  the already-decided direction converging, not drifting, and that's
+  the correct outcome, not a weakness.
+- **A's photography + reasoning-card treatment, as the card style
+  inside B**, not as B's alternative. A's "Why this fits you" card is
+  effectively A merged into B already — the two aren't really
+  competing directions, they're the same idea at different information
+  density.
+
+### CONFIRMED GAP (needs an answer before it's a real contender, not just polish)
+
+- **A has no visible next-action loop.** The mock stops at one card's
+  decision (Not for me / Save) with no shown path to a next
+  recommendation. As drawn, this is a single card, not a Feed — needs
+  an explicit "then what happens" answer before treating it as
+  Feed-primary rather than a card style within B.
+- **C reuses Rank's own head-to-head visual language for a different
+  decision, and that's a conceptual collision, not a styling choice.**
+  Rank's duel is retrospective (which of two *already-visited* places
+  scored better, producing a score). This Feed concept's duel is
+  prospective (which of two *unvisited* places to try next). Identical
+  "vs / Choose" framing for two different kinds of decisions risks the
+  user not knowing what tapping "Choose" actually commits to (save?
+  rank? open Place Detail?) — resolve what "Choose" does, and whether
+  it's tolerably distinct from Rank's own mechanic, before spending
+  more design time on C. C also has no "neither" path — no skip/not-
+  interested action, only a forced binary between two unvisited places,
+  a harder ask than Rank's duel (which at least compares known places).
+
+### DEPRIORITIZE
+
+- **D as a flagship candidate.** Correctly avoids stars and swipe, but
+  is the least differentiated of the four — today's Feed with tier
+  badges swapping in for stars. Keep as a density/baseline reference,
+  not as a direction to keep iterating on.
+
+### Direction (provisional, pending explicit lock)
+
+Ship **B** as the primary Feed structure, with **A's** card-level
+photography/reasoning treatment folded into each of B's three option
+cards rather than treated as a separate competing layout. **C** stays
+shelved until the Rank-collision question above has a real product
+answer, not a visual one. **D** gets no further design cycles.
+
 ## Maintenance
 
 Append each new round below this one, in the same REJECT/PROMOTE/KEEP/
