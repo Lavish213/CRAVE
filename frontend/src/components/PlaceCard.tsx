@@ -1,6 +1,6 @@
 import React, { useRef } from 'react';
 import {
-  Animated, Share, StyleSheet, Text, TouchableOpacity, View, ViewStyle,
+  Animated, Platform, Share, StyleSheet, Text, TouchableOpacity, View, ViewStyle,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
@@ -13,6 +13,7 @@ import { DecisionStrip, type DecisionStripSource } from './DecisionStrip';
 import { Colors, Spacing, Radius, Shadows, Typography } from '../constants/colors';
 import { DecisionRole } from '../api/decisionSession';
 import { useReducedMotion } from '../hooks/useReducedMotion';
+import { placeUniversalLink } from '../contracts/foundationGate';
 
 const SAVE_HIT_SLOP = { top: 8, bottom: 8, left: 8, right: 8 } as const;
 const IMAGE_HEIGHT = 220;
@@ -83,8 +84,15 @@ function PlaceCardImpl({
       }}
       onLongPress={() => {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+        const placeLink = placeUniversalLink(place.id);
+        const cityLabel = place.address ? place.address.split(',').pop()?.trim() ?? 'your city' : 'your city';
         Share.share({
-          message: `${place.name} — ${categoryLabel ?? 'Restaurant'} in ${place.address ? place.address.split(',').pop()?.trim() ?? 'your city' : 'your city'}. Found on CRAVE.`,
+          message: `${place.name} — ${categoryLabel ?? 'Restaurant'} in ${cityLabel}. Found on CRAVE.\n${placeLink.primaryUrl}`,
+          // Same split as Place Detail's own share button: iOS shares `url`
+          // as its own share-sheet item, independent of `message`; Android
+          // only reads `message`/`title`, hence the URL is also appended
+          // there so it isn't silently dropped on that platform.
+          ...(Platform.OS === 'ios' ? { url: placeLink.primaryUrl } : null),
         }).catch(() => {});
       }}
       delayLongPress={400}
