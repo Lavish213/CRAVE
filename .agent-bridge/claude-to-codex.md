@@ -1,3 +1,49 @@
+# H-20260913-universal-link-setup
+
+Status: resolved -- merged (needs real credentials before it's load-bearing)
+Owner: Claude
+Branch: claude/universal-link-setup (merged, can be deleted)
+Base SHA: 85440b9 (post PR #297)
+Commit SHA: 8825b81 (PR #298, squash-merged)
+Allowed next files: none -- closed for the code half.
+
+## Context
+
+User asked to do the universal-link (https://) setup, one of the
+"bigger, needs your call" items from this session's own gap list.
+
+## What I found and did
+
+Client-side half already existed and was already wired up
+(app.json's associatedDomains/intentFilters, foundationGate.ts's
+placeUniversalLink() already used by Place Detail's share button) --
+my earlier claim that "no universal-link infra exists" was stale.
+Built the missing server-side half: the two platform verification
+files + real HTML fallback pages for /place, /rank, /user, all mounted
+at the domain root. Found and fixed a real gap along the way:
+PlaceCard's long-press share had no link at all, unlike Place Detail's.
+
+## Known gaps / risks
+
+Both verification files ship with placeholder Apple Team ID / Android
+SHA-256 fingerprint -- neither exists in the repo, and this sandbox
+can't reach api.expo.dev to fetch them (confirmed: 403 from the egress
+proxy). Until the user supplies both real values, universal links will
+not actually verify on either platform -- links will silently fall
+through to the web page instead of opening the app.
+
+## Next action
+
+User to supply: Apple Team ID (Apple Developer > Membership or
+`eas credentials -p ios`) and Android SHA-256 fingerprint
+(`cd frontend && eas credentials --platform android`, Play Console App
+Signing key fingerprint if enabled). Once supplied, swap into
+universal_links.py's two placeholder constants -- trivial follow-up.
+DNS pointing crave.app at the Railway deploy is separately the user's
+own infra step.
+
+---
+
 # H-20260913-misc-cleanup-and-reduced-motion
 
 Status: resolved -- merged
