@@ -7,27 +7,15 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
-from app.services.query.map_query import fetch_places_for_map, fetch_places_for_map_geojson
+from app.services.query.map_query import fetch_places_for_map_geojson
 from app.services.cache.response_cache import response_cache
 from app.services.cache.cache_keys import map_key
 from app.services.cache.cache_ttl import map_ttl
-from app.api.v1.schemas.map import MapResponse, MapCenter, GeoJSONFeatureCollection
+from app.api.v1.schemas.map import GeoJSONFeatureCollection
 from app.core.rate_limit import rate_limit
 
 
 logger = logging.getLogger(__name__)
-
-
-def _empty_map_response(lat: float, lng: float, radius_km: float, limit: int) -> MapResponse:
-    """Build a valid empty MapResponse for error/fallback cases."""
-    return MapResponse(
-        ok=False,
-        center=MapCenter(lat=lat, lng=lng),
-        radius_km=radius_km,
-        limit=limit,
-        count=0,
-        places=[],
-    )
 
 
 router = APIRouter(
@@ -65,104 +53,6 @@ def _clean_str(value: Optional[str]) -> Optional[str]:
         return v or None
     except Exception:
         return None
-
-
-@router.get(
-    "",
-    response_model=MapResponse,
-    summary="Get places for map view",
-)
-def map_places(
-    lat: float = Query(..., description="Latitude"),
-    lng: float = Query(..., description="Longitude"),
-    radius_km: float = Query(DEFAULT_RADIUS_KM, ge=0.1, le=50.0),
-    limit: int = Query(DEFAULT_LIMIT, ge=1, le=MAX_LIMIT),
-    city_id: Optional[str] = Query(None),
-    category_id: Optional[str] = Query(None),
-    db: Session = Depends(get_db),
-    _: None = Depends(rate_limit),
-) -> MapResponse:
-
-    lat = _safe_float(lat)
-    lng = _safe_float(lng)
-
-    if lat is None or lng is None:
-        return _empty_map_response(0.0, 0.0, radius_km, limit)
-
-    limit = _clamp_limit(limit)
-    city_id = _clean_str(city_id)
-    category_id = _clean_str(category_id)
-
-    # ---------------------------------------------------
-    # Cache
-    # ---------------------------------------------------
-
-    cache_key = map_key(
-        lat=lat,
-        lng=lng,
-        radius_km=radius_km,
-        limit=limit,
-        city_id=city_id,
-        category_id=category_id,
-    )
-
-    cached = response_cache.get(cache_key)
-    if cached is not None:
-        try:
-            return MapResponse.model_validate(cached)
-        except Exception:
-            pass
-
-    # ---------------------------------------------------
-    # Query
-    # ---------------------------------------------------
-
-    try:
-        result = fetch_places_for_map(
-            db=db,
-            lat=lat,
-            lng=lng,
-            radius_km=radius_km,
-            limit=limit,
-            city_id=city_id,
-            category_id=category_id,
-        )
-    except Exception as exc:
-        logger.error(
-            "map_query_failed lat=%s lng=%s error=%s",
-            lat,
-            lng,
-            exc,
-        )
-        raise HTTPException(status_code=503, detail="Map temporarily unavailable") from exc
-
-    try:
-        payload = MapResponse.model_validate(result)
-    except Exception as exc:
-        logger.error(
-            "map_serialize_failed error=%s",
-            exc,
-        )
-        raise HTTPException(status_code=503, detail="Map temporarily unavailable") from exc
-
-    # ---------------------------------------------------
-    # Cache set
-    # ---------------------------------------------------
-
-    try:
-        response_cache.set(
-            cache_key,
-            payload.model_dump(),
-            map_ttl(radius_km=radius_km),
-        )
-    except Exception as exc:
-        logger.debug(
-            "map_cache_failed key=%s error=%s",
-            cache_key,
-            exc,
-        )
-
-    return payload
 
 
 @router.get(
