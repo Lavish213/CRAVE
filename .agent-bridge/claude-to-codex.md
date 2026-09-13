@@ -1,11 +1,13 @@
 # H-20260913-craves-propagation
 
-Status: PR #289 open, CI/review pending
+Status: resolved -- merged
 Owner: Claude
-Branch: claude/craves-propagation-289
+Branch: claude/craves-propagation-289 (merged, can be deleted)
 Base SHA: 4525a81 (origin/main tip after PR #288)
-Commit SHA: e52025c (pre-merge; will update once merged)
-Allowed next files: none -- narrow, closing.
+Commit SHA: a8f463f (PR #289, squash-merged). CI green (Guard, Frontend,
+both Backend jobs, both Analyze jobs, CodeQL); CodeRabbit skipped per
+repo policy (<10 stars, OSS) -- same as every other PR this session.
+Allowed next files: none -- closed.
 
 ## Context
 
