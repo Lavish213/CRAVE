@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -28,6 +28,7 @@ export default function FoodEvidenceScreen() {
   const [draftId, setDraftId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [authVisible, setAuthVisible] = useState(false);
+  const savingRef = useRef(false);
 
   // A draft needs an owner the moment it's created (durable persistence +
   // account-scoped resolution both depend on it), so this is checked once
@@ -62,6 +63,8 @@ export default function FoodEvidenceScreen() {
   // (backgrounding, a crash, the OS reclaiming memory) lost the capture
   // entirely. The draft survives all of that.
   async function persistCapture(kind: CaptureKind, asset: { uri: string; fileSize?: number; mimeType?: string }) {
+    if (savingRef.current) return;
+    savingRef.current = true;
     setSaving(true);
     try {
       const draft = await createDraftFromCapture({
@@ -76,11 +79,13 @@ export default function FoodEvidenceScreen() {
     } catch (err) {
       toast(err instanceof Error ? err.message : "Couldn't save that capture");
     } finally {
+      savingRef.current = false;
       setSaving(false);
     }
   }
 
   async function takePhoto() {
+    try {
     const permission = await ImagePicker.requestCameraPermissionsAsync();
     if (!permission.granted) {
       Alert.alert('Camera unavailable', 'Choose a photo or video from your library instead.');
@@ -97,9 +102,13 @@ export default function FoodEvidenceScreen() {
       const asset = result.assets[0];
       await persistCapture('photo', { uri: asset.uri, fileSize: asset.fileSize, mimeType: asset.mimeType });
     }
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "Couldn't open the camera");
+    }
   }
 
   async function chooseFromLibrary(kind: CaptureKind) {
+    try {
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: kind === 'photo' ? ['images'] : ['videos'],
       allowsEditing: false,
@@ -109,6 +118,9 @@ export default function FoodEvidenceScreen() {
     if (!result.canceled && result.assets[0]?.uri) {
       const asset = result.assets[0];
       await persistCapture(kind, { uri: asset.uri, fileSize: asset.fileSize, mimeType: asset.mimeType });
+    }
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "Couldn't open your media library");
     }
   }
 
