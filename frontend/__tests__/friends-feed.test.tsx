@@ -128,9 +128,11 @@ describe('FriendsFeedScreen', () => {
   });
 
   it('shows an error state with retry when the feed fetch fails, not the empty state', async () => {
+    // A bare network Error (no `.response`) is now classified as a genuine
+    // offline failure -- see errorMessageFor in src/utils/errorMessage.ts.
     mockedFetchFriendsFeed.mockRejectedValue(new Error('network'));
     const { findByText, queryByText } = renderScreen();
-    expect(await findByText("Couldn't load your friends feed")).toBeTruthy();
+    expect(await findByText("Can't reach CRAVE — check your connection.")).toBeTruthy();
     expect(queryByText('Nothing here yet')).toBeNull();
 
     mockedFetchFriendsFeed.mockResolvedValue([]);

@@ -29,6 +29,7 @@ import { AuthSheet } from '../src/components/AuthSheet';
 import { LeaderboardRow, fetchLeaderboard } from '../src/api/social';
 import { withImageWidth, AVATAR_IMAGE_WIDTH } from '../src/utils/imageUrl';
 import { useAuthStore } from '../src/stores/authStore';
+import { errorMessageFor } from '../src/utils/errorMessage';
 
 type Scope = 'global' | 'friends';
 
@@ -71,6 +72,7 @@ export default function LeaderboardScreen() {
     data: rows = [],
     isLoading: loading,
     isError,
+    error,
     isRefetching: refreshing,
     refetch,
   } = useQuery({
@@ -138,7 +140,10 @@ export default function LeaderboardScreen() {
           <SkeletonRowList count={7} avatar />
         </View>
       ) : isError ? (
-        <ErrorState message="Couldn't load the leaderboard" onRetry={() => canFetch && refetch()} />
+        <ErrorState
+          message={errorMessageFor(error, "Couldn't load the leaderboard")}
+          onRetry={() => canFetch && refetch()}
+        />
       ) : rows.length === 0 ? (
         <EmptyState
           icon="trophy-outline"

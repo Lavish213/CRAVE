@@ -15,6 +15,7 @@ import { MapBottomSheet } from '../../src/components/MapBottomSheet';
 import { logRecommendationEvent, logRecommendationEvents } from '../../src/utils/recommendationEventQueue';
 import { FilterSheet, FilterState, EMPTY_FILTERS, hasActiveFilters } from '../../src/components/FilterSheet';
 import { useDiscoveryContextStore } from '../../src/stores/discoveryContextStore';
+import { errorMessageFor } from '../../src/utils/errorMessage';
 
 // Recommendation Ledger, surface='map'. A fetched feature is a candidate,
 // not an impression: the request deliberately covers 1.6x the visible
@@ -31,24 +32,6 @@ let mapSessionSequence = 0;
 function _makeMapSessionId(): string {
   mapSessionSequence += 1;
   return `map_${Date.now().toString(36)}_${mapSessionSequence.toString(36)}`;
-}
-
-// Foundation Gate's error-taxonomy propagation into Map (see
-// docs/doctrine/CRAVE_FOUNDATION_GATE_CONTRACTS.md's §1 -- "error...
-// ownership" is explicitly in the Search/Map propagation scope boundary).
-// Same offline/rate-limited distinction as SearchScreen.tsx's
-// errorMessageFor and cravesStore's own `_classifyError` -- previously
-// both fetch failures here collapsed into one generic "Could not load
-// places" regardless of cause, even though a 429 or a genuine offline
-// state are each a different, already-classified failure elsewhere in
-// the app.
-function errorMessageFor(err: unknown, fallback: string): string {
-  const status = (err as { response?: { status?: number } } | null | undefined)?.response?.status;
-  if (status === 429) return "You're doing that too fast — wait a moment and try again.";
-  if (!(err as { response?: unknown } | null | undefined)?.response) {
-    return "Can't reach CRAVE — check your connection.";
-  }
-  return fallback;
 }
 
 const PREFETCH_RADIUS_MULTIPLIER = 1.6;

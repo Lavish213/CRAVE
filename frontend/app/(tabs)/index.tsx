@@ -34,6 +34,7 @@ import { AuthSheet } from '../../src/components/AuthSheet';
 import { useDecisionSession } from '../../src/hooks/useDecisionSession';
 import { DecisionReasonCode, DecisionRole, DecisionSessionCard } from '../../src/api/decisionSession';
 import { foundationQueryKey, STALE_TIME } from '../../src/contracts/foundationGate';
+import { errorMessageFor } from '../../src/utils/errorMessage';
 
 const VIEWABILITY_CONFIG = { itemVisiblePercentThreshold: 50, minimumViewTime: 250 };
 const DISCOVERY_LIMIT = 4;
@@ -115,6 +116,7 @@ export default function FeedScreen() {
     isFetching,
     isFetchingNextPage,
     isError,
+    error,
     isRefetchError,
     dataUpdatedAt,
     refetch,
@@ -494,7 +496,7 @@ export default function FeedScreen() {
       ) : (
         <Animated.View style={[{ flex: 1 }, { opacity: feedOpacity }]}>
           {isError && decisionCards.length === 0 ? (
-            <ErrorState message="Couldn't load places" onRetry={() => void refetch()} />
+            <ErrorState message={errorMessageFor(error, "Couldn't load places")} onRetry={() => void refetch()} />
           ) : isCatchingUpForFilter ? (
             <View style={styles.skeletonWrap}><SkeletonFeed count={4} /></View>
           ) : rows.length === 0 ? (
