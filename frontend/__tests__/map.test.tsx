@@ -121,7 +121,7 @@ describe('MapScreen — onMapReady / spurious first-region fix', () => {
       interpretation: {
         original_query: 'ramen near me', lookup_query: 'ramen', price_tier: null,
         required_categories: [], hard_constraints: [], unsupported_hard_constraints: [],
-        context: ['near_me'], uncertain: false,
+        context: ['near_me'], required_amenities: [], uncertain: false,
       },
       items: [
         SEARCH_PLACE,

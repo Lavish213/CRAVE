@@ -80,7 +80,7 @@ describe('MapScreen — visible exposure instrumentation', () => {
       interpretation: {
         original_query: 'breakfast near me', lookup_query: 'breakfast', price_tier: null,
         required_categories: [], hard_constraints: [], unsupported_hard_constraints: [],
-        context: ['near_me'], uncertain: false,
+        context: ['near_me'], required_amenities: [], uncertain: false,
       },
       items: [{
         id: 'place-first', name: 'First', city_id: SF_CITY.id, rank_score: 0.5,
