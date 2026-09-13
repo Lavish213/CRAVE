@@ -251,3 +251,29 @@ def test_reconcile_does_not_starve_a_missing_save_behind_existing_ones(db):
         HitlistSave.user_id == missing.submitted_by,
         HitlistSave.place_id == place.id,
     ).count() == 1
+
+
+def test_reconcile_does_not_let_an_inactive_place_consume_the_batch_limit(db):
+    """An inactive-place candidate must be excluded before `limit` is
+    applied, not filtered out after -- otherwise it silently occupies a
+    batch slot a real, active-place candidate needed."""
+    inactive_place = _make_place(db, _make_city(db))
+    inactive_place.is_active = False
+    db.commit()
+
+    stale = _make_item(db, submitted_by=f"user-{uuid.uuid4().hex[:12]}")
+    stale.status = "matched"
+    stale.matched_place_id = inactive_place.id
+    db.commit()
+
+    active_place = _make_place(db, _make_city(db))
+    valid = _make_item(db, submitted_by=f"user-{uuid.uuid4().hex[:12]}")
+    valid.status = "matched"
+    valid.matched_place_id = active_place.id
+    db.commit()
+
+    assert reconcile_matched_share_saves(db, limit=1) == 1
+    assert db.query(HitlistSave).filter(
+        HitlistSave.user_id == valid.submitted_by,
+        HitlistSave.place_id == active_place.id,
+    ).count() == 1

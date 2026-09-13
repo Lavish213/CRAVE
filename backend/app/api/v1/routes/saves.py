@@ -23,6 +23,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.auth import require_api_key
@@ -213,7 +214,19 @@ def delete_save(
             {"user_id": user_id, "place_id": place_id},
         )
         if preference is None:
-            db.add(ShareSavePreference(user_id=user_id, place_id=place_id))
+            # A concurrent unsave for the same user/place can race this
+            # read -- both requests see no existing preference and both
+            # try to insert one. The composite primary key makes the
+            # second insert a conflict, not a duplicate opt-out (the
+            # first request's row already records the same intent), so
+            # a savepoint isolates it: on conflict, roll back just this
+            # insert rather than losing the save deletion below.
+            try:
+                with db.begin_nested():
+                    db.add(ShareSavePreference(user_id=user_id, place_id=place_id))
+                    db.flush()
+            except IntegrityError:
+                pass
 
     # Save deletion is not visit deletion. If the user previously declared a
     # visit, that factual history remains even after the bookmark is removed.

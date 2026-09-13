@@ -387,10 +387,12 @@ def reconcile_matched_share_saves(db: Session, limit: int = BATCH_SIZE) -> int:
     items = (
         db.execute(
             select(CraveItem)
+            .join(Place, Place.id == CraveItem.matched_place_id)
             .where(
                 CraveItem.status == "matched",
                 CraveItem.submitted_by.isnot(None),
                 CraveItem.matched_place_id.isnot(None),
+                Place.is_active.is_(True),
                 ~has_normal_save,
                 ~has_opted_out,
             )
@@ -403,7 +405,7 @@ def reconcile_matched_share_saves(db: Session, limit: int = BATCH_SIZE) -> int:
     repaired = 0
     for item in items:
         place = db.get(Place, item.matched_place_id)
-        if not place or not place.is_active:
+        if not place:
             continue
         try:
             if _auto_save_matched_item(db, item, place):
