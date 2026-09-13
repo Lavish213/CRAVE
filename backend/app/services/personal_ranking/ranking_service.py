@@ -55,6 +55,7 @@ from app.db.models.place_ranking import (
     PlaceRanking,
 )
 from app.services.hitlist.save_memory import mark_existing_save_visited
+from app.services.visit_evidence_service import rank_eligible_visit_for_place
 
 _TOKEN_ALGORITHM = "HS256"
 _TOKEN_TTL_SECONDS = 15 * 60
@@ -243,7 +244,15 @@ def submit_comparison(
     # Converged — lo == hi is the final insertion index.
     from datetime import datetime
 
-    visited_at = datetime.fromisoformat(state["visited_at"]) if state.get("visited_at") else None
+    if expected_user_id is not None:
+        eligible_visit = rank_eligible_visit_for_place(
+            db, user_id=user_id, place_id=place_id,
+        )
+        if eligible_visit is None:
+            raise RankingError("Rank requires a declared or verified visit.")
+        visited_at = eligible_visit.occurred_at
+    else:
+        visited_at = datetime.fromisoformat(state["visited_at"]) if state.get("visited_at") else None
     score = _finalize_score(tier, tier_list, lo)
 
     # The comparison token is a stateless, replayable JWT by design (see

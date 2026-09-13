@@ -413,6 +413,53 @@ def test_comparison_completion_marks_existing_save_visited(city, db):
     assert save.visited_at is not None
 
 
+def test_comparison_completion_rejects_retracted_qualifying_visit(city, db):
+    with SessionLocal() as setup_db:
+        existing = Place(
+            id=str(uuid.uuid4()), name="Existing ranked place", city_id=city.id,
+            lat=37.0, lng=-122.0, is_active=True, rank_score=0.5,
+        )
+        candidate = Place(
+            id=str(uuid.uuid4()), name="Candidate place", city_id=city.id,
+            lat=37.01, lng=-122.01, is_active=True, rank_score=0.5,
+        )
+        setup_db.add_all([existing, candidate])
+        setup_db.commit()
+
+    user_id = f"route-test-retracted-{uuid.uuid4().hex[:8]}"
+    _declare_visit(db, user_id=user_id, place_id=candidate.id)
+    db.add(PlaceRanking(
+        user_id=user_id, place_id=existing.id, tier="liked",
+        rank_score=7.0, visited_at=datetime.now(timezone.utc),
+    ))
+    db.commit()
+
+    _as_user(user_id)
+    started = client.post(
+        "/api/v1/rankings", json={"place_id": candidate.id, "tier": "liked"},
+    )
+    assert started.status_code == 201
+    token = started.json()["comparison_token"]
+
+    db.query(VisitEvidence).filter(
+        VisitEvidence.user_id == user_id,
+        VisitEvidence.place_id == candidate.id,
+    ).update({"factual_history": False})
+    db.commit()
+
+    completed = client.post(
+        "/api/v1/rankings/compare",
+        json={"comparison_token": token, "winner": "new"},
+    )
+
+    assert completed.status_code == 400
+    assert completed.json()["detail"] == "Rank requires a declared or verified visit."
+    assert db.query(PlaceRanking).filter(
+        PlaceRanking.user_id == user_id,
+        PlaceRanking.place_id == candidate.id,
+    ).one_or_none() is None
+
+
 def test_leaderboard_endpoint_reachable(users):
     _as_user(users["alice"])
     resp = client.get("/api/v1/leaderboard")
