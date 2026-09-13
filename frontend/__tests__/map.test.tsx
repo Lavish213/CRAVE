@@ -235,9 +235,15 @@ describe('MapScreen — onMapReady / spurious first-region fix', () => {
     });
 
     expect(mockedFetch).toHaveBeenCalledTimes(1);
+    const firstSignal = mockedFetch.mock.calls[0][1];
+    expect(firstSignal).toEqual(expect.any(AbortSignal));
+    expect(firstSignal?.aborted).toBe(false);
     fireEvent.press(getByLabelText('Search this map area'));
     await waitFor(() => expect(mockedFetch).toHaveBeenCalledTimes(2));
     const [, secondCallArgs] = mockedFetch.mock.calls.map((c) => c[0]);
+    const secondSignal = mockedFetch.mock.calls[1][1];
+    expect(firstSignal?.aborted).toBe(true);
+    expect(secondSignal?.aborted).toBe(false);
     expect(secondCallArgs.lat).toBeCloseTo(37.9, 5);
     expect(secondCallArgs.lng).toBeCloseTo(-122.6, 5);
   });

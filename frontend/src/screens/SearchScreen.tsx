@@ -297,8 +297,9 @@ export default function SearchScreen() {
   const results = searchData?.items ?? [];
   const rankings = rankingQuery.data ?? [];
   const searched = debouncedQuery.length >= 2 && !searchQuery.isLoading && searchData !== undefined;
+  const searchInitialError = searchQuery.isError && searchData === undefined;
   const rankedScopeLoading = scope === 'ranked' && rankingQuery.isLoading;
-  const rankedScopeError = scope === 'ranked' && rankingQuery.isError;
+  const rankedScopeError = scope === 'ranked' && rankingQuery.isError && rankingQuery.data === undefined;
 
   useEffect(() => {
     if (submittedQuery && submittedQuery === debouncedQuery && searchData?.exact_match_id) {
@@ -412,9 +413,9 @@ export default function SearchScreen() {
 
   const showZeroState = query.length === 0 && !searchQuery.isLoading;
   const showBelowThreshold = query.length > 0 && query.length < 2;
-  const showNoResults = searched && results.length === 0 && !searchQuery.isError;
+  const showNoResults = searched && results.length === 0 && !searchInitialError;
   const showNoFilterMatches = searched && results.length > 0 && filteredResults.length === 0 && !rankedScopeLoading && !rankedScopeError;
-  const canRenderResults = !showZeroState && !showNoResults && !showNoFilterMatches && !searchQuery.isError && !rankedScopeLoading && !rankedScopeError && filteredResults.length > 0;
+  const canRenderResults = !showZeroState && !showNoResults && !showNoFilterMatches && !searchInitialError && !rankedScopeLoading && !rankedScopeError && filteredResults.length > 0;
 
   return (
     <View style={styles.container}>
@@ -550,11 +551,16 @@ export default function SearchScreen() {
       )}
 
       {searchQuery.isLoading && <View style={styles.list}><SkeletonRowList count={5} /></View>}
-      {searchQuery.isError && !searchQuery.isLoading && (
+      {searchInitialError && !searchQuery.isLoading && (
         <ErrorState
           message={errorMessageFor(searchQuery.error, "Couldn't search right now.")}
           onRetry={() => searchQuery.refetch()}
         />
+      )}
+      {searchQuery.isRefetchError && searchQuery.dataUpdatedAt > 0 && (
+        <View style={styles.staleNotice} accessibilityRole="alert">
+          <Text style={styles.staleNoticeText}>Showing saved search results — pull to retry.</Text>
+        </View>
       )}
 
       {showZeroState && (
@@ -743,6 +749,8 @@ const styles = StyleSheet.create({
   barRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
   inputRowFlex: { flex: 1 },
   filterBtn: { padding: Spacing.sm, minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
+  staleNotice: { paddingHorizontal: Spacing.md, paddingVertical: Spacing.xs },
+  staleNoticeText: { color: Colors.textSecondary, fontSize: 13, lineHeight: 18 },
   inputRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.surface, borderRadius: Radius.md, borderWidth: 1, borderColor: Colors.border, paddingHorizontal: Spacing.md, paddingVertical: 10, gap: Spacing.sm, minHeight: 46 },
   input: { flex: 1, color: Colors.text, fontSize: 15 },
   cityContext: { color: Colors.textSecondary, fontSize: 12, fontWeight: '500', paddingLeft: Spacing.xs },
