@@ -180,7 +180,7 @@ export default function RootLayout() {
         <Stack
           screenOptions={{
             headerStyle: { backgroundColor: Colors.background },
-            headerTintColor: '#FFFFFF',
+            headerTintColor: Colors.text,
             headerTitleStyle: { fontWeight: '700' },
             contentStyle: { backgroundColor: Colors.background },
           }}

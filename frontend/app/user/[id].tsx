@@ -386,7 +386,7 @@ export default function UserProfileScreen() {
               <Ionicons
                 name={following ? 'checkmark' : 'add'}
                 size={17}
-                color={following ? Colors.text : '#FFFFFF'}
+                color={following ? Colors.text : Colors.onActionPrimary}
               />
               <Text style={[styles.followBtnText, following ? styles.followingBtnText : null]}>
                 {following ? 'Following' : 'Follow'}
