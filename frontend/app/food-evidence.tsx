@@ -1,252 +1,77 @@
-import { useState } from 'react';
-import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import React, { useState } from 'react';
+import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
+
 import { Colors, Radius, Spacing, Typography } from '../src/constants/colors';
 import { useAuthStore } from '../src/stores/authStore';
 import { AuthSheet } from '../src/components/AuthSheet';
-import { usePostingDraftStore } from '../src/stores/postingDraftStore';
+import { DraftMediaKind, usePostingDraftStore } from '../src/stores/postingDraftStore';
 import { useToast } from '../src/hooks/useToast';
-
-type CaptureKind = 'photo' | 'video';
-
-type SelectedMedia = {
-  kind: CaptureKind;
-  uri: string;
-  fileSize?: number;
-  mimeType?: string;
-};
 
 export default function FoodEvidenceScreen() {
   const router = useRouter();
   const user = useAuthStore((s) => s.user);
+  const drafts = usePostingDraftStore((s) => s.drafts.filter((d) => d.ownerId === user?.id));
+  const createDraft = usePostingDraftStore((s) => s.createDraftFromCapture);
   const toast = useToast((s) => s.show);
-  const createDraftFromCapture = usePostingDraftStore((s) => s.createDraftFromCapture);
-
-  const [selectedMedia, setSelectedMedia] = useState<SelectedMedia | null>(null);
-  const [draftId, setDraftId] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
+  const [busy, setBusy] = useState(false);
   const [authVisible, setAuthVisible] = useState(false);
 
-  // A draft needs an owner the moment it's created (durable persistence +
-  // account-scoped resolution both depend on it), so this is checked once
-  // up front rather than only once the user hits Continue -- previously
-  // this screen had no sign-in gate at all, and an anonymous capture would
-  // only hit a wall on add-spot.tsx's own gate, after the effort of
-  // capturing was already spent.
   if (!user) {
-    return (
-      <View style={[styles.container, styles.centered]}>
-        <Ionicons name="person-circle-outline" size={44} color={Colors.textSecondary} />
-        <Text style={styles.emptyTitle}>Sign in to record food evidence</Text>
-        <Text style={styles.emptyBody}>Your capture is saved to your own account, not shared until you decide.</Text>
-        <Pressable
-          onPress={() => setAuthVisible(true)}
-          accessibilityRole="button"
-          accessibilityLabel="Sign in"
-          style={styles.continueButton}
-        >
-          <Text style={styles.continueLabel}>Sign in</Text>
-        </Pressable>
-        <AuthSheet visible={authVisible} onClose={() => setAuthVisible(false)} reason="default" />
-      </View>
-    );
+    return <View style={styles.center}><Ionicons name="person-circle-outline" size={44} color={Colors.textSecondary} /><Text style={styles.title}>Sign in to record food</Text><Text style={styles.muted}>Your private logs and posts stay attached to your account.</Text><Pressable style={styles.primary} onPress={() => setAuthVisible(true)}><Text style={styles.primaryLabel}>Sign in</Text></Pressable><AuthSheet visible={authVisible} onClose={() => setAuthVisible(false)} reason="default" /></View>;
   }
 
-  // Immediately persists the captured media into a durable, app-owned
-  // PostingDraft -- before any restaurant identification, upload, or
-  // navigation. Previously this screen only held media in local component
-  // state, which the "Continue" press then had to carry along as route
-  // params; either way, anything short of finishing the flow in one go
-  // (backgrounding, a crash, the OS reclaiming memory) lost the capture
-  // entirely. The draft survives all of that.
-  async function persistCapture(kind: CaptureKind, asset: { uri: string; fileSize?: number; mimeType?: string }) {
-    setSaving(true);
+  async function persist(kind: DraftMediaKind, asset: ImagePicker.ImagePickerAsset) {
+    setBusy(true);
     try {
-      const draft = await createDraftFromCapture({
-        ownerId: user!.id,
-        sourceUri: asset.uri,
-        kind,
-        mimeType: asset.mimeType,
-        fileSize: asset.fileSize,
-      });
-      setDraftId(draft.id);
-      setSelectedMedia({ kind, uri: draft.localUri, fileSize: asset.fileSize, mimeType: asset.mimeType });
-    } catch (err) {
-      toast(err instanceof Error ? err.message : "Couldn't save that capture");
-    } finally {
-      setSaving(false);
-    }
+      const draft = await createDraft({ ownerId: user!.id, sourceUri: asset.uri, kind, mimeType: asset.mimeType, fileSize: asset.fileSize });
+      router.push({ pathname: '/posting-restaurant', params: { draftId: draft.id } });
+    } catch (error) {
+      toast(error instanceof Error ? error.message : "Couldn't save that media");
+    } finally { setBusy(false); }
   }
 
-  async function takePhoto() {
+  async function camera(kind: DraftMediaKind) {
     const permission = await ImagePicker.requestCameraPermissionsAsync();
-    if (!permission.granted) {
-      Alert.alert('Camera unavailable', 'Choose a photo or video from your library instead.');
-      return;
-    }
-
-    const result = await ImagePicker.launchCameraAsync({
-      mediaTypes: ['images'],
-      allowsEditing: false,
-      quality: 0.9,
-    });
-
-    if (!result.canceled && result.assets[0]?.uri) {
-      const asset = result.assets[0];
-      await persistCapture('photo', { uri: asset.uri, fileSize: asset.fileSize, mimeType: asset.mimeType });
-    }
+    if (!permission.granted) { Alert.alert('Camera unavailable', 'You can still choose media from your library.'); return; }
+    const result = await ImagePicker.launchCameraAsync({ mediaTypes: kind === 'photo' ? ['images'] : ['videos'], allowsEditing: false, quality: kind === 'photo' ? 0.9 : 1 });
+    if (!result.canceled && result.assets[0]) await persist(kind, result.assets[0]);
   }
 
-  async function chooseFromLibrary(kind: CaptureKind) {
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: kind === 'photo' ? ['images'] : ['videos'],
-      allowsEditing: false,
-      quality: kind === 'photo' ? 0.9 : 1,
-    });
-
-    if (!result.canceled && result.assets[0]?.uri) {
-      const asset = result.assets[0];
-      await persistCapture(kind, { uri: asset.uri, fileSize: asset.fileSize, mimeType: asset.mimeType });
-    }
+  async function library() {
+    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images', 'videos'], allowsEditing: false, quality: 0.9 });
+    if (!result.canceled && result.assets[0]) await persist(result.assets[0].type === 'video' ? 'video' : 'photo', result.assets[0]);
   }
 
   return (
-    <View style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.eyebrow}>RECORD FOOD EVIDENCE</Text>
-        <Text style={styles.title}>What did you eat?</Text>
-        <Text style={styles.body}>
-          Start with media. Restaurant identification and the private-or-post decision come next.
-        </Text>
-      </View>
+    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+      <Text style={styles.eyebrow}>RECORD FOOD</Text><Text style={styles.title}>Start with what you ate</Text>
+      <Text style={styles.muted}>Capture once. Nothing uploads or publishes until you identify the restaurant and explicitly finish the composer.</Text>
 
       <View style={styles.actions}>
-        <CaptureButton icon="camera-outline" label="Take Photo" onPress={() => void takePhoto()} disabled={saving} />
-        <CaptureButton icon="images-outline" label="Choose Photo" onPress={() => void chooseFromLibrary('photo')} disabled={saving} />
-        <CaptureButton icon="videocam-outline" label="Choose Video" onPress={() => void chooseFromLibrary('video')} disabled={saving} />
+        <Action icon="camera-outline" label="Take photo" onPress={() => void camera('photo')} disabled={busy} />
+        <Action icon="videocam-outline" label="Record video" onPress={() => void camera('video')} disabled={busy} />
+        <Action icon="images-outline" label="Choose from library" onPress={() => void library()} disabled={busy} />
       </View>
+      {busy ? <ActivityIndicator style={styles.spinner} color={Colors.primary} /> : null}
 
-      {selectedMedia && draftId ? (
-        <View style={styles.selectedCard}>
-          <Ionicons
-            name={selectedMedia.kind === 'photo' ? 'image-outline' : 'videocam-outline'}
-            size={22}
-            color={Colors.primary}
-          />
-          <View style={styles.selectedCopy}>
-            <Text style={styles.selectedTitle}>
-              {selectedMedia.kind === 'photo' ? 'Photo saved' : 'Video saved'}
-            </Text>
-            <Text style={styles.selectedBody} numberOfLines={1}>
-              Ready for restaurant identification.
-            </Text>
-          </View>
-          <Pressable
-            onPress={() => router.push({ pathname: '/add-spot', params: { draftId } })}
-            accessibilityRole="button"
-            accessibilityLabel="Identify restaurant"
-            style={styles.continueButton}
-          >
-            <Text style={styles.continueLabel}>Continue</Text>
-          </Pressable>
-        </View>
-      ) : null}
+      {drafts.length > 0 ? <View style={styles.drafts}><Text style={styles.sectionTitle}>Saved drafts</Text>{drafts.map((draft) => <Pressable key={draft.id} style={styles.draft} onPress={() => router.push({ pathname: draft.restaurantRef.type === 'place' ? '/posting-composer' : '/posting-restaurant', params: { draftId: draft.id } })} accessibilityRole="button" accessibilityLabel={`Resume ${draft.kind} draft`}><Ionicons name={draft.kind === 'photo' ? 'image-outline' : 'videocam-outline'} size={20} color={Colors.primary} /><View style={styles.draftCopy}><Text style={styles.draftTitle}>{draft.kind === 'photo' ? 'Photo draft' : 'Video draft'}</Text><Text style={styles.caption}>{draft.restaurantRef.type === 'place' ? 'Restaurant selected · finish your log or post' : draft.restaurantRef.type === 'candidate' ? `Waiting on ${draft.restaurantRef.displayName}` : 'Restaurant not selected yet'}</Text></View><Ionicons name="chevron-forward" size={18} color={Colors.textSecondary} /></Pressable>)}</View> : null}
 
-      <Text style={styles.privacyNote}>
-        Nothing is published from this step. Visibility is chosen explicitly later.
-      </Text>
-    </View>
+      <Text style={styles.privacy}>Private log and social post are separate choices. CRAVE never silently publishes a capture.</Text>
+    </ScrollView>
   );
 }
 
-function CaptureButton({
-  icon,
-  label,
-  onPress,
-  disabled,
-}: {
-  icon: React.ComponentProps<typeof Ionicons>['name'];
-  label: string;
-  onPress: () => void;
-  disabled?: boolean;
-}) {
-  return (
-    <Pressable
-      onPress={onPress}
-      disabled={disabled}
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      style={({ pressed }) => [styles.captureButton, pressed && styles.pressed, disabled && styles.captureButtonDisabled]}
-    >
-      <Ionicons name={icon} size={24} color={Colors.text} />
-      <Text style={styles.captureLabel}>{label}</Text>
-    </Pressable>
-  );
+function Action({ icon, label, onPress, disabled }: { icon: React.ComponentProps<typeof Ionicons>['name']; label: string; onPress: () => void; disabled: boolean }) {
+  return <Pressable disabled={disabled} onPress={onPress} accessibilityRole="button" accessibilityLabel={label} style={({ pressed }) => [styles.action, pressed && styles.pressed, disabled && styles.disabled]}><Ionicons name={icon} size={24} color={Colors.text} /><Text style={styles.actionLabel}>{label}</Text></Pressable>;
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: Colors.background,
-    padding: Spacing.lg,
-  },
-  centered: { alignItems: 'center', justifyContent: 'center', gap: Spacing.sm },
-  emptyTitle: { color: Colors.text, fontSize: 18, fontWeight: '700', textAlign: 'center' },
-  emptyBody: { color: Colors.textSecondary, fontSize: 14, textAlign: 'center' },
-  header: { marginTop: Spacing.sm, marginBottom: Spacing.xl },
-  eyebrow: {
-    ...Typography.caption,
-    color: Colors.primary,
-    fontWeight: '800',
-    letterSpacing: 1.1,
-    marginBottom: Spacing.xs,
-  },
-  title: { ...Typography.title, color: Colors.text, marginBottom: Spacing.sm },
-  body: { ...Typography.body, color: Colors.textSecondary, maxWidth: 520 },
-  actions: { gap: Spacing.sm },
-  captureButton: {
-    minHeight: 58,
-    borderRadius: Radius.card,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    backgroundColor: Colors.surface,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.md,
-    paddingHorizontal: Spacing.lg,
-  },
-  captureButtonDisabled: { opacity: 0.5 },
-  captureLabel: { ...Typography.body, color: Colors.text, fontWeight: '700' },
-  pressed: { opacity: 0.82 },
-  selectedCard: {
-    marginTop: Spacing.xl,
-    borderRadius: Radius.card,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    backgroundColor: Colors.surface,
-    padding: Spacing.md,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
-  },
-  selectedCopy: { flex: 1, minWidth: 0 },
-  selectedTitle: { ...Typography.body, color: Colors.text, fontWeight: '700' },
-  selectedBody: { ...Typography.caption, color: Colors.textSecondary, marginTop: 2 },
-  continueButton: {
-    minHeight: 44,
-    paddingHorizontal: Spacing.md,
-    borderRadius: Radius.pill,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: Colors.primary,
-  },
-  continueLabel: { ...Typography.body, color: Colors.background, fontWeight: '800' },
-  privacyNote: {
-    ...Typography.caption,
-    color: Colors.textSecondary,
-    marginTop: Spacing.lg,
-    textAlign: 'center',
-  },
+  container: { flex: 1, backgroundColor: Colors.background }, content: { padding: Spacing.lg, paddingBottom: 56 }, center: { flex: 1, backgroundColor: Colors.background, alignItems: 'center', justifyContent: 'center', padding: Spacing.xl, gap: Spacing.sm },
+  eyebrow: { ...Typography.caption, color: Colors.primary, fontWeight: '800', letterSpacing: 1.1 }, title: { ...Typography.title, color: Colors.text, marginTop: Spacing.xs }, muted: { ...Typography.body, color: Colors.textSecondary, textAlign: 'center', lineHeight: 20 },
+  actions: { marginTop: Spacing.xl, gap: Spacing.sm }, action: { minHeight: 58, borderRadius: Radius.card, borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.surface, flexDirection: 'row', alignItems: 'center', gap: Spacing.md, paddingHorizontal: Spacing.lg }, actionLabel: { ...Typography.body, color: Colors.text, fontWeight: '800' }, pressed: { opacity: 0.82 }, disabled: { opacity: 0.5 }, spinner: { marginTop: Spacing.md },
+  drafts: { marginTop: Spacing.xl, gap: Spacing.sm }, sectionTitle: { ...Typography.body, color: Colors.text, fontWeight: '800' }, draft: { minHeight: 64, borderRadius: Radius.card, borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.surface, padding: Spacing.md, flexDirection: 'row', alignItems: 'center', gap: Spacing.sm }, draftCopy: { flex: 1 }, draftTitle: { ...Typography.body, color: Colors.text, fontWeight: '700' }, caption: { ...Typography.caption, color: Colors.textSecondary, marginTop: 2 },
+  primary: { minHeight: 48, borderRadius: Radius.pill, backgroundColor: Colors.primary, alignItems: 'center', justifyContent: 'center', paddingHorizontal: Spacing.lg, marginTop: Spacing.sm }, primaryLabel: { ...Typography.body, color: Colors.background, fontWeight: '900' }, privacy: { ...Typography.caption, color: Colors.textSecondary, textAlign: 'center', marginTop: Spacing.xl },
 });
