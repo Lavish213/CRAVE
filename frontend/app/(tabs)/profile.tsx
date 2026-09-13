@@ -25,51 +25,16 @@ import { useAuthStore } from '../../src/stores/authStore';
 import {
   Profile,
   RankedPlace,
-  fetchFollowers,
-  fetchFollowing,
+  TasteProfile,
   fetchMyProfile,
   fetchMyRankings,
+  fetchTasteProfile,
 } from '../../src/api/social';
-import { Streak, fetchMyStreak } from '../../src/api/streak';
 import {
   RECOMMENDATION_THRESHOLD,
   rankedListHeadline,
   recommendationProgress,
 } from '../../src/utils/rankScore';
-
-function StatTile({
-  value,
-  label,
-  onPress,
-  icon,
-}: {
-  value: number | string;
-  label: string;
-  onPress?: () => void;
-  icon?: keyof typeof Ionicons.glyphMap;
-}) {
-  const inner = (
-    <View style={styles.statTile}>
-      <View style={styles.statValueRow}>
-        {icon ? <Ionicons name={icon} size={16} color={Colors.primary} /> : null}
-        <Text style={styles.statValue}>{value}</Text>
-      </View>
-      <Text style={styles.statLabel}>{label}</Text>
-    </View>
-  );
-  if (!onPress) return inner;
-  return (
-    <TouchableOpacity
-      onPress={onPress}
-      activeOpacity={0.75}
-      accessibilityRole="button"
-      accessibilityLabel={`${value} ${label}`}
-      style={{ flex: 1 }}
-    >
-      {inner}
-    </TouchableOpacity>
-  );
-}
 
 export default function ProfileScreen() {
   const router = useRouter();
@@ -77,17 +42,13 @@ export default function ProfileScreen() {
 
   const [profile, setProfile] = useState<Profile | null>(null);
   const [rankings, setRankings] = useState<RankedPlace[]>([]);
-  const [followingCount, setFollowingCount] = useState(0);
-  const [followerCount, setFollowerCount] = useState(0);
-  const [streak, setStreak] = useState<Streak | null>(null);
+  const [taste, setTaste] = useState<TasteProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [authVisible, setAuthVisible] = useState(false);
   const [profileError, setProfileError] = useState(false);
   const [rankingsError, setRankingsError] = useState(false);
-  const [followingError, setFollowingError] = useState(false);
-  const [followersError, setFollowersError] = useState(false);
-  const [streakError, setStreakError] = useState(false);
+  const [tasteError, setTasteError] = useState(false);
 
   const loadGenerationRef = useRef(0);
   const loadedForUserIdRef = useRef<string | null>(null);
@@ -102,36 +63,26 @@ export default function ProfileScreen() {
     if (loadedForUserIdRef.current !== user.id) {
       setProfile(null);
       setRankings([]);
-      setFollowingCount(0);
-      setFollowerCount(0);
-      setStreak(null);
+      setTaste(null);
       setLoading(true);
     }
     setProfileError(false);
     setRankingsError(false);
-    setFollowingError(false);
-    setFollowersError(false);
-    setStreakError(false);
+    setTasteError(false);
     try {
-      const [p, r, following, followers, s] = await Promise.all([
+      const [p, r, t] = await Promise.all([
         fetchMyProfile().then((value) => ({ value, failed: false })).catch(() => ({ value: null, failed: true })),
         fetchMyRankings().then((value) => ({ value, failed: false })).catch(() => ({ value: [] as RankedPlace[], failed: true })),
-        fetchFollowing().then((value) => ({ value, failed: false })).catch(() => ({ value: [] as string[], failed: true })),
-        fetchFollowers().then((value) => ({ value, failed: false })).catch(() => ({ value: [] as string[], failed: true })),
-        fetchMyStreak().then((value) => ({ value, failed: false })).catch(() => ({ value: null, failed: true })),
+        fetchTasteProfile(user.id).then((value) => ({ value, failed: false })).catch(() => ({ value: null, failed: true })),
       ]);
       if (myGeneration !== loadGenerationRef.current) return;
       loadedForUserIdRef.current = user.id;
       setProfile(p.value);
       setRankings(r.value);
-      setFollowingCount(following.value.length);
-      setFollowerCount(followers.value.length);
-      setStreak(s.value);
+      setTaste(t.value);
       setProfileError(p.failed);
       setRankingsError(r.failed);
-      setFollowingError(following.failed);
-      setFollowersError(followers.failed);
-      setStreakError(s.failed);
+      setTasteError(t.failed);
     } finally {
       if (myGeneration === loadGenerationRef.current) setLoading(false);
     }
@@ -237,18 +188,21 @@ export default function ProfileScreen() {
         </TouchableOpacity>
       </View>
 
-      <View style={styles.statsRow}>
-        <StatTile value={rankingsError ? '—' : rankings.length} label="ranked" onPress={() => router.push('/rank-home')} />
-        <StatTile value={followersError ? '—' : followerCount} label="followers" />
-        <StatTile value={followingError ? '—' : followingCount} label="following" />
-        {streak && streak.current_streak > 0 ? (
-          <StatTile value={streak.current_streak} label="day streak" icon="flame" />
-        ) : streakError ? (
-          <StatTile value="—" label="day streak" icon="flame" />
-        ) : null}
-      </View>
-
-      {!rankingsError ? <Text style={styles.headline}>{rankedListHeadline(rankings.length)}</Text> : null}
+      <TouchableOpacity
+        style={styles.tasteSummary}
+        onPress={() => router.push(`/taste-profile/${user.id}`)}
+        accessibilityRole="button"
+        accessibilityLabel="Open your private Taste Profile"
+      >
+        <Text style={styles.headline} accessibilityRole="header">
+          {tasteError || rankingsError
+            ? 'Your private Taste Profile is temporarily unavailable.'
+            : taste?.top_city
+              ? `${rankedListHeadline(rankings.length)} Most of your food history is in ${taste.top_city.name}.`
+              : `${rankedListHeadline(rankings.length)} CRAVE is still learning your taste.`}
+        </Text>
+        <Ionicons name="chevron-forward" size={18} color={Colors.textSecondary} />
+      </TouchableOpacity>
 
       {!rankingsError && !unlocked ? (
         <View style={styles.unlockCard}>
@@ -281,37 +235,6 @@ export default function ProfileScreen() {
         <Ionicons name="chevron-forward" size={18} color={Colors.textSecondary} />
       </TouchableOpacity>
 
-      <View style={styles.linkRow}>
-        <TouchableOpacity
-          style={styles.linkBtn}
-          onPress={() => router.push('/friends-feed')}
-          accessibilityRole="button"
-          accessibilityLabel="Friends activity"
-        >
-          <Ionicons name="people-outline" size={18} color={Colors.primary} />
-          <Text style={styles.linkBtnText}>Friends</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.linkBtn}
-          onPress={() => router.push('/leaderboard')}
-          accessibilityRole="button"
-          accessibilityLabel="Leaderboard"
-        >
-          <Ionicons name="trophy-outline" size={18} color={Colors.primary} />
-          <Text style={styles.linkBtnText}>Leaderboard</Text>
-        </TouchableOpacity>
-        {!rankingsError && rankings.length > 0 ? (
-          <TouchableOpacity
-            style={styles.linkBtn}
-            onPress={() => router.push(`/taste-profile/${user.id}`)}
-            accessibilityRole="button"
-            accessibilityLabel="Your Taste Profile"
-          >
-            <Ionicons name="restaurant-outline" size={18} color={Colors.primary} />
-            <Text style={styles.linkBtnText}>Taste Profile</Text>
-          </TouchableOpacity>
-        ) : null}
-      </View>
     </ScrollView>
   );
 }
@@ -328,20 +251,13 @@ const styles = StyleSheet.create({
   username: { color: Colors.textSecondary, fontSize: 14, marginTop: 1 },
   bio: { color: Colors.textSecondary, fontSize: 13, marginTop: Spacing.xs, lineHeight: 18 },
   gearBtn: { padding: Spacing.sm, minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
-  statsRow: { flexDirection: 'row', gap: Spacing.sm },
-  statTile: {
-    flex: 1,
-    backgroundColor: Colors.surface,
-    borderRadius: Radius.card,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    paddingVertical: Spacing.md,
-    alignItems: 'center',
-  },
-  statValueRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  statValue: { color: Colors.text, fontSize: 22, fontWeight: '800' },
-  statLabel: { color: Colors.textSecondary, fontSize: 12, marginTop: 2 },
   headline: { color: Colors.text, fontSize: 17, fontWeight: '700', lineHeight: 23 },
+  tasteSummary: {
+    minHeight: 44,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
   unlockCard: {
     flexDirection: 'row',
     gap: Spacing.sm,
@@ -374,19 +290,4 @@ const styles = StyleSheet.create({
   rankMeta: { flex: 1, gap: 2 },
   rankTitle: { color: Colors.text, fontSize: 16, fontWeight: '800' },
   rankBody: { color: Colors.textSecondary, fontSize: 13, lineHeight: 18 },
-  linkRow: { flexDirection: 'row', gap: Spacing.sm },
-  linkBtn: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    paddingVertical: 12,
-    borderRadius: Radius.pill,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    backgroundColor: Colors.surface,
-    minHeight: 44,
-  },
-  linkBtnText: { color: Colors.primary, fontSize: 14, fontWeight: '700' },
 });

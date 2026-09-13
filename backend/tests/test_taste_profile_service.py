@@ -187,7 +187,7 @@ def test_top_city_is_the_city_with_the_most_ranked_places(db):
     assert result["top_city"]["count"] == 2
 
 
-def test_percentile_reflects_standing_among_other_ranked_users(db):
+def test_taste_profile_does_not_emit_competitive_percentile(db):
     session, created = db
     me = f"user-{uuid.uuid4().hex[:8]}"
     behind_me = f"user-{uuid.uuid4().hex[:8]}"
@@ -204,14 +204,13 @@ def test_percentile_reflects_standing_among_other_ranked_users(db):
 
     result = get_taste_profile(session, user_id=me)
 
-    # Exactly one of the two "other" users (behind_me) ranked <= my count.
-    assert result["percentile"] == 50
+    assert "percentile" not in result
 
 
-def test_percentile_is_none_when_user_has_ranked_nothing(db):
+def test_empty_taste_profile_contains_only_factual_empty_aggregates(db):
     session, _created = db
     result = get_taste_profile(session, user_id=f"user-{uuid.uuid4().hex[:8]}")
-    assert result["percentile"] is None
+    assert "percentile" not in result
     assert result["total_ranked"] == 0
     assert result["favorite_cuisine"] is None
     assert result["top_city"] is None

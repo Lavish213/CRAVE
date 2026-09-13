@@ -197,8 +197,8 @@ export default function RootLayout() {
           <Stack.Screen name="user/[id]" options={{ title: '' }} />
           <Stack.Screen name="profile-setup" options={{ title: 'Set up profile' }} />
           <Stack.Screen name="add-spot" options={{ title: 'Add a Spot' }} />
-          <Stack.Screen name="friends-feed" options={{ title: 'Friends' }} />
-          <Stack.Screen name="leaderboard" options={{ title: 'Leaderboard' }} />
+          <Stack.Screen name="friends-feed" options={{ headerShown: false }} />
+          <Stack.Screen name="leaderboard" options={{ headerShown: false }} />
           <Stack.Screen name="taste-profile/[userId]" options={{ title: 'Taste Profile' }} />
           <Stack.Screen name="settings" options={{ title: 'Settings' }} />
           <Stack.Screen name="legal/privacy" options={{ title: 'Privacy Policy' }} />
