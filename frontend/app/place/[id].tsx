@@ -852,7 +852,7 @@ export default function PlaceDetailScreen() {
           <Ionicons
             name={saved ? 'bookmark' : 'bookmark-outline'}
             size={18}
-            color={saved ? Colors.primary : Colors.text}
+            color={saved ? Colors.brand : Colors.text}
           />
           <Text style={[styles.actionLabel, saved && styles.actionLabelSaved]}>
             {saved ? 'Saved' : 'Save'}
@@ -1109,7 +1109,7 @@ export default function PlaceDetailScreen() {
             accessibilityRole="button"
             accessibilityLabel="Suggest menu items"
           >
-            <Ionicons name="create-outline" size={16} color={Colors.primary} />
+            <Ionicons name="create-outline" size={16} color={Colors.brand} />
             <Text style={styles.suggestMenuText}>
               {menuItems.length === 0 ? 'Add menu items' : 'Suggest a correction'}
             </Text>
@@ -1211,7 +1211,7 @@ const styles = StyleSheet.create({
     paddingBottom: 12,
   },
   decisionChip: { fontSize: 14, color: Colors.textSecondary, fontWeight: '600' },
-  decisionChipLink: { color: Colors.primary },
+  decisionChipLink: { color: Colors.brand },
   // Closed reads as a real caution, not a neutral fact like price/distance
   // -- the same color this app's design tokens already reserve for an
   // error/blocked state.
@@ -1389,7 +1389,7 @@ const styles = StyleSheet.create({
     textAlign: 'right',
   },
   expandBtn: { marginTop: 8, paddingVertical: 12, alignItems: 'center' },
-  expandLabel: { color: Colors.primary, fontSize: 14, fontWeight: '600' },
+  expandLabel: { color: Colors.brand, fontSize: 14, fontWeight: '600' },
   suggestMenuBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1398,7 +1398,7 @@ const styles = StyleSheet.create({
     marginTop: 8,
     paddingVertical: 12,
   },
-  suggestMenuText: { color: Colors.primary, fontSize: 14, fontWeight: '600' },
+  suggestMenuText: { color: Colors.brand, fontSize: 14, fontWeight: '600' },
   menuSkeletonWrap: { gap: Spacing.sm },
   socialSection: { paddingTop: 20, paddingLeft: 16 },
   socialRow: { gap: Spacing.sm, paddingRight: 16, paddingTop: 4 },

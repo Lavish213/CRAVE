@@ -99,7 +99,7 @@ export default function RankHomeScreen() {
     <ScrollView
       style={styles.container}
       contentContainerStyle={styles.content}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={Colors.primary} />}
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={Colors.brand} />}
     >
       <View style={styles.header}>
         <Text style={styles.title}>Rank</Text>
@@ -170,7 +170,7 @@ export default function RankHomeScreen() {
         accessibilityRole="button"
         accessibilityLabel="Open your Taste Profile"
       >
-        <Ionicons name="restaurant-outline" size={18} color={Colors.primary} />
+        <Ionicons name="restaurant-outline" size={18} color={Colors.brand} />
         <Text style={styles.explainText}>See what CRAVE is learning from your choices</Text>
         <Ionicons name="chevron-forward" size={16} color={Colors.textSecondary} />
       </TouchableOpacity>
@@ -191,7 +191,7 @@ const styles = StyleSheet.create({
   count: { ...Typography.caption, color: Colors.textSecondary },
   group: { gap: Spacing.sm },
   groupTitle: { ...Typography.label, color: Colors.textSecondary },
-  eliteTitle: { color: Colors.primary },
+  eliteTitle: { color: Colors.brand },
   list: { gap: Spacing.sm },
   explain: {
     minHeight: 48,

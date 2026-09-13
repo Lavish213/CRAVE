@@ -1,8 +1,8 @@
 # CRAVE UI V2 Visual Audit
 
-Status date: September 13, 2026  
-Status: first implementation audit  
-Branch: `codex/ui-v2-visual-refresh`
+Status date: September 13, 2026
+Status: second implementation audit
+Branch: `codex/ui-v2-primary-sweep`
 
 ## Summary
 
@@ -69,6 +69,21 @@ After the token foundation and shared-component pass:
 are not automatically wrong, but each should be migrated to a more specific
 semantic token when that file is next edited.
 
+## Post primary-screen semantic sweep
+
+After the follow-up primary-screen sweep:
+
+- old cyan `#38BDF8`: **0** frontend occurrences;
+- direct `Colors.primary` callers in `frontend/app` + `frontend/src`: **0**;
+- `Colors.brand`: **76** callers across **28** frontend files;
+- `Colors.actionPrimary`: **15** callers across **14** frontend files;
+- raw `rgba(...)` overlay files: **11**.
+
+`Colors.primary` still exists in `frontend/src/constants/colors.ts` only as a
+legacy compatibility alias, but app screens no longer call it directly. The
+remaining visual work is no longer "replace old primary"; it is a narrower
+overlay/composition/accessibility proof pass.
+
 ## Highest-priority shared components
 
 Migrated or targeted first:
@@ -128,7 +143,7 @@ Mostly dark already, but still utility/dashboard-like in places. These should be
 
 ## Remaining known gaps after first pass
 
-- 28 `Colors.primary` callers remain and should be migrated to semantic roles in follow-up sweeps.
+- Direct app/screen `Colors.primary` callers are now cleared.
 - 11 files still contain raw `rgba/rgb` overlays, mostly media/special-effect layers.
 - Search/Map screen composition is partially propagated but does not yet fully
   match the north star.
@@ -138,9 +153,8 @@ Mostly dark already, but still utility/dashboard-like in places. These should be
 
 ## Next implementation sweeps
 
-1. Replace remaining high-risk `Colors.primary` callers with semantic tokens.
-2. Move sheet/media overlays to `sheetScrim`, `mediaScrim`, or `mediaScrimSoft`.
-3. Propagate Search/Map visual structure using existing product behavior.
-4. Run full type/test verification.
-5. Generate screenshots or document local blocker.
-6. Re-audit raw colors, old cyan, touch targets, and accessibility states.
+1. Move remaining raw overlay colors to `sheetScrim`, `mediaScrim`, or `mediaScrimSoft` where they are not intentional one-off effects.
+2. Propagate Search/Map visual structure using existing product behavior.
+3. Capture simulator/device screenshots for the primary screens.
+4. Verify Dynamic Type, VoiceOver order, touch targets, and reduced-motion behavior.
+5. Re-audit raw colors, old cyan, touch targets, and accessibility states after runtime proof.

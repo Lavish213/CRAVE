@@ -2,38 +2,48 @@
 
 Status: ready-for-review
 Owner: Codex
+Branch: codex/ui-v2-primary-sweep
+Base SHA: 70f55469a270a5daf455a96225cb0fd2658b7cd3
+Commit SHA: PR head / merge record (self-referential branch commit SHA omitted)
+Scope: UI V2 primary-screen semantic cleanup after PR #278. Reduce remaining
+`Colors.primary` overload, migrate obvious links/active states/CTAs to semantic
+tokens, and polish primary app screens without changing backend behavior,
+ranking/search logic, navigation contracts, or data models.
+Locked files: .agent-bridge/STATE.md, docs/design/CRAVE_UI_V2_VISUAL_AUDIT.md,
+frontend/src/components/** selected shared visual components,
+frontend/src/screens/SearchScreen.tsx, frontend/src/screens/MapScreenCore.tsx,
+frontend/app/(tabs)/index.tsx, frontend/app/(tabs)/craves.tsx,
+frontend/app/(tabs)/profile.tsx, frontend/app/settings.tsx,
+frontend/app/food-evidence.tsx, frontend/app/add-spot.tsx,
+frontend/app/rank-home.tsx, frontend/app/leaderboard.tsx,
+frontend/app/taste-profile/[userId].tsx, frontend/app/user/[id].tsx,
+and focused tests for touched surfaces.
+Verification: post-sweep visual token audit confirms old cyan `#38BDF8` has 0
+frontend occurrences and direct `Colors.primary` callers in `frontend/app` +
+`frontend/src` are 0; `cd frontend && npx tsc --noEmit --pretty false` passed;
+focused touched-screen suite passed (10 suites, 171 tests); full frontend Jest
+passed (54 suites, 561 tests); `git diff --check` passed.
+Explicit exclusions: production data jobs, backend routes/services, recommender
+model behavior, Search/Map ranking/product-contract changes, paid data sources,
+and deleting stale remote branches.
+
+## Prior completed UI V2 work
+
+PR #278 merged as `70f5546`: durable mockup artifacts, UI V2 token map/audit,
+warm semantic token foundation, shared selected/CTA/card/sheet/map marker
+treatments, non-color selected Map pin affordance, and Search top-result hero
+hierarchy. Verification on PR #278: CI/CodeQL green, local full frontend Jest
+54 suites/561 tests.
+
+---
+
+Status: merged
+Owner: Codex
 Branch: codex/ui-v2-visual-refresh
 Base SHA: be0b0fb1d8fa011612721535e70ef1375b27e394
-Commit SHA: pending commit
-Scope: CRAVE UI V2 visual-system migration. Audit the current frontend visual
-system against the Search/Map/Core mockup direction, define a token/component
-migration plan, then implement the visual refresh through shared tokens and
-components before propagating screen polish. This is a visual-system/style
-migration only: no backend behavior, ranking/search intelligence, navigation
-contract, or data-model redesign unless a verified UI contract gap requires a
-separate follow-up.
-Locked files: docs/design/CRAVE_UI_V2_VISUAL_AUDIT.md,
-docs/design/CRAVE_UI_V2_TOKEN_MAP.md, frontend/src/constants/colors.ts,
-frontend/src/components/PlaceCard.tsx, frontend/src/components/PlaceCardCompact.tsx,
-frontend/src/components/MapMarker.tsx, frontend/src/components/MapBottomSheet.tsx,
-frontend/src/components/FilterSheet.tsx, frontend/src/components/SkeletonCard.tsx,
-frontend/src/components/EmptyState.tsx, frontend/src/components/ErrorState.tsx,
-frontend/src/components/Toast.tsx, frontend/src/components/SectionHeader.tsx,
-frontend/src/components/CitySelectorStrip.tsx, frontend/app/(tabs)/_layout.tsx,
-frontend/app/(tabs)/search.tsx, frontend/app/(tabs)/map.tsx,
-frontend/app/(tabs)/index.tsx, frontend/app/place/[id].tsx,
-frontend/app/(tabs)/craves.tsx, frontend/app/(tabs)/profile.tsx,
-frontend/app/settings.tsx, and focused tests/docs needed to verify the visual
-contract.
-Verification: static visual-token audit performed (`#38BDF8` old cyan now has
-0 frontend occurrences; remaining `Colors.primary` callers recorded as follow-up
-migration leads); `cd frontend && npx tsc --noEmit --pretty false` passed;
-focused Search/Map/Feed/Place Detail suite passed (6 suites, 112 tests); full
-frontend Jest passed (54 suites, 561 tests). Follow-up Search hero propagation:
-`npm test -- --runInBand __tests__/search.test.tsx
-__tests__/search-decision-support.test.tsx --silent --forceExit` passed (2
-suites, 35 tests). Screenshot/device proof not captured in this environment;
-still required before claiming visual final/device-verified.
+Commit SHA: 70f55469a270a5daf455a96225cb0fd2658b7cd3
+Scope: CRAVE UI V2 visual-system foundation and first Search/Map propagation.
+Verification: see PR #278.
 Explicit exclusions: production data jobs, backend routes/services, recommender
 model behavior, Search/Map ranking/product-contract changes, paid data sources,
 and deleting stale remote branches.

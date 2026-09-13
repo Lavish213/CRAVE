@@ -79,7 +79,7 @@ export function ReportVideoSheet({ visible, videoId, onClose, onReported }: Prop
             >
               <Text style={styles.rowText}>{option.label}</Text>
               {submitting === option.value ? (
-                <ActivityIndicator size="small" color={Colors.primary} />
+                <ActivityIndicator size="small" color={Colors.brand} />
               ) : (
                 <Ionicons name="chevron-forward" size={16} color={Colors.textSecondary} />
               )}

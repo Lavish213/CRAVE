@@ -163,7 +163,7 @@ export default function LeaderboardScreen() {
             <RefreshControl
               refreshing={refreshing}
               onRefresh={() => canFetch && refetch()}
-              tintColor={Colors.primary}
+              tintColor={Colors.brand}
             />
           }
           renderItem={({ item }) => {
@@ -243,7 +243,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     minHeight: 40,
   },
-  toggleBtnActive: { backgroundColor: Colors.primary },
+  toggleBtnActive: { backgroundColor: Colors.selectedBg },
   toggleText: { color: Colors.textSecondary, fontSize: 14, fontWeight: '700' },
   toggleTextActive: { color: '#FFFFFF' },
 
@@ -262,7 +262,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.border,
   },
-  rowMe: { borderColor: Colors.primary },
+  rowMe: { borderColor: Colors.selectedBorder },
   rank: {
     color: Colors.textSecondary,
     fontSize: 16,
@@ -275,7 +275,7 @@ const styles = StyleSheet.create({
   avatarInitial: { color: Colors.text, fontSize: 16, fontWeight: '800' },
   meta: { flex: 1 },
   name: { color: Colors.text, fontSize: 15, fontWeight: '700' },
-  you: { color: Colors.primary, fontSize: 12, fontWeight: '800' },
+  you: { color: Colors.brand, fontSize: 12, fontWeight: '800' },
   handle: { color: Colors.textSecondary, fontSize: 12, marginTop: 1 },
   countWrap: { alignItems: 'flex-end' },
   count: { color: Colors.text, fontSize: 17, fontWeight: '800' },

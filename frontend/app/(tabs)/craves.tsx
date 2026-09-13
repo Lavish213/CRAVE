@@ -425,7 +425,7 @@ export default function CravesScreen() {
       accessibilityRole="button"
       accessibilityLabel="Share a link"
     >
-      <Ionicons name="link-outline" size={16} color={Colors.primary} />
+      <Ionicons name="link-outline" size={16} color={Colors.brand} />
       <Text style={styles.shareBtnText}>Share a link</Text>
     </TouchableOpacity>
   );
@@ -500,7 +500,7 @@ export default function CravesScreen() {
           <RefreshControl
             refreshing={pullRefreshing}
             onRefresh={handlePullRefresh}
-            tintColor={Colors.primary}
+            tintColor={Colors.brand}
           />
         }
         renderItem={({ item: row }) => {
@@ -668,7 +668,7 @@ export default function CravesScreen() {
           }
 
           if (row.kind === 'craves-loading' || row.kind === 'place-saves-loading') {
-            return <ActivityIndicator color={Colors.primary} style={styles.sectionSpinner} />;
+            return <ActivityIndicator color={Colors.brand} style={styles.sectionSpinner} />;
           }
 
           if (row.kind === 'craves-error' || row.kind === 'place-saves-error') {
@@ -821,10 +821,10 @@ const styles = StyleSheet.create({
     borderColor: Colors.border,
     backgroundColor: Colors.surface,
   },
-  shareBtnText: { fontSize: 13, fontWeight: '700', color: Colors.primary },
+  shareBtnText: { fontSize: 13, fontWeight: '700', color: Colors.brand },
   screenTitle: { fontSize: 22, fontWeight: '800', color: Colors.text },
   countBadge: {
-    backgroundColor: Colors.primary,
+    backgroundColor: Colors.actionPrimary,
     borderRadius: Radius.full,
     minWidth: 22,
     height: 22,
@@ -879,7 +879,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  craveViewBtn: { color: Colors.primary, fontSize: 13, fontWeight: '700' },
+  craveViewBtn: { color: Colors.brand, fontSize: 13, fontWeight: '700' },
   craveDeleteBtn: {
     padding: 8,
     minWidth: 44,
