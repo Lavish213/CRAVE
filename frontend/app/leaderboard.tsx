@@ -245,7 +245,7 @@ const styles = StyleSheet.create({
   },
   toggleBtnActive: { backgroundColor: Colors.selectedBg },
   toggleText: { color: Colors.textSecondary, fontSize: 14, fontWeight: '700' },
-  toggleTextActive: { color: '#FFFFFF' },
+  toggleTextActive: { color: Colors.onActionPrimary },
 
   // FlashList's contentContainerStyle doesn't reliably support `gap`
   // (unlike FlatList) -- https://github.com/Shopify/flash-list/issues/2097 --

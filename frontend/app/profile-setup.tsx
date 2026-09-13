@@ -198,7 +198,7 @@ export default function ProfileSetupScreen() {
           accessibilityLabel="Continue"
         >
           {submitting ? (
-            <ActivityIndicator color="#FFFFFF" />
+            <ActivityIndicator color={Colors.onActionPrimary} />
           ) : (
             <Text style={styles.ctaText}>Continue</Text>
           )}

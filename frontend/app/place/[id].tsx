@@ -776,7 +776,7 @@ export default function PlaceDetailScreen() {
           accessibilityRole="button"
           accessibilityLabel="Get directions"
         >
-          <Ionicons name="navigate" size={18} color="#FFFFFF" />
+          <Ionicons name="navigate" size={18} color={Colors.onActionPrimary} />
           <Text style={styles.rankCtaText}>Get Directions</Text>
         </TouchableOpacity>
       ) : !isVisited ? (
@@ -798,7 +798,7 @@ export default function PlaceDetailScreen() {
           <Ionicons
             name={saved ? 'bookmark' : 'bookmark-outline'}
             size={18}
-            color={saved ? Colors.text : '#FFFFFF'}
+            color={saved ? Colors.text : Colors.onActionPrimary}
           />
           <Text style={saved ? styles.rankCtaRankedText : styles.rankCtaText}>
             {saved ? 'Saved for tonight' : 'Save for tonight'}
@@ -834,7 +834,7 @@ export default function PlaceDetailScreen() {
             </>
           ) : (
             <>
-              <Ionicons name="restaurant" size={18} color="#FFFFFF" />
+              <Ionicons name="restaurant" size={18} color={Colors.onActionPrimary} />
               <Text style={styles.rankCtaText}>Rank it</Text>
             </>
           )}
@@ -1419,7 +1419,7 @@ const styles = StyleSheet.create({
     borderRadius: Radius.pill,
     backgroundColor: 'rgba(0,0,0,0.6)',
   },
-  socialPlatformChipText: { color: '#fff', fontSize: 10, fontWeight: '700' },
+  socialPlatformChipText: { color: Colors.text, fontSize: 10, fontWeight: '700' },
   socialAuthor: { color: Colors.textSecondary, fontSize: 12, marginTop: 6 },
   friendRankCard: { width: 84, alignItems: 'center' },
   friendRankAvatar: {
