@@ -15,6 +15,8 @@ import { Colors, Radius, Spacing } from '../constants/colors';
 import { FeedVideo, fetchVideoFeed } from '../api/videos';
 import { useAuthStore } from '../stores/authStore';
 import { useToast } from '../hooks/useToast';
+import { requestAuthGate } from '../stores/authGateStore';
+import { ReportVideoSheet } from './ReportVideoSheet';
 
 const THUMB_SIZE = 96;
 
@@ -25,7 +27,6 @@ interface Props {
 export function PlaceVideoGallery({ placeId }: Props) {
   const router = useRouter();
   const user = useAuthStore((s) => s.user);
-  const toast = useToast((s) => s.show);
   const [videos, setVideos] = useState<FeedVideo[]>([]);
   const [playingVideo, setPlayingVideo] = useState<FeedVideo | null>(null);
 
@@ -45,12 +46,20 @@ export function PlaceVideoGallery({ placeId }: Props) {
 
   const handleRecordPress = useCallback(() => {
     if (!user) {
-      toast('Sign in to record a food video');
+      requestAuthGate({
+        actionType: 'record_place_video',
+        reason: 'default',
+        sourceRoute: `/place/${placeId}`,
+        targetIds: [placeId],
+        destination: `/record-video/${placeId}`,
+        idempotent: true,
+        resume: () => undefined,
+      });
       return;
     }
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     router.push(`/record-video/${placeId}`);
-  }, [user, placeId, router, toast]);
+  }, [user, placeId, router]);
 
   if (videos.length === 0) {
     return (
@@ -100,10 +109,28 @@ export function PlaceVideoGallery({ placeId }: Props) {
 }
 
 function VideoPlaybackModal({ video, onClose }: { video: FeedVideo; onClose: () => void }) {
+  const user = useAuthStore((s) => s.user);
+  const toast = useToast((s) => s.show);
+  const [reportVisible, setReportVisible] = useState(false);
   const player = useVideoPlayer(video.videoUrl ?? '', (p) => {
     p.loop = true;
     p.play();
   });
+
+  const handleReportPress = () => {
+    if (!user) {
+      requestAuthGate({
+        actionType: 'report_place_video',
+        reason: 'default',
+        sourceRoute: `/place/${video.placeId}`,
+        targetIds: [video.id],
+        idempotent: true,
+        resume: () => undefined,
+      });
+      return;
+    }
+    setReportVisible(true);
+  };
 
   return (
     <View style={styles.playbackContainer}>
@@ -117,6 +144,21 @@ function VideoPlaybackModal({ video, onClose }: { video: FeedVideo; onClose: () 
       >
         <Ionicons name="close" size={28} color={Colors.text} />
       </TouchableOpacity>
+      <TouchableOpacity
+        style={styles.playbackReport}
+        onPress={handleReportPress}
+        accessibilityRole="button"
+        accessibilityLabel="Report this video"
+        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+      >
+        <Ionicons name="flag-outline" size={22} color={Colors.text} />
+      </TouchableOpacity>
+      <ReportVideoSheet
+        visible={reportVisible}
+        videoId={video.id}
+        onClose={() => setReportVisible(false)}
+        onReported={() => toast('Thanks — we’ll take a look.')}
+      />
     </View>
   );
 }
@@ -135,14 +177,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     alignSelf: 'flex-start',
     marginHorizontal: Spacing.lg,
-    backgroundColor: Colors.primary,
+    backgroundColor: Colors.actionPrimary,
     paddingHorizontal: Spacing.lg,
     paddingVertical: Spacing.sm,
     borderRadius: Radius.pill,
     gap: Spacing.xs,
   },
   recordChipText: {
-    color: Colors.background,
+    color: Colors.onActionPrimary,
     fontWeight: '700',
     fontSize: 14,
   },
@@ -196,6 +238,17 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: Spacing.xxl,
     left: Spacing.lg,
+    width: 40,
+    height: 40,
+    borderRadius: Radius.full,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  playbackReport: {
+    position: 'absolute',
+    top: Spacing.xxl,
+    right: Spacing.lg,
     width: 40,
     height: 40,
     borderRadius: Radius.full,

@@ -776,7 +776,7 @@ export default function PlaceDetailScreen() {
           accessibilityRole="button"
           accessibilityLabel="Get directions"
         >
-          <Ionicons name="navigate" size={18} color="#FFFFFF" />
+          <Ionicons name="navigate" size={18} color={Colors.onActionPrimary} />
           <Text style={styles.rankCtaText}>Get Directions</Text>
         </TouchableOpacity>
       ) : !isVisited ? (
@@ -798,7 +798,7 @@ export default function PlaceDetailScreen() {
           <Ionicons
             name={saved ? 'bookmark' : 'bookmark-outline'}
             size={18}
-            color={saved ? Colors.text : '#FFFFFF'}
+            color={saved ? Colors.text : Colors.onActionPrimary}
           />
           <Text style={saved ? styles.rankCtaRankedText : styles.rankCtaText}>
             {saved ? 'Saved for tonight' : 'Save for tonight'}
@@ -834,7 +834,7 @@ export default function PlaceDetailScreen() {
             </>
           ) : (
             <>
-              <Ionicons name="restaurant" size={18} color="#FFFFFF" />
+              <Ionicons name="restaurant" size={18} color={Colors.onActionPrimary} />
               <Text style={styles.rankCtaText}>Rank it</Text>
             </>
           )}
@@ -852,7 +852,7 @@ export default function PlaceDetailScreen() {
           <Ionicons
             name={saved ? 'bookmark' : 'bookmark-outline'}
             size={18}
-            color={saved ? Colors.primary : Colors.text}
+            color={saved ? Colors.brand : Colors.text}
           />
           <Text style={[styles.actionLabel, saved && styles.actionLabelSaved]}>
             {saved ? 'Saved' : 'Save'}
@@ -1109,7 +1109,7 @@ export default function PlaceDetailScreen() {
             accessibilityRole="button"
             accessibilityLabel="Suggest menu items"
           >
-            <Ionicons name="create-outline" size={16} color={Colors.primary} />
+            <Ionicons name="create-outline" size={16} color={Colors.brand} />
             <Text style={styles.suggestMenuText}>
               {menuItems.length === 0 ? 'Add menu items' : 'Suggest a correction'}
             </Text>
@@ -1211,7 +1211,7 @@ const styles = StyleSheet.create({
     paddingBottom: 12,
   },
   decisionChip: { fontSize: 14, color: Colors.textSecondary, fontWeight: '600' },
-  decisionChipLink: { color: Colors.primary },
+  decisionChipLink: { color: Colors.brand },
   // Closed reads as a real caution, not a neutral fact like price/distance
   // -- the same color this app's design tokens already reserve for an
   // error/blocked state.
@@ -1241,10 +1241,10 @@ const styles = StyleSheet.create({
     marginTop: 12,
     paddingVertical: 14,
     borderRadius: Radius.pill,
-    backgroundColor: Colors.primary,
+    backgroundColor: Colors.actionPrimary,
     minHeight: 50,
   },
-  rankCtaText: { color: '#FFFFFF', fontSize: 15, fontWeight: '800' },
+  rankCtaText: { color: Colors.onActionPrimary, fontSize: 15, fontWeight: '800' },
   rankCtaRanked: {
     backgroundColor: Colors.surface,
     borderWidth: 1,
@@ -1292,9 +1292,9 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.surface,
     paddingHorizontal: 14,
   },
-  actionBtnSaved: { borderColor: Colors.primary, backgroundColor: Colors.primary + '22' },
+  actionBtnSaved: { borderColor: Colors.selectedBorder, backgroundColor: Colors.chipActiveBg },
   actionLabel: { color: Colors.textSecondary, fontSize: 13, fontWeight: '600' },
-  actionLabelSaved: { color: Colors.primary },
+  actionLabelSaved: { color: Colors.chipActiveText },
   memorySection: {
     paddingHorizontal: 16,
     paddingVertical: 4,
@@ -1322,7 +1322,7 @@ const styles = StyleSheet.create({
   },
   saveNoteBtn: {
     alignSelf: 'flex-start',
-    backgroundColor: Colors.primary,
+    backgroundColor: Colors.actionPrimary,
     borderRadius: Radius.pill,
     paddingHorizontal: 16,
     paddingVertical: 8,
@@ -1389,7 +1389,7 @@ const styles = StyleSheet.create({
     textAlign: 'right',
   },
   expandBtn: { marginTop: 8, paddingVertical: 12, alignItems: 'center' },
-  expandLabel: { color: Colors.primary, fontSize: 14, fontWeight: '600' },
+  expandLabel: { color: Colors.brand, fontSize: 14, fontWeight: '600' },
   suggestMenuBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1398,7 +1398,7 @@ const styles = StyleSheet.create({
     marginTop: 8,
     paddingVertical: 12,
   },
-  suggestMenuText: { color: Colors.primary, fontSize: 14, fontWeight: '600' },
+  suggestMenuText: { color: Colors.brand, fontSize: 14, fontWeight: '600' },
   menuSkeletonWrap: { gap: Spacing.sm },
   socialSection: { paddingTop: 20, paddingLeft: 16 },
   socialRow: { gap: Spacing.sm, paddingRight: 16, paddingTop: 4 },
@@ -1419,7 +1419,7 @@ const styles = StyleSheet.create({
     borderRadius: Radius.pill,
     backgroundColor: 'rgba(0,0,0,0.6)',
   },
-  socialPlatformChipText: { color: '#fff', fontSize: 10, fontWeight: '700' },
+  socialPlatformChipText: { color: Colors.text, fontSize: 10, fontWeight: '700' },
   socialAuthor: { color: Colors.textSecondary, fontSize: 12, marginTop: 6 },
   friendRankCard: { width: 84, alignItems: 'center' },
   friendRankAvatar: {

@@ -6,6 +6,7 @@ import { Colors } from '../constants/colors';
 interface Props {
   color: string;
   size?: number;
+  selected?: boolean;
 }
 
 interface ClusterProps {
@@ -33,37 +34,42 @@ const clusterStyles = StyleSheet.create({
   outer: {
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: Colors.primary,
+    backgroundColor: Colors.mapCluster,
     borderWidth: 2,
-    borderColor: 'rgba(255,255,255,0.9)',
+    borderColor: Colors.onMedia,
   },
   count: {
-    color: '#FFFFFF',
+    color: Colors.onPrimary,
     fontWeight: '700',
     fontSize: 13,
   },
 });
 
-export function MapMarkerDot({ color, size = 14 }: Props) {
+export function MapMarkerDot({ color, size = 14, selected = false }: Props) {
+  const outerSize = selected ? size + 18 : size + 8;
+  const innerSize = selected ? size + 4 : size;
+
   return (
     <View style={[
       styles.outer,
+      selected && styles.outerSelected,
       {
-        borderColor: color,
-        width: size + 8,
-        height: size + 8,
-        borderRadius: (size + 8) / 2,
+        borderColor: selected ? Colors.mapSelected : color,
+        width: outerSize,
+        height: outerSize,
+        borderRadius: outerSize / 2,
       },
     ]}>
       <View style={[
         styles.inner,
         {
-          backgroundColor: color,
-          width: size,
-          height: size,
-          borderRadius: size / 2,
+          backgroundColor: selected ? Colors.mapSelected : color,
+          width: innerSize,
+          height: innerSize,
+          borderRadius: innerSize / 2,
         },
       ]} />
+      {selected ? <View style={styles.selectedStem} /> : null}
     </View>
   );
 }
@@ -73,7 +79,19 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(0,0,0,0.3)',
+    backgroundColor: Colors.overlayDim,
+  },
+  outerSelected: {
+    borderWidth: 3,
+    backgroundColor: Colors.surface,
   },
   inner: {},
+  selectedStem: {
+    position: 'absolute',
+    bottom: -6,
+    width: 3,
+    height: 8,
+    borderRadius: 2,
+    backgroundColor: Colors.mapSelected,
+  },
 });

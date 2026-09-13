@@ -66,7 +66,7 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: Radius.full,
-    backgroundColor: Colors.primary,
+    backgroundColor: Colors.brand,
   },
   content: {
     flex: 1,

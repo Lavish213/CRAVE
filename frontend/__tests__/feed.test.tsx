@@ -371,11 +371,13 @@ describe('FeedScreen', () => {
   });
 
   it('shows the error state and lets retry re-fetch', async () => {
+    // A bare network Error (no `.response`) is now classified as a genuine
+    // offline failure -- see errorMessageFor in src/utils/errorMessage.ts.
     mockedFetchPlaces.mockRejectedValueOnce(new Error('network'));
     mockedFetchPlaces.mockResolvedValueOnce(page([makePlace('p0', 0.85)]));
 
     const { findByText, findByLabelText } = renderScreen();
-    expect(await findByText("Couldn't load places")).toBeTruthy();
+    expect(await findByText("Can't reach CRAVE — check your connection.")).toBeTruthy();
 
     fireEvent.press(await findByText('Try again'));
     expect(await findByLabelText(/^p0,/)).toBeTruthy();

@@ -34,6 +34,7 @@ import { AuthSheet } from '../../src/components/AuthSheet';
 import { useDecisionSession } from '../../src/hooks/useDecisionSession';
 import { DecisionReasonCode, DecisionRole, DecisionSessionCard } from '../../src/api/decisionSession';
 import { foundationQueryKey, STALE_TIME } from '../../src/contracts/foundationGate';
+import { errorMessageFor } from '../../src/utils/errorMessage';
 
 const VIEWABILITY_CONFIG = { itemVisiblePercentThreshold: 50, minimumViewTime: 250 };
 const DISCOVERY_LIMIT = 4;
@@ -115,6 +116,7 @@ export default function FeedScreen() {
     isFetching,
     isFetchingNextPage,
     isError,
+    error,
     isRefetchError,
     dataUpdatedAt,
     refetch,
@@ -482,7 +484,7 @@ export default function FeedScreen() {
           <Ionicons
             name="options-outline"
             size={20}
-            color={hasActiveFilters(filters) ? Colors.primary : Colors.textSecondary}
+            color={hasActiveFilters(filters) ? Colors.brand : Colors.textSecondary}
           />
         </TouchableOpacity>
       </View>
@@ -494,7 +496,7 @@ export default function FeedScreen() {
       ) : (
         <Animated.View style={[{ flex: 1 }, { opacity: feedOpacity }]}>
           {isError && decisionCards.length === 0 ? (
-            <ErrorState message="Couldn't load places" onRetry={() => void refetch()} />
+            <ErrorState message={errorMessageFor(error, "Couldn't load places")} onRetry={() => void refetch()} />
           ) : isCatchingUpForFilter ? (
             <View style={styles.skeletonWrap}><SkeletonFeed count={4} /></View>
           ) : rows.length === 0 ? (
@@ -560,13 +562,13 @@ export default function FeedScreen() {
                 <RefreshControl
                   refreshing={isFetching && !isFetchingNextPage && initialLoaded}
                   onRefresh={handleRefresh}
-                  tintColor={Colors.primary}
+                  tintColor={Colors.brand}
                 />
               }
               ListHeaderComponent={decisionHeader}
               ListFooterComponent={
                 isFetchingNextPage
-                  ? <ActivityIndicator color={Colors.primary} style={styles.listFooter} />
+                  ? <ActivityIndicator color={Colors.brand} style={styles.listFooter} />
                   : !hasNextPage
                     ? <Text style={styles.endState}>That’s everything new today.</Text>
                     : null
@@ -602,7 +604,7 @@ const styles = StyleSheet.create({
     paddingBottom: Spacing.lg,
   },
   decisionEyebrow: {
-    color: Colors.primary,
+    color: Colors.brand,
     fontSize: 12,
     fontWeight: '800',
     letterSpacing: 1.6,
@@ -672,7 +674,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
   },
-  wordmark: { fontSize: 26, fontWeight: '900', color: Colors.primary, letterSpacing: 3 },
+  wordmark: { fontSize: 26, fontWeight: '900', color: Colors.brand, letterSpacing: 3 },
   filterBtn: {
     padding: Spacing.sm,
     minWidth: 44,

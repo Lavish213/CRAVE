@@ -109,7 +109,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   mark: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  markDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: Colors.primary },
+  markDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: Colors.brand },
   markText: { color: Colors.text, fontSize: 15, fontWeight: '800', letterSpacing: 1.2 },
   main: { gap: 4 },
   badge: {

@@ -28,6 +28,7 @@ import { ActivityEvent, fetchFriendsFeed } from '../src/api/social';
 import { useAuthStore } from '../src/stores/authStore';
 import { formatScore, tierColor } from '../src/utils/rankScore';
 import { relativeTime } from '../src/utils/time';
+import { errorMessageFor } from '../src/utils/errorMessage';
 import { withImageWidth, AVATAR_IMAGE_WIDTH } from '../src/utils/imageUrl';
 
 function actorName(event: ActivityEvent): string {
@@ -57,6 +58,7 @@ export default function FriendsFeedScreen() {
     data: events = [],
     isLoading: loading,
     isError,
+    error,
     isRefetching: refreshing,
     refetch,
   } = useQuery({
@@ -113,7 +115,12 @@ export default function FriendsFeedScreen() {
   }
 
   if (isError) {
-    return <ErrorState message="Couldn't load your friends feed" onRetry={() => user && refetch()} />;
+    return (
+      <ErrorState
+        message={errorMessageFor(error, "Couldn't load your friends feed")}
+        onRetry={() => user && refetch()}
+      />
+    );
   }
 
   if (events.length === 0) {
@@ -138,7 +145,7 @@ export default function FriendsFeedScreen() {
         <RefreshControl
           refreshing={refreshing}
           onRefresh={() => user && refetch()}
-          tintColor={Colors.primary}
+          tintColor={Colors.brand}
         />
       }
       renderItem={({ item }) => {

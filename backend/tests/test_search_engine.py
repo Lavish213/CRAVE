@@ -24,6 +24,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from app.db.session import SessionLocal
 from app.db.models.city import City
 from app.db.models.place import Place
+from app.db.models.place_truth import PlaceTruth
 from app.services.search.search_engine import execute_search
 
 UNIQUE = uuid.uuid4().hex[:8]
@@ -191,6 +192,67 @@ def test_radius_miles_is_ignored_without_lat_lng(db):
 
     assert total == 1
     assert results[0].id == place.id
+
+
+def _set_outdoor_seating(db, place, value: str) -> None:
+    db.add(PlaceTruth(
+        place_id=place.id, truth_type="outdoor_seating", truth_value=value,
+        confidence=0.75, resolver_version="v2",
+    ))
+    db.commit()
+
+
+def test_required_amenity_excludes_a_place_without_confirmed_outdoor_seating(db):
+    session, created = db
+    city = _make_city(session, created)
+    has_patio = _make_place(session, created, city, name=f"{SEARCH_TERM} Patio", rank_score=0.5)
+    _set_outdoor_seating(session, has_patio, "yes")
+    no_patio = _make_place(session, created, city, name=f"{SEARCH_TERM} Indoor", rank_score=0.9)
+    _set_outdoor_seating(session, no_patio, "no")
+    unknown = _make_place(session, created, city, name=f"{SEARCH_TERM} Unknown", rank_score=0.8)
+    # unknown has no PlaceTruth row at all -- missing data must not pass a
+    # required-amenity filter any more than an explicit "no" does.
+
+    results, total = execute_search(
+        session, query=SEARCH_TERM, limit=20, offset=0,
+        required_amenities=("outdoor_seating",),
+    )
+
+    result_ids = {p.id for p in results}
+    assert result_ids == {has_patio.id}
+    assert total == 1
+    assert no_patio.id not in result_ids
+    assert unknown.id not in result_ids
+
+
+def test_limited_outdoor_seating_does_not_satisfy_a_required_amenity(db):
+    # "limited" is a real, distinct answer OSM can report -- not the
+    # confirmed "yes" a hard requirement needs, and not silently upgraded
+    # to satisfy one.
+    session, created = db
+    city = _make_city(session, created)
+    limited = _make_place(session, created, city, name=f"{SEARCH_TERM} Limited", rank_score=0.5)
+    _set_outdoor_seating(session, limited, "limited")
+
+    results, total = execute_search(
+        session, query=SEARCH_TERM, limit=20, offset=0,
+        required_amenities=("outdoor_seating",),
+    )
+
+    assert total == 0
+    assert results == []
+
+
+def test_no_required_amenities_does_not_filter_on_outdoor_seating_at_all(db):
+    session, created = db
+    city = _make_city(session, created)
+    no_patio = _make_place(session, created, city, name=f"{SEARCH_TERM} Indoor", rank_score=0.5)
+    _set_outdoor_seating(session, no_patio, "no")
+
+    results, total = execute_search(session, query=SEARCH_TERM, limit=20, offset=0)
+
+    assert total == 1
+    assert results[0].id == no_patio.id
 
 
 def test_a_page_at_offset_beyond_100_is_not_silently_empty(db):

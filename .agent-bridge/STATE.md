@@ -1,30 +1,281 @@
 # Active agent state
 
 Status: merged
+Owner: Claude
+Branch: claude/rebase-search-map-268, claude/rebase-feed-decision-session (both merged, can be deleted)
+Base SHA: bf673a5 (origin/main tip after PR #285)
+Scope: Codex ran out of usage mid-session before it could open PRs for two
+already-finished, ready-for-review branches it had pushed to origin
+(`codex/search-map-contract-propagation`, `codex/feed-decision-session` --
+both logged in `codex-to-claude.md` as `ready-for-review`, "Next action:
+Open the dedicated PR ... Do not merge"). User confirmed Codex could not
+finish and asked Claude to close both out.
+- `codex/search-map-contract-propagation` already had an open PR (#268),
+  but its base (`755f02b`) predated PRs #281/#283/#285 -- most notably my
+  own already-merged PR #272 (`b7c9248`/`d7c8bb2`), which independently
+  propagated overlapping Foundation Gate query-key/error-taxonomy fixes
+  into the same two screens. Rebased the branch onto current `main` in a
+  scratch worktree; resolved 3 real conflicts in `SearchScreen.tsx` by
+  keeping whichever side was more complete rather than picking one
+  wholesale -- Codex's initial-vs-refetch error split (preserves stale
+  cached results instead of blanking them on a background refresh
+  failure) combined with my own already-shipped `errorMessageFor()`
+  classification and the `myRankings` cache-sharing key `place/[id].tsx`
+  already uses. `search.test.tsx`'s two "collided" test blocks were both
+  kept (complementary, not actually conflicting). Force-pushed the merge
+  as a fast-forward onto the existing PR head so #268 kept its history/
+  comments. Full frontend suite reverified post-merge: 55/55 suites,
+  571/571 tests; `tsc --noEmit` clean. CodeRabbit review clean (no
+  threads). Merged `ab6ef80`.
+- `codex/feed-decision-session` had no PR yet. Same rebase treatment: 3
+  conflicts (`STATE.md` -- took main's; `(tabs)/index.tsx` -- kept main's
+  `errorMessageFor` import/destructure and `Colors.brand`, both needed by
+  code Codex's side didn't touch; `PlaceCard.tsx` -- kept main's
+  `Colors.mediaScrimSoft` token over Codex's hardcoded `rgba(0,0,0,0.45)`,
+  confirmed Codex's actual fix -- the Save control no longer nested inside
+  the card's own touchable, real 44x44 target -- survived the merge
+  untouched). Opened as PR #286, requested CodeRabbit, verified full
+  suite post-merge: 54/54 suites, 566/566 tests; `tsc --noEmit` clean.
+  CodeRabbit clean (no threads). Merged `b33fbd2`.
+Locked files: none -- closed.
+Verification: see per-branch notes above; both merges independently
+full-suite-clean on top of each other (rebased #268 after #286 landed,
+re-confirmed zero new conflicts before merging).
+Next action: none from me on these two. Codex's other open, older PRs
+(#262-267, Rank/Food-Evidence/Profile-Taste/Auth-Settings-Activity/
+Social-share-loop hardening) were not touched -- out of scope for this
+"Codex ran out of usage, finish what's already done" ask; each should be
+checked for the same current-`main` staleness before merge whenever
+someone picks them up next, using this handoff's rebase approach as the
+template. The OSM backfill dedupe fix Codex flagged as blocked
+(`codex/osm-backfill-dedupe-claims`) turned out to already be merged
+(PR #243, 2026-09-09) -- the only remaining step there is rerunning the
+real production backfill from current `main`, which needs Railway
+production DB access this repo-only session does not have.
+
+---
+
+Status: merged
+Owner: Claude
+Branch: claude/amenity-search-constraint (merged, can be deleted)
+Base SHA: 4b5509a (origin/main tip after PR #282)
+Commit SHA: ea035da (merge commit on origin/main)
+Scope: closes the remaining gap from PR #281's Known Gaps -- the SM-05/06
+mockup's literal example ("Patio required") couldn't happen in the
+running app because the query interpreter had no concept of amenities
+at all. User explicitly authorized this ("if easy add amenities, if too
+much leave off"); confirmed easy by following the exact pattern already
+in this file for `radius_miles` (a Python-side post-filter over the
+already-fetched candidate pool, not a second SQL round-trip).
+- `query_interpreter.py`: new `required_amenities` field, deliberately
+  separate from `required_categories`/`hard_constraints` (documented
+  elsewhere as always meaning the dietary/allergy set -- folding
+  amenities in would break that invariant and mis-route them into the
+  category-table join path). Recognizes "patio"/"outdoor seating";
+  negation gets its own wider prefix ("no outdoor seating," not just
+  "non-"/"not ") since amenities are far more often negated with a
+  plain "no" than dietary categories are.
+- `search_engine.py`: `outdoor_seating` turned out not to be a plain
+  `Place` column (an earlier assumption, caught before shipping) -- it's
+  a resolved `PlaceTruth` row (`truth_value` one of "yes"/"no"/
+  "limited", written by `promote_service_v2.py`'s OSM-claim pipeline,
+  same as `place_detail_router.py` already reads). One bulk query over
+  the candidate pool. Only "yes" satisfies a required amenity --
+  "limited" doesn't silently upgrade, and a missing row fails it the
+  same as an explicit "no". Never auto-relaxed, threaded through both
+  retry calls unchanged -- same standing as a dietary hard constraint.
+- Frontend: `required_amenities` renders with the same Required badge
+  treatment as `required_categories` (PR #281), combined into
+  `zeroResultInfo()`'s honest-attribution message and "keeping" list;
+  `CONSTRAINT_PATTERNS` gets a patio/outdoor-seating entry.
+Locked files: none -- closed.
+Verification: PR #283 (https://github.com/Lavish213/CRAVE/pull/283),
+merged `ea035da`. Backend `python -m pytest -q` -> 1120 passed, 2
+skipped (6 new: 3 interpreter, 3 search_engine, covering confirmed/no/
+limited/missing outdoor_seating and the unfiltered baseline). Frontend
+`npx tsc --noEmit` clean, `npx jest --ci` -> 54/54 suites, 566/566 tests
+(2 new). CI green (Frontend, both Backend jobs, both Analyze jobs,
+Guard, CodeQL).
+Next action: none from me. The Search/Map V1.5 mockup's SM-05/06
+Required-vs-Preferred contradiction is now fully closed end to end --
+mockup (Codex, PR #278) and running app (Claude, PR #281 + this PR)
+agree, with a real, tested, filterable amenity constraint behind it.
+Broader Search/Map V1.5 propagation (screen-by-screen visual QA,
+device/accessibility proof) remains open per Codex's own "brutal truth"
+self-assessment on PR #278/#279/#280 -- not this handoff's scope.
+
+## Prior completed UI V2 work (Codex)
+
+PR #278 merged as `70f5546`: durable mockup artifacts, UI V2 token map/audit,
+warm semantic token foundation, shared selected/CTA/card/sheet/map marker
+treatments, non-color selected Map pin affordance, and Search top-result hero
+hierarchy. Verification on PR #278: CI/CodeQL green, local full frontend Jest
+54 suites/561 tests.
+
+---
+
+Status: merged
 Owner: Codex
-Branch: codex/feed-decision-session
-Base SHA: 7bf81bda3dab274f00ec5db35c68c8235f7a3c2f
-Commit SHA: b178f09c528254e0f64519c1add48e578a029d4a
-Scope: Feed / Decision Session vertical-slice audit and narrow implementation
-against the locked frontend execution order, Feed screen contract, Foundation
-Gate contracts, and the merged Place Detail proving patterns. Verify the full
-Feed -> Place -> outcome handoff and produce an evidence-backed defect log.
-Locked files: frontend/app/(tabs)/index.tsx, frontend/__tests__/feed.test.tsx,
-frontend/src/hooks/useDecisionSession.ts,
-frontend/src/hooks/useDecisionSession.test.tsx,
-frontend/src/hooks/useRecommendations.ts,
-frontend/src/hooks/useRecommendations.test.tsx,
-frontend/src/api/decisionSession.ts, frontend/src/api/decisionSession.test.ts,
-frontend/src/api/places.ts, frontend/src/components/PlaceCard.tsx,
-.agent-bridge/STATE.md, and .agent-bridge/codex-to-claude.md.
-Verification: PR #261 merged by squash as `b178f09` after final review fixes.
-Updated PR-head CI and CodeQL passed. CodeRabbit's two actionable Feed findings
-were resolved/outdated after commit `bc01c29`. Local verification on the final
-branch head passed the focused Feed/Foundation suites (5 suites, 30 tests),
-`npx tsc --noEmit --pretty false`, and full frontend Jest (51 suites, 542
-tests).
-Explicit exclusions: no Search/Map redesign or edits; no revival of PR #254;
-no new recommender architecture; no backend or production-data changes.
+Branch: codex/ui-v2-visual-refresh
+Base SHA: be0b0fb1d8fa011612721535e70ef1375b27e394
+Commit SHA: 70f55469a270a5daf455a96225cb0fd2658b7cd3
+Scope: CRAVE UI V2 visual-system foundation and first Search/Map propagation.
+Verification: see PR #278.
+Explicit exclusions: production data jobs, backend routes/services, recommender
+model behavior, Search/Map ranking/product-contract changes, paid data sources,
+and deleting stale remote branches.
+
+## Prior completed work (compacted)
+
+Status before this claim: Claude's hitlist audit/misc cleanup merged in PR #276
+(`5e9c555`) and follow-up logging merged through PR #277 (`be0b0fb`). Remaining
+human-only gap from that lane: delete stale branch
+`claude/project-grade-systems-review-4ot7d0` from GitHub UI if desired.
+
+<!-- Previous state history retained below. -->
+
+---
+
+Status: merged
+Owner: Claude
+Branch: claude/hitlist-audit-and-misc-cleanup (merged, can be deleted)
+Base SHA: eabd04f (origin/main tip after PR #275)
+Commit SHA: 5e9c555 (merge commit on origin/main)
+Scope: three follow-up items from this pass's misc-gap list.
+
+1. **Stale designated-branch reconciliation, attempted then abandoned.**
+   User asked to pull forward the 3 non-doctrine commits from
+   `claude/project-grade-systems-review-4ot7d0` (d5869e5 camera-fix,
+   f734145 + 2e78ef6 docs) and delete that branch. On actually cherry-
+   picking them onto current `main`: d5869e5's real content (removing
+   the Settings "Rate CRAVE" placeholder row) turned out to already be
+   independently fixed on `main` by a separate commit (`e70a868`) --
+   only a no-op `: any` type annotation was left. Worse, f734145's doc
+   addition ("Place Detail's Report action is photo-only") is now
+   **factually false** -- verified `ReportPlaceSheet.tsx` +
+   `POST /moderation/places/{id}/report` already exist and are wired
+   into `place/[id].tsx`. Merging it would have put a wrong claim back
+   into `CRAVE_STATUS.md`. **Nothing from that branch was ported.** No
+   PR opened for it. Branch deletion itself is also blocked in this
+   environment: `git push origin --delete` returns a 403 from the git
+   proxy. The branch still exists on GitHub; a human needs to delete
+   `claude/project-grade-systems-review-4ot7d0` directly (repo settings
+   or the GitHub UI) -- don't reopen this as a porting task, there's
+   nothing left in it worth porting.
+2. **Hitlist system audit.** Verified `/hitlist/save`, `/hitlist/me`,
+   `/hitlist/suggest`, `/hitlist/delete` are all fully wired: save/
+   suggest via `ShareLinkSheet.tsx`'s two modes, me/delete via
+   `craves.tsx`'s load + optimistic trash-icon delete with rollback-on-
+   failure. The "Route-wiring audit findings" section below (claiming
+   zero frontend caller for suggest/delete) was itself stale, predating
+   PR #271 which wired both -- no code change needed, working as
+   designed.
+3. **Fixed the two remaining misc items**: `GET /hitlist/me`'s
+   docstring falsely claimed "confirmed unused by the shipped frontend"
+   -- corrected (it's called directly by `getMyPlaceSaves()`). Removed
+   the dead bare `GET /api/v1/map` route (`map_places`) -- zero frontend
+   caller anywhere, confirmed via `app.openapi()['paths']` before/after.
+   Its underlying query function `fetch_places_for_map` stays: `/map/
+   geojson`'s handler wraps it internally, still load-bearing. Also
+   dropped the dead `get_map_places` alias this exposed.
+
+Locked files: none -- closed.
+Verification: PR #276 (https://github.com/Lavish213/CRAVE/pull/276),
+merged `5e9c555`. `python -m pytest -q` -> 1114 passed, 2 skipped (1115
+minus the one test removed for the deleted route's own error-contract
+case). CI green (Frontend, both Backend jobs, both Analyze jobs, Guard,
+CodeQL).
+Known gaps: the stale branch itself (see item 1) is not deleted --
+blocked by environment network policy, needs a human. Everything else
+from this pass's misc list is closed.
+Next action: none from me -- awaiting the user's next screen/feature
+ask.
+
+**Coordination note, 2026-09-13:** the branch this file's protocol names
+as the designated branch for this lane,
+`claude/project-grade-systems-review-4ot7d0`, is ~200 commits behind
+`main` (merge-base `6e32ba4`) and carries only 4 commits `main` doesn't
+have: a real camera-failure-toast fix (`d5869e5`) that's since been
+independently re-fixed on `main` with different copy, two small Place
+Detail doc notes (`f734145`, `2e78ef6`), and a doctrine-lock commit
+(`f3329bd`) whose STATE.md/doctrine-doc content is superseded by a
+later, corrected version already on `main`. It has not been merged into
+`main`. This PR (#274) was opened directly off `main` instead, per
+explicit user direction, rather than force-pushing a reconciled version
+of the stale branch. **Whoever next claims this lane should either
+merge `main` into that branch (bringing forward only `d5869e5`,
+`f734145`, `2e78ef6` -- drop `f3329bd`, it's superseded) or ask the user
+whether the branch should simply be abandoned/deleted** -- don't build
+new work on top of it as-is; it's missing all of PRs #246-273.
+
+## Prior completed work (compacted)
+
+- **PR #269** (merged `6bf511e`): route-wiring audit (video-report
+  wiring + record-video auth gate). See "Route-wiring audit findings"
+  below for full detail, still current.
+- **PR #271** (merged `1bb402d`): wired `hitlist/delete` (trash icon on
+  Craves "Added" rows) and `hitlist/suggest` (new "Suggest" mode in
+  ShareLinkSheet -- name + city, no coordinates). Confirmed the
+  corroboration/promotion pipeline the user described (suggestions
+  accumulate confidence per distinct contributor via
+  candidate_store_v2.py's corroboration_keys, auto-promote at
+  promotion_orchestrator_v2.py's 0.72 threshold) already exists exactly
+  as intended -- no backend changes needed, just frontend wiring.
+
+## Route-wiring audit findings (Claude, 2026-09-13)
+
+Method: `python3 -c "from app.main import app; print(app.openapi()['paths'])"`
+against a fresh checkout gives the ground-truth 95-route backend surface
+(FastAPI 0.141.1's lazy `_IncludedRouter` means `app.routes` alone under-
+counts -- use `.openapi()`, not `.routes`, for this). Diffed against every
+`client.(get|post|put|patch|delete)` call across `frontend/src/**/*.ts`
+(not just `frontend/app` -- that scope miss is exactly what let the
+video-report gap below go unnoticed).
+
+**Fixed, PR #269:**
+- `POST /moderation/videos/{id}/report` had zero frontend caller despite
+  being fully built (review queue, auto-hide threshold, identical shape
+  to the image/place report endpoints already wired) -- see PlaceVideoGallery.tsx.
+- `PlaceVideoGallery.tsx`'s "Record a video" was a toast-only signed-out
+  dead end, same bug class as Rank/record-video/Place Detail/Friends Feed
+  fixed earlier this session -- missed then because that sweep only
+  covered `frontend/app`.
+
+**Resolved since this audit was first written (2026-09-13, PR #271 +
+#276) -- corrected here so the stale version below doesn't get
+re-discovered from scratch:**
+- `DELETE /api/v1/hitlist/delete` and `POST /api/v1/hitlist/suggest`
+  turned out to already be fully wired by the time of a fresh re-check:
+  `/suggest` and `/save` via `ShareLinkSheet.tsx`'s two composer modes,
+  `/delete` via `craves.tsx`'s optimistic trash-icon delete (with
+  rollback-on-failure) on the Craves "Added" section. The claim below
+  that these had zero frontend caller was itself stale, predating PR
+  #271. No UI decision needed after all -- it was already made and
+  shipped.
+- `GET /hitlist/me`'s stale docstring ("confirmed unused... calls
+  /saves instead") corrected in PR #276 -- it's called directly by
+  `getMyPlaceSaves()` and backs the Craves "Added" section.
+- `GET /api/v1/map` (the bare, non-geojson endpoint) removed entirely
+  in PR #276 -- confirmed zero frontend caller via `app.openapi()
+  ['paths']` before/after. Its underlying query function
+  (`fetch_places_for_map`) stays load-bearing (`/map/geojson` wraps it).
+
+**Original findings as first written, for context (now superseded by
+the corrections immediately above):**
+- `GET /api/v1/hitlist/analytics/summary`, `POST /api/v1/signals/intake`,
+  `POST /api/v1/signals/social-intake` are all `require_api_key`-gated
+  with no `get_current_user_id` dependency -- server-to-server/ops
+  surfaces (analytics dashboard, external signal ingestion), correctly
+  never called from the mobile app. Not gaps.
+- Everything under `/debug/*`, `/moderation/*` GET-queue and `*/review`
+  routes, `/coverage/summary`, `/enrichment/priority`, and `/health` are
+  admin/ops/infra surfaces, correctly frontend-silent. Not gaps.
+
+**Baseline health confirmed clean** (pre-existing, not this audit's doing,
+but stress-tested as part of it): backend `python -m pytest -q` -> 1115
+passed, 2 skipped; frontend `npx tsc --noEmit` -> clean; frontend
+`npx jest --ci` -> 52/52 suites, 546/546 tests, all against current `main`
+post #260/#261/#265.
 
 ## FRONTEND EXECUTION ORDER — LOCKED (2026-09-11)
 

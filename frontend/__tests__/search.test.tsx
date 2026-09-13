@@ -6,6 +6,7 @@
 // re-logged for the same query, but exposure tracking does reset for a
 // genuinely new one.
 import React from 'react';
+import { RefreshControl } from 'react-native';
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import SearchScreen from '../app/(tabs)/search';
@@ -70,7 +71,7 @@ function makeSearchResult(items: any[], overrides: Record<string, unknown> = {})
     interpretation: {
       original_query: 'query', lookup_query: 'query', price_tier: null,
       required_categories: [], hard_constraints: [],
-      unsupported_hard_constraints: [], context: [], uncertain: false,
+      unsupported_hard_constraints: [], context: [], required_amenities: [], uncertain: false,
     },
     exact_match_id: null,
     relaxed_constraints: [],
@@ -135,7 +136,13 @@ describe('SearchScreen — debounce, clear, and retry', () => {
   });
 
   it('retry button actually refetches the failed query, not a no-op', async () => {
-    mockedSearchPlaces.mockRejectedValueOnce(new Error('network'));
+    // A real backend error response (status 500), not a bare network
+    // Error -- the latter is now classified as offline (no `.response`
+    // at all) and shows different copy; see errorMessageFor in
+    // SearchScreen.tsx.
+    const serverErr: any = new Error('server error');
+    serverErr.response = { status: 500 };
+    mockedSearchPlaces.mockRejectedValueOnce(serverErr);
     const { getByLabelText, findByText } = renderScreen();
 
     act(() => {
@@ -149,6 +156,47 @@ describe('SearchScreen — debounce, clear, and retry', () => {
 
     await waitFor(() => expect(mockedSearchPlaces).toHaveBeenCalledTimes(2));
     expect(await findByText('1 result')).toBeTruthy();
+  });
+
+  it('keeps cached results visible and labels them stale when refresh fails', async () => {
+    mockedSearchPlaces
+      .mockResolvedValueOnce(makeSearchResult([makePlace('p0')]))
+      .mockRejectedValueOnce(new Error('offline'));
+    const { getByLabelText, findByText, UNSAFE_getByType } = renderScreen();
+
+    act(() => getByLabelText('Search input').props.onChangeText('ramen'));
+    expect(await findByText('1 result')).toBeTruthy();
+
+    await act(async () => {
+      await UNSAFE_getByType(RefreshControl).props.onRefresh();
+    });
+
+    expect(await findByText('Showing saved search results — pull to retry.')).toBeTruthy();
+    expect(getByLabelText(/^p0,/)).toBeTruthy();
+  });
+
+  it('shows offline-specific copy for a genuine connectivity failure (no response at all)', async () => {
+    mockedSearchPlaces.mockRejectedValueOnce(new Error('network unreachable'));
+    const { getByLabelText, findByText } = renderScreen();
+
+    act(() => {
+      getByLabelText('Search input').props.onChangeText('ramen');
+    });
+
+    expect(await findByText("Can't reach CRAVE — check your connection.")).toBeTruthy();
+  });
+
+  it('surfaces the rate-limit-specific message on a 429, instead of the generic search-failure copy', async () => {
+    const rateLimited: any = new Error('Rate limit reached. Please wait a moment.');
+    rateLimited.response = { status: 429 };
+    mockedSearchPlaces.mockRejectedValueOnce(rateLimited);
+    const { getByLabelText, findByText } = renderScreen();
+
+    act(() => {
+      getByLabelText('Search input').props.onChangeText('ramen');
+    });
+
+    expect(await findByText("You're doing that too fast — wait a moment and try again.")).toBeTruthy();
   });
 });
 
@@ -263,6 +311,7 @@ describe('SearchScreen — Reason Block labeling (Search Screen Contract §6)', 
     act(() => getByLabelText('Search input').props.onChangeText('ramen'));
 
     expect(await findByText('Best match for you')).toBeTruthy();
+    expect(await findByText('Fits this search best without relaxing what you asked for.')).toBeTruthy();
     expect(await findByText('Safer pick')).toBeTruthy();
     expect(await findByText('Worth exploring')).toBeTruthy();
   });

@@ -1,0 +1,88 @@
+<svg width="2400" height="1320" viewBox="0 0 2400 1320" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="24" stdDeviation="22" flood-color="#000" flood-opacity=".30"/></filter>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#120D0A"/><stop offset=".52" stop-color="#090A0A"/><stop offset="1" stop-color="#17110D"/></linearGradient>
+    <linearGradient id="cream" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#FFFDF7"/><stop offset="1" stop-color="#F4ECE0"/></linearGradient>
+    <linearGradient id="food1" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#FFD879"/><stop offset=".34" stop-color="#E9542F"/><stop offset=".66" stop-color="#6E9D4D"/><stop offset="1" stop-color="#1A0906"/></linearGradient>
+    <linearGradient id="food2" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#F3D7A0"/><stop offset=".42" stop-color="#A8552E"/><stop offset="1" stop-color="#15201B"/></linearGradient>
+    <linearGradient id="food3" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#F8F0D3"/><stop offset=".45" stop-color="#8D3D25"/><stop offset="1" stop-color="#0C1011"/></linearGradient>
+    <pattern id="map" width="52" height="52" patternUnits="userSpaceOnUse"><rect width="52" height="52" fill="#11191B"/><path d="M0 14 L52 5 M0 40 L52 29 M14 0 L23 52 M42 0 L34 52" stroke="#2B373B" stroke-width="1.5"/><path d="M0 27 C14 20 30 29 52 18" stroke="#59412F" stroke-width="4"/></pattern>
+    <style>
+      .font{font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"SF Pro Display",Arial,sans-serif}.tiny{font-size:11px}.small{font-size:13px}.body{font-size:15px}.h3{font-size:18px;font-weight:760}.title{font-size:28px;font-weight:850}.big{font-size:38px;font-weight:880}.brand{font-size:50px;font-weight:920}.bold{font-weight:820}.med{font-weight:650}
+    </style>
+  </defs>
+  <rect width="2400" height="1320" fill="url(#bg)"/>
+  <text x="54" y="78" class="font brand" fill="#FFFDF6">CRAVE</text>
+  <text x="380" y="68" class="font title" fill="#FFFDF6">CORE 5 SCREEN MOCKUPS</text>
+  <text x="380" y="104" class="font body" fill="#BFC6C9">Simpler direction: Home · Search · Results · Map · Settings. Less system wall, more actual app.</text>
+  <rect x="2050" y="50" width="250" height="34" rx="17" fill="#2B2118" stroke="#7E5A26"/><text x="2086" y="72" class="font tiny bold" fill="#F4C86A">VISUAL DRAFT</text>
+
+  <!-- Home -->
+  <g transform="translate(70 180)">
+    <text x="0" y="-34" class="font h3" fill="#FFFDF6">01 · Home</text>
+    <rect width="390" height="850" rx="50" fill="#E8DFD2" filter="url(#shadow)"/><rect x="16" y="16" width="358" height="818" rx="38" fill="url(#cream)"/>
+    <text x="38" y="64" class="font h3" fill="#111418">CRAVE</text><text x="38" y="126" class="font big" fill="#15110E">Find what’s actually good tonight.</text>
+    <rect x="38" y="170" width="314" height="54" rx="27" fill="#15110E"/><text x="68" y="204" class="font body bold" fill="#FFFDF6">What are you craving?</text>
+    <rect x="38" y="256" width="314" height="244" rx="34" fill="#171C1F"/><rect x="58" y="276" width="274" height="132" rx="26" fill="url(#food1)"/><text x="58" y="444" class="font title" fill="#FFFDF6">Late-night ramen</text><text x="58" y="474" class="font body" fill="#D8DED9">8 min away · open until 2 AM</text>
+    <text x="38" y="554" class="font h3" fill="#15110E">Near you now</text>
+    <rect x="38" y="582" width="146" height="88" rx="24" fill="#F0E7DA"/><text x="60" y="620" class="font h3" fill="#15110E">Tacos</text><text x="60" y="646" class="font small" fill="#666">Open late</text>
+    <rect x="206" y="582" width="146" height="88" rx="24" fill="#F0E7DA"/><text x="228" y="620" class="font h3" fill="#15110E">Sushi</text><text x="228" y="646" class="font small" fill="#666">Happy hour</text>
+    <text x="68" y="790" class="font small bold" fill="#15110E">Home</text><text x="156" y="790" class="font small" fill="#78716A">Search</text><text x="258" y="790" class="font small" fill="#78716A">Settings</text>
+  </g>
+
+  <!-- Search -->
+  <g transform="translate(520 180)">
+    <text x="0" y="-34" class="font h3" fill="#FFFDF6">02 · Search</text>
+    <rect width="390" height="850" rx="50" fill="#E8DFD2" filter="url(#shadow)"/><rect x="16" y="16" width="358" height="818" rx="38" fill="url(#cream)"/>
+    <text x="38" y="72" class="font h3" fill="#111418">Search</text><text x="38" y="130" class="font big" fill="#15110E">What sounds good?</text>
+    <rect x="38" y="166" width="314" height="62" rx="31" fill="#FFFDF7" stroke="#D7CEC1"/><text x="64" y="204" class="font body" fill="#596168">vegan ramen with patio</text>
+    <text x="38" y="286" class="font h3" fill="#15110E">Fast starts</text>
+    <rect x="38" y="316" width="142" height="52" rx="26" fill="#15110E"/><text x="72" y="349" class="font small bold" fill="#FFFDF6">Near me</text>
+    <rect x="194" y="316" width="142" height="52" rx="26" fill="#ECE2D4"/><text x="226" y="349" class="font small bold" fill="#15110E">Open late</text>
+    <rect x="38" y="384" width="142" height="52" rx="26" fill="#ECE2D4"/><text x="70" y="417" class="font small bold" fill="#15110E">Under $20</text>
+    <rect x="194" y="384" width="142" height="52" rx="26" fill="#ECE2D4"/><text x="226" y="417" class="font small bold" fill="#15110E">Outdoor</text>
+    <text x="38" y="512" class="font h3" fill="#15110E">Recent</text>
+    <rect x="38" y="540" width="314" height="58" rx="22" fill="#F0E7DA"/><text x="62" y="576" class="font body med" fill="#15110E">late-night ramen near me</text>
+    <rect x="38" y="612" width="314" height="58" rx="22" fill="#F0E7DA"/><text x="62" y="648" class="font body med" fill="#15110E">brunch with friends</text>
+    <text x="70" y="790" class="font small" fill="#78716A">Home</text><text x="156" y="790" class="font small bold" fill="#15110E">Search</text><text x="258" y="790" class="font small" fill="#78716A">Settings</text>
+  </g>
+
+  <!-- Results -->
+  <g transform="translate(970 180)">
+    <text x="0" y="-34" class="font h3" fill="#FFFDF6">03 · Results</text>
+    <rect width="390" height="850" rx="50" fill="#E8DFD2" filter="url(#shadow)"/><rect x="16" y="16" width="358" height="818" rx="38" fill="url(#cream)"/>
+    <text x="38" y="66" class="font h3" fill="#111418">Late-night ramen</text><text x="38" y="94" class="font body" fill="#596168">Ramen · Open late · Near me</text>
+    <rect x="38" y="126" width="314" height="292" rx="34" fill="#171C1F"/><rect x="58" y="146" width="274" height="138" rx="28" fill="url(#food1)"/><text x="58" y="326" class="font title" fill="#FFFDF6">Tatsu Ramen</text><text x="58" y="356" class="font body" fill="#F4C86A">Closest strong fit for your craving.</text><text x="58" y="386" class="font small" fill="#ADB5B8">$16 · 0.4 mi · open until 2 AM</text>
+    <text x="38" y="462" class="font h3" fill="#15110E">Also worth it</text>
+    <rect x="38" y="490" width="314" height="78" rx="24" fill="#F0E7DA"/><rect x="56" y="506" width="46" height="46" rx="14" fill="url(#food2)"/><text x="116" y="524" class="font h3" fill="#15110E">Ramen Tatsu-Ya</text><text x="116" y="550" class="font small" fill="#596168">1.1 mi · still open</text>
+    <rect x="38" y="584" width="314" height="78" rx="24" fill="#F0E7DA"/><rect x="56" y="600" width="46" height="46" rx="14" fill="url(#food3)"/><text x="116" y="618" class="font h3" fill="#15110E">Kome Kitchen</text><text x="116" y="644" class="font small" fill="#596168">safer pick · 1.3 mi</text>
+    <rect x="38" y="700" width="314" height="56" rx="28" fill="#15110E"/><text x="145" y="735" class="font body bold" fill="#FFFDF6">View place</text>
+  </g>
+
+  <!-- Map -->
+  <g transform="translate(1420 180)">
+    <text x="0" y="-34" class="font h3" fill="#FFFDF6">04 · Map</text>
+    <rect width="390" height="850" rx="50" fill="#0F1518" filter="url(#shadow)"/><rect x="16" y="16" width="358" height="818" rx="38" fill="url(#map)"/>
+    <rect x="38" y="46" width="314" height="54" rx="27" fill="#FFFDF7"/><text x="64" y="80" class="font body bold" fill="#15110E">Late-night ramen · 8 places</text>
+    <circle cx="120" cy="250" r="15" fill="#F4C86A"/><circle cx="270" cy="224" r="15" fill="#F4C86A"/><circle cx="310" cy="350" r="15" fill="#F4C86A"/><circle cx="190" cy="396" r="22" fill="#FFFDF7" stroke="#15110E" stroke-width="5"/>
+    <rect x="66" y="126" width="258" height="48" rx="24" fill="#FFFDF7"/><text x="116" y="156" class="font small bold" fill="#0A66D1">Search this area</text>
+    <rect x="38" y="614" width="314" height="142" rx="34" fill="#151A1D" stroke="#394349"/><text x="66" y="656" class="font title" fill="#FFFDF6">Tatsu Ramen</text><text x="66" y="688" class="font body" fill="#D8DED9">Selected from same 8</text><text x="66" y="720" class="font small" fill="#F4C86A">0.4 mi · open until 2 AM</text>
+  </g>
+
+  <!-- Settings -->
+  <g transform="translate(1870 180)">
+    <text x="0" y="-34" class="font h3" fill="#FFFDF6">05 · Settings</text>
+    <rect width="390" height="850" rx="50" fill="#E8DFD2" filter="url(#shadow)"/><rect x="16" y="16" width="358" height="818" rx="38" fill="url(#cream)"/>
+    <text x="38" y="76" class="font h3" fill="#111418">Settings</text><text x="38" y="128" class="font big" fill="#15110E">Make CRAVE fit you.</text>
+    <rect x="38" y="178" width="314" height="82" rx="26" fill="#171C1F"/><text x="66" y="212" class="font h3" fill="#FFFDF6">Angelo</text><text x="66" y="238" class="font small" fill="#AEB6B8">Taste profile active</text>
+    <text x="38" y="316" class="font h3" fill="#15110E">Preferences</text>
+    <rect x="38" y="344" width="314" height="58" rx="22" fill="#F0E7DA"/><text x="62" y="380" class="font body med" fill="#15110E">Dietary & allergies</text>
+    <rect x="38" y="416" width="314" height="58" rx="22" fill="#F0E7DA"/><text x="62" y="452" class="font body med" fill="#15110E">Location mode</text>
+    <rect x="38" y="488" width="314" height="58" rx="22" fill="#F0E7DA"/><text x="62" y="524" class="font body med" fill="#15110E">Offline queue</text>
+    <rect x="38" y="560" width="314" height="58" rx="22" fill="#F0E7DA"/><text x="62" y="596" class="font body med" fill="#15110E">Privacy & history</text>
+    <text x="70" y="790" class="font small" fill="#78716A">Home</text><text x="156" y="790" class="font small" fill="#78716A">Search</text><text x="258" y="790" class="font small bold" fill="#15110E">Settings</text>
+  </g>
+
+  <text x="70" y="1168" class="font title" fill="#FFFDF6">Brutal grade: 8.2/10 direction</text>
+  <text x="70" y="1210" class="font body" fill="#C8D0D4">Cleaner and more reactable than the 16-state board. Still needs real food photos and a stronger Home signature before Penpot.</text>
+</svg>
