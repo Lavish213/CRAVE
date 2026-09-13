@@ -1,3 +1,58 @@
+# H-20260913-hitlist-audit-and-misc-cleanup
+
+Status: resolved -- merged
+Owner: Claude
+Branch: claude/hitlist-audit-and-misc-cleanup (merged, can be deleted)
+Base SHA: eabd04f (origin/main tip after PR #275)
+Commit SHA: 5e9c555 (merge commit on origin/main)
+Allowed next files: none -- closed. One human-only follow-up remains,
+see "Known gaps" below.
+
+## Outcome
+
+Three user-requested follow-ups from the prior pass's misc-gap list:
+
+1. **Stale branch reconciliation attempted, then abandoned as
+   pointless.** User asked to pull forward 3 commits from
+   `claude/project-grade-systems-review-4ot7d0` and delete it. On
+   actually cherry-picking: the camera-fix commit's real content was
+   already independently fixed on `main` (commit `e70a868`) -- only a
+   no-op type annotation remained. Worse, a docs commit's claim ("Place
+   Detail's Report action is photo-only") is now **factually false** --
+   `ReportPlaceSheet.tsx` + its backend endpoint already exist and are
+   wired. Nothing ported; no PR opened for it. Full detail in
+   `.agent-bridge/STATE.md`'s top block.
+2. **Hitlist system audit**: confirmed `/hitlist/save`, `/me`,
+   `/suggest`, `/delete` are all fully wired end to end (verified via
+   direct grep for callers, not docs). An earlier "Route-wiring audit
+   findings" note in STATE.md claiming zero caller for suggest/delete
+   was itself stale, predating PR #271. Corrected in place.
+3. **Fixed**: `GET /hitlist/me`'s stale docstring; removed the dead
+   bare `GET /api/v1/map` route (zero caller, confirmed via
+   `app.openapi()['paths']`) and its dead `get_map_places` alias. Kept
+   `fetch_places_for_map` -- still used internally by `/map/geojson`.
+
+## Verification
+
+- `python -m pytest -q` -> 1114 passed, 2 skipped (one test removed
+  along with the route it tested)
+- `from app.main import app; app.openapi()['paths']` -> confirmed
+  `/api/v1/map/geojson` present, bare `/api/v1/map` gone
+- CI green on the merged commit (Frontend, both Backend jobs, both
+  Analyze jobs, Guard, CodeQL)
+
+## Known gaps / risks
+
+- `claude/project-grade-systems-review-4ot7d0` still exists on GitHub.
+  `git push origin --delete` returns a 403 from this environment's git
+  proxy -- branch deletion needs a human, via repo settings or the
+  GitHub UI. Nothing in it is worth porting first (see Outcome item 1).
+
+## Next action
+
+None from Claude -- only the manual branch deletion above needs a
+human. Everything else in this handoff is closed.
+
 # H-20260913-profile-taste-error-taxonomy
 
 Status: resolved -- merged

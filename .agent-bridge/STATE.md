@@ -2,32 +2,56 @@
 
 Status: merged
 Owner: Claude
-Branch: claude/profile-taste-error-taxonomy (merged, can be deleted)
-Base SHA: 04cfaa9 (origin/main tip after PR #273)
-Commit SHA: 32e36a2 (merge commit on origin/main)
-Scope: closed the gap PR #273 flagged -- `user/[id].tsx`,
-`taste-profile/[userId].tsx`, and `(tabs)/profile.tsx` had
-`.catch(() => null)` sites that discarded the real error object
-entirely, so errorMessageFor() (added in #273) had nothing to classify
-on these three screens. Captured the real error via an outer-scope
-closure variable inside each catch, then classified it once the
-surrounding Promise.all settles -- same 429/offline/generic taxonomy as
-every other screen fixed this pass. No UI/layout change.
+Branch: claude/hitlist-audit-and-misc-cleanup (merged, can be deleted)
+Base SHA: eabd04f (origin/main tip after PR #275)
+Commit SHA: 5e9c555 (merge commit on origin/main)
+Scope: three follow-up items from this pass's misc-gap list.
+
+1. **Stale designated-branch reconciliation, attempted then abandoned.**
+   User asked to pull forward the 3 non-doctrine commits from
+   `claude/project-grade-systems-review-4ot7d0` (d5869e5 camera-fix,
+   f734145 + 2e78ef6 docs) and delete that branch. On actually cherry-
+   picking them onto current `main`: d5869e5's real content (removing
+   the Settings "Rate CRAVE" placeholder row) turned out to already be
+   independently fixed on `main` by a separate commit (`e70a868`) --
+   only a no-op `: any` type annotation was left. Worse, f734145's doc
+   addition ("Place Detail's Report action is photo-only") is now
+   **factually false** -- verified `ReportPlaceSheet.tsx` +
+   `POST /moderation/places/{id}/report` already exist and are wired
+   into `place/[id].tsx`. Merging it would have put a wrong claim back
+   into `CRAVE_STATUS.md`. **Nothing from that branch was ported.** No
+   PR opened for it. Branch deletion itself is also blocked in this
+   environment: `git push origin --delete` returns a 403 from the git
+   proxy. The branch still exists on GitHub; a human needs to delete
+   `claude/project-grade-systems-review-4ot7d0` directly (repo settings
+   or the GitHub UI) -- don't reopen this as a porting task, there's
+   nothing left in it worth porting.
+2. **Hitlist system audit.** Verified `/hitlist/save`, `/hitlist/me`,
+   `/hitlist/suggest`, `/hitlist/delete` are all fully wired: save/
+   suggest via `ShareLinkSheet.tsx`'s two modes, me/delete via
+   `craves.tsx`'s load + optimistic trash-icon delete with rollback-on-
+   failure. The "Route-wiring audit findings" section below (claiming
+   zero frontend caller for suggest/delete) was itself stale, predating
+   PR #271 which wired both -- no code change needed, working as
+   designed.
+3. **Fixed the two remaining misc items**: `GET /hitlist/me`'s
+   docstring falsely claimed "confirmed unused by the shipped frontend"
+   -- corrected (it's called directly by `getMyPlaceSaves()`). Removed
+   the dead bare `GET /api/v1/map` route (`map_places`) -- zero frontend
+   caller anywhere, confirmed via `app.openapi()['paths']` before/after.
+   Its underlying query function `fetch_places_for_map` stays: `/map/
+   geojson`'s handler wraps it internally, still load-bearing. Also
+   dropped the dead `get_map_places` alias this exposed.
+
 Locked files: none -- closed.
-Verification: PR #274 (https://github.com/Lavish213/CRAVE/pull/274),
-merged `32e36a2`. `npx tsc --noEmit` clean. `npx jest --ci` -> 54/54
-suites, 561/561 tests, including 11 pre-existing assertions fixed
-(their mocked rejections had no `.response`, so they're now correctly
-classified offline instead of matching the old generic fallback copy).
-CI green on the merged commit (Frontend, both Backend jobs, both
-Analyze jobs, Guard, CodeQL); CodeRabbit posted only its standard
-fewer-than-10-stars skip notice.
-Known gaps: none identified for this three-screen fix. This closes out
-the "fix all errors and gaps wire all" error-taxonomy sweep the user
-asked for this pass -- swept across Search, Map, Leaderboard, Friends
-Feed, Rank Home, Feed, and now Profile/Taste. User has been told this
-pass is done; next work is new screens, per their own "so we can
-implement new screens."
+Verification: PR #276 (https://github.com/Lavish213/CRAVE/pull/276),
+merged `5e9c555`. `python -m pytest -q` -> 1114 passed, 2 skipped (1115
+minus the one test removed for the deleted route's own error-contract
+case). CI green (Frontend, both Backend jobs, both Analyze jobs, Guard,
+CodeQL).
+Known gaps: the stale branch itself (see item 1) is not deleted --
+blocked by environment network policy, needs a human. Everything else
+from this pass's misc list is closed.
 Next action: none from me -- awaiting the user's next screen/feature
 ask.
 
@@ -81,28 +105,27 @@ video-report gap below go unnoticed).
   fixed earlier this session -- missed then because that sweep only
   covered `frontend/app`.
 
-**Found, not fixed -- needs a product decision, logged here so it isn't
+**Resolved since this audit was first written (2026-09-13, PR #271 +
+#276) -- corrected here so the stale version below doesn't get
 re-discovered from scratch:**
 - `DELETE /api/v1/hitlist/delete` and `POST /api/v1/hitlist/suggest`
-  (`backend/app/api/v1/routes/hitlist.py`) are both real, user-auth-scoped
-  endpoints with **zero frontend caller anywhere**. `hitlist/save` and
-  `hitlist/me` *are* wired (via `submitPlaceSave`/`getMyPlaceSaves` in
-  `src/api/crave.ts`, used by `ShareLinkSheet.tsx` and the Craves "Added"
-  section) -- so this isn't a dead subsystem, just an incomplete one.
-  Concretely: once a user adds a place by name (no link) via
-  `ShareLinkSheet`, there is no way to remove it from the "Added" list, and
-  `/suggest`'s distinct purpose from `/save` was never clarified in code
-  or docs. Wiring `/delete` needs a UI decision (swipe? a menu? a confirm
-  dialog?), which is why this wasn't fixed inline like the video gap above.
-  Also worth a small correction whenever someone's next in that file: the
-  docstring on `GET /hitlist/me` claims "Confirmed unused by the shipped
-  frontend, which calls /saves instead" -- that's stale; `getMyPlaceSaves()`
-  calls it directly and it backs a real, visible section of the Craves screen.
-- `GET /api/v1/map` (the bare, non-geojson endpoint in
-  `backend/app/api/v1/routes/map.py`) has no frontend caller and no test
-  coverage -- the app only ever calls `/map/geojson`. Looks like dead code
-  from before geojson support was added; low-priority removal candidate,
-  not a bug (nothing is broken by its presence).
+  turned out to already be fully wired by the time of a fresh re-check:
+  `/suggest` and `/save` via `ShareLinkSheet.tsx`'s two composer modes,
+  `/delete` via `craves.tsx`'s optimistic trash-icon delete (with
+  rollback-on-failure) on the Craves "Added" section. The claim below
+  that these had zero frontend caller was itself stale, predating PR
+  #271. No UI decision needed after all -- it was already made and
+  shipped.
+- `GET /hitlist/me`'s stale docstring ("confirmed unused... calls
+  /saves instead") corrected in PR #276 -- it's called directly by
+  `getMyPlaceSaves()` and backs the Craves "Added" section.
+- `GET /api/v1/map` (the bare, non-geojson endpoint) removed entirely
+  in PR #276 -- confirmed zero frontend caller via `app.openapi()
+  ['paths']` before/after. Its underlying query function
+  (`fetch_places_for_map`) stays load-bearing (`/map/geojson` wraps it).
+
+**Original findings as first written, for context (now superseded by
+the corrections immediately above):**
 - `GET /api/v1/hitlist/analytics/summary`, `POST /api/v1/signals/intake`,
   `POST /api/v1/signals/social-intake` are all `require_api_key`-gated
   with no `get_current_user_id` dependency -- server-to-server/ops
