@@ -2,9 +2,6 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
-# -------------------------
-# Core Routes
-# -------------------------
 from app.api.v1.routes.places import router as places_router
 from app.api.v1.routes.search import router as search_router
 from app.api.v1.routes.map import router as map_router
@@ -18,31 +15,17 @@ from app.api.v1.routes.recommendations import router as recommendations_router
 from app.api.v1.routes.decision_session import router as decision_session_router
 from app.api.v1.routes.streak import router as streak_router
 
-# -------------------------
-# User content (were fully built + JWT-secured but never registered here —
-# the frontend has been calling /api/v1/saves (saves.ts) and /api/v1/craves
-# (crave.ts) since before this fix, so those two were live 404s in prod)
-# -------------------------
 from app.api.v1.routes.saves import router as saves_router
 from app.api.v1.routes.craves import router as craves_router
 from app.api.v1.routes.share import router as share_router
 from app.api.v1.routes.image import router as image_router
 from app.api.v1.routes.nearby import router as nearby_router
+from app.api.v1.routes.contributions import router as contributions_router
 
-# -------------------------
-# Enrichment
-# -------------------------
 from app.api.v1.routes.enrichment import router as enrichment_router
 from app.api.v1.routes.enrichment import router_coverage as coverage_router
-
-# -------------------------
-# Upload (REQUIRED)
-# -------------------------
 from app.api.v1.endpoints.upload import router as upload_router
 
-# -------------------------
-# Social / Identity / Ranking
-# -------------------------
 from app.api.v1.routes.profile import router as profile_router
 from app.api.v1.routes.account import router as account_router
 from app.api.v1.routes.follows import router as follows_router
@@ -58,42 +41,29 @@ from app.api.v1.routes.menu_submissions import (
 from app.api.v1.routes.debug import router as debug_router
 from app.api.v1.routes.videos import router as videos_router
 
-
-# -------------------------
-# API Router
-# -------------------------
 router = APIRouter()
 
-
-# -------------------------
-# Register Routes
-# -------------------------
 router.include_router(places_router)
 router.include_router(search_router)
 router.include_router(map_router)
 router.include_router(place_detail_router)
 router.include_router(categories_router)
 router.include_router(cities_router)
-
 router.include_router(hitlist_router)
 router.include_router(trending_router)
 router.include_router(signals_router)
 router.include_router(recommendations_router)
 router.include_router(decision_session_router)
 router.include_router(streak_router)
-
 router.include_router(saves_router)
 router.include_router(craves_router)
 router.include_router(share_router)
 router.include_router(image_router)
 router.include_router(nearby_router)
-
+router.include_router(contributions_router)
 router.include_router(enrichment_router)
 router.include_router(coverage_router)
-
-# 🔥 THIS WAS MISSING
 router.include_router(upload_router)
-
 router.include_router(profile_router)
 router.include_router(account_router)
 router.include_router(follows_router)
