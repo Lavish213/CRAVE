@@ -14,6 +14,7 @@ import { useAuthStore } from '../src/stores/authStore';
 import { logRecommendationEvent, logRecommendationEvents } from '../src/utils/recommendationEventQueue';
 import { DecisionSessionCard } from '../src/api/decisionSession';
 import { useDecisionSession } from '../src/hooks/useDecisionSession';
+import { useRecommendations } from '../src/hooks/useRecommendations';
 
 const mockPush = jest.fn();
 jest.mock('expo-router', () => ({
@@ -29,7 +30,7 @@ jest.mock('../src/hooks/useLocation', () => ({
   useLocation: () => null,
 }));
 jest.mock('../src/hooks/useRecommendations', () => ({
-  useRecommendations: () => [],
+  useRecommendations: jest.fn(),
 }));
 jest.mock('../src/hooks/useDecisionSession', () => ({
   useDecisionSession: jest.fn(),
@@ -75,7 +76,9 @@ const mockedUseAuthStore = useAuthStore as unknown as jest.Mock;
 const mockedLogOne = logRecommendationEvent as jest.Mock;
 const mockedLogMany = logRecommendationEvents as jest.Mock;
 const mockedUseDecisionSession = useDecisionSession as jest.Mock;
+const mockedUseRecommendations = useRecommendations as jest.Mock;
 const mockDecisionRefetch = jest.fn().mockResolvedValue(undefined);
+const mockRecommendationsRefetch = jest.fn().mockResolvedValue(undefined);
 
 const SF_CITY = { id: 'city-sf', name: 'San Francisco', slug: 'san-francisco', lat: 37.7749, lng: -122.4194 };
 
@@ -106,6 +109,8 @@ function decisionState(cards: DecisionSessionCard[] = [], degraded = false) {
     data: { cards, degraded },
     isLoading: false,
     isError: false,
+    isRefetchError: false,
+    dataUpdatedAt: 0,
     refetch: mockDecisionRefetch,
   };
 }
@@ -128,11 +133,19 @@ describe('FeedScreen', () => {
     mockRemoveSave.mockResolvedValue(null);
     mockIsSaved.mockReturnValue(false);
     mockDecisionRefetch.mockResolvedValue(undefined);
+    mockRecommendationsRefetch.mockResolvedValue(undefined);
     useCityStore.setState({ selectedCity: SF_CITY, cities: [SF_CITY] });
     mockedUseAuthStore.mockImplementation((selector: (s: { user: unknown }) => unknown) =>
       selector({ user: null }),
     );
     mockedUseDecisionSession.mockReturnValue(decisionState());
+    mockedUseRecommendations.mockReturnValue({
+      data: [],
+      isError: false,
+      isRefetchError: false,
+      dataUpdatedAt: 0,
+      refetch: mockRecommendationsRefetch,
+    });
   });
 
   it.each([0, 1, 2, 3])('renders exactly %i decision cards without padding thin sessions', async (count) => {
@@ -157,6 +170,24 @@ describe('FeedScreen', () => {
 
     const { findByText } = renderScreen();
     expect(await findByText(/Confidence is lower right now/)).toBeTruthy();
+  });
+
+  it('warns when personalized recommendations are stale after a refetch failure', async () => {
+    mockedUseAuthStore.mockImplementation((selector: (s: { user: unknown }) => unknown) =>
+      selector({ user: { id: 'user-1' } }),
+    );
+    mockedUseRecommendations.mockReturnValue({
+      data: [makePlace('personalized-place', 0.88)],
+      isError: false,
+      isRefetchError: true,
+      dataUpdatedAt: new Date('2026-09-12T18:30:00Z').getTime(),
+      refetch: mockRecommendationsRefetch,
+    });
+    mockedFetchPlaces.mockResolvedValue(page([makePlace('feed-place', 0.85)]));
+
+    const { findByText } = renderScreen();
+
+    expect(await findByText(/Showing saved results from/)).toBeTruthy();
   });
 
   it('logs decision impressions with role and position, then logs click before navigating', async () => {
@@ -206,11 +237,18 @@ describe('FeedScreen', () => {
 
     expect(await findByText('HOLE-IN-THE-WALL')).toBeTruthy();
     expect(await findByLabelText(/^gem1,/)).toBeTruthy();
-    expect(queryByLabelText(/^crave1,/)).toBeNull();
-    expect(queryByLabelText(/^solid1,/)).toBeNull();
+    expect(await findByLabelText(/^crave1,/)).toBeTruthy();
+    expect(await findByLabelText(/^solid1,/)).toBeTruthy();
+    expect(await findByText('MORE TO DISCOVER')).toBeTruthy();
     expect(queryByText('CRAVE Picks')).toBeNull();
     expect(queryByText('Hidden Gems')).toBeNull();
     expect(queryByText('Worth Knowing')).toBeNull();
+  });
+
+  it('renders the bounded discovery end state after the final cursor page', async () => {
+    mockedFetchPlaces.mockResolvedValue(page([makePlace('p0', 0.5)]));
+    const { findByText } = renderScreen();
+    expect(await findByText('That’s everything new today.')).toBeTruthy();
   });
 
   it('logs one bounded impression batch for the first visible discovery set, and does not re-log on an unrelated re-render', async () => {

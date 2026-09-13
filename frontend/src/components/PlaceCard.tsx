@@ -110,18 +110,6 @@ function PlaceCardImpl({
         )}
         <View style={styles.scrimBottom} />
         <TierBadge tier={tier} style={styles.tierBadge} />
-        <TouchableOpacity
-          style={styles.saveBtn}
-          onPress={handleSave}
-          hitSlop={SAVE_HIT_SLOP}
-          activeOpacity={0.7}
-          accessibilityLabel={saved ? `Remove ${place.name} from saves` : `Save ${place.name}`}
-          accessibilityRole="button"
-        >
-          <Animated.View style={{ transform: [{ scale: saveScale }] }}>
-            <Ionicons name={saved ? 'bookmark' : 'bookmark-outline'} size={20} color={Colors.text} />
-          </Animated.View>
-        </TouchableOpacity>
       </View>
 
       <View style={styles.body}>
@@ -155,6 +143,18 @@ function PlaceCardImpl({
         )}
       </View>
     </TouchableOpacity>
+    <TouchableOpacity
+      style={styles.saveBtn}
+      onPress={handleSave}
+      hitSlop={SAVE_HIT_SLOP}
+      activeOpacity={0.7}
+      accessibilityLabel={saved ? `Remove ${place.name} from saves` : `Save ${place.name}`}
+      accessibilityRole="button"
+    >
+      <Animated.View style={{ transform: [{ scale: saveScale }] }}>
+        <Ionicons name={saved ? 'bookmark' : 'bookmark-outline'} size={20} color={Colors.text} />
+      </Animated.View>
+    </TouchableOpacity>
     </View>
   );
 }
@@ -171,6 +171,7 @@ const styles = StyleSheet.create({
   // this outer, unclipped wrapper and the actual rounded-corner clipping
   // (for the image) stays on `card` beneath it.
   shadowWrap: {
+    position: 'relative',
     borderRadius: Radius.card,
     ...Shadows.card,
   },
@@ -196,9 +197,13 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 6,
     right: Spacing.sm,
-    padding: 6,
+    width: 44,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
     backgroundColor: 'rgba(0,0,0,0.45)',
     borderRadius: Radius.pill,
+    zIndex: 1,
   },
   body: { padding: Spacing.lg, paddingTop: Spacing.md, gap: Spacing.xs },
   name: {

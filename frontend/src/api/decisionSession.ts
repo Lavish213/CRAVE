@@ -47,13 +47,14 @@ export function decisionSessionParamsFromContext(
 
 export async function fetchDecisionSession(
   params: DecisionSessionParams,
+  signal?: AbortSignal,
 ): Promise<DecisionSessionResponse> {
   const { data } = await client.get<DecisionSessionResponse>(
     '/api/v1/decision-session',
-    { params },
+    { params, ...(signal ? { signal } : {}) },
   );
   if (!Array.isArray(data?.cards)) {
-    return { cards: [], degraded: true };
+    throw new Error('Invalid Decision Session response: cards must be an array.');
   }
   return {
     cards: data.cards.map((card) => ({

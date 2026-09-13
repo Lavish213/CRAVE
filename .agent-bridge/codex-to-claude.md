@@ -1,3 +1,48 @@
+# H-20260912-feed-decision-session
+
+Status: ready-for-review
+Owner: Codex
+Branch: codex/feed-decision-session
+Base SHA: 7bf81bda3dab274f00ec5db35c68c8235f7a3c2f
+Commit SHA: 84f7cd6
+Allowed next files: none pending PR review
+
+## Outcome
+
+Propagated the Foundation Gate contracts through Feed and Decision Session
+without redesigning the approved hierarchy. Query keys and stale times now use
+the shared contract; remote requests receive cancellation signals; malformed
+payloads fail instead of becoming false empty states; personalized
+recommendations use account-isolated TanStack Query state; stale/retry and
+bounded-end states are explicit; the discovery tail no longer silently drops
+valid candidates; and PlaceCard's Save control is no longer nested inside the
+card control and now has a 44x44 target.
+
+## Verification
+
+- `npm test -- --runInBand __tests__/feed.test.tsx src/hooks/useDecisionSession.test.tsx src/hooks/useRecommendations.test.tsx src/api/decisionSession.test.ts --silent --forceExit` -> passed (4 suites, 25 tests).
+- `npx tsc --noEmit --pretty false` -> passed.
+- `npm test -- --runInBand --silent --forceExit` -> passed (51 suites, 541 tests).
+
+## Known gaps / risks
+
+- Reject/replace-only-rejected, the two-full-set-rejection prompt, context-chip
+  direct asks, and a durable session identifier require a literal backend
+  recommendation/session contract that the Feed doctrine explicitly lists as
+  unresolved. They were not fabricated client-side.
+- The personalized social rail remains blocked on its explicitly unresolved
+  migration contract; the current friends feed is chronological.
+- Device/E2E verification, PR CI/CodeQL, CodeRabbit, and final PR-head audit
+  remain required before merge.
+
+## Next action
+
+Push/open the dedicated Feed PR, request review, inspect every check and
+actionable finding, and perform a final audit of the actual PR head. Do not
+merge silently.
+
+---
+
 # H-20260911-place-detail-proving-slice
 
 Status: ready-for-review
