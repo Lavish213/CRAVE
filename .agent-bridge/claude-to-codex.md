@@ -1,3 +1,62 @@
+# H-20260913-video-report-wiring-audit
+
+Status: ready-for-review
+Owner: Claude
+Branch: claude/video-report-and-record-gate
+Base SHA: 755f02b (origin/main tip after PR #260/#261/#265)
+Commit SHA: 9f3bebe
+Allowed next files: none from me further on this -- PR #269 is open,
+subscribed for CI/review events. Full findings in `.agent-bridge/
+STATE.md`'s "Route-wiring audit findings" section.
+
+## Outcome
+
+Per the human user's explicit ask ("audit project end to end... make
+sure everything is wired up... log all"), diffed FastAPI's actual route
+table (`app.openapi()['paths']`, 95 routes -- `app.routes` alone
+undercounts under FastAPI 0.141.1's lazy `_IncludedRouter`) against every
+frontend API caller. Fixed the one confirmed real, mechanical, in-pattern
+gap: `PlaceVideoGallery.tsx` had zero caller for the fully-built
+`POST /moderation/videos/{id}/report` endpoint, and a toast-only
+signed-out dead end on "Record a video" (same class as this session's
+earlier Rank/record-video/Place Detail/Friends Feed fixes -- missed then
+because that sweep only grepped `frontend/app`, never
+`frontend/src/components`).
+
+## Verification
+
+- `npx tsc --noEmit` -> clean
+- `npx jest --ci` -> 52/52 suites, 546/546 tests (post #260/#261/#265)
+- `python -m pytest -q` (backend, unrelated baseline check) -> 1115
+  passed, 2 skipped
+- New dedicated suite `place-video-gallery.test.tsx`, 4 tests, covering
+  both the signed-out-gates and signed-in-proceeds paths for record and
+  report
+
+## Known gaps / risks
+
+- Two more real gaps found, not fixed here (need a product decision, not
+  a mechanical wire-up): `DELETE /hitlist/delete` and `POST /hitlist/
+  suggest` have zero frontend caller (unlike `/hitlist/save` and
+  `/hitlist/me`, which are wired). See STATE.md for the exact UI-decision
+  question (how to expose "remove" on the Craves "Added" section).
+- `GET /api/v1/map` (bare, non-geojson) looks like dead code -- no
+  caller, no test. Flagged as a low-priority removal candidate, not
+  touched.
+- `GET /hitlist/me`'s docstring is stale (claims the frontend calls
+  `/saves` instead and never uses this route -- false, `getMyPlaceSaves()`
+  calls it directly). Small doc fix, not done here to keep this PR narrow.
+
+## Next action
+
+None required from Codex -- informational, plus a heads-up in case
+either of you touches `hitlist.py` or `PlaceVideoGallery.tsx` next. If
+picking up the hitlist "remove from Added list" gap, it needs a UI
+decision (swipe? menu? confirm dialog?) before implementation, not a
+blind wire-up like this handoff's fix was.
+
+---
+
 # H-20260909-food-evidence-media-drop
 
 Status: resolved -- option A implemented and merged. Compacted per

@@ -1,30 +1,91 @@
 # Active agent state
 
-Status: merged
-Owner: Codex
-Branch: codex/feed-decision-session
-Base SHA: 7bf81bda3dab274f00ec5db35c68c8235f7a3c2f
-Commit SHA: b178f09c528254e0f64519c1add48e578a029d4a
-Scope: Feed / Decision Session vertical-slice audit and narrow implementation
-against the locked frontend execution order, Feed screen contract, Foundation
-Gate contracts, and the merged Place Detail proving patterns. Verify the full
-Feed -> Place -> outcome handoff and produce an evidence-backed defect log.
-Locked files: frontend/app/(tabs)/index.tsx, frontend/__tests__/feed.test.tsx,
-frontend/src/hooks/useDecisionSession.ts,
-frontend/src/hooks/useDecisionSession.test.tsx,
-frontend/src/hooks/useRecommendations.ts,
-frontend/src/hooks/useRecommendations.test.tsx,
-frontend/src/api/decisionSession.ts, frontend/src/api/decisionSession.test.ts,
-frontend/src/api/places.ts, frontend/src/components/PlaceCard.tsx,
-.agent-bridge/STATE.md, and .agent-bridge/codex-to-claude.md.
-Verification: PR #261 merged by squash as `b178f09` after final review fixes.
-Updated PR-head CI and CodeQL passed. CodeRabbit's two actionable Feed findings
-were resolved/outdated after commit `bc01c29`. Local verification on the final
-branch head passed the focused Feed/Foundation suites (5 suites, 30 tests),
-`npx tsc --noEmit --pretty false`, and full frontend Jest (51 suites, 542
-tests).
-Explicit exclusions: no Search/Map redesign or edits; no revival of PR #254;
-no new recommender architecture; no backend or production-data changes.
+Status: ready-for-review
+Owner: Claude
+Branch: claude/video-report-and-record-gate
+Base SHA: 755f02b (origin/main tip after PR #260/#261/#265)
+Commit SHA: 9f3bebe
+Scope: End-to-end wiring audit (explicit user ask: "audit project end to
+end make sue no gaps and everything is wired up connected working stress
+test nuke it log all") -- introspected FastAPI's actual route table
+(`app.openapi()["paths"]`, 95 routes) against every frontend caller
+(`grep -rn "client\.(get|post|put|patch|delete)"` across frontend/src),
+classified every gap, then fixed the one confirmed real, mechanical,
+in-pattern gap found: PlaceVideoGallery.tsx had a fully-built backend
+video-report endpoint with zero frontend caller, and a toast-only
+signed-out dead end on "Record a video" (same bug class as this
+session's earlier Rank/record-video/Place Detail/Friends Feed fixes,
+missed then because that sweep only grepped frontend/app, never
+frontend/src/components).
+Locked files: frontend/src/api/social.ts,
+frontend/src/components/PlaceVideoGallery.tsx,
+frontend/src/components/ReportVideoSheet.tsx (new),
+frontend/__tests__/place-video-gallery.test.tsx (new).
+Verification: PR #269 opened. `npx tsc --noEmit` clean. `npx jest --ci` ->
+52/52 suites, 546/546 tests (post #260/#261/#265 baseline). Backend
+`python -m pytest -q` -> 1115 passed, 2 skipped (unrelated baseline check,
+confirms no backend regressions from any concurrent work).
+Explicit exclusions: no Search/Map redesign; no revival of PR #254; no
+backend changes (the video-report endpoint already existed, fully built);
+no fix attempted yet for the two other gaps this audit found (see "Route-
+wiring audit findings" below) -- those need a product decision, not a
+mechanical wire-up.
+
+## Route-wiring audit findings (Claude, 2026-09-13)
+
+Method: `python3 -c "from app.main import app; print(app.openapi()['paths'])"`
+against a fresh checkout gives the ground-truth 95-route backend surface
+(FastAPI 0.141.1's lazy `_IncludedRouter` means `app.routes` alone under-
+counts -- use `.openapi()`, not `.routes`, for this). Diffed against every
+`client.(get|post|put|patch|delete)` call across `frontend/src/**/*.ts`
+(not just `frontend/app` -- that scope miss is exactly what let the
+video-report gap below go unnoticed).
+
+**Fixed, PR #269:**
+- `POST /moderation/videos/{id}/report` had zero frontend caller despite
+  being fully built (review queue, auto-hide threshold, identical shape
+  to the image/place report endpoints already wired) -- see PlaceVideoGallery.tsx.
+- `PlaceVideoGallery.tsx`'s "Record a video" was a toast-only signed-out
+  dead end, same bug class as Rank/record-video/Place Detail/Friends Feed
+  fixed earlier this session -- missed then because that sweep only
+  covered `frontend/app`.
+
+**Found, not fixed -- needs a product decision, logged here so it isn't
+re-discovered from scratch:**
+- `DELETE /api/v1/hitlist/delete` and `POST /api/v1/hitlist/suggest`
+  (`backend/app/api/v1/routes/hitlist.py`) are both real, user-auth-scoped
+  endpoints with **zero frontend caller anywhere**. `hitlist/save` and
+  `hitlist/me` *are* wired (via `submitPlaceSave`/`getMyPlaceSaves` in
+  `src/api/crave.ts`, used by `ShareLinkSheet.tsx` and the Craves "Added"
+  section) -- so this isn't a dead subsystem, just an incomplete one.
+  Concretely: once a user adds a place by name (no link) via
+  `ShareLinkSheet`, there is no way to remove it from the "Added" list, and
+  `/suggest`'s distinct purpose from `/save` was never clarified in code
+  or docs. Wiring `/delete` needs a UI decision (swipe? a menu? a confirm
+  dialog?), which is why this wasn't fixed inline like the video gap above.
+  Also worth a small correction whenever someone's next in that file: the
+  docstring on `GET /hitlist/me` claims "Confirmed unused by the shipped
+  frontend, which calls /saves instead" -- that's stale; `getMyPlaceSaves()`
+  calls it directly and it backs a real, visible section of the Craves screen.
+- `GET /api/v1/map` (the bare, non-geojson endpoint in
+  `backend/app/api/v1/routes/map.py`) has no frontend caller and no test
+  coverage -- the app only ever calls `/map/geojson`. Looks like dead code
+  from before geojson support was added; low-priority removal candidate,
+  not a bug (nothing is broken by its presence).
+- `GET /api/v1/hitlist/analytics/summary`, `POST /api/v1/signals/intake`,
+  `POST /api/v1/signals/social-intake` are all `require_api_key`-gated
+  with no `get_current_user_id` dependency -- server-to-server/ops
+  surfaces (analytics dashboard, external signal ingestion), correctly
+  never called from the mobile app. Not gaps.
+- Everything under `/debug/*`, `/moderation/*` GET-queue and `*/review`
+  routes, `/coverage/summary`, `/enrichment/priority`, and `/health` are
+  admin/ops/infra surfaces, correctly frontend-silent. Not gaps.
+
+**Baseline health confirmed clean** (pre-existing, not this audit's doing,
+but stress-tested as part of it): backend `python -m pytest -q` -> 1115
+passed, 2 skipped; frontend `npx tsc --noEmit` -> clean; frontend
+`npx jest --ci` -> 52/52 suites, 546/546 tests, all against current `main`
+post #260/#261/#265.
 
 ## FRONTEND EXECUTION ORDER — LOCKED (2026-09-11)
 
