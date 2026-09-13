@@ -81,6 +81,12 @@ export function intentShortcutForHour(hour: number): string {
 interface ZeroResultInfo {
   title: string;
   body: string;
+  /** Required (hard, dietary/allergy) constraints that stay active either
+   * way -- shown alongside relaxKey/relaxLabel so an explicit relax offer
+   * never reads as "we gave up on everything you asked for" (SM-05/06's
+   * Required-vs-Preferred recovery contract). Absent when there's nothing
+   * required to distinguish from what's being offered for removal. */
+  keeping?: string[];
   /** Present only when a specific, safe-to-relax constraint exists to
    * offer removing. Absent (not a fabricated fallback) when none does. */
   relaxKey?: string;
@@ -127,8 +133,24 @@ export function zeroResultInfo(
     return {
       title: 'No results with these filters',
       body: `No matches with ${target.label}.`,
+      keeping: interpretation.required_categories.length > 0 ? interpretation.required_categories : undefined,
       relaxKey: target.key,
       relaxLabel: target.label,
+    };
+  }
+
+  // A supported dietary/allergy category (Vegan, Halal, ...) is enforced
+  // server-side and never auto-relaxed (contract §9/§16) -- if it's the
+  // only active constraint left once price/context are ruled out, it's
+  // the honest, specific reason for zero results. Naming it beats the
+  // vague generic fallback below, which gave no way to act on it (SM-05's
+  // required-constraint recovery contract: name what's blocking, don't
+  // silently relax it, but don't stay silent about it either).
+  if (interpretation.required_categories.length > 0) {
+    return {
+      title: 'No results',
+      body: `No ${interpretation.required_categories.join(' + ')} matches nearby right now.`,
+      keeping: interpretation.required_categories,
     };
   }
 
@@ -444,7 +466,17 @@ export default function SearchScreen() {
                 <Text style={styles.constraintText}>{'$'.repeat(searchData.interpretation.price_tier)} ×</Text>
               </TouchableOpacity>
             )}
-            {[...searchData.interpretation.required_categories, ...searchData.interpretation.context].map((key) => (
+            {searchData.interpretation.required_categories.map((key) => (
+              <TouchableOpacity
+                key={key}
+                style={[styles.constraintChip, styles.constraintChipRequired]}
+                onPress={() => removeInterpretedConstraint(key)}
+                accessibilityLabel={`Remove ${key.replace('_', ' ')} constraint, required`}
+              >
+                <Text style={[styles.constraintText, styles.constraintTextRequired]}>{key.replace('_', ' ')} · Required ×</Text>
+              </TouchableOpacity>
+            ))}
+            {searchData.interpretation.context.map((key) => (
               <TouchableOpacity key={key} style={styles.constraintChip} onPress={() => removeInterpretedConstraint(key)} accessibilityLabel={`Remove ${key.replace('_', ' ')} constraint`}>
                 <Text style={styles.constraintText}>{key.replace('_', ' ')} ×</Text>
               </TouchableOpacity>
@@ -547,13 +579,27 @@ export default function SearchScreen() {
       {showNoResults && (() => {
         const info = zeroResultInfo(searchData?.interpretation, priceWasRelaxed);
         return (
-          <EmptyState
-            icon="search-outline"
-            title={info.title}
-            body={info.body}
-            ctaLabel={info.relaxKey ? `Remove ${info.relaxLabel}` : undefined}
-            onCta={info.relaxKey ? () => removeInterpretedConstraint(info.relaxKey!) : undefined}
-          />
+          <>
+            {info.keeping && info.keeping.length > 0 && (
+              <View style={styles.keepingRow}>
+                <Text style={styles.keepingLabel}>Keeping (required)</Text>
+                <View style={styles.keepingChips}>
+                  {info.keeping.map((label) => (
+                    <View key={label} style={styles.keepingChip}>
+                      <Text style={styles.keepingChipText}>{label}</Text>
+                    </View>
+                  ))}
+                </View>
+              </View>
+            )}
+            <EmptyState
+              icon="search-outline"
+              title={info.title}
+              body={info.body}
+              ctaLabel={info.relaxKey ? `Remove ${info.relaxLabel}` : undefined}
+              onCta={info.relaxKey ? () => removeInterpretedConstraint(info.relaxKey!) : undefined}
+            />
+          </>
         );
       })()}
 
@@ -697,9 +743,16 @@ const styles = StyleSheet.create({
   interpretationQuery: { color: Colors.text, fontSize: 13, fontWeight: '700', marginTop: 4 },
   constraintRow: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.xs, marginTop: Spacing.xs },
   constraintChip: { minHeight: 36, justifyContent: 'center', paddingHorizontal: Spacing.sm, borderRadius: Radius.full, backgroundColor: Colors.surfaceElevated },
+  constraintChipRequired: { borderWidth: 1, borderColor: Colors.hardConstraint },
   constraintText: { color: Colors.textSecondary, fontSize: 12, fontWeight: '700', textTransform: 'capitalize' },
+  constraintTextRequired: { color: Colors.hardConstraint },
   constraintWarning: { color: Colors.error, fontSize: 12, lineHeight: 17, marginTop: Spacing.xs },
   relaxationText: { color: Colors.textSecondary, fontSize: 12, lineHeight: 17, marginTop: Spacing.xs },
+  keepingRow: { paddingHorizontal: Spacing.md, paddingTop: Spacing.md, gap: 6 },
+  keepingLabel: { color: Colors.textSecondary, fontSize: 11, fontWeight: '700', textTransform: 'uppercase' },
+  keepingChips: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.xs },
+  keepingChip: { minHeight: 32, justifyContent: 'center', paddingHorizontal: Spacing.sm, borderRadius: Radius.full, borderWidth: 1, borderColor: Colors.hardConstraint, backgroundColor: Colors.surfaceElevated },
+  keepingChipText: { color: Colors.hardConstraint, fontSize: 12, fontWeight: '700', textTransform: 'capitalize' },
   scopeRow: { flexDirection: 'row', gap: Spacing.xs, paddingHorizontal: Spacing.md, paddingVertical: Spacing.xs },
   scopeChip: { minHeight: 44, justifyContent: 'center', paddingHorizontal: Spacing.md, borderRadius: Radius.full, borderWidth: 1, borderColor: Colors.border },
   scopeChipActive: { backgroundColor: Colors.selectedBg, borderColor: Colors.selectedBorder },
