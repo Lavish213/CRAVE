@@ -2,40 +2,47 @@
 
 Status: ready-for-review
 Owner: Claude
-Branch: claude/search-map-foundation-gate-propagation
-Base SHA: 1bb402d (origin/main tip after PR #269/#270/#271)
-Commit SHA: b7c9248
-Scope: Search/Map propagation-only slice, per the locked doctrine's
-explicit scope boundary (docs/doctrine/CRAVE_FRONTEND_EXECUTION_ORDER.md
--- "may propagate shared frontend contracts... auth/error/query
-ownership... only. Must not redesign."). Brought SearchScreen.tsx's two
-useQuery keys into foundationQueryKey() shape (one now shares a cache
-entry with place/[id].tsx's identical myRankings query instead of
-double-fetching), and fixed undifferentiated error copy in both
-SearchScreen.tsx and MapScreenCore.tsx: a 429 previously showed the same
-generic "couldn't load" message as a genuine offline failure in both
-screens, even though client.ts's interceptor already rewrites
-`error.message` for a 429 -- that rewritten message was being silently
-discarded at the render layer. No UI/layout/component change; same
-screens, same banners, same buttons, only query-key shape and error
-copy.
-Locked files: frontend/src/screens/SearchScreen.tsx,
-frontend/src/screens/MapScreenCore.tsx, frontend/__tests__/search.test.tsx,
-frontend/__tests__/map.test.tsx.
-Verification: PR #272 opened. `npx tsc --noEmit` clean. `npx jest --ci`
--> 53/53 suites, 558/558 tests, including 4 new tests (429 + offline
-copy, Search and Map) and 2 pre-existing tests fixed (their mocked
-rejections had no `.response`, so they're now correctly classified
-offline instead of matching the old generic-error copy -- rewritten to
-reject with a real `{ response: { status: 500 } }` shape instead).
-Explicit exclusions: no visual/layout change to either screen; did not
-migrate Map's manual useState/useEffect fetching to TanStack Query
-(permitted opportunistically by doctrine, not required -- judged Map's
-fetch logic too tightly coupled to non-server state, e.g. view modes,
-clustering, camera animation, for a clean migration in this pass); did
-not investigate privacy/provenance scope propagation into Search/Map
-result cards (unscoped, flagged as a possible future gap, not verified
-either way).
+Branch: claude/profile-taste-error-taxonomy
+Base SHA: 04cfaa9 (origin/main tip after PR #273)
+Commit SHA: 5ee9674
+Scope: closes the gap PR #273 flagged -- `user/[id].tsx`,
+`taste-profile/[userId].tsx`, and `(tabs)/profile.tsx` had
+`.catch(() => null)` sites that discarded the real error object
+entirely, so errorMessageFor() (added in #273) had nothing to classify
+on these three screens. Captured the real error via an outer-scope
+closure variable inside each catch, then classified it once the
+surrounding Promise.all settles -- same 429/offline/generic taxonomy as
+every other screen fixed this pass. No UI/layout change.
+Locked files: frontend/app/user/[id].tsx,
+frontend/app/taste-profile/[userId].tsx, frontend/app/(tabs)/profile.tsx,
+frontend/__tests__/user-profile.test.tsx,
+frontend/__tests__/taste-profile.test.tsx, frontend/__tests__/profile.test.tsx.
+Verification: PR #274 opened (https://github.com/Lavish213/CRAVE/pull/274).
+`npx tsc --noEmit` clean. `npx jest --ci` -> 54/54 suites, 561/561 tests,
+including 11 pre-existing assertions fixed (their mocked rejections had
+no `.response`, so they're now correctly classified offline instead of
+matching the old generic fallback copy).
+Known gaps: none identified for this three-screen fix; the broader
+"fix all errors and gaps" sweep this pass belongs to is otherwise
+complete pending user confirmation.
+Next action: merge #274 once CI is green.
+
+**Coordination note, 2026-09-13:** the branch this file's protocol names
+as the designated branch for this lane,
+`claude/project-grade-systems-review-4ot7d0`, is ~200 commits behind
+`main` (merge-base `6e32ba4`) and carries only 4 commits `main` doesn't
+have: a real camera-failure-toast fix (`d5869e5`) that's since been
+independently re-fixed on `main` with different copy, two small Place
+Detail doc notes (`f734145`, `2e78ef6`), and a doctrine-lock commit
+(`f3329bd`) whose STATE.md/doctrine-doc content is superseded by a
+later, corrected version already on `main`. It has not been merged into
+`main`. This PR (#274) was opened directly off `main` instead, per
+explicit user direction, rather than force-pushing a reconciled version
+of the stale branch. **Whoever next claims this lane should either
+merge `main` into that branch (bringing forward only `d5869e5`,
+`f734145`, `2e78ef6` -- drop `f3329bd`, it's superseded) or ask the user
+whether the branch should simply be abandoned/deleted** -- don't build
+new work on top of it as-is; it's missing all of PRs #246-273.
 
 ## Prior completed work (compacted)
 
