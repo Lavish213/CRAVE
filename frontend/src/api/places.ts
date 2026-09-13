@@ -85,8 +85,8 @@ export async function fetchPlaces(params: {
   };
 }
 
-export async function fetchPlaceDetail(placeId: string): Promise<PlaceOut> {
-  const { data } = await client.get<PlaceOut>(`/api/v1/place/${placeId}`);
+export async function fetchPlaceDetail(placeId: string, signal?: AbortSignal): Promise<PlaceOut> {
+  const { data } = await client.get<PlaceOut>(`/api/v1/place/${placeId}`, { signal });
   if (__DEV__) console.log('[API] DETAIL_RAW', { id: (data as any)?.id, category: (data as any)?.category, categories: (data as any)?.categories, images: (data as any)?.images?.length });
   const normalized = normalizePlaceOut(data);
   if (__DEV__) console.log('[API] DETAIL_NORMALIZED', { id: normalized.id, category: normalized.category, lat: normalized.lat, lng: normalized.lng });

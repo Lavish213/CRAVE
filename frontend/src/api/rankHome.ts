@@ -13,9 +13,9 @@ export interface RankQueueItem {
   evidence_source: string;
 }
 
-export async function fetchRankQueue(limit = 30): Promise<RankQueueItem[]> {
+export async function fetchRankQueue(limit = 30, signal?: AbortSignal): Promise<RankQueueItem[]> {
   const { data } = await client.get<{ items?: RankQueueItem[] }>('/api/v1/rankings/queue', {
-    params: { limit },
+    params: { limit }, signal,
   });
   return Array.isArray(data?.items) ? data.items : [];
 }

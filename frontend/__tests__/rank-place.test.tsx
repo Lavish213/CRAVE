@@ -220,17 +220,28 @@ describe('RankPlaceScreen', () => {
     expect(await findByText('Which was better?')).toBeTruthy();
   });
 
-  it('navigates to profile and back from the done stage', async () => {
+  it('navigates to Rank Home and back from the done stage', async () => {
     mockedStartRanking.mockResolvedValue(RANKED_STEP());
     const { findByText, findByLabelText } = render(<RankPlaceScreen />);
     await findByText('Tasty Spot');
     fireEvent.press(await findByLabelText('Loved it'));
 
     fireEvent.press(await findByLabelText('See my list'));
-    expect(mockPush).toHaveBeenCalledWith('/profile');
+    expect(mockPush).toHaveBeenCalledWith('/rank-home');
 
     fireEvent.press(await findByLabelText('Done'));
     expect(mockBack).toHaveBeenCalled();
+  });
+
+  it('restarts safely when a comparison token expires', async () => {
+    mockedStartRanking.mockResolvedValue(COMPARING_STEP());
+    mockedSubmitComparison.mockRejectedValue({ response: { data: { detail: 'invalid or expired comparison token: expired' } } });
+    const { findByText, findByLabelText } = render(<RankPlaceScreen />);
+    await findByText('Tasty Spot');
+    fireEvent.press(await findByLabelText('Loved it'));
+    fireEvent.press(await findByLabelText("Can't decide"));
+    expect(await findByText('That comparison expired. Choose a tier to start again.')).toBeTruthy();
+    expect(await findByLabelText('Loved it')).toBeTruthy();
   });
 
   it('disables the opponent card and never submits it as a winner when its detail fetch fails', async () => {

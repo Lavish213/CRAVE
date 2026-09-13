@@ -2,24 +2,16 @@
 
 Status: ready-for-review
 Owner: Codex
-Branch: codex/place-detail-proving-slice
-Base SHA: 4d065c1
-Commit SHA: aec75009b14b7609c0175e60d1e80b37636e3bea
-Scope: Place Detail proving slice for the locked Foundation Gate contracts:
-audit the current Place Detail screen against provenance/error/query/link
-contracts and implement the smallest real app improvement that proves the
-contracts without redesigning the screen.
-Locked files: frontend/app/place/[id].tsx,
-frontend/__tests__/place-detail.test.tsx,
-frontend/src/contracts/foundationGate.ts,
-frontend/src/contracts/foundationGate.test.ts,
-.agent-bridge/STATE.md, .agent-bridge/codex-to-claude.md.
-Verification: `npm test -- --runInBand __tests__/place-detail.test.tsx
-src/contracts/foundationGate.test.ts --silent --forceExit` passed
-(`2 passed, 41 tests`). `npx tsc --noEmit --pretty false` passed. Full
-frontend Jest was attempted; touched suites passed, but unrelated
-`__tests__/profile.test.tsx` hit pre-existing timeout/text-query failures.
-Backend/production-data work is explicitly out of scope.
+Branch: codex/rank-contract-propagation
+Base SHA: 7bf81bda3dab274f00ec5db35c68c8235f7a3c2f
+Scope: Rank-only no-redesign contract propagation. Fixed backend visit
+enforcement, Foundation query keys/cancellation, partial failure states,
+stale workflow/cache guards, expired-token restart, share failure visibility,
+and Rank Home completion routing. Exact files and deferrals are recorded in
+`docs/audits/CRAVE_RANK_CONTRACT_GAP_LOG_2026-09-12.md`.
+Verification: frontend typecheck passed; focused Rank 35/35; full frontend
+51 suites / 540 tests passed; focused backend 57/57 passed; backend
+compile/import passed.
 
 ## FRONTEND EXECUTION ORDER — LOCKED (2026-09-11)
 

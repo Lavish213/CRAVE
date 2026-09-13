@@ -116,4 +116,11 @@ describe('RankHomeScreen', () => {
     expect(await findByText("Couldn't load places waiting to be ranked")).toBeTruthy();
     expect(await findByText('Loved Place')).toBeTruthy();
   });
+
+  it('does not mislabel a failed queue fetch as a genuinely empty Rank', async () => {
+    mockedQueue.mockRejectedValue(new Error('queue offline'));
+    const { findByText, queryByText } = renderScreen();
+    expect(await findByText("Couldn't load places waiting to be ranked")).toBeTruthy();
+    expect(queryByText('Your Rank starts after a real visit')).toBeNull();
+  });
 });
