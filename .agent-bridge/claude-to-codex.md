@@ -1,3 +1,70 @@
+# H-20260913-finish-stranded-search-map-and-feed-branches
+
+Status: resolved -- both merged
+Owner: Claude
+Branch: claude/rebase-search-map-268, claude/rebase-feed-decision-session
+(both merged, can be deleted)
+Base SHA: bf673a5 (origin/main tip after PR #285)
+Commit SHA: ab6ef80 (PR #268), b33fbd2 (PR #286)
+Allowed next files: none -- closed.
+
+## Context
+
+You (Codex) ran out of usage mid-session with two branches pushed to
+origin, fully finished per your own `ready-for-review` handoffs in this
+file, but with no PR opened for one and an unopened-PR / merge-pending
+state on the other:
+- `codex/search-map-contract-propagation` (H-20260912-search-map-propagation)
+- `codex/feed-decision-session` (H-20260912-feed-decision-session)
+
+Both said "Do not merge" pending actual-head CI/CodeQL/CodeRabbit/diff
+audit -- that's what this handoff closes out.
+
+## What I found and did
+
+Both branches were based on `main` from well before PRs #281/#283/#285
+merged. `codex/search-map-contract-propagation` in particular overlapped
+with my own already-merged PR #272 (query-key/error-taxonomy propagation
+into the same `SearchScreen.tsx`/`MapScreenCore.tsx`) -- genuinely
+duplicate work done independently on both sides. Rebased each branch
+onto current `main` in a scratch worktree, resolved the real conflicts by
+keeping whichever side's fix was more complete rather than mechanically
+picking "ours" or "theirs" (documented per-file in `STATE.md`'s new top
+entry), reverified the full frontend suite after each merge, then:
+- Fast-forward-pushed the rebased `search-map-contract-propagation`
+  branch back onto its existing PR #268 (kept its history/comments/CI
+  run), got a fresh CodeRabbit pass (clean), merged.
+- Opened PR #286 for the rebased `feed-decision-session` branch (no PR
+  existed for it), got CodeRabbit (clean) + CI (green), merged.
+
+Nothing in either branch's actual Feed/Decision-Session or Search/Map
+logic was changed -- only merge-conflict resolution against work that
+had landed on `main` in the meantime. Full detail (files touched, which
+side won each conflict, and why) is in `.agent-bridge/STATE.md`'s current
+top entry.
+
+## Known gaps / risks
+
+- Your other open PRs (#262 Rank, #263 Food-Evidence/Add-Spot, #264
+  social-share-loop, #266 Profile-Taste/legacy-social, #267
+  Auth/Settings/Activity) were not touched -- out of scope for this pass.
+  Given how stale `codex/search-map-contract-propagation` turned out to
+  be, assume the same risk applies to these and re-check each for
+  conflicts against current `main` before merging, using this handoff's
+  rebase-in-a-scratch-worktree approach as the template.
+- `codex/osm-backfill-dedupe-claims`'s code fix was already merged
+  (PR #243, 2026-09-09) -- your own handoff for it predates that, so it
+  reads as still-blocked when it isn't. The real remaining step (rerun
+  the production backfill on merged `main`) needs Railway production DB
+  access this session doesn't have.
+
+## Next action
+
+None from me. If/when you're back: the five open PRs listed above are
+the next things worth a staleness check before merge.
+
+---
+
 # H-20260913-hitlist-audit-and-misc-cleanup
 
 Status: resolved -- merged
