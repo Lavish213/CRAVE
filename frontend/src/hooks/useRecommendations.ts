@@ -10,13 +10,16 @@ import { foundationQueryKey, STALE_TIME } from '../contracts/foundationGate';
 export function useRecommendations(enabled = true) {
   const user = useAuthStore((s) => s.user);
   const userId = user?.id ?? null;
+  const shouldFetch = enabled && Boolean(userId);
 
   return useQuery({
-    queryKey: userId
+    queryKey: shouldFetch && userId
       ? foundationQueryKey({ scope: 'user', entity: 'recommendations', userId, params: { limit: 20 } })
+      : userId
+        ? ['crave', 'user', 'recommendations', userId, 'disabled']
       : ['crave', 'user', 'recommendations', 'signed-out'],
     queryFn: ({ signal }) => fetchRecommendations(20, signal),
-    enabled: enabled && Boolean(userId),
+    enabled: shouldFetch,
     staleTime: STALE_TIME.normal,
   });
 }

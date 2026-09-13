@@ -147,6 +147,11 @@ export default function FeedScreen() {
 
   const total = data?.pages[0]?.total ?? 0;
   const initialLoaded = data !== undefined || isError;
+  const staleDataUpdatedAt = Math.max(
+    isRefetchError ? dataUpdatedAt : 0,
+    decisionSession.isRefetchError ? decisionSession.dataUpdatedAt : 0,
+    recommendationsQuery.isRefetchError ? recommendationsQuery.dataUpdatedAt : 0,
+  );
 
   if (__DEV__ && data) {
     const lastPage = data.pages[data.pages.length - 1];
@@ -452,9 +457,9 @@ export default function FeedScreen() {
           <Text style={styles.decisionRetryText}>Personalized discovery unavailable. Retry</Text>
         </TouchableOpacity>
       ) : null}
-      {(isRefetchError || decisionSession.isRefetchError) && dataUpdatedAt > 0 ? (
+      {staleDataUpdatedAt > 0 ? (
         <Text style={styles.staleNotice} accessibilityRole="alert">
-          Showing saved results from {new Date(dataUpdatedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}.
+          Showing saved results from {new Date(staleDataUpdatedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}.
         </Text>
       ) : null}
     </View>
