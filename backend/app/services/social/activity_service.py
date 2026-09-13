@@ -46,3 +46,17 @@ def list_friend_feed(
         .limit(limit)
         .all()
     )
+
+
+def list_user_activity(
+    db: Session, *, user_id: str, limit: int = 30, offset: int = 0
+) -> list[ActivityEvent]:
+    """Return the signed-in user's own factual activity history."""
+    return (
+        db.query(ActivityEvent)
+        .filter(ActivityEvent.user_id == user_id)
+        .order_by(ActivityEvent.created_at.desc())
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )

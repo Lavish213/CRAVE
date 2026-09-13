@@ -1,6 +1,6 @@
 import React from 'react';
 import { fireEvent, render } from '@testing-library/react-native';
-import { ErrorBoundary } from '../app/_layout';
+import { ErrorBoundary, notificationRouteFromData } from '../app/_layout';
 
 // RootLayout imports several app-wide native/service modules that are not
 // relevant to the boundary component itself. Keep this regression narrow:
@@ -34,5 +34,16 @@ describe('root ErrorBoundary', () => {
 
     fireEvent.press(getByLabelText('Retry loading CRAVE'));
     expect(retry).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('notification routing', () => {
+  it('routes valid place payloads and safely rejects malformed or old payloads', () => {
+    expect(notificationRouteFromData({ placeId: 'place/with space' })).toBe(
+      '/place/place%2Fwith%20space',
+    );
+    expect(notificationRouteFromData({ placeId: '' })).toBeNull();
+    expect(notificationRouteFromData({ place_id: 'legacy' })).toBeNull();
+    expect(notificationRouteFromData(undefined)).toBeNull();
   });
 });

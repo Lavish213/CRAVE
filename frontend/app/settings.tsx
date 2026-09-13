@@ -122,7 +122,13 @@ export default function MoreScreen() {
   const handleSignOut = () => {
     Alert.alert('Sign out?', "You'll need to sign back in to rank places or see your Craves.", [
       { text: 'Cancel', style: 'cancel' },
-      { text: 'Sign Out', style: 'destructive', onPress: () => signOut() },
+      {
+        text: 'Sign Out',
+        style: 'destructive',
+        onPress: () => {
+          void signOut().then(() => toast('Signed out.'));
+        },
+      },
     ]);
   };
 
@@ -149,6 +155,7 @@ export default function MoreScreen() {
                     return;
                   }
                   await signOut();
+                  toast('Your account was deleted.');
                 },
               },
             ]);

@@ -16,6 +16,7 @@ import * as Haptics from 'expo-haptics';
 import * as AuthSession from 'expo-auth-session';
 import * as QueryParams from 'expo-auth-session/build/QueryParams';
 import * as WebBrowser from 'expo-web-browser';
+import { useRouter } from 'expo-router';
 import { supabase } from '../lib/supabase';
 import { Colors, Spacing, Radius } from '../constants/colors';
 import { useToast } from '../hooks/useToast';
@@ -107,16 +108,17 @@ const REASON_COPY: Record<NonNullable<Props['reason']>, { title: string; body: s
     body: 'Sign in so we know who found it — new spots are credited to the person who confirms them.',
   },
   profile: {
-    title: 'Build your list',
-    body: 'Rank the places you’ve eaten, follow friends, and see how your taste stacks up.',
+    title: 'Set up your profile',
+    body: 'Sign in to manage your identity and keep your places across devices.',
   },
   default: {
     title: 'Join CRAVE',
-    body: 'Your cultural discovery engine. Save spots, track craves, find the city.',
+    body: 'Save spots, rank places you’ve tried, and keep your list across devices.',
   },
 };
 
 export function AuthSheet({ visible, onClose, reason = 'default' }: Props) {
+  const router = useRouter();
   const [loading, setLoading] = useState<'google' | 'apple' | 'email' | null>(null);
   const [view, setView] = useState<'options' | 'email'>('options');
   const [authMode, setAuthMode] = useState<'signin' | 'signup'>('signin');
@@ -131,6 +133,11 @@ export function AuthSheet({ visible, onClose, reason = 'default' }: Props) {
     setEmail('');
     setPassword('');
     onClose();
+  };
+
+  const openLegalRoute = (route: '/legal/terms' | '/legal/privacy') => {
+    resetAndClose();
+    router.push(route);
   };
 
   const handleGoogle = async () => {
@@ -330,12 +337,26 @@ export function AuthSheet({ visible, onClose, reason = 'default' }: Props) {
                 </TouchableOpacity>
               </View>
 
-              <Text style={styles.legal}>
-                By continuing you agree to our{' '}
-                <Text style={styles.legalLink}>Terms</Text>
-                {' & '}
-                <Text style={styles.legalLink}>Privacy Policy</Text>
-              </Text>
+              <View style={styles.legalRow} accessibilityRole="text">
+                <Text style={styles.legal}>By continuing you agree to our</Text>
+                <TouchableOpacity
+                  onPress={() => openLegalRoute('/legal/terms')}
+                  accessibilityRole="link"
+                  accessibilityLabel="Terms of Service"
+                  style={styles.legalButton}
+                >
+                  <Text style={styles.legalLink}>Terms</Text>
+                </TouchableOpacity>
+                <Text style={styles.legal}>&amp;</Text>
+                <TouchableOpacity
+                  onPress={() => openLegalRoute('/legal/privacy')}
+                  accessibilityRole="link"
+                  accessibilityLabel="Privacy Policy"
+                  style={styles.legalButton}
+                >
+                  <Text style={styles.legalLink}>Privacy Policy</Text>
+                </TouchableOpacity>
+              </View>
             </>
           ) : (
             <View style={styles.buttons}>
@@ -540,11 +561,21 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
   },
   legal: {
-    textAlign: 'center',
     color: Colors.textSecondary,
     fontSize: 12,
-    marginTop: Spacing.lg,
+  },
+  legalRow: {
+    marginTop: Spacing.md,
     paddingHorizontal: Spacing.xl,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    justifyContent: 'center',
+    columnGap: Spacing.xs,
+  },
+  legalButton: {
+    minHeight: 44,
+    justifyContent: 'center',
   },
   legalLink: {
     color: Colors.textSecondary,

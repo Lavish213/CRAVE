@@ -23,6 +23,7 @@ from app.services.social.activity_service import (
     record_ranked_place,
     record_followed_user,
     list_friend_feed,
+    list_user_activity,
 )
 from app.services.social.leaderboard_service import get_leaderboard, LeaderboardError
 from app.services.cache.response_cache import response_cache
@@ -140,6 +141,27 @@ def test_friend_feed_newest_first(db, city, users):
     feed = list_friend_feed(db, follower_ids=[users["bob"]])
     assert feed[0].id == second.id
     assert feed[1].id == first.id
+
+
+def test_user_activity_is_private_to_requested_user_and_newest_first(db, city, users):
+    first_place = _make_place(db, city)
+    second_place = _make_place(db, city)
+    first = record_ranked_place(
+        db, user_id=users["alice"], place_id=first_place.id, tier="liked", score=8.0,
+    )
+    db.commit()
+    second = record_ranked_place(
+        db, user_id=users["alice"], place_id=second_place.id, tier="fine", score=5.0,
+    )
+    record_ranked_place(
+        db, user_id=users["bob"], place_id=second_place.id, tier="liked", score=9.0,
+    )
+    db.commit()
+
+    activity = list_user_activity(db, user_id=users["alice"])
+
+    assert [event.id for event in activity] == [second.id, first.id]
+    assert {event.user_id for event in activity} == {users["alice"]}
 
 
 # ---------------------------------------------------------------------------

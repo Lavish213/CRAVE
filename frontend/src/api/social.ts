@@ -289,6 +289,13 @@ export async function fetchFriendsFeed(limit = 30, offset = 0): Promise<Activity
   return data.events ?? [];
 }
 
+export async function fetchMyActivity(limit = 30, offset = 0): Promise<ActivityEvent[]> {
+  const { data } = await client.get<{ events: ActivityEvent[] }>('/api/v1/feed/activity', {
+    params: { limit, offset },
+  });
+  return data.events ?? [];
+}
+
 // ---------------------------------------------------------------------------
 // Leaderboard
 // ---------------------------------------------------------------------------

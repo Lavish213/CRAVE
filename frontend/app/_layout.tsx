@@ -16,6 +16,7 @@ import { isSupabaseConfigured } from '../src/lib/supabase';
 import { Colors, Spacing, Typography } from '../src/constants/colors';
 import { ToastContainer } from '../src/components/Toast';
 import { AuthGateHost } from '../src/components/AuthGateHost';
+import { useToast } from '../src/hooks/useToast';
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -78,15 +79,23 @@ export function ErrorBoundary({ retry }: ErrorBoundaryProps) {
   );
 }
 
+export function notificationRouteFromData(
+  data: Record<string, unknown> | undefined,
+): `/place/${string}` | null {
+  const placeId = data?.placeId;
+  return typeof placeId === 'string' && placeId.trim()
+    ? `/place/${encodeURIComponent(placeId)}`
+    : null;
+}
+
 function ConfigErrorScreen() {
   return (
     <View style={eb.container}>
       <Text style={eb.title}>Configuration error</Text>
       <Text style={eb.body}>
-        CRAVE can't start: EXPO_PUBLIC_SUPABASE_URL and/or
-        EXPO_PUBLIC_SUPABASE_ANON_KEY are missing. Copy frontend/.env.example
-        to frontend/.env, fill in real values from the Supabase project
-        dashboard, and restart the dev server (or rebuild).
+        {__DEV__
+          ? "CRAVE can't start because its Supabase configuration is missing. Check frontend/.env and restart the development build."
+          : "CRAVE can't start because this build is missing required configuration. Please install the latest build or contact support."}
       </Text>
     </View>
   );
@@ -100,38 +109,43 @@ export default function RootLayout() {
   const loadSaves = useCravesStore((s) => s.loadSaves);
   const runVideoSyncPass = useVideoQueueStore((s) => s.runSyncPass);
   const resolvePendingCandidates = usePostingDraftStore((s) => s.resolvePendingCandidates);
+  const toast = useToast((s) => s.show);
 
   usePushNotifications(user?.id);
 
   useEffect(() => {
     if (Platform.OS === 'web') return;
 
-    function routeFromNotificationData(data: Record<string, unknown> | undefined) {
-      const placeId = data?.placeId;
-      if (typeof placeId === 'string' && placeId) {
-        router.push(`/place/${placeId}`);
-      }
+    function routeFromNotificationData(data: Record<string, unknown> | undefined): boolean {
+      const destination = notificationRouteFromData(data);
+      if (!destination) return false;
+      router.push(destination);
+      return true;
     }
 
     Notifications.getLastNotificationResponseAsync().then((response) => {
       if (response) {
-        routeFromNotificationData(
+        if (!routeFromNotificationData(
           response.notification.request.content.data as Record<string, unknown>,
-        );
+        )) toast("That notification's destination is no longer available.");
       }
-    }).catch(() => {});
+    }).catch((err) => {
+      if (__DEV__) console.warn('[notifications] Failed to recover the last response:', err);
+      toast("Couldn't open the notification. Try again from Activity.");
+    });
 
     const subscription = Notifications.addNotificationResponseReceivedListener((response) => {
-      routeFromNotificationData(
+      if (!routeFromNotificationData(
         response.notification.request.content.data as Record<string, unknown>,
-      );
+      )) toast("That notification's destination is no longer available.");
     });
     return () => subscription.remove();
-  }, [router]);
+  }, [router, toast]);
 
   useEffect(() => {
-    initAuth();
+    const cleanupAuth = initAuth();
     initCities();
+    return cleanupAuth;
   }, [initAuth, initCities]);
 
   useEffect(() => {
@@ -143,7 +157,9 @@ export default function RootLayout() {
   useEffect(() => {
     setActiveUserForVideoSync(user?.id ?? null);
     if (user?.id) {
-      runVideoSyncPass(user.id).catch(() => {});
+      runVideoSyncPass(user.id).catch((err) => {
+        if (__DEV__) console.warn('[video-sync] Background sync pass failed; queue retained:', err);
+      });
     }
   }, [user?.id, runVideoSyncPass]);
 
@@ -154,16 +170,22 @@ export default function RootLayout() {
   useEffect(() => {
     setActiveUserForDraftResolution(user?.id ?? null);
     if (user?.id) {
-      resolvePendingCandidates(user.id).catch(() => {});
+      resolvePendingCandidates(user.id).catch((err) => {
+        if (__DEV__) console.warn('[drafts] Candidate resolution failed; drafts retained:', err);
+      });
     }
   }, [user?.id, resolvePendingCandidates]);
 
   useEffect(() => {
     if (!user?.id) return;
-    pingStreak().catch(() => {});
+    pingStreak().catch((err) => {
+      if (__DEV__) console.warn('[streak] Background ping failed:', err);
+    });
     const subscription = AppState.addEventListener('change', (nextState) => {
       if (nextState === 'active') {
-        pingStreak().catch(() => {});
+        pingStreak().catch((err) => {
+          if (__DEV__) console.warn('[streak] Foreground ping failed:', err);
+        });
       }
     });
     return () => subscription.remove();
