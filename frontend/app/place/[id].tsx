@@ -1241,10 +1241,10 @@ const styles = StyleSheet.create({
     marginTop: 12,
     paddingVertical: 14,
     borderRadius: Radius.pill,
-    backgroundColor: Colors.primary,
+    backgroundColor: Colors.actionPrimary,
     minHeight: 50,
   },
-  rankCtaText: { color: '#FFFFFF', fontSize: 15, fontWeight: '800' },
+  rankCtaText: { color: Colors.onActionPrimary, fontSize: 15, fontWeight: '800' },
   rankCtaRanked: {
     backgroundColor: Colors.surface,
     borderWidth: 1,
@@ -1292,9 +1292,9 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.surface,
     paddingHorizontal: 14,
   },
-  actionBtnSaved: { borderColor: Colors.primary, backgroundColor: Colors.primary + '22' },
+  actionBtnSaved: { borderColor: Colors.selectedBorder, backgroundColor: Colors.chipActiveBg },
   actionLabel: { color: Colors.textSecondary, fontSize: 13, fontWeight: '600' },
-  actionLabelSaved: { color: Colors.primary },
+  actionLabelSaved: { color: Colors.chipActiveText },
   memorySection: {
     paddingHorizontal: 16,
     paddingVertical: 4,
@@ -1322,7 +1322,7 @@ const styles = StyleSheet.create({
   },
   saveNoteBtn: {
     alignSelf: 'flex-start',
-    backgroundColor: Colors.primary,
+    backgroundColor: Colors.actionPrimary,
     borderRadius: Radius.pill,
     paddingHorizontal: 16,
     paddingVertical: 8,

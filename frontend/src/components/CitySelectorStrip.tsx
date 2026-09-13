@@ -69,7 +69,7 @@ const styles = StyleSheet.create({
     minHeight: 36,
     justifyContent: 'center',
   },
-  pillActive: { backgroundColor: Colors.primary, borderColor: Colors.primary },
+  pillActive: { backgroundColor: Colors.selectedBg, borderColor: Colors.selectedBorder },
   pillText: { color: Colors.textSecondary, fontSize: 13, fontWeight: '500' },
-  pillTextActive: { color: Colors.text, fontWeight: '700' },
+  pillTextActive: { color: Colors.selectedText, fontWeight: '700' },
 });

@@ -106,7 +106,7 @@ export function ReportPlaceSheet({ visible, placeId, onClose, onReported }: Prop
 }
 
 const styles = StyleSheet.create({
-  backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)' },
+  backdrop: { flex: 1, backgroundColor: Colors.sheetScrim },
   sheet: {
     backgroundColor: Colors.surface,
     borderTopLeftRadius: Radius.pill,
