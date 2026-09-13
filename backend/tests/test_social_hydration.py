@@ -164,7 +164,7 @@ def test_my_rankings_empty_list_is_not_an_error(users):
 # GET /rankings/user/{id} — someone else's list
 # ---------------------------------------------------------------------------
 
-def test_public_profile_rankings_are_readable_by_others(db, city, users):
+def test_public_profile_rankings_are_not_readable_by_others(db, city, users):
     _profile(db, users["bob"], f"bob{uuid.uuid4().hex[:6]}")
     place = _make_place(db, city, name="Bob's Pick")
     _rank(db, user_id=users["bob"], place_id=place.id)
@@ -172,8 +172,7 @@ def test_public_profile_rankings_are_readable_by_others(db, city, users):
     _as_user(users["alice"])
     resp = client.get(f"/api/v1/rankings/user/{users['bob']}")
 
-    assert resp.status_code == 200
-    assert resp.json()["rankings"][0]["name"] == "Bob's Pick"
+    assert resp.status_code == 404
 
 
 def test_private_profile_rankings_are_404(db, city, users):
@@ -203,12 +202,8 @@ def test_friends_feed_hydrates_actor_and_place(db, city, users):
     follow_service.follow_user(db, follower_id=users["alice"], followee_id=users["bob"])
 
     _as_user(users["alice"])
-    events = client.get("/api/v1/feed/friends").json()["events"]
-
-    assert len(events) == 1
-    assert events[0]["place_name"] == "Feed Cafe"
-    assert events[0]["actor"]["display_name"] == "Bob R"
-    assert events[0]["payload"] == {"tier": "liked", "score": 9.0}
+    response = client.get("/api/v1/feed/friends")
+    assert response.status_code == 410
 
 
 def test_friends_feed_actor_without_profile_still_renders(db, city, users):
@@ -220,18 +215,13 @@ def test_friends_feed_actor_without_profile_still_renders(db, city, users):
     follow_service.follow_user(db, follower_id=users["alice"], followee_id=users["bob"])
 
     _as_user(users["alice"])
-    events = client.get("/api/v1/feed/friends").json()["events"]
-
-    assert len(events) == 1
-    assert events[0]["actor"]["id"] == users["bob"]
-    assert events[0]["actor"]["username"] is None
+    assert client.get("/api/v1/feed/friends").status_code == 410
 
 
 def test_friends_feed_empty_short_circuits(users):
     _as_user(users["alice"])
     resp = client.get("/api/v1/feed/friends")
-    assert resp.status_code == 200
-    assert resp.json()["events"] == []
+    assert resp.status_code == 410
 
 
 # ---------------------------------------------------------------------------

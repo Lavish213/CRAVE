@@ -1,12 +1,8 @@
-# app/api/v1/routes/feed_social.py
-"""
-The friend activity feed — "your friend just ranked X" — distinct from
-places.py's algorithmic /feed (which orders the catalog itself). This one
-is purely social: it's empty until you follow people.
-"""
+"""Personal activity feed, plus a compatibility boundary for the retired
+standalone friends feed."""
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.core.auth import require_api_key
@@ -16,8 +12,7 @@ from app.db.session import get_db
 from app.db.models.place import Place
 from app.db.models.user_profile import UserProfile
 from app.services.query.place_image_visibility_query import get_primary_image_urls_bulk
-from app.services.social import follow_service
-from app.services.social.activity_service import list_friend_feed, list_user_activity
+from app.services.social.activity_service import list_user_activity
 
 router = APIRouter(prefix="/feed", tags=["feed"])
 
@@ -80,13 +75,8 @@ def get_my_activity(
 
 
 @router.get("/friends", dependencies=[Depends(rate_limit), Depends(require_api_key)])
-def get_friends_feed(
-    db: Session = Depends(get_db),
-    user_id: str = Depends(get_current_user_id),
-    limit: int = Query(30, ge=1, le=100),
-    offset: int = Query(0, ge=0),
-):
-    followee_ids = follow_service.list_following(db, user_id, limit=500, offset=0)
-    events = list_friend_feed(db, follower_ids=followee_ids, limit=limit, offset=offset)
-
-    return _hydrate_events(db, events)
+def get_friends_feed(_user_id: str = Depends(get_current_user_id)):
+    raise HTTPException(
+        status_code=410,
+        detail="The standalone friends feed has moved to the main Feed.",
+    )

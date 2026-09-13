@@ -32,6 +32,7 @@ describe('ProfileSetupScreen', () => {
 
   it('starts idle with submit disabled, and never calls the availability check for an empty username', () => {
     const { getByText, getByLabelText } = render(<ProfileSetupScreen />);
+    expect(getByText('Choose the identity people can use to find you. Your food history and Taste Profile both remain private.')).toBeTruthy();
     expect(getByText('Letters, numbers and underscores. 3-20 characters.')).toBeTruthy();
     expect(getByLabelText('Continue').props.accessibilityState?.disabled).not.toBe(false);
     expect(mockedCheckUsernameAvailable).not.toHaveBeenCalled();

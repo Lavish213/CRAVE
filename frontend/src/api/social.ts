@@ -1,9 +1,7 @@
 // src/api/social.ts
 //
-// Client for the profile / follow-graph / ranking / feed / leaderboard
-// endpoints. All of these are user-scoped and rely on client.ts's
-// interceptor attaching the Supabase bearer token — an unauthenticated
-// call 401s rather than silently returning someone else's data.
+// Client for profile, follow/block, and owner-only ranking endpoints.
+// Sensitive calls rely on client.ts attaching the Supabase bearer token.
 import { client } from './client';
 
 // ---------------------------------------------------------------------------
@@ -56,23 +54,14 @@ export async function updateMyProfile(patch: {
   return data;
 }
 
-// "Taste Profile" — the equivalent of Beli's own stats screen (total
-// places ranked, tier breakdown, favorite cuisine, top city, a global
-// percentile). Deliberately excludes Beli's "Match Score" (taste
-// compatibility with a specific friend) — that's being built alongside
-// the personalized-recommendations feature instead, which needs the
-// same user-similarity computation.
+// Private, owner-only factual inputs for Taste Profile. Inferred traits and
+// compatibility stay absent until they have explicit sharing, provenance,
+// confidence, and correction contracts.
 export interface TasteProfile {
   total_ranked: number;
   tier_counts: { liked: number; fine: number; disliked: number };
   favorite_cuisine: string | null;
   top_city: { id: string; name: string; count: number } | null;
-  percentile: number | null;
-  /** Taste-compatibility % with the viewer -- only present when the
-   * viewer is signed in and looking at someone else's profile; null if
-   * they haven't shared enough ranked places for the number to mean
-   * anything yet. */
-  match_score: number | null;
 }
 
 export async function fetchTasteProfile(userId: string): Promise<TasteProfile> {
@@ -111,16 +100,6 @@ export async function fetchFollowStatus(
 ): Promise<{ following: boolean; followed_by: boolean }> {
   const { data } = await client.get(`/api/v1/follows/status/${userId}`);
   return data;
-}
-
-export async function fetchFollowing(): Promise<string[]> {
-  const { data } = await client.get<{ user_ids: string[] }>('/api/v1/follows/following');
-  return data.user_ids ?? [];
-}
-
-export async function fetchFollowers(): Promise<string[]> {
-  const { data } = await client.get<{ user_ids: string[] }>('/api/v1/follows/followers');
-  return data.user_ids ?? [];
 }
 
 // ---------------------------------------------------------------------------
@@ -245,22 +224,16 @@ export async function fetchMyRankings(options?: { signal?: AbortSignal }): Promi
   return data.rankings ?? [];
 }
 
-export async function fetchUserRankings(userId: string): Promise<RankedPlace[]> {
-  const { data } = await client.get<{ rankings: RankedPlace[] }>(
-    `/api/v1/rankings/user/${userId}`,
-  );
-  return data.rankings ?? [];
-}
-
 export async function deleteRanking(placeId: string): Promise<void> {
   await client.delete(`/api/v1/rankings/${placeId}`);
 }
 
 // ---------------------------------------------------------------------------
-// Friends feed
+// Activity (personal only -- the standalone friends feed and leaderboard
+// are retired; see friends-feed.tsx/leaderboard.tsx's redirect stubs)
 // ---------------------------------------------------------------------------
 
-/** Minimal identity shape the feed/leaderboard embed so rows are readable. */
+/** Minimal identity shape the activity feed embeds so rows are readable. */
 export interface ActorRef {
   id: string;
   username: string | null;
@@ -282,13 +255,6 @@ export interface ActivityEvent {
   created_at: string;
 }
 
-export async function fetchFriendsFeed(limit = 30, offset = 0): Promise<ActivityEvent[]> {
-  const { data } = await client.get<{ events: ActivityEvent[] }>('/api/v1/feed/friends', {
-    params: { limit, offset },
-  });
-  return data.events ?? [];
-}
-
 export async function fetchMyActivity(
   limit = 30,
   offset = 0,
@@ -302,34 +268,6 @@ export async function fetchMyActivity(
     throw new Error('Invalid activity response: events must be an array.');
   }
   return data.events;
-}
-
-// ---------------------------------------------------------------------------
-// Leaderboard
-// ---------------------------------------------------------------------------
-
-export interface LeaderboardRow {
-  user_id: string;
-  places_logged: number;
-  rank: number;
-  username: string | null;
-  display_name: string | null;
-  avatar_url: string | null;
-}
-
-export async function fetchLeaderboard(opts: {
-  among?: 'global' | 'friends';
-  city_slug?: string | null;
-  limit?: number;
-} = {}): Promise<LeaderboardRow[]> {
-  const { data } = await client.get<{ leaderboard: LeaderboardRow[] }>('/api/v1/leaderboard', {
-    params: {
-      among: opts.among ?? 'global',
-      ...(opts.city_slug ? { city_slug: opts.city_slug } : {}),
-      limit: opts.limit ?? 50,
-    },
-  });
-  return data.leaderboard ?? [];
 }
 
 // ---------------------------------------------------------------------------

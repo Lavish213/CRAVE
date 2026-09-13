@@ -1,19 +1,8 @@
 // app/taste-profile/[userId].tsx
 //
-// "Taste Profile" — the equivalent of Beli's own stats screen, confirmed
-// via research (cross-referenced across independent sources) to show:
-// total restaurants ranked, favorite cuisines, top/highest-ranked city,
-// and a percentile rank among other diners. CRAVE already had all of
-// this data (PlaceRanking + categories) but never surfaced it as its own
-// screen. Deliberately excludes Beli's "Match Score" (taste
-// compatibility with a specific friend) — that's being folded into the
-// personalized-recommendations feature instead, which needs the same
-// user-similarity computation, so it isn't duplicated here.
-//
-// Viewable on your own profile and on a friend's (same visibility rule
-// as the public profile itself — see the backend route's docstring) —
-// block enforcement is client-side here, same convention user/[id].tsx
-// already uses.
+// Private owner view. This screen shows factual ranking aggregates only;
+// inferred traits remain "still learning" until Gate 2 provides confidence,
+// provenance, and correction support.
 import React, { useCallback, useRef, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -26,7 +15,6 @@ import { SkeletonRowList } from '../../src/components/SkeletonCard';
 import {
   Profile,
   TasteProfile,
-  fetchBlockStatus,
   fetchProfile,
   fetchTasteProfile,
 } from '../../src/api/social';
@@ -41,7 +29,6 @@ export default function TasteProfileScreen() {
 
   const [profile, setProfile] = useState<Profile | null>(null);
   const [taste, setTaste] = useState<TasteProfile | null>(null);
-  const [blocked, setBlocked] = useState(false);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   // Holds the classified message directly (not just a boolean) -- see
@@ -50,7 +37,6 @@ export default function TasteProfileScreen() {
   // collapsed into the same "Profile not found" EmptyState as a genuine
   // 404, with no retry affordance. Same fix as user/[id].tsx's identical
   // profileError.
-  const [accessError, setAccessError] = useState<string | null>(null);
   const [profileError, setProfileError] = useState<string | null>(null);
   // Distinct from "no taste profile yet" -- a failed fetchTasteProfile
   // call (network error, 5xx) previously left `taste` at null with
@@ -66,21 +52,7 @@ export default function TasteProfileScreen() {
   const loadGenerationRef = useRef(0);
   // Whose data this screen currently holds -- both the profile being
   // viewed AND who was viewing it, same pattern as user/[id].tsx's
-  // identical guard (see its own comment for the full rationale: blocked/
-  // taste are relative to the viewer, not just the profile being viewed,
-  // so a viewer switch with the same target userId -- isSelf unchanged in
-  // both cases -- must still force a fresh load).
-  //
-  // Also closes a real confirmed bug: previously neither `taste` nor
-  // `blocked` were ever reset when a new load started, only overwritten on
-  // success. Profile A's taste profile loads and renders; navigating to
-  // profile B succeeds on the profile fetch (so the header correctly shows
-  // B) but then B's *taste* fetch itself fails (network error, 5xx) --
-  // the catch block only ever sets `notFound` for a 404, so `taste` was
-  // simply left holding A's stale data, which then rendered in full under
-  // B's identity. Resetting profile/taste/blocked whenever the identity
-  // pairing changes (not on every load -- a same-identity refocus
-  // shouldn't flash the skeleton) closes this.
+  // identical guard.
   const loadedForIdRef = useRef<string | null>(null);
   const loadedForViewerRef = useRef<string | null>(null);
 
@@ -88,26 +60,24 @@ export default function TasteProfileScreen() {
     if (!userId) return;
     const myGeneration = ++loadGenerationRef.current;
     const viewerId = me?.id ?? null;
+    if (!viewerId || viewerId !== userId) {
+      loadedForIdRef.current = userId;
+      loadedForViewerRef.current = viewerId;
+      setLoading(false);
+      return;
+    }
     if (loadedForIdRef.current !== userId || loadedForViewerRef.current !== viewerId) {
       // Identity-scoped: only wipe another identity's stale data, so a
       // same-identity refocus/retry doesn't flash the skeleton over
       // still-good data while it quietly re-fetches in the background.
       setProfile(null);
       setTaste(null);
-      setBlocked(false);
       setLoading(true);
     }
     // Outcome flags describe *this* attempt, not the identity pairing --
     // they must reset on every attempt, including a same-identity retry
-    // from ErrorState's onRetry (accessError) or a plain refocus after a
-    // transient 404. Previously gated inside the block above: a retry
-    // that actually succeeded still rendered the stale error screen over
-    // the freshly-fetched, perfectly good data, since nothing ever
-    // cleared the flag for a same-identity attempt (confirmed by
-    // CodeRabbit; the identity-gated `!profile` catch-all doesn't save
-    // this, since profile/taste's own reset is correctly identity-gated).
+    // from ErrorState's onRetry or a plain refocus after a transient 404.
     setNotFound(false);
-    setAccessError(null);
     setProfileError(null);
     setTasteError(null);
     // Marked as "attempted" here, before the fetch settles either way --
@@ -119,42 +89,19 @@ export default function TasteProfileScreen() {
     loadedForIdRef.current = userId;
     loadedForViewerRef.current = viewerId;
     try {
-      // Only fetchProfile is left to reject into the outer catch below --
-      // fetchBlockStatus already resolves to null on failure so its own
-      // outcome is checked explicitly instead, same as user/[id].tsx.
-      // Its error is captured via closure rather than discarded, so the
-      // ErrorState below can differentiate a 429/offline failure from a
-      // generic one instead of showing the same hardcoded copy for all
-      // three (see errorMessageFor in src/utils/errorMessage.ts).
-      let blockStatusErr: unknown = null;
-      const [p, blockStatus] = await Promise.all([
-        fetchProfile(userId),
-        isSelf
-          ? Promise.resolve({ blocked: false })
-          : fetchBlockStatus(userId).catch((err) => {
-              blockStatusErr = err;
-              return null;
-            }),
-      ]);
+      const p = await fetchProfile(userId);
       if (myGeneration !== loadGenerationRef.current) return;
       setProfile(p);
-      if (blockStatus === null) {
-        setAccessError(errorMessageFor(blockStatusErr, "Couldn't verify profile access"));
-        return;
-      }
-      setBlocked(blockStatus.blocked);
-      if (!blockStatus.blocked) {
-        let tasteErr: unknown = null;
-        const taste = await fetchTasteProfile(userId).catch((err) => {
-          tasteErr = err;
-          return null;
-        });
-        if (myGeneration !== loadGenerationRef.current) return;
-        if (taste === null) {
-          setTasteError(errorMessageFor(tasteErr, "Couldn't load taste profile"));
-        } else {
-          setTaste(taste);
-        }
+      let tasteErr: unknown = null;
+      const taste = await fetchTasteProfile(userId).catch((err) => {
+        tasteErr = err;
+        return null;
+      });
+      if (myGeneration !== loadGenerationRef.current) return;
+      if (taste === null) {
+        setTasteError(errorMessageFor(tasteErr, "Couldn't load taste profile"));
+      } else {
+        setTaste(taste);
       }
     } catch (err: any) {
       if (myGeneration !== loadGenerationRef.current) return;
@@ -193,6 +140,16 @@ export default function TasteProfileScreen() {
     );
   }
 
+  if (!me || !isSelf) {
+    return (
+      <EmptyState
+        icon="lock-closed-outline"
+        title="Taste Profile is private"
+        body="Taste insights are only visible to their owner unless they explicitly share them."
+      />
+    );
+  }
+
   if (notFound) {
     return (
       <EmptyState
@@ -211,20 +168,6 @@ export default function TasteProfileScreen() {
     return <ErrorState message={profileError ?? "Couldn't load this profile"} onRetry={load} />;
   }
 
-  if (accessError) {
-    return <ErrorState message={accessError} onRetry={load} />;
-  }
-
-  if (blocked) {
-    return (
-      <EmptyState
-        icon="ban-outline"
-        title="Not available"
-        body={`You've blocked @${profile.username}.`}
-      />
-    );
-  }
-
   if (tasteError) {
     return <ErrorState message={tasteError} onRetry={load} />;
   }
@@ -234,16 +177,11 @@ export default function TasteProfileScreen() {
       <EmptyState
         icon="restaurant-outline"
         title="No taste profile yet"
-        body={
-          isSelf
-            ? "Rank a few places you've eaten and your taste profile will build up here."
-            : `@${profile.username} hasn't ranked anything yet.`
-        }
+        body="Rank a few places you've eaten and your taste profile will build up here."
       />
     );
   }
 
-  const displayName = profile.display_name ?? profile.username;
   const tierEntries: Array<{ key: keyof TasteProfile['tier_counts']; count: number }> = [
     { key: 'liked', count: taste.tier_counts.liked },
     { key: 'fine', count: taste.tier_counts.fine },
@@ -252,32 +190,17 @@ export default function TasteProfileScreen() {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <Text style={styles.title}>
-        {isSelf ? 'Your Taste Profile' : `${displayName}'s Taste Profile`}
-      </Text>
+      <Text style={styles.title}>Your Taste Profile</Text>
 
       <View style={styles.heroRow}>
         <View style={styles.heroTile}>
           <Text style={styles.heroValue}>{taste.total_ranked}</Text>
           <Text style={styles.heroLabel}>ranked</Text>
         </View>
-        {taste.percentile !== null && (
-          <View style={styles.heroTile}>
-            {/* percentile = "% of other users you've out-ranked" (higher is
-                better) -- displayed as the more intuitive "top X%" framing,
-                floored at 1 so a top performer never reads as "Top 0%". */}
-            <Text style={styles.heroValue}>Top {Math.max(1, 100 - taste.percentile)}%</Text>
-            <Text style={styles.heroLabel}>of all diners</Text>
-          </View>
-        )}
-        {!isSelf && taste.match_score !== null && (
-          <View style={styles.heroTile}>
-            <Text style={[styles.heroValue, { color: Colors.brand }]}>
-              {taste.match_score}%
-            </Text>
-            <Text style={styles.heroLabel}>taste match</Text>
-          </View>
-        )}
+        <View style={styles.heroTile}>
+          <Text style={styles.learningValue}>Still learning</Text>
+          <Text style={styles.heroLabel}>inferred taste</Text>
+        </View>
       </View>
 
       <View style={styles.section}>
@@ -291,16 +214,6 @@ export default function TasteProfileScreen() {
           ))}
         </View>
       </View>
-
-      {taste.favorite_cuisine && (
-        <View style={styles.card}>
-          <Ionicons name="restaurant-outline" size={20} color={Colors.brand} />
-          <View style={styles.cardMeta}>
-            <Text style={styles.cardLabel}>Favorite cuisine</Text>
-            <Text style={styles.cardValue}>{taste.favorite_cuisine}</Text>
-          </View>
-        </View>
-      )}
 
       {taste.top_city && (
         <View style={styles.card}>
@@ -338,6 +251,7 @@ const styles = StyleSheet.create({
     borderColor: Colors.border,
   },
   heroValue: { color: Colors.text, fontSize: 24, fontWeight: '800' },
+  learningValue: { color: Colors.text, fontSize: 17, fontWeight: '800' },
   heroLabel: { color: Colors.textSecondary, fontSize: 12, marginTop: 2, fontWeight: '600' },
   section: { gap: Spacing.sm },
   sectionLabel: {

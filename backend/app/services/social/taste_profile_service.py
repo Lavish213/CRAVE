@@ -2,7 +2,7 @@
 Taste Profile — the direct equivalent of Beli's own "Taste Profile"
 stats screen (confirmed via multiple independent sources: total
 restaurants ranked, favorite cuisines, highest-ranked/most-visited
-cities, and a percentile rank among other diners). Pure aggregation over
+cities). Pure aggregation over
 data CRAVE already has (PlaceRanking + categories) — no new table.
 
 Deliberately excludes Beli's "Match Score" (pairwise taste compatibility
@@ -82,30 +82,6 @@ def _compute_top_city(db: Session, *, user_id: str) -> Optional[Dict[str, Any]]:
     return {"id": city.id, "name": city.name, "count": int(count)}
 
 
-def _compute_percentile(db: Session, *, user_id: str, total_ranked: int) -> Optional[int]:
-    """
-    "You've ranked more places than X% of people" — global across all
-    users (not city-scoped), by explicit choice: with a small and
-    growing user base, a per-city percentile would be either meaningless
-    (denominator of 1-2 people) or misleadingly volatile; this can be
-    revisited once there's enough data per city for it to mean anything.
-    """
-    if total_ranked == 0:
-        return None
-
-    counts_by_user = dict(
-        db.query(PlaceRanking.user_id, func.count(PlaceRanking.id))
-        .group_by(PlaceRanking.user_id)
-        .all()
-    )
-    others = [c for uid, c in counts_by_user.items() if uid != user_id]
-    if not others:
-        return 100
-
-    fewer_or_equal = sum(1 for c in others if c <= total_ranked)
-    return round((fewer_or_equal / len(others)) * 100)
-
-
 def get_taste_profile(db: Session, *, user_id: str) -> Dict[str, Any]:
     rankings = db.query(PlaceRanking).filter(PlaceRanking.user_id == user_id).all()
     total_ranked = len(rankings)
@@ -120,5 +96,4 @@ def get_taste_profile(db: Session, *, user_id: str) -> Dict[str, Any]:
         "tier_counts": tier_counts,
         "favorite_cuisine": _compute_favorite_cuisine(db, user_id=user_id),
         "top_city": _compute_top_city(db, user_id=user_id),
-        "percentile": _compute_percentile(db, user_id=user_id, total_ranked=total_ranked),
     }
