@@ -1,10 +1,10 @@
 # Active agent state
 
-Status: claimed
+Status: ready-for-review
 Owner: Codex
 Branch: codex/profile-taste-social-hardening
 Base SHA: 755f02b
-Commit SHA: none
+Commit SHA: 1574389cfe3318ec5f2d269d34c9cbc043bc6083
 Scope: Profile / Taste / social cleanup under the locked frontend execution
 order. Re-verify and harden Profile, public-profile, Taste, friends/follow
 evidence, and stale leaderboard/social remnants for privacy, truthful product
@@ -23,10 +23,12 @@ docs/doctrine/CRAVE_FRONTEND_EXECUTION_ORDER.md, .agent-bridge/STATE.md, and
 be changed.
 Explicit exclusions: Rank, Food Evidence/Add Spot, Craves, Feed/Decision
 Session, Search/Map, and new social/leaderboard systems.
-Verification plan: frontend typecheck; focused Profile/Taste/social tests; full
-frontend suite; relevant backend compile/import and focused/full tests if the
-backend changes; PR CI, CodeQL, and CodeRabbit/review inspection. UI changes
-remain cleanup/hardening and require running-app evidence where feasible.
+Verification: frontend typecheck passed; focused Profile/Taste/social suites
+passed (6 suites, 20 tests); full frontend Jest passed (51 suites, 491 tests);
+backend compile/import checks and focused tests passed (46 tests); full backend
+pytest passed (1115 passed, 2 skipped). PR CI, CodeQL, and CodeRabbit/review
+inspection remain before merge. UI changes remain cleanup/hardening; no device
+claim is made.
 
 ## FRONTEND EXECUTION ORDER — LOCKED (2026-09-11)
 

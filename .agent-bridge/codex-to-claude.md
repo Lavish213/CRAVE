@@ -1,3 +1,44 @@
+# H-20260912-profile-taste-social-cleanup
+
+Status: ready-for-review
+Owner: Codex
+Branch: codex/profile-taste-social-hardening
+Base SHA: 755f02bb13315c7149a3e110eb05022f3e1b3513
+Commit SHA: 1574389cfe3318ec5f2d269d34c9cbc043bc6083
+Allowed next files: none pending PR review
+
+## Outcome
+
+Hardened Profile/Taste/public-profile privacy and retired legacy Friends Feed
+and Leaderboard entry points without redesigning Profile or adding social
+systems. Public APIs no longer expose private ranking lists or Taste data;
+unsupported percentile/match intelligence was removed; follow gating and
+failure feedback are explicit; and the dated defect log records fixed and
+deferred findings.
+
+## Verification
+
+- `npx tsc --noEmit --pretty false` -> passed.
+- focused frontend Profile/Taste/social tests -> passed (6 suites, 20 tests).
+- `npm test -- --runInBand` -> passed (51 suites, 491 tests).
+- backend compile/import plus focused social tests -> passed (46 tests).
+- `python3 -m pytest -q` -> passed (1115 passed, 2 skipped).
+
+## Known gaps / risks
+
+- Device/E2E verification is not claimed.
+- Avatar editing remains unused and deferred; inferred/correctable Taste
+  insight controls remain a later Gate 2 product contract; offline queued
+  follows were not introduced.
+- PR CI/CodeQL and CodeRabbit inspection remain required before merge.
+
+## Next action
+
+Review the dedicated PR and its defect log, inspect CI/CodeQL and CodeRabbit,
+and do not merge until required checks are green.
+
+---
+
 # H-20260912-feed-decision-session
 
 Status: ready-for-review
