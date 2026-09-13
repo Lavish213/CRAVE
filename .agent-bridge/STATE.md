@@ -1,5 +1,59 @@
 # Active agent state
 
+Status: merged (partially load-bearing -- see gap below)
+Owner: Claude
+Branch: claude/universal-link-setup (merged, can be deleted)
+Base SHA: 85440b9 (origin/main tip after PR #297)
+Commit SHA: 8825b81 (PR #298, squash-merged)
+Scope: user asked to do the universal-link (https://) setup. Found the
+client-side half already existed and was already wired up --
+`app.json`'s `applinks:crave.app`/Android `intentFilters`, and
+`foundationGate.ts`'s `placeUniversalLink()` contract already used by
+Place Detail's share button. The actual missing half was server-side:
+- New `backend/app/api/v1/routes/universal_links.py`, mounted at the
+  domain root (no `/api` prefix, matching `health.py`'s own pattern):
+  `GET /.well-known/apple-app-site-association`,
+  `GET /.well-known/assetlinks.json`, and real branded HTML fallback
+  pages at `GET /place/{id}`, `/rank/{id}`, `/user/{id}` for anyone
+  who taps a link without the app installed. `/user/{id}` reuses
+  `profile.py`'s own `is_public` gate before showing any name --
+  never leaks what the app itself won't show post-#266's privacy
+  retirement.
+- Found and fixed a real inconsistency while wiring this up:
+  `PlaceCard`'s long-press share (every card, Feed/Search/Craves) sent
+  plain text with no link at all, unlike Place Detail's own share
+  button. Now uses the same `placeUniversalLink()`/`Platform.OS` split.
+- **Genuinely not fixable from this session**: both verification
+  files ship with placeholder Apple Team ID / Android SHA-256
+  fingerprint. User confirmed neither value is stored in the repo and
+  EAS could not reach Expo to retrieve them from this environment --
+  independently confirmed here too: `curl https://api.expo.dev` gets a
+  403 from this sandbox's own egress proxy (org policy), and
+  `eas whoami` reports not logged in. **Until the real values are
+  substituted in `universal_links.py`'s `_APPLE_TEAM_ID`/
+  `_ANDROID_SHA256_FINGERPRINT` constants, neither OS will actually
+  verify the domain** -- a tapped link silently falls through to the
+  web fallback page instead of opening the app, with no visible error
+  anywhere. Get them via Apple Developer > Membership (or
+  `eas credentials -p ios`) and `cd frontend && eas credentials
+  --platform android` (Play Console App Signing key fingerprint, not
+  the upload-key one, once Play App Signing is enabled).
+Locked files: none -- closed for the code half; the two placeholder
+constants are the one remaining blocker before this is load-bearing.
+Verification: backend `python -m compileall`/`import app.main` clean,
+`pytest -q` -> 1139 passed, 2 skipped (8 new). Frontend
+`npx tsc --noEmit` clean, `npx jest --ci` -> 59/59 suites, 556/556
+tests (1 new).
+Next action: once the user supplies the real Team ID and SHA-256
+fingerprint, swap them into the two constants at the top of
+`universal_links.py` and push -- a one-line-each change, no other code
+affected. After that, DNS needs to actually point crave.app at the
+Railway deploy (user's own infra, not something this session can do),
+and a real on-device tap-through test on both platforms is the only
+way to confirm the whole chain works end to end.
+
+---
+
 Status: merged
 Owner: Claude
 Branch: claude/misc-cleanup-followups, claude/reduced-motion-accessibility,
