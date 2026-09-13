@@ -2,6 +2,100 @@
 
 Status: merged
 Owner: Claude
+Branch: claude/rebase-rank-262, claude/fix-rank-262-test,
+claude/rebase-fe-263, claude/rebase-share-264 (+v3), claude/fix-share-264-review-findings,
+claude/rebase-profile-266 (+v2/v3/v4), claude/rebase-auth-267 (all merged, can be deleted)
+Base SHA: a6bd34d (origin/main tip after PR #287)
+Scope: the five remaining stale, unmerged Codex branches from before the
+"finish stranded branches" pass (H-20260913-finish-stranded-search-map-and-feed-branches,
+same top entry pattern below) -- Rank (#262), Food Evidence/Add Spot (#263),
+social-share loop (#264), Profile/Taste social hardening (#266), and
+Auth/Settings/Activity (#267). All five were opened well before today's
+merges and needed the same rebase-in-a-scratch-worktree treatment; #266
+in particular needed re-rebasing three more times as each of the other
+four merged out from under it (each merge touched a file it also touched).
+- **#262 Rank**: 4 conflicts (STATE.md, codex-to-claude.md, rank-home.tsx
+  x2). Kept Rank's new AbortSignal-cancellation + explicit `STALE_TIME`
+  additions (main had neither) plus a deterministic `params: {limit}` key
+  Rank added; deduped a doubled `foundationQueryKey` import. **Caught a
+  real process bug post-merge**: a local test-assertion fix
+  (`rank-home.test.tsx`, matching the already-shipped `errorMessageFor`
+  classification) was made *after* the merge commit and never actually
+  got committed before I pushed -- CI's Frontend job failed on exactly
+  that stale assertion. Fixed with a follow-up commit, full suite
+  re-verified before re-pushing. Merged `e1d024e`.
+- **#263 Food Evidence/Add Spot**: 1 conflict (`add-spot.tsx` retry-button
+  icon) -- kept the new retry/loading-spinner functionality, swapped a
+  leftover `Colors.primary` for this file's own `Colors.brand` convention.
+  Merged `7bda981`.
+- **#264 social-share loop**: mostly clean auto-merges (STATE.md/
+  codex-to-claude.md needed hand reconstruction once; a real backend
+  Alembic migration, verified with a full upgrade/downgrade/upgrade
+  cycle). **Two real, still-unresolved CodeRabbit findings from the
+  original review turned out to still be valid against current code**
+  (verified independently, not taken on faith): (1) `saves.py`'s
+  `ShareSavePreference` opt-out insert on unsave raced two concurrent
+  unsave requests for the same user/place -- both could see no existing
+  row and both insert, and the composite-PK conflict on the second would
+  500 *and* roll back the delete itself; isolated the insert in a
+  SAVEPOINT so a conflicting insert is swallowed instead. (2)
+  `reconcile_matched_share_saves` filtered out inactive-place candidates
+  *after* SQL applied `limit`, so an inactive place in a batch silently
+  occupied a slot a real candidate needed; moved the `is_active` filter
+  into the query (a `Place` join) and added a regression test. Needed
+  two further re-rebases as #262/#267 merged out from under it (docs-only
+  each time). Merged `c8863a6`.
+- **#266 Profile/Taste social hardening**: the largest rebase by far --
+  genuine overlap between this PR's privacy retirement (drop following/
+  followers/streak, drop cross-account Taste Profile viewing, drop the
+  public ranked list on `user/[id]`, Friends Feed/Leaderboard become
+  redirect stubs) and this session's own already-merged error-taxonomy
+  propagation (which had added `errorMessageFor` classification to
+  several of the same screens). Resolution throughout: kept this PR's
+  retirement scope intact, re-layered `errorMessageFor` onto whatever
+  error states survived the retirement, swapped leftover `Colors.primary`/
+  hardcoded `'#FFFFFF'` for the current `Colors.brand`/`Colors.actionPrimary`/
+  `Colors.onActionPrimary` tokens. `profile.test.tsx` and
+  `user-profile.test.tsx` were rebuilt combining this PR's new tests with
+  the still-relevant regression coverage (sign-in gate, 404-vs-error
+  distinction, retry recovery, block/unblock, race-condition protection)
+  its own test-file rewrite had dropped along with the retired features --
+  translated to the new mock shape, nothing retired reintroduced. Needed
+  three re-rebases total as #262/#264/#267 each merged out from under it
+  in turn: `rankings.py` needed both Rank's new
+  `rank_eligible_visit_for_place` security fix (kept) and this PR's now
+  owner-only `get_user_rankings` (which made Rank's added `is_blocked`
+  import dead code here -- dropped); `feed_social.py` needed both
+  Auth/Settings/Activity's new real `/feed/activity` endpoint (kept) and
+  this PR's `/feed/friends` retirement (410 Gone, kept) to coexist, with
+  `social.ts`'s matching `fetchMyActivity`/`ActivityEvent` types kept and
+  its own now-dead `fetchFriendsFeed`/`fetchLeaderboard` dropped (nothing
+  referenced them). Merged `c9a5bf1`.
+- **#267 Auth/Settings/Activity**: fully clean auto-merge, zero conflicts,
+  both times. Merged `4c43359`.
+Locked files: none -- closed.
+Verification: every branch got the same treatment before each push --
+`tsc --noEmit` clean, full frontend Jest suite, full backend pytest suite
+(where the branch touched backend), plus focused suites for the branch's
+own scope. One recurring, confirmed-flaky failure
+(`__tests__/place-detail.test.tsx`, unrelated to any of these five PRs'
+diffs) showed up on first full-suite runs for #266's v2/v3 rebases and
+passed clean on immediate re-run and in isolation each time -- not a
+regression, not investigated further.
+Next action: none from me. If Codex resumes: the branch names above are
+now stale (merged) and safe to delete from GitHub UI. Two things from this
+pass are outside my access and still need a human/Codex-with-Railway-access:
+(1) OSM backfill's real production re-run (code fix already merged 9/9,
+just needs the actual run); (2) nothing else outstanding from this batch.
+Codex's Craves lane (per a separate live session transcript relayed by the
+user) was deliberately left untouched throughout this entire pass to avoid
+collision -- do not start a competing Craves branch without checking its
+current state first.
+
+---
+
+Status: merged
+Owner: Claude
 Branch: claude/rebase-search-map-268, claude/rebase-feed-decision-session (both merged, can be deleted)
 Base SHA: bf673a5 (origin/main tip after PR #285)
 Scope: Codex ran out of usage mid-session before it could open PRs for two
