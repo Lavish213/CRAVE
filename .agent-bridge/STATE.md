@@ -2,6 +2,58 @@
 
 Status: merged
 Owner: Claude
+Branch: claude/core5-mockup-search-map (merged, can be deleted)
+Base SHA: 2588e34 (origin/main tip after PR #292)
+Commit SHA: 51625a5 (PR #293, squash-merged)
+Scope: follow-up to the Home/Settings Core 5 mockup pass (PR #291) --
+user explicitly asked to do "the Search/Map mockup screens too,"
+superseding the Search/Map certification lock in
+`CRAVE_FRONTEND_EXECUTION_ORDER.md` for this one narrow visual-restyle
+purpose only. No ranking/interpretation/query/IA change of any kind;
+the full Search/Map regression suite (search.test.tsx, search-decision-
+support.test.tsx, map.test.tsx, map-instrumentation.test.tsx,
+legal-and-map-web.test.tsx) passed unchanged, confirming nothing
+behavioral moved.
+- Found Search/Map already implement most of the mockup's pill/badge
+  visual language from earlier Wave 5/V1.5 work
+  (`constraintChip`/`scopeChip`/`shortcutChip`, the map's "Search this
+  area" banner -- all already `Radius.pill`) -- so the real gap was
+  small.
+- `SearchScreen.tsx`: the "UNDERSTOOD"/"CHECK THIS SEARCH"
+  interpretation label was the one remaining bare-caps text on the
+  screen -- wrapped in a rounded pill chip (`chipActiveBg`/
+  `chipActiveText`), matching Home's `decisionEyebrowChip`. Zero-state
+  "What are you craving?" heading -> shared `Typography.headline` role
+  (was a one-off 17px/800 inline style).
+- `MapBottomSheet.tsx`: selected-place name -> `Typography.subtitle`
+  (was a one-off 16px/700 inline style) -- a proportionate lift for a
+  compact sheet, not the full `headline` weight Home/Search's own
+  headers use.
+- Not touched: `PlaceCard`/`PlaceCardCompact` (shared, already
+  token-consistent), the already-pill-styled map banners, any ranking/
+  interpretation/query logic, and "Results" (the mockup's Results
+  screen is Search's own populated state, not a separate component).
+- Still not attempted anywhere in this Core 5 mockup arc: the mockup's
+  literal cream/light color scheme (would fragment the app visually
+  across screens; every screen stays on the dark UI V2 palette), real
+  food photography (no asset pipeline exists).
+Locked files: none -- closed.
+Verification: `npx tsc --noEmit` clean. `npx jest --ci` -> 57/57
+suites, 552/552 tests, no assertions needed updating. CI green (Guard,
+Frontend, both Backend jobs, both Analyze jobs, CodeQL); CodeRabbit
+rate-limited this time (not a blocker -- same standing as every other
+rate-limited CodeRabbit pass this session).
+Next action: none from me. All five Core 5 mockup screens (Home,
+Search, Results, Map, Settings) are now covered -- Results via Search's
+own populated state, no separate work needed. If the user wants the
+mockup's literal light/cream theme pursued at some point, that is a
+much larger, separate, explicit undertaking (all screens at once, to
+avoid a half-migrated look) -- not started here.
+
+---
+
+Status: merged
+Owner: Claude
 Branch: claude/core5-mockup-home-settings (merged, can be deleted)
 Base SHA: a8f463f (origin/main tip after PR #289)
 Commit SHA: 804abbc (PR #291, squash-merged)
