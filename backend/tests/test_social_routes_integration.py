@@ -404,6 +404,30 @@ def test_friends_feed_endpoint_reachable(users):
     assert resp.json()["events"] == []
 
 
+def test_my_activity_endpoint_returns_only_the_authenticated_users_events(users, city, db):
+    place = Place(name=f"Activity Route Place {uuid.uuid4().hex[:6]}", city_id=city.id)
+    db.add(place)
+    db.commit()
+    db.add(ActivityEvent(
+        user_id=users["alice"], event_type="ranked_place", place_id=place.id,
+        payload={"tier": "liked", "score": 8.5},
+    ))
+    db.add(ActivityEvent(
+        user_id=users["bob"], event_type="ranked_place", place_id=place.id,
+        payload={"tier": "fine", "score": 5.0},
+    ))
+    db.commit()
+
+    _as_user(users["alice"])
+    resp = client.get("/api/v1/feed/activity")
+
+    assert resp.status_code == 200
+    events = resp.json()["events"]
+    assert len(events) == 1
+    assert events[0]["user_id"] == users["alice"]
+    assert events[0]["place_name"] == place.name
+
+
 def test_username_available_endpoint():
     resp = client.get("/api/v1/profile/username-available", params={"username": "totally_new_name_xyz"})
     assert resp.status_code == 200

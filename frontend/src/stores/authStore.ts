@@ -9,8 +9,19 @@ import { unregisterCurrentDevice } from '../services/pushNotifications';
 interface AuthStore {
   user: User | null;
   loading: boolean;
-  init: () => void;
+  init: () => () => void;
   signOut: () => Promise<void>;
+}
+
+let authSubscription: { unsubscribe: () => void } | null = null;
+
+function clearAccountScopedState(): void {
+  queryClient.clear();
+  try {
+    useCravesStore.getState().clearSaves();
+  } catch (err) {
+    console.warn('[auth] Failed to clear account-scoped saves:', err);
+  }
 }
 
 export const useAuthStore = create<AuthStore>((set) => ({
@@ -18,15 +29,39 @@ export const useAuthStore = create<AuthStore>((set) => ({
   loading: true,
 
   init: () => {
+    authSubscription?.unsubscribe();
+    let active = true;
+    let sawAuthEvent = false;
+
     // Hydrate from existing session
     supabase.auth.getSession().then(({ data }) => {
+      if (!active || sawAuthEvent) return;
       set({ user: data.session?.user ?? null, loading: false });
+    }).catch((err) => {
+      if (!active || sawAuthEvent) return;
+      console.warn('[auth] Session restore failed:', err);
+      set({ user: null, loading: false });
     });
 
     // Listen for auth changes
-    supabase.auth.onAuthStateChange((_event, session) => {
-      set({ user: session?.user ?? null, loading: false });
+    const { data } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!active) return;
+      sawAuthEvent = true;
+      const nextUser = session?.user ?? null;
+      const previousUser = useAuthStore.getState().user;
+      if (previousUser?.id && previousUser.id !== nextUser?.id) {
+        clearAccountScopedState();
+        clearAuthGate();
+      }
+      set({ user: nextUser, loading: false });
     });
+    authSubscription = data.subscription;
+
+    return () => {
+      active = false;
+      data.subscription.unsubscribe();
+      if (authSubscription === data.subscription) authSubscription = null;
+    };
   },
 
   signOut: async () => {
