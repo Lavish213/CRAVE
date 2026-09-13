@@ -399,13 +399,27 @@ def test_comparison_completion_marks_existing_save_visited(city, db):
         "/api/v1/rankings", json={"place_id": new.id, "tier": "liked"},
     ).json()
     assert result["status"] == "comparing"
+    final_token = None
     while result["status"] == "comparing":
+        final_token = result["comparison_token"]
         response = client.post(
             "/api/v1/rankings/compare",
-            json={"comparison_token": result["comparison_token"], "winner": "new"},
+            json={"comparison_token": final_token, "winner": "new"},
         )
         assert response.status_code == 200
         result = response.json()
+
+    db.query(VisitEvidence).filter(
+        VisitEvidence.user_id == user_id,
+        VisitEvidence.place_id == new.id,
+    ).update({"factual_history": False})
+    db.commit()
+    replay = client.post(
+        "/api/v1/rankings/compare",
+        json={"comparison_token": final_token, "winner": "new"},
+    )
+    assert replay.status_code == 200
+    assert replay.json()["status"] == "ranked"
 
     db.expire_all()
     save = db.query(HitlistSave).filter(HitlistSave.user_id == user_id).one()

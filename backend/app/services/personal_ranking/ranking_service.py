@@ -40,6 +40,7 @@ not worth a locking scheme for that edge case.
 from __future__ import annotations
 
 import time
+import uuid
 from typing import Optional
 
 import jwt
@@ -118,8 +119,10 @@ def _create_ranking(
     visited_at,
     note: Optional[str],
     tags: Optional[list],
+    ranking_id: Optional[str] = None,
 ) -> PlaceRanking:
     ranking = PlaceRanking(
+        id=ranking_id or str(uuid.uuid4()),
         user_id=user_id,
         place_id=place_id,
         tier=tier,
@@ -184,6 +187,7 @@ def start_ranking(
 
     token = _sign_state({
         "user_id": user_id, "place_id": place_id, "tier": tier,
+        "ranking_id": str(uuid.uuid4()),
         "category_ids": category_ids,
         "lo": lo, "hi": hi,
         "visited_at": visited_at.isoformat() if visited_at else None,
@@ -230,6 +234,7 @@ def submit_comparison(
         opponent = tier_list[next_mid]
         next_token = _sign_state({
             "user_id": user_id, "place_id": place_id, "tier": tier,
+            "ranking_id": state.get("ranking_id"),
             "category_ids": category_ids,
             "lo": lo, "hi": hi,
             "visited_at": state.get("visited_at"), "note": state.get("note"),
@@ -245,6 +250,11 @@ def submit_comparison(
     from datetime import datetime
 
     if expected_user_id is not None:
+        ranking_id = state.get("ranking_id")
+        if ranking_id:
+            completed = db.query(PlaceRanking).filter(PlaceRanking.id == ranking_id).one_or_none()
+            if completed is not None:
+                return {"status": "ranked", "ranking": completed, "already_existed": True}
         eligible_visit = rank_eligible_visit_for_place(
             db, user_id=user_id, place_id=place_id,
         )
@@ -269,6 +279,7 @@ def submit_comparison(
         ranking = _create_ranking(
             db, user_id=user_id, place_id=place_id, tier=tier, score=score,
             visited_at=visited_at, note=state.get("note"), tags=state.get("tags"),
+            ranking_id=state.get("ranking_id"),
         )
         db.commit()
         return {"status": "ranked", "ranking": ranking, "already_existed": False}
