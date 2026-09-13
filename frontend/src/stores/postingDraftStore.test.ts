@@ -86,7 +86,7 @@ describe('postingDraftStore', () => {
       fileSize: 500_000,
     });
 
-    await usePostingDraftStore.getState().attachDraftToPlace(draft.id, 'place-1');
+    await usePostingDraftStore.getState().attachDraftToPlace(draft.id, 'place-1', 'user-a');
 
     expect(uploadApi.requestUpload).toHaveBeenCalledWith({
       place_id: 'place-1',
@@ -109,7 +109,7 @@ describe('postingDraftStore', () => {
       kind: 'video',
     });
 
-    await usePostingDraftStore.getState().attachDraftToPlace(draft.id, 'place-1');
+    await usePostingDraftStore.getState().attachDraftToPlace(draft.id, 'place-1', 'user-a');
 
     expect(mockRecordVideo).toHaveBeenCalledWith({
       sourceUri: draft.localUri,
@@ -133,7 +133,7 @@ describe('postingDraftStore', () => {
       fileSize: 500_000,
     });
 
-    await usePostingDraftStore.getState().attachDraftToPlace(draft.id, 'place-1');
+    await usePostingDraftStore.getState().attachDraftToPlace(draft.id, 'place-1', 'user-a');
 
     const stored = usePostingDraftStore.getState().drafts.find((d) => d.id === draft.id);
     expect(stored?.outcome).toBe('failed');
@@ -157,12 +157,24 @@ describe('postingDraftStore', () => {
     // Fired without awaiting the first -- the synchronous 'pending' guard
     // at the top of attachDraftToPlace must still prevent a second attach,
     // same race CodeRabbit flagged on PR #238's component-level version.
-    const first = usePostingDraftStore.getState().attachDraftToPlace(draft.id, 'place-a');
-    const second = usePostingDraftStore.getState().attachDraftToPlace(draft.id, 'place-b');
+    const first = usePostingDraftStore.getState().attachDraftToPlace(draft.id, 'place-a', 'user-a');
+    const second = usePostingDraftStore.getState().attachDraftToPlace(draft.id, 'place-b', 'user-a');
     await Promise.all([first, second]);
 
     expect(uploadApi.requestUpload).toHaveBeenCalledTimes(1);
     expect(uploadApi.requestUpload).toHaveBeenCalledWith(expect.objectContaining({ place_id: 'place-a' }));
+  });
+
+  it('refuses to attach a draft through a different signed-in owner', async () => {
+    const draft = await usePostingDraftStore.getState().createDraftFromCapture({
+      ownerId: 'user-a', sourceUri: 'file:///tmp/photo.jpg', kind: 'photo', mimeType: 'image/jpeg', fileSize: 500_000,
+    });
+
+    const attached = await usePostingDraftStore.getState().attachDraftToPlace(draft.id, 'place-1', 'user-b');
+
+    expect(attached).toBe(false);
+    expect(uploadApi.requestUpload).not.toHaveBeenCalled();
+    expect(usePostingDraftStore.getState().drafts).toHaveLength(1);
   });
 
   it('setDraftCandidate records the reference without attaching anything', () => {
@@ -173,7 +185,7 @@ describe('postingDraftStore', () => {
       mimeType: 'image/jpeg',
       fileSize: 500_000,
     }).then((draft) => {
-      usePostingDraftStore.getState().setDraftCandidate(draft.id, 'cand-1', 'Mama Rosa\'s Taco Truck');
+      usePostingDraftStore.getState().setDraftCandidate(draft.id, 'cand-1', 'Mama Rosa\'s Taco Truck', 'user-a');
 
       const stored = usePostingDraftStore.getState().drafts.find((d) => d.id === draft.id);
       expect(stored?.restaurantRef).toEqual({ type: 'candidate', candidateId: 'cand-1', displayName: "Mama Rosa's Taco Truck" });
@@ -198,7 +210,7 @@ describe('postingDraftStore', () => {
         mimeType: 'image/jpeg',
         fileSize: 500_000,
       });
-      usePostingDraftStore.getState().setDraftCandidate(draft.id, 'cand-1', 'New Place');
+      usePostingDraftStore.getState().setDraftCandidate(draft.id, 'cand-1', 'New Place', 'user-a');
 
       await usePostingDraftStore.getState().resolvePendingCandidates('user-a');
 
@@ -219,7 +231,7 @@ describe('postingDraftStore', () => {
         mimeType: 'image/jpeg',
         fileSize: 500_000,
       });
-      usePostingDraftStore.getState().setDraftCandidate(draft.id, 'cand-1', 'New Place');
+      usePostingDraftStore.getState().setDraftCandidate(draft.id, 'cand-1', 'New Place', 'user-a');
 
       await usePostingDraftStore.getState().resolvePendingCandidates('user-a');
 
@@ -240,7 +252,7 @@ describe('postingDraftStore', () => {
         mimeType: 'image/jpeg',
         fileSize: 500_000,
       });
-      usePostingDraftStore.getState().setDraftCandidate(draft.id, 'cand-1', 'New Place');
+      usePostingDraftStore.getState().setDraftCandidate(draft.id, 'cand-1', 'New Place', 'user-a');
 
       await usePostingDraftStore.getState().resolvePendingCandidates('user-a');
 
@@ -258,7 +270,7 @@ describe('postingDraftStore', () => {
         mimeType: 'image/jpeg',
         fileSize: 500_000,
       });
-      usePostingDraftStore.getState().setDraftCandidate(draft.id, 'cand-1', 'New Place');
+      usePostingDraftStore.getState().setDraftCandidate(draft.id, 'cand-1', 'New Place', 'user-b');
 
       await usePostingDraftStore.getState().resolvePendingCandidates('user-a');
 
@@ -275,7 +287,7 @@ describe('postingDraftStore', () => {
         mimeType: 'image/jpeg',
         fileSize: 500_000,
       });
-      usePostingDraftStore.getState().setDraftCandidate(draft.id, 'cand-1', 'New Place');
+      usePostingDraftStore.getState().setDraftCandidate(draft.id, 'cand-1', 'New Place', 'user-a');
 
       await usePostingDraftStore.getState().resolvePendingCandidates('user-a');
 

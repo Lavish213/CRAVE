@@ -229,6 +229,48 @@ export async function deleteRanking(placeId: string): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
+// Activity (personal only -- the standalone friends feed and leaderboard
+// are retired; see friends-feed.tsx/leaderboard.tsx's redirect stubs)
+// ---------------------------------------------------------------------------
+
+/** Minimal identity shape the activity feed embeds so rows are readable. */
+export interface ActorRef {
+  id: string;
+  username: string | null;
+  display_name: string | null;
+  avatar_url: string | null;
+}
+
+export interface ActivityEvent {
+  id: string;
+  user_id: string;
+  actor: ActorRef | null;
+  event_type: 'ranked_place' | 'followed_user';
+  place_id: string | null;
+  place_name: string | null;
+  place_image_url: string | null;
+  target_user_id: string | null;
+  target_user: ActorRef | null;
+  payload: { tier?: RankTier; score?: number } | null;
+  created_at: string;
+}
+
+export async function fetchMyActivity(
+  limit = 30,
+  offset = 0,
+  signal?: AbortSignal,
+): Promise<ActivityEvent[]> {
+  const { data } = await client.get<{ events: ActivityEvent[] }>('/api/v1/feed/activity', {
+    params: { limit, offset },
+    signal,
+  });
+  if (!data || !Array.isArray(data.events)) {
+    throw new Error('Invalid activity response: events must be an array.');
+  }
+  return data.events;
+}
+
+// ---------------------------------------------------------------------------
 // Moderation (reporting)
 // ---------------------------------------------------------------------------
 
