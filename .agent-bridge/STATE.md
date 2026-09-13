@@ -1,33 +1,51 @@
 # Active agent state
 
 Status: merged
-Owner: Codex
-Branch: codex/ui-v2-primary-sweep (merged)
-Base SHA: 70f55469a270a5daf455a96225cb0fd2658b7cd3
-Commit SHA: ef917895409af61a731ced8822bb69d691bc7640
-Scope: UI V2 primary-screen semantic cleanup after PR #278. Reduce remaining
-`Colors.primary` overload, migrate obvious links/active states/CTAs to semantic
-tokens, and polish primary app screens without changing backend behavior,
-ranking/search logic, navigation contracts, or data models.
-Locked files: .agent-bridge/STATE.md, docs/design/CRAVE_UI_V2_VISUAL_AUDIT.md,
-frontend/src/components/** selected shared visual components,
-frontend/src/screens/SearchScreen.tsx, frontend/src/screens/MapScreenCore.tsx,
-frontend/app/(tabs)/index.tsx, frontend/app/(tabs)/craves.tsx,
-frontend/app/(tabs)/profile.tsx, frontend/app/settings.tsx,
-frontend/app/food-evidence.tsx, frontend/app/add-spot.tsx,
-frontend/app/rank-home.tsx, frontend/app/leaderboard.tsx,
-frontend/app/taste-profile/[userId].tsx, frontend/app/user/[id].tsx,
-and focused tests for touched surfaces.
-Verification: post-sweep visual token audit confirms old cyan `#38BDF8` has 0
-frontend occurrences and direct `Colors.primary` callers in `frontend/app` +
-`frontend/src` are 0; `cd frontend && npx tsc --noEmit --pretty false` passed;
-focused touched-screen suite passed (10 suites, 171 tests); full frontend Jest
-passed (54 suites, 561 tests); `git diff --check` passed.
-Explicit exclusions: production data jobs, backend routes/services, recommender
-model behavior, Search/Map ranking/product-contract changes, paid data sources,
-and deleting stale remote branches.
+Owner: Claude
+Branch: claude/sm05-06-required-preferred-fix (merged, can be deleted)
+Base SHA: ba786b5 (origin/main tip after PR #280)
+Commit SHA: 131106a (merge commit on origin/main)
+Scope: closes the SM-05/06 Required-vs-Preferred contradiction in the
+*running app*, distinct from Codex's UI V2 pass (PR #278) which fixed
+the same contradiction only in the mockup artifact
+(`docs/design/search-map-v15-real-mockups.svg`'s "Zero Recovery"
+screen). Two real gaps found by direct code inspection, not by trusting
+either the mockup or prior audit notes:
+1. `zeroResultInfo()` had no honest attribution when a supported
+   dietary hard constraint (Vegan, Halal, ...) was the actual, sole
+   reason for zero results -- fell through to a vague "Nothing
+   matched" message even though the data to name it was already
+   available client-side. Added a dedicated branch naming it directly
+   ("No Vegan matches nearby right now."), still never offering to
+   relax it (contract §9/§16 unchanged).
+2. The interpretation panel rendered `required_categories` and
+   `context` constraint chips identically -- same style, same "×"
+   remove affordance, no visual distinction between a required (hard)
+   constraint and a merely preferred (soft) one. Required-category
+   chips now render with `Colors.hardConstraint` border/text and a
+   "· Required" label. Also added a "Keeping (required)" chip row to
+   the zero-result recovery card when a required category stays active
+   alongside an offered soft relaxation.
+Deliberately not built (flagged, needs a product decision, not a copy
+fix): recognizing "patio"/"outdoor seating" as an actual backend search
+constraint -- the mockup's literal example. `query_interpreter.py` has
+no concept of amenities at all today (only 5 dietary categories as hard
+constraints, price/near_me/date_night/open_late/quick as soft) --
+wiring this needs a new interpretation field + `execute_search()`
+filter against the `outdoor_seating` column PR #229 already added to
+`Place`, and a decision on scope (just patio, or a general amenity-
+constraint pattern).
+Locked files: none -- closed.
+Verification: PR #281 (https://github.com/Lavish213/CRAVE/pull/281),
+merged `131106a`. `npx tsc --noEmit` clean. `npx jest --ci` -> 54/54
+suites, 564/564 tests (3 new, covering the honest-attribution message
+and the Required/Preferred chip distinction end to end). CI green
+(Frontend, both Backend jobs, both Analyze jobs, Guard, CodeQL).
+Next action: none from me -- awaiting the user's call on the amenity-
+constraint feature decision (item 2 above) if they want the mockup's
+literal "Patio required" scenario buildable for real.
 
-## Prior completed UI V2 work
+## Prior completed UI V2 work (Codex)
 
 PR #278 merged as `70f5546`: durable mockup artifacts, UI V2 token map/audit,
 warm semantic token foundation, shared selected/CTA/card/sheet/map marker
