@@ -2,24 +2,24 @@
 
 Status: ready-for-review
 Owner: Codex
-Branch: codex/place-detail-proving-slice
-Base SHA: 4d065c1
-Commit SHA: aec75009b14b7609c0175e60d1e80b37636e3bea
-Scope: Place Detail proving slice for the locked Foundation Gate contracts:
-audit the current Place Detail screen against provenance/error/query/link
-contracts and implement the smallest real app improvement that proves the
-contracts without redesigning the screen.
-Locked files: frontend/app/place/[id].tsx,
-frontend/__tests__/place-detail.test.tsx,
-frontend/src/contracts/foundationGate.ts,
-frontend/src/contracts/foundationGate.test.ts,
+Branch: codex/crave-social-share-loop
+Base SHA: 7bf81bd
+Commit SHA: ca0b6c2b43bda205ebb5b50e4e88d5487f6216bd
+Scope: Backend social-share reliability: atomically persist a high-confidence
+share match and its normal save, respect an explicit unsave, and reconcile old
+partial matches. Frontend UI, provider credentials, native Share Sheet work,
+and recommendation-model expansion are excluded.
+Locked files: backend/app/workers/share_parser_worker.py,
+backend/app/api/v1/routes/saves.py, backend/app/db/models/share_save_preference.py,
+backend/app/db/models/__init__.py, backend/alembic/versions/*share_save*,
+backend/tests/test_share_parser_auto_save.py, backend/tests/test_saves.py,
+docs/superpowers/plans/2026-09-12-crave-social-share-reliability.md,
 .agent-bridge/STATE.md, .agent-bridge/codex-to-claude.md.
-Verification: `npm test -- --runInBand __tests__/place-detail.test.tsx
-src/contracts/foundationGate.test.ts --silent --forceExit` passed
-(`2 passed, 41 tests`). `npx tsc --noEmit --pretty false` passed. Full
-frontend Jest was attempted; touched suites passed, but unrelated
-`__tests__/profile.test.tsx` hit pre-existing timeout/text-query failures.
-Backend/production-data work is explicitly out of scope.
+Verification: Alembic upgrade/downgrade/upgrade passed against a fresh SQLite
+database; focused tests passed (14); `python -m compileall -q app` and
+`import app.main` passed; full backend pytest passed (1120 passed, 2 skipped).
+Known state: PR #260 is merged at 7bf81bd; the preceding Place Detail
+ready-for-review marker named a pre-merge SHA and is superseded by this task.
 
 ## FRONTEND EXECUTION ORDER — LOCKED (2026-09-11)
 
