@@ -2,6 +2,78 @@
 
 Status: merged
 Owner: Claude
+Branch: claude/misc-cleanup-followups, claude/reduced-motion-accessibility,
+claude/design-log-round-2 (all merged, can be deleted)
+Base SHA: 3116e4e (origin/main tip after PR #147, itself merged this pass)
+Commit SHA: 3116e4e (#147), 320a182 (#295), 3b43521 (#296)
+Scope: user asked "so whts left to do" / "wht can u do rn" -- worked
+through the concrete, code-doable items from that list (repo-only,
+no Railway/Supabase/device access):
+- **Four stale pre-session PRs resolved**: #128 was already merged
+  (place-issue reporting shipped weeks ago, list was stale). #127 and
+  #145 are closed and fully superseded -- verified their actual content
+  (camera-failure toast, "Rate CRAVE" removal, old STATE.md SHAs) is
+  already independently in `main` or long obsolete; nothing to port.
+  #147 (Design Exploration Log Round 2 entry) was still genuinely open
+  and still accurate -- its "PROMOTE Decision Session" call matches
+  exactly what Feed's real Decision Session became -- verified a clean
+  local test-merge against current main before merging for real.
+- **Craves save-row reason_role/reason_source "gap" investigated,
+  confirmed not a bug**: `place/[id].tsx`'s `savedEntry` already reads
+  from the same `useCravesStore().saves` array the plain save row
+  iterates, and its fallback chain already reads
+  `savedEntry?.reason_role`/`reason_source` before ever needing URL
+  params -- only the reasoned-card row (no persisted saves-store entry)
+  actually needs them. No code change.
+- **`cravesStore._classifyError` consolidated** (PR #295, `320a182`):
+  now delegates to the shared `errorMessageFor` for every status except
+  401 (kept as the `'auth_required'` sentinel `craves.tsx` checks for
+  specially) instead of hand-duplicating the 429/offline copy.
+- **Map direct-mode ranking investigated, left as a documented tradeoff,
+  not touched**: confirmed `fetch_places_for_map` still orders by plain
+  `Place.rank_score` (the Wave 5 audit's flagged gap). Real reason it's
+  not a drop-in `rank_feed()` fix: that function expects full `Place`
+  ORM objects and applies category-diversity-window truncation sized
+  for a ~40-item curated feed; Map's query is a deliberate lightweight
+  column-projection fetching up to 1000 pins (a documented prior
+  production-timeout fix depends on staying lightweight), and Map's job
+  is to show everything nearby spatially, not a diversified top-N. The
+  only real-world effect is which pins get cut when a bounding box
+  exceeds 1000 candidates. Flagged to the user as a judgment call, not
+  fixed unilaterally -- no user decision yet, so left as-is.
+- **Reduced Motion support added** (PR #296, `3b43521`): new shared
+  `useReducedMotion()` hook (wraps `AccessibilityInfo.
+  isReduceMotionEnabled()` + `reduceMotionChanged`), wired into the
+  three real continuous/bouncy motion sites
+  `RUNBOOK_ACCESSIBILITY_CERTIFICATION.md` itself named as never
+  checked anywhere in the app: `SkeletonCard`'s infinite shimmer loop
+  (now a static mid-opacity placeholder), `MapBottomSheet`'s
+  `Animated.spring(bounciness: 4)` release/terminate snap-back (now a
+  plain ~120ms timing, no bounce), `PlaceCard`'s save-button scale-pop
+  (now skipped entirely). Toast's and Feed's plain opacity fades were
+  deliberately left alone -- Reduce Motion targets bounce/parallax/zoom,
+  not a one-shot fade.
+- **Icon-only accessibility-label audit (background agent)**: searched
+  every `TouchableOpacity`/`Pressable` in `frontend/app` and
+  `frontend/src/components` (54 files) rendering only an Ionicons icon
+  with no visible text. All 20 such controls already have a correct
+  `accessibilityLabel`. Genuinely nothing to fix -- confirmed strength,
+  not a gap.
+Locked files: none -- closed.
+Verification: each item verified independently before merging (see each
+PR's own description for exact `tsc`/`jest` numbers) -- all green, no
+regressions across the batch.
+Next action: the remaining accessibility-runbook items (focus order,
+state announcements, contrast on-device, Dynamic Type clipping, VoiceOver/
+TalkBack label phrasing) genuinely require a physical device with a
+screen reader enabled -- cannot be completed from this sandbox. Map's
+direct-mode ranking fix needs a user decision (accept the narrow
+edge-case gap vs. a real query/perf rework) before anyone touches it.
+
+---
+
+Status: merged
+Owner: Claude
 Branch: claude/core5-mockup-search-map (merged, can be deleted)
 Base SHA: 2588e34 (origin/main tip after PR #292)
 Commit SHA: 51625a5 (PR #293, squash-merged)

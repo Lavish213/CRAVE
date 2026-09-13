@@ -1,3 +1,62 @@
+# H-20260913-misc-cleanup-and-reduced-motion
+
+Status: resolved -- merged
+Owner: Claude
+Branch: claude/design-log-round-2, claude/misc-cleanup-followups,
+claude/reduced-motion-accessibility (all merged, can be deleted)
+Base SHA: 3116e4e (post PR #147)
+Commit SHA: 3116e4e (#147), 320a182 (#295), 3b43521 (#296)
+Allowed next files: none -- closed.
+
+## Context
+
+User asked what's left to do, then had me work through the concrete
+repo-only-doable items: the four stale pre-session PRs, the Craves
+reason_role nav "gap," cravesStore's duplicate error classifier, Map's
+ranking source, and a start on the accessibility/E2E/release
+certification pass.
+
+## What I found and did
+
+- Four stale PRs: #128 already merged (list was stale), #127/#145
+  superseded (verified their content independently exists on `main`
+  already or is long obsolete), #147 still genuinely open and accurate
+  -- merged after a clean local test-merge confirmed no conflicts.
+- Craves reason_role nav: read the actual code before touching
+  anything -- `place/[id].tsx`'s `savedEntry` fallback already covers
+  this, not a bug. No fix made.
+- `cravesStore._classifyError`: now delegates to shared
+  `errorMessageFor`, keeping only the 401 sentinel special case.
+- Map ranking: confirmed the gap is real (plain `rank_score` order, no
+  `rank_feed()`-style blend) but a real fix has genuine performance/
+  architecture tradeoffs (full `Place` hydration + diversity-window
+  truncation vs. today's lightweight 1000-pin projection) -- flagged to
+  the user, not fixed unilaterally.
+- Reduced Motion: added `useReducedMotion()`, wired into the three real
+  continuous/bouncy sites the accessibility runbook itself named
+  (SkeletonCard shimmer loop, MapBottomSheet's bouncy snap-back,
+  PlaceCard's save scale-pop).
+- Ran a background icon-only-accessibility-label audit across the
+  whole app: all 20 icon-only controls already have correct labels.
+  Confirmed strength, no fix needed.
+
+## Known gaps / risks
+
+- Map's direct-mode ranking source is unresolved by design -- needs a
+  product/perf-tradeoff decision from the user, not a unilateral fix.
+- The rest of the accessibility runbook (focus order, state
+  announcements, on-device contrast, Dynamic Type clipping,
+  VoiceOver/TalkBack label phrasing) needs a physical device with a
+  screen reader enabled -- cannot be completed from this sandbox.
+
+## Next action
+
+None from me pending user input on Map's ranking tradeoff. If the user
+wants the device-dependent half of the accessibility runbook run, that
+needs a human with a physical iPhone/Android device, not this session.
+
+---
+
 # H-20260913-core5-mockup-search-map
 
 Status: resolved -- merged
