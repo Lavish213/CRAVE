@@ -38,6 +38,7 @@ import {
 } from '../../src/api/social';
 import { rankedListHeadline } from '../../src/utils/rankScore';
 import { withImageWidth, AVATAR_IMAGE_WIDTH } from '../../src/utils/imageUrl';
+import { errorMessageFor } from '../../src/utils/errorMessage';
 
 export default function UserProfileScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -57,11 +58,16 @@ export default function UserProfileScreen() {
   // infrastructure failure is not the same product truth as "this account
   // doesn't exist, or its list is private," and unlike that EmptyState,
   // this is retryable.
-  const [profileError, setProfileError] = useState(false);
+  const [profileError, setProfileError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [blockBusy, setBlockBusy] = useState(false);
-  const [rankingsError, setRankingsError] = useState(false);
-  const [relationshipError, setRelationshipError] = useState(false);
+  // Hold the classified message directly (not just a boolean) -- see
+  // errorMessageFor in src/utils/errorMessage.ts. A 429 or a genuine
+  // offline failure on either of these previously rendered the exact
+  // same hardcoded "Couldn't load..." copy, silently discarding the
+  // more specific message client.ts's own interceptor already attaches.
+  const [rankingsError, setRankingsError] = useState<string | null>(null);
+  const [relationshipError, setRelationshipError] = useState<string | null>(null);
 
   const isSelf = !!me && me.id === id;
 
@@ -116,7 +122,7 @@ export default function UserProfileScreen() {
     // cleared the flag for a same-identity attempt (confirmed by
     // CodeRabbit).
     setNotFound(false);
-    setProfileError(false);
+    setProfileError(null);
     // Marked as "attempted" here, before the fetch settles either way --
     // not only on success. This id/viewer pairing has been *addressed* by
     // this generation regardless of outcome; the render-time stale-gate
@@ -128,30 +134,45 @@ export default function UserProfileScreen() {
     // never clear, so the component could never render past it.
     loadedForIdRef.current = id;
     loadedForViewerRef.current = viewerId;
-    setRankingsError(false);
-    setRelationshipError(false);
+    setRankingsError(null);
+    setRelationshipError(null);
     try {
       const p = await fetchProfile(id);
       if (myGeneration !== loadGenerationRef.current) return;
       setProfile(p);
 
+      // Captured via closure rather than discarded in the `.catch()`
+      // itself -- these two secondary fetches previously collapsed any
+      // failure into a bare `null`, with no way to tell a 429 apart from
+      // a genuine offline failure once it reached the ErrorState below.
+      let rankingsErr: unknown = null;
+      let relationshipErr: unknown = null;
       const [r, status, blockStatus] = await Promise.all([
-        fetchUserRankings(id).catch(() => null),
+        fetchUserRankings(id).catch((err) => {
+          rankingsErr = err;
+          return null;
+        }),
         isSelf
           ? Promise.resolve({ following: false, followed_by: false })
-          : fetchFollowStatus(id).catch(() => null),
+          : fetchFollowStatus(id).catch((err) => {
+              relationshipErr = err;
+              return null;
+            }),
         isSelf
           ? Promise.resolve({ blocked: false })
-          : fetchBlockStatus(id).catch(() => null),
+          : fetchBlockStatus(id).catch((err) => {
+              relationshipErr = err;
+              return null;
+            }),
       ]);
       if (myGeneration !== loadGenerationRef.current) return;
       if (r === null) {
-        setRankingsError(true);
+        setRankingsError(errorMessageFor(rankingsErr, "Couldn't load ranked places"));
       } else {
         setRankings(r);
       }
       if (status === null || blockStatus === null) {
-        setRelationshipError(true);
+        setRelationshipError(errorMessageFor(relationshipErr, "Couldn't load relationship controls"));
       } else {
         setFollowing(status.following);
         setFollowsMe(status.followed_by);
@@ -167,7 +188,7 @@ export default function UserProfileScreen() {
       // back -- this previously did exactly that, mislabeling a transient
       // failure as a nonexistent/private account.
       if (err?.response?.status === 404) setNotFound(true);
-      else setProfileError(true);
+      else setProfileError(errorMessageFor(err, "Couldn't load this profile"));
     } finally {
       if (myGeneration === loadGenerationRef.current) setLoading(false);
     }
@@ -293,7 +314,7 @@ export default function UserProfileScreen() {
   // catch-all) get the same retryable treatment -- neither is the "not
   // found" product truth above.
   if (profileError || !profile) {
-    return <ErrorState message="Couldn't load this profile" onRetry={load} />;
+    return <ErrorState message={profileError ?? "Couldn't load this profile"} onRetry={load} />;
   }
 
   return (
@@ -350,7 +371,7 @@ export default function UserProfileScreen() {
         <>
           {relationshipError ? (
             <ErrorState
-              message="Couldn't load relationship controls"
+              message={relationshipError}
               onRetry={load}
             />
           ) : !isSelf ? (
@@ -365,7 +386,7 @@ export default function UserProfileScreen() {
               <Ionicons
                 name={following ? 'checkmark' : 'add'}
                 size={17}
-                color={following ? Colors.text : '#FFFFFF'}
+                color={following ? Colors.text : Colors.onActionPrimary}
               />
               <Text style={[styles.followBtnText, following ? styles.followingBtnText : null]}>
                 {following ? 'Following' : 'Follow'}
@@ -374,7 +395,7 @@ export default function UserProfileScreen() {
           ) : null}
 
           {rankingsError ? (
-            <ErrorState message="Couldn't load ranked places" onRetry={load} />
+            <ErrorState message={rankingsError} onRetry={load} />
           ) : (
             <>
               <Text style={styles.headline}>{rankedListHeadline(rankings.length)}</Text>
@@ -386,7 +407,7 @@ export default function UserProfileScreen() {
                   accessibilityRole="button"
                   accessibilityLabel={isSelf ? 'View your Taste Profile' : `View ${profile.username}'s Taste Profile`}
                 >
-                  <Ionicons name="restaurant-outline" size={16} color={Colors.primary} />
+                  <Ionicons name="restaurant-outline" size={16} color={Colors.brand} />
                   <Text style={styles.tasteProfileLinkText}>
                     {isSelf ? 'Your Taste Profile' : 'Taste Profile'}
                   </Text>
@@ -445,7 +466,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     paddingHorizontal: Spacing.lg,
   },
-  unblockLink: { color: Colors.primary, fontSize: 14, fontWeight: '700' },
+  unblockLink: { color: Colors.brand, fontSize: 14, fontWeight: '700' },
   header: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md },
   avatar: { width: 64, height: 64, borderRadius: Radius.full, backgroundColor: Colors.surfaceElevated },
   avatarFallback: { alignItems: 'center', justifyContent: 'center' },
@@ -460,15 +481,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
-    backgroundColor: Colors.primary,
+    backgroundColor: Colors.actionPrimary,
     borderRadius: Radius.pill,
     paddingVertical: 12,
     minHeight: 46,
     borderWidth: 1,
-    borderColor: Colors.primary,
+    borderColor: Colors.selectedBorder,
   },
   followingBtn: { backgroundColor: 'transparent', borderColor: Colors.border },
-  followBtnText: { color: '#FFFFFF', fontSize: 15, fontWeight: '800' },
+  followBtnText: { color: Colors.onActionPrimary, fontSize: 15, fontWeight: '800' },
   followingBtnText: { color: Colors.text },
   headline: { color: Colors.text, fontSize: 16, fontWeight: '700', marginTop: Spacing.sm },
   tasteProfileLink: {
@@ -477,7 +498,7 @@ const styles = StyleSheet.create({
     gap: Spacing.xs,
     marginTop: Spacing.sm,
   },
-  tasteProfileLinkText: { flex: 1, color: Colors.primary, fontSize: 14, fontWeight: '700' },
+  tasteProfileLinkText: { flex: 1, color: Colors.brand, fontSize: 14, fontWeight: '700' },
   emptyText: { color: Colors.textSecondary, fontSize: 14 },
   list: { gap: Spacing.sm },
 });

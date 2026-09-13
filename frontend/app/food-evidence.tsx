@@ -133,7 +133,7 @@ export default function FoodEvidenceScreen() {
           <Ionicons
             name={selectedMedia.kind === 'photo' ? 'image-outline' : 'videocam-outline'}
             size={22}
-            color={Colors.primary}
+            color={Colors.brand}
           />
           <View style={styles.selectedCopy}>
             <Text style={styles.selectedTitle}>
@@ -198,7 +198,7 @@ const styles = StyleSheet.create({
   header: { marginTop: Spacing.sm, marginBottom: Spacing.xl },
   eyebrow: {
     ...Typography.caption,
-    color: Colors.primary,
+    color: Colors.brand,
     fontWeight: '800',
     letterSpacing: 1.1,
     marginBottom: Spacing.xs,
@@ -240,7 +240,7 @@ const styles = StyleSheet.create({
     borderRadius: Radius.pill,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: Colors.primary,
+    backgroundColor: Colors.actionPrimary,
   },
   continueLabel: { ...Typography.body, color: Colors.background, fontWeight: '800' },
   privacyNote: {

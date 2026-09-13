@@ -1,3 +1,162 @@
+# H-20260913-hitlist-audit-and-misc-cleanup
+
+Status: resolved -- merged
+Owner: Claude
+Branch: claude/hitlist-audit-and-misc-cleanup (merged, can be deleted)
+Base SHA: eabd04f (origin/main tip after PR #275)
+Commit SHA: 5e9c555 (merge commit on origin/main)
+Allowed next files: none -- closed. One human-only follow-up remains,
+see "Known gaps" below.
+
+## Outcome
+
+Three user-requested follow-ups from the prior pass's misc-gap list:
+
+1. **Stale branch reconciliation attempted, then abandoned as
+   pointless.** User asked to pull forward 3 commits from
+   `claude/project-grade-systems-review-4ot7d0` and delete it. On
+   actually cherry-picking: the camera-fix commit's real content was
+   already independently fixed on `main` (commit `e70a868`) -- only a
+   no-op type annotation remained. Worse, a docs commit's claim ("Place
+   Detail's Report action is photo-only") is now **factually false** --
+   `ReportPlaceSheet.tsx` + its backend endpoint already exist and are
+   wired. Nothing ported; no PR opened for it. Full detail in
+   `.agent-bridge/STATE.md`'s top block.
+2. **Hitlist system audit**: confirmed `/hitlist/save`, `/me`,
+   `/suggest`, `/delete` are all fully wired end to end (verified via
+   direct grep for callers, not docs). An earlier "Route-wiring audit
+   findings" note in STATE.md claiming zero caller for suggest/delete
+   was itself stale, predating PR #271. Corrected in place.
+3. **Fixed**: `GET /hitlist/me`'s stale docstring; removed the dead
+   bare `GET /api/v1/map` route (zero caller, confirmed via
+   `app.openapi()['paths']`) and its dead `get_map_places` alias. Kept
+   `fetch_places_for_map` -- still used internally by `/map/geojson`.
+
+## Verification
+
+- `python -m pytest -q` -> 1114 passed, 2 skipped (one test removed
+  along with the route it tested)
+- `from app.main import app; app.openapi()['paths']` -> confirmed
+  `/api/v1/map/geojson` present, bare `/api/v1/map` gone
+- CI green on the merged commit (Frontend, both Backend jobs, both
+  Analyze jobs, Guard, CodeQL)
+
+## Known gaps / risks
+
+- `claude/project-grade-systems-review-4ot7d0` still exists on GitHub.
+  `git push origin --delete` returns a 403 from this environment's git
+  proxy -- branch deletion needs a human, via repo settings or the
+  GitHub UI. Nothing in it is worth porting first (see Outcome item 1).
+
+## Next action
+
+None from Claude -- only the manual branch deletion above needs a
+human. Everything else in this handoff is closed.
+
+# H-20260913-profile-taste-error-taxonomy
+
+Status: resolved -- merged
+Owner: Claude
+Branch: claude/profile-taste-error-taxonomy (merged, can be deleted)
+Base SHA: 04cfaa9 (origin/main tip after PR #273)
+Commit SHA: 32e36a2 (merge commit on origin/main)
+Allowed next files: none -- closed.
+
+## Outcome
+
+Closes the gap PR #273 flagged: `user/[id].tsx`, `taste-profile/
+[userId].tsx`, and `(tabs)/profile.tsx` had `.catch(() => null)` sites
+that discarded the real error object entirely (not just its message),
+so #273's new `errorMessageFor()` classifier had nothing to classify on
+these three screens. Captured each real error via an outer-scope
+closure variable inside the `.catch()`, then classified it with
+`errorMessageFor()` once the surrounding `Promise.all` settled. Same
+429/offline/generic-fallback taxonomy as every other screen fixed this
+pass. No UI/layout change.
+
+## Verification
+
+- `npx tsc --noEmit` -> clean
+- `npx jest --ci` -> 54/54 suites, 561/561 tests, including 11
+  pre-existing assertions fixed (mocked rejections had no `.response`,
+  so they're now correctly classified offline instead of matching the
+  old generic fallback copy)
+
+## Known gaps / risks
+
+- None identified for this three-screen fix specifically.
+- **Separate, more important finding**: this session's designated
+  branch for this lane, `claude/project-grade-systems-review-4ot7d0`,
+  turned out to be ~200 commits behind `main` and was not used for this
+  PR (opened off `main` directly instead, per explicit user direction).
+  Full detail in `.agent-bridge/STATE.md`'s "Coordination note,
+  2026-09-13" -- next owner of this lane should reconcile or retire
+  that branch before building on it.
+
+## Next action
+
+None -- closed. PR #274 merged (`32e36a2`), CI green on the merged
+commit. No further action needed from Codex on this specific fix.
+
+# H-20260913-video-report-wiring-audit
+
+Status: ready-for-review
+Owner: Claude
+Branch: claude/video-report-and-record-gate
+Base SHA: 755f02b (origin/main tip after PR #260/#261/#265)
+Commit SHA: 9f3bebe
+Allowed next files: none from me further on this -- PR #269 is open,
+subscribed for CI/review events. Full findings in `.agent-bridge/
+STATE.md`'s "Route-wiring audit findings" section.
+
+## Outcome
+
+Per the human user's explicit ask ("audit project end to end... make
+sure everything is wired up... log all"), diffed FastAPI's actual route
+table (`app.openapi()['paths']`, 95 routes -- `app.routes` alone
+undercounts under FastAPI 0.141.1's lazy `_IncludedRouter`) against every
+frontend API caller. Fixed the one confirmed real, mechanical, in-pattern
+gap: `PlaceVideoGallery.tsx` had zero caller for the fully-built
+`POST /moderation/videos/{id}/report` endpoint, and a toast-only
+signed-out dead end on "Record a video" (same class as this session's
+earlier Rank/record-video/Place Detail/Friends Feed fixes -- missed then
+because that sweep only grepped `frontend/app`, never
+`frontend/src/components`).
+
+## Verification
+
+- `npx tsc --noEmit` -> clean
+- `npx jest --ci` -> 52/52 suites, 546/546 tests (post #260/#261/#265)
+- `python -m pytest -q` (backend, unrelated baseline check) -> 1115
+  passed, 2 skipped
+- New dedicated suite `place-video-gallery.test.tsx`, 4 tests, covering
+  both the signed-out-gates and signed-in-proceeds paths for record and
+  report
+
+## Known gaps / risks
+
+- Two more real gaps found, not fixed here (need a product decision, not
+  a mechanical wire-up): `DELETE /hitlist/delete` and `POST /hitlist/
+  suggest` have zero frontend caller (unlike `/hitlist/save` and
+  `/hitlist/me`, which are wired). See STATE.md for the exact UI-decision
+  question (how to expose "remove" on the Craves "Added" section).
+- `GET /api/v1/map` (bare, non-geojson) looks like dead code -- no
+  caller, no test. Flagged as a low-priority removal candidate, not
+  touched.
+- `GET /hitlist/me`'s docstring is stale (claims the frontend calls
+  `/saves` instead and never uses this route -- false, `getMyPlaceSaves()`
+  calls it directly). Small doc fix, not done here to keep this PR narrow.
+
+## Next action
+
+None required from Codex -- informational, plus a heads-up in case
+either of you touches `hitlist.py` or `PlaceVideoGallery.tsx` next. If
+picking up the hitlist "remove from Added list" gap, it needs a UI
+decision (swipe? menu? confirm dialog?) before implementation, not a
+blind wire-up like this handoff's fix was.
+
+---
+
 # H-20260909-food-evidence-media-drop
 
 Status: resolved -- option A implemented and merged. Compacted per

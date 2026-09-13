@@ -15,6 +15,7 @@ import { MapBottomSheet } from '../../src/components/MapBottomSheet';
 import { logRecommendationEvent, logRecommendationEvents } from '../../src/utils/recommendationEventQueue';
 import { FilterSheet, FilterState, EMPTY_FILTERS, hasActiveFilters } from '../../src/components/FilterSheet';
 import { useDiscoveryContextStore } from '../../src/stores/discoveryContextStore';
+import { errorMessageFor } from '../../src/utils/errorMessage';
 
 // Recommendation Ledger, surface='map'. A fetched feature is a candidate,
 // not an impression: the request deliberately covers 1.6x the visible
@@ -245,6 +246,7 @@ export default function MapScreen() {
   const [mapLoading, setMapLoading] = useState(false);
   const [mapLoaded, setMapLoaded] = useState(false);
   const [mapError, setMapError] = useState(false);
+  const [mapErrorMessage, setMapErrorMessage] = useState<string | null>(null);
   const [pendingSearchRegion, setPendingSearchRegion] = useState<Region | null>(null);
   const requestIdRef = useRef(0);
   const lastFetchCoverageRef = useRef<FetchCoverage | null>(null);
@@ -307,6 +309,7 @@ export default function MapScreen() {
       const requestContextKey = `city:${selectedCity?.id ?? 'nearby'}`;
       lastAttemptRef.current = { lat, lng, radiusKm };
       setMapError(false);
+      setMapErrorMessage(null);
       setMapLoading(true);
       fetchMapGeoJSON({
         city_id: selectedCity?.id,
@@ -340,6 +343,8 @@ export default function MapScreen() {
           lastFetchCoverageRef.current = { lat, lng, radiusKm };
         })
         .catch((err) => {
+          // user_actionable: surfaces a retryable error banner below, not
+          // swallowed.
           if (myRequestId !== requestIdRef.current) return;
           if (__DEV__) {
             console.log('[MAP] LOAD_FAILED', {
@@ -352,6 +357,7 @@ export default function MapScreen() {
             });
           }
           setMapError(true);
+          setMapErrorMessage(errorMessageFor(err, 'Could not load places — tap to retry'));
         })
         .finally(() => {
           if (myRequestId !== requestIdRef.current) return;
@@ -410,6 +416,7 @@ export default function MapScreen() {
     setMapLoaded(true);
     setMapLoading(false);
     setMapError(false);
+    setMapErrorMessage(null);
     fitFeatures(mapped, true);
   }, [fitFeatures, searchMapHandoff]);
 
@@ -444,6 +451,7 @@ export default function MapScreen() {
     const myRequestId = ++requestIdRef.current;
     const requestContextKey = `saved:${user?.id ?? 'signed-out'}`;
     setMapError(false);
+    setMapErrorMessage(null);
     setMapLoading(true);
     fetchSavedPlacesGeoJSON()
       .then((normalized) => {
@@ -471,6 +479,8 @@ export default function MapScreen() {
         }
       })
       .catch((err) => {
+        // user_actionable: surfaces a retryable error banner below, not
+        // swallowed.
         if (myRequestId !== requestIdRef.current) return;
         if (__DEV__) {
           console.log('[MAP] SAVED_LOAD_FAILED', {
@@ -479,6 +489,7 @@ export default function MapScreen() {
           });
         }
         setMapError(true);
+        setMapErrorMessage(errorMessageFor(err, 'Could not load places — tap to retry'));
       })
       .finally(() => {
         if (myRequestId !== requestIdRef.current) return;
@@ -705,6 +716,7 @@ export default function MapScreen() {
 
           const f = c.feature!;
           const color = TIER_COLORS[f.tier] ?? TIER_COLORS.default;
+          const selected = selectedFeature?.id === f.id;
           return (
             <Marker
               key={c.key}
@@ -721,12 +733,12 @@ export default function MapScreen() {
                   category: f.category ?? undefined,
                 });
               }}
-              tracksViewChanges={false}
-              accessibilityLabel={`${f.name}${f.category ? `, ${f.category}` : ''}`}
+              tracksViewChanges={selected}
+              accessibilityLabel={`${selected ? 'Selected place, ' : ''}${f.name}${f.category ? `, ${f.category}` : ''}`}
               accessibilityHint="Opens a place preview"
               accessibilityRole="button"
             >
-              <MapMarkerDot color={color} />
+              <MapMarkerDot color={color} selected={selected} />
             </Marker>
           );
         })}
@@ -746,7 +758,7 @@ export default function MapScreen() {
             <Ionicons
               name="options-outline"
               size={20}
-              color={hasActiveFilters(filters) ? Colors.primary : Colors.text}
+              color={hasActiveFilters(filters) ? Colors.brand : Colors.text}
             />
           </TouchableOpacity>
         )}
@@ -774,7 +786,7 @@ export default function MapScreen() {
 
       {mapLoading && (
         <View style={styles.mapBanner}>
-          <ActivityIndicator size="small" color={Colors.primary} />
+          <ActivityIndicator size="small" color={Colors.brand} />
         </View>
       )}
 
@@ -794,7 +806,7 @@ export default function MapScreen() {
           <Text style={styles.mapBannerText}>
             {activeFeatures.length > 0
               ? 'Showing previously loaded places — tap to retry'
-              : 'Could not load places — tap to retry'}
+              : mapErrorMessage ?? 'Could not load places — tap to retry'}
           </Text>
         </TouchableOpacity>
       )}
@@ -962,8 +974,8 @@ const styles = StyleSheet.create({
     ...Shadows.control,
   },
   savedToggleButtonActive: {
-    backgroundColor: Colors.primary,
-    borderColor: Colors.primary,
+    backgroundColor: Colors.selectedBg,
+    borderColor: Colors.selectedBorder,
   },
   mapBannerText: {
     color: Colors.textSecondary,
@@ -972,6 +984,6 @@ const styles = StyleSheet.create({
   },
   searchContextBanner: { top: 60, maxWidth: '88%' },
   searchContextText: { color: Colors.text, fontSize: 13, fontWeight: '700' },
-  searchAreaButton: { top: 60, borderColor: Colors.primary },
-  searchAreaText: { color: Colors.primary, fontSize: 14, fontWeight: '800' },
+  searchAreaButton: { top: 60, borderColor: Colors.brand },
+  searchAreaText: { color: Colors.brand, fontSize: 14, fontWeight: '800' },
 });

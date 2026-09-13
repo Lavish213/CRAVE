@@ -123,9 +123,11 @@ describe('LeaderboardScreen', () => {
   });
 
   it('shows an error state with retry when the fetch fails, not the empty state', async () => {
+    // A bare network Error (no `.response`) is now classified as a genuine
+    // offline failure -- see errorMessageFor in src/utils/errorMessage.ts.
     mockedFetchLeaderboard.mockRejectedValue(new Error('network'));
     const { findByText, queryByText } = renderScreen();
-    expect(await findByText("Couldn't load the leaderboard")).toBeTruthy();
+    expect(await findByText("Can't reach CRAVE — check your connection.")).toBeTruthy();
     expect(queryByText('Nobody on the board yet')).toBeNull();
 
     mockedFetchLeaderboard.mockResolvedValue([]);

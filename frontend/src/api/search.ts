@@ -10,6 +10,12 @@ export interface SearchInterpretation {
   hard_constraints: string[];
   unsupported_hard_constraints: string[];
   context: string[];
+  /** Amenity requirements (outdoor seating, ...) -- enforced with the same
+   * never-silently-relaxed standing as a dietary hard constraint, kept as
+   * its own field rather than folded into required_categories/hard_constraints
+   * since those are documented (see SearchScreen.tsx) as always meaning the
+   * dietary/allergy set. */
+  required_amenities: string[];
   uncertain: boolean;
 }
 
@@ -65,6 +71,7 @@ export async function searchPlaces(
     hard_constraints: [],
     unsupported_hard_constraints: [],
     context: [],
+    required_amenities: [],
     uncertain: false,
   };
   if (__DEV__) console.log('[API] SEARCH_NORMALIZED', { count: normalized.length, sample: normalized[0] ? { id: normalized[0].id, category: normalized[0].category, categories: normalized[0].categories } : null });

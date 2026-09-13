@@ -28,7 +28,7 @@ import { PlaceCardCompact } from '../../src/components/PlaceCardCompact';
 import type { DecisionSessionCard } from '../../src/api/decisionSession';
 import { EmptyState } from '../../src/components/EmptyState';
 import { ErrorState } from '../../src/components/ErrorState';
-import { getCraveItems, CraveItem, getMyPlaceSaves, PlaceSaveItem } from '../../src/api/crave';
+import { getCraveItems, CraveItem, getMyPlaceSaves, PlaceSaveItem, deletePlaceSave } from '../../src/api/crave';
 import { SavedPlace } from '../../src/api/saves';
 import { useAuthStore } from '../../src/stores/authStore';
 import { AuthSheet } from '../../src/components/AuthSheet';
@@ -71,6 +71,7 @@ export default function CravesScreen() {
   const [placeSavesLoading, setPlaceSavesLoading] = useState(false);
   const [placeSavesError, setPlaceSavesError] = useState(false);
   const [placeSavesLoadedForUserId, setPlaceSavesLoadedForUserId] = useState<string | null>(null);
+  const [deletingPlaceSaveId, setDeletingPlaceSaveId] = useState<string | null>(null);
   const [authVisible, setAuthVisible] = useState(false);
   const [shareVisible, setShareVisible] = useState(false);
   const [pullRefreshing, setPullRefreshing] = useState(false);
@@ -140,6 +141,28 @@ export default function CravesScreen() {
         setPlaceSavesLoadedForUserId(targetUserId);
       });
   }, [user?.id]);
+
+  const handleDeletePlaceSave = React.useCallback(
+    async (item: PlaceSaveItem) => {
+      if (deletingPlaceSaveId) return;
+      setDeletingPlaceSaveId(item.id);
+      // Optimistic -- the delete key is place_name, not this row's id (see
+      // deletePlaceSave's own comment: HitlistSave has no client-facing id
+      // for this), so remove by the same field the backend matches on.
+      const previous = placeSaves;
+      setPlaceSaves((current) => current.filter((p) => p.place_name !== item.place_name));
+      try {
+        await deletePlaceSave(item.place_name);
+      } catch (err) {
+        if (__DEV__) console.log('[CRAVES] DELETE_PLACE_SAVE_ERROR', err instanceof Error ? err.message : String(err));
+        setPlaceSaves(previous);
+        toast("Couldn't remove that. Try again.");
+      } finally {
+        setDeletingPlaceSaveId(null);
+      }
+    },
+    [deletingPlaceSaveId, placeSaves, toast],
+  );
 
   useEffect(() => {
     if (!user) return;
@@ -402,12 +425,22 @@ export default function CravesScreen() {
       accessibilityRole="button"
       accessibilityLabel="Share a link"
     >
-      <Ionicons name="link-outline" size={16} color={Colors.primary} />
+      <Ionicons name="link-outline" size={16} color={Colors.brand} />
       <Text style={styles.shareBtnText}>Share a link</Text>
     </TouchableOpacity>
   );
 
-  const handleShareSubmitted = () => {
+  const handleShareSubmitted = (mode: 'link' | 'name' | 'suggest') => {
+    // A suggestion has no visible record of its own (HitlistSuggestion is
+    // write-only -- see src/api/crave.ts's suggestPlace) and doesn't feed
+    // loadPlaceSaves()'s list; it only ever contributes to that place's
+    // DiscoveryCandidate confidence alongside everyone else's signals, so
+    // the copy says that explicitly instead of implying a save just
+    // happened.
+    if (mode === 'suggest') {
+      toast("Thanks — the more people suggest this place, the sooner we'll add it.");
+      return;
+    }
     toast("Got it — we'll match this to a place shortly.");
     void loadCraves();
     void loadPlaceSaves();
@@ -467,7 +500,7 @@ export default function CravesScreen() {
           <RefreshControl
             refreshing={pullRefreshing}
             onRefresh={handlePullRefresh}
-            tintColor={Colors.primary}
+            tintColor={Colors.brand}
           />
         }
         renderItem={({ item: row }) => {
@@ -635,7 +668,7 @@ export default function CravesScreen() {
           }
 
           if (row.kind === 'craves-loading' || row.kind === 'place-saves-loading') {
-            return <ActivityIndicator color={Colors.primary} style={styles.sectionSpinner} />;
+            return <ActivityIndicator color={Colors.brand} style={styles.sectionSpinner} />;
           }
 
           if (row.kind === 'craves-error' || row.kind === 'place-saves-error') {
@@ -724,6 +757,20 @@ export default function CravesScreen() {
                   <Text style={styles.craveViewBtn}>View →</Text>
                 </TouchableOpacity>
               ) : null}
+              <TouchableOpacity
+                style={styles.craveDeleteBtn}
+                onPress={() => void handleDeletePlaceSave(row.item)}
+                disabled={deletingPlaceSaveId === row.item.id}
+                accessibilityRole="button"
+                accessibilityLabel={`Remove ${row.item.place_name} from your list`}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                {deletingPlaceSaveId === row.item.id ? (
+                  <ActivityIndicator size="small" color={Colors.textSecondary} />
+                ) : (
+                  <Ionicons name="trash-outline" size={18} color={Colors.textSecondary} />
+                )}
+              </TouchableOpacity>
             </View>
           );
         }}
@@ -774,10 +821,10 @@ const styles = StyleSheet.create({
     borderColor: Colors.border,
     backgroundColor: Colors.surface,
   },
-  shareBtnText: { fontSize: 13, fontWeight: '700', color: Colors.primary },
+  shareBtnText: { fontSize: 13, fontWeight: '700', color: Colors.brand },
   screenTitle: { fontSize: 22, fontWeight: '800', color: Colors.text },
   countBadge: {
-    backgroundColor: Colors.primary,
+    backgroundColor: Colors.actionPrimary,
     borderRadius: Radius.full,
     minWidth: 22,
     height: 22,
@@ -832,5 +879,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  craveViewBtn: { color: Colors.primary, fontSize: 13, fontWeight: '700' },
+  craveViewBtn: { color: Colors.brand, fontSize: 13, fontWeight: '700' },
+  craveDeleteBtn: {
+    padding: 8,
+    minWidth: 44,
+    minHeight: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
 });
