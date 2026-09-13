@@ -83,7 +83,7 @@ pyarrow>=18.0.0
 # dedup hashing) — imported eagerly at startup via app.api.v1.endpoints.upload
 # -> app.workers.image_processing_worker, so missing these breaks every boot,
 # not just the upload feature.
-Pillow>=10.4.0
+Pillow>=12.3.0
 imagehash>=4.3.1
 
 # Frame-array preprocessing for the video food-classifier
