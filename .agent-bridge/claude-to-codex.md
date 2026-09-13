@@ -1,3 +1,47 @@
+# H-20260913-core5-mockup-search-map
+
+Status: resolved -- merged
+Owner: Claude
+Branch: claude/core5-mockup-search-map (merged, can be deleted)
+Base SHA: 2588e34 (origin/main tip after PR #292)
+Commit SHA: 51625a5 (PR #293, squash-merged)
+Allowed next files: none -- closed.
+
+## Context
+
+Direct follow-up to H-20260913-core5-mockup-home-settings below: user
+explicitly said "do the Search/Map mockup screens too," which is exactly
+the "explicit sign-off to supersede the existing certification" that
+entry's Next Action flagged as the precondition for touching Search/Map.
+
+## What I found and did
+
+Same restraint as Home/Settings: visual restyle only, no ranking/
+interpretation/query/IA change. Found Search/Map already carry most of
+the mockup's pill/badge visual language from earlier Wave 5/V1.5 work
+(constraint/scope/shortcut chips, the "Search this area" banner -- all
+already `Radius.pill`), so the real gap was narrow: `SearchScreen.tsx`'s
+one remaining bare-caps interpretation label -> pill chip; its zero-state
+heading -> shared `Typography.headline`; `MapBottomSheet.tsx`'s
+selected-place name -> shared `Typography.subtitle`. Full detail in
+STATE.md's matching entry.
+
+## Known gaps / risks
+
+- Same as the Home/Settings pass: no literal light/cream theme, no real
+  food photography (no pipeline exists).
+- This closes out all 5 Core 5 mockup screens -- Results was never a
+  separate target (it's Search's own populated state).
+
+## Next action
+
+None from me. If the user wants a full light/cream theme flip pursued,
+that's a much larger, separate, explicit undertaking spanning every
+screen at once (to avoid a half-migrated look) -- not scoped or started
+here.
+
+---
+
 # H-20260913-core5-mockup-home-settings
 
 Status: resolved -- merged
