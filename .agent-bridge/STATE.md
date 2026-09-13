@@ -2,48 +2,52 @@
 
 Status: merged
 Owner: Claude
-Branch: claude/sm05-06-required-preferred-fix (merged, can be deleted)
-Base SHA: ba786b5 (origin/main tip after PR #280)
-Commit SHA: 131106a (merge commit on origin/main)
-Scope: closes the SM-05/06 Required-vs-Preferred contradiction in the
-*running app*, distinct from Codex's UI V2 pass (PR #278) which fixed
-the same contradiction only in the mockup artifact
-(`docs/design/search-map-v15-real-mockups.svg`'s "Zero Recovery"
-screen). Two real gaps found by direct code inspection, not by trusting
-either the mockup or prior audit notes:
-1. `zeroResultInfo()` had no honest attribution when a supported
-   dietary hard constraint (Vegan, Halal, ...) was the actual, sole
-   reason for zero results -- fell through to a vague "Nothing
-   matched" message even though the data to name it was already
-   available client-side. Added a dedicated branch naming it directly
-   ("No Vegan matches nearby right now."), still never offering to
-   relax it (contract §9/§16 unchanged).
-2. The interpretation panel rendered `required_categories` and
-   `context` constraint chips identically -- same style, same "×"
-   remove affordance, no visual distinction between a required (hard)
-   constraint and a merely preferred (soft) one. Required-category
-   chips now render with `Colors.hardConstraint` border/text and a
-   "· Required" label. Also added a "Keeping (required)" chip row to
-   the zero-result recovery card when a required category stays active
-   alongside an offered soft relaxation.
-Deliberately not built (flagged, needs a product decision, not a copy
-fix): recognizing "patio"/"outdoor seating" as an actual backend search
-constraint -- the mockup's literal example. `query_interpreter.py` has
-no concept of amenities at all today (only 5 dietary categories as hard
-constraints, price/near_me/date_night/open_late/quick as soft) --
-wiring this needs a new interpretation field + `execute_search()`
-filter against the `outdoor_seating` column PR #229 already added to
-`Place`, and a decision on scope (just patio, or a general amenity-
-constraint pattern).
+Branch: claude/amenity-search-constraint (merged, can be deleted)
+Base SHA: 4b5509a (origin/main tip after PR #282)
+Commit SHA: ea035da (merge commit on origin/main)
+Scope: closes the remaining gap from PR #281's Known Gaps -- the SM-05/06
+mockup's literal example ("Patio required") couldn't happen in the
+running app because the query interpreter had no concept of amenities
+at all. User explicitly authorized this ("if easy add amenities, if too
+much leave off"); confirmed easy by following the exact pattern already
+in this file for `radius_miles` (a Python-side post-filter over the
+already-fetched candidate pool, not a second SQL round-trip).
+- `query_interpreter.py`: new `required_amenities` field, deliberately
+  separate from `required_categories`/`hard_constraints` (documented
+  elsewhere as always meaning the dietary/allergy set -- folding
+  amenities in would break that invariant and mis-route them into the
+  category-table join path). Recognizes "patio"/"outdoor seating";
+  negation gets its own wider prefix ("no outdoor seating," not just
+  "non-"/"not ") since amenities are far more often negated with a
+  plain "no" than dietary categories are.
+- `search_engine.py`: `outdoor_seating` turned out not to be a plain
+  `Place` column (an earlier assumption, caught before shipping) -- it's
+  a resolved `PlaceTruth` row (`truth_value` one of "yes"/"no"/
+  "limited", written by `promote_service_v2.py`'s OSM-claim pipeline,
+  same as `place_detail_router.py` already reads). One bulk query over
+  the candidate pool. Only "yes" satisfies a required amenity --
+  "limited" doesn't silently upgrade, and a missing row fails it the
+  same as an explicit "no". Never auto-relaxed, threaded through both
+  retry calls unchanged -- same standing as a dietary hard constraint.
+- Frontend: `required_amenities` renders with the same Required badge
+  treatment as `required_categories` (PR #281), combined into
+  `zeroResultInfo()`'s honest-attribution message and "keeping" list;
+  `CONSTRAINT_PATTERNS` gets a patio/outdoor-seating entry.
 Locked files: none -- closed.
-Verification: PR #281 (https://github.com/Lavish213/CRAVE/pull/281),
-merged `131106a`. `npx tsc --noEmit` clean. `npx jest --ci` -> 54/54
-suites, 564/564 tests (3 new, covering the honest-attribution message
-and the Required/Preferred chip distinction end to end). CI green
-(Frontend, both Backend jobs, both Analyze jobs, Guard, CodeQL).
-Next action: none from me -- awaiting the user's call on the amenity-
-constraint feature decision (item 2 above) if they want the mockup's
-literal "Patio required" scenario buildable for real.
+Verification: PR #283 (https://github.com/Lavish213/CRAVE/pull/283),
+merged `ea035da`. Backend `python -m pytest -q` -> 1120 passed, 2
+skipped (6 new: 3 interpreter, 3 search_engine, covering confirmed/no/
+limited/missing outdoor_seating and the unfiltered baseline). Frontend
+`npx tsc --noEmit` clean, `npx jest --ci` -> 54/54 suites, 566/566 tests
+(2 new). CI green (Frontend, both Backend jobs, both Analyze jobs,
+Guard, CodeQL).
+Next action: none from me. The Search/Map V1.5 mockup's SM-05/06
+Required-vs-Preferred contradiction is now fully closed end to end --
+mockup (Codex, PR #278) and running app (Claude, PR #281 + this PR)
+agree, with a real, tested, filterable amenity constraint behind it.
+Broader Search/Map V1.5 propagation (screen-by-screen visual QA,
+device/accessibility proof) remains open per Codex's own "brutal truth"
+self-assessment on PR #278/#279/#280 -- not this handoff's scope.
 
 ## Prior completed UI V2 work (Codex)
 
