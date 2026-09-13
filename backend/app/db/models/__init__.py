@@ -51,6 +51,7 @@ from .hitlist_dedup_key import HitlistDedupKey
 
 # ----- Share-to-CRAVE Layer -----
 from .crave_item import CraveItem
+from .share_save_preference import ShareSavePreference
 
 # ----- Ops / Observability Layer -----
 from .job_run import JobRun
@@ -127,6 +128,7 @@ __all__ = [
 
     # Share-to-CRAVE
     "CraveItem",
+    "ShareSavePreference",
 
     # Ops / Observability
     "JobRun",

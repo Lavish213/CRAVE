@@ -41,6 +41,7 @@ from app.db.models.place_image import PlaceImage
 from app.db.models.place_ranking import PlaceRanking
 from app.db.models.place_video import PlaceVideo
 from app.db.models.recommendation_event import RecommendationEvent
+from app.db.models.share_save_preference import ShareSavePreference
 from app.db.models.user_block import UserBlock
 from app.db.models.user_follow import UserFollow
 from app.db.models.user_profile import UserProfile
@@ -170,6 +171,9 @@ def delete_account(db: Session, user_id: str) -> Dict[str, bool]:
         db.query(CraveItem).filter(CraveItem.submitted_by == user_id).delete(
             synchronize_session=False
         )
+        db.query(ShareSavePreference).filter(
+            ShareSavePreference.user_id == user_id
+        ).delete(synchronize_session=False)
         db.query(MenuSubmission).filter(MenuSubmission.submitted_by == user_id).delete(
             synchronize_session=False
         )
