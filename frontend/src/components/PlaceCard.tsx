@@ -12,6 +12,7 @@ import { TierBadge } from './TierBadge';
 import { DecisionStrip, type DecisionStripSource } from './DecisionStrip';
 import { Colors, Spacing, Radius, Shadows, Typography } from '../constants/colors';
 import { DecisionRole } from '../api/decisionSession';
+import { useReducedMotion } from '../hooks/useReducedMotion';
 
 const SAVE_HIT_SLOP = { top: 8, bottom: 8, left: 8, right: 8 } as const;
 const IMAGE_HEIGHT = 220;
@@ -48,12 +49,15 @@ function PlaceCardImpl({
   const price = place.price ?? formatPrice(place);
   const badges = getBadges(place);
   const saveScale = useRef(new Animated.Value(1)).current;
+  const reducedMotion = useReducedMotion();
 
   const handleSave = () => {
-    Animated.sequence([
-      Animated.timing(saveScale, { toValue: 1.3, duration: 100, useNativeDriver: true }),
-      Animated.timing(saveScale, { toValue: 1, duration: 150, useNativeDriver: true }),
-    ]).start();
+    if (!reducedMotion) {
+      Animated.sequence([
+        Animated.timing(saveScale, { toValue: 1.3, duration: 100, useNativeDriver: true }),
+        Animated.timing(saveScale, { toValue: 1, duration: 150, useNativeDriver: true }),
+      ]).start();
+    }
     onSave();
   };
 

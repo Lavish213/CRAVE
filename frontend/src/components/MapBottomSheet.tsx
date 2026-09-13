@@ -21,6 +21,7 @@ import { Colors, Radius, Shadows, Spacing, Typography } from '../constants/color
 import { TierBadge } from './TierBadge';
 import { TIERS } from '../utils/scoring';
 import type { TierKey } from '../utils/scoring';
+import { useReducedMotion } from '../hooks/useReducedMotion';
 
 // Map GeoJSON tier strings to TierKey
 const TIER_MAP: Record<string, TierKey> = {
@@ -53,6 +54,7 @@ interface Props {
 
 export function MapBottomSheet({ feature, onOpen, onClose }: Props) {
   const translateY = useRef(new Animated.Value(0)).current;
+  const reducedMotion = useReducedMotion();
 
   // Reset position whenever a new feature is selected — otherwise a sheet
   // dismissed by dragging would reopen still translated off-screen.
@@ -71,6 +73,20 @@ export function MapBottomSheet({ feature, onOpen, onClose }: Props) {
     [translateY, onClose],
   );
 
+  // Reduce Motion: a plain, non-bouncy timing snap-back instead of the
+  // spring's oscillating rebound -- the same kind of motion the setting is
+  // meant to suppress.
+  const snapBack = useMemo(
+    () => () => {
+      if (reducedMotion) {
+        Animated.timing(translateY, { toValue: 0, duration: 120, useNativeDriver: true }).start();
+      } else {
+        Animated.spring(translateY, { toValue: 0, useNativeDriver: true, bounciness: 4 }).start();
+      }
+    },
+    [translateY, reducedMotion],
+  );
+
   const panResponder = useMemo(
     () =>
       PanResponder.create({
@@ -86,22 +102,12 @@ export function MapBottomSheet({ feature, onOpen, onClose }: Props) {
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
             dismiss();
           } else {
-            Animated.spring(translateY, {
-              toValue: 0,
-              useNativeDriver: true,
-              bounciness: 4,
-            }).start();
+            snapBack();
           }
         },
-        onPanResponderTerminate: () => {
-          Animated.spring(translateY, {
-            toValue: 0,
-            useNativeDriver: true,
-            bounciness: 4,
-          }).start();
-        },
+        onPanResponderTerminate: snapBack,
       }),
-    [translateY, dismiss],
+    [dismiss, snapBack],
   );
 
   if (!feature) return null;

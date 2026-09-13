@@ -1,11 +1,21 @@
 import React, { useEffect, useRef } from 'react';
 import { Animated, StyleSheet, View, ViewStyle } from 'react-native';
 import { Colors, Radius, Spacing } from '../constants/colors';
+import { useReducedMotion } from '../hooks/useReducedMotion';
 
 function Shimmer({ style }: { style?: ViewStyle }) {
   const opacity = useRef(new Animated.Value(0.3)).current;
+  const reducedMotion = useReducedMotion();
 
   useEffect(() => {
+    // A continuously looping pulse is exactly the kind of motion Reduce
+    // Motion is meant to suppress -- render a static mid-opacity placeholder
+    // instead of starting the loop at all.
+    if (reducedMotion) {
+      opacity.setValue(0.5);
+      return;
+    }
+
     const loop = Animated.loop(
       Animated.sequence([
         Animated.timing(opacity, {
@@ -22,7 +32,7 @@ function Shimmer({ style }: { style?: ViewStyle }) {
     );
     loop.start();
     return () => loop.stop();
-  }, [opacity]);
+  }, [opacity, reducedMotion]);
 
   return (
     <Animated.View
