@@ -1,10 +1,10 @@
 # Active agent state
 
-Status: ready-for-review
+Status: merged
 Owner: Codex
 Branch: codex/feed-decision-session
 Base SHA: 7bf81bda3dab274f00ec5db35c68c8235f7a3c2f
-Commit SHA: 84f7cd6
+Commit SHA: b178f09c528254e0f64519c1add48e578a029d4a
 Scope: Feed / Decision Session vertical-slice audit and narrow implementation
 against the locked frontend execution order, Feed screen contract, Foundation
 Gate contracts, and the merged Place Detail proving patterns. Verify the full
@@ -17,10 +17,12 @@ frontend/src/hooks/useRecommendations.test.tsx,
 frontend/src/api/decisionSession.ts, frontend/src/api/decisionSession.test.ts,
 frontend/src/api/places.ts, frontend/src/components/PlaceCard.tsx,
 .agent-bridge/STATE.md, and .agent-bridge/codex-to-claude.md.
-Verification: focused Feed/Decision Session/API tests passed (4 suites,
-25 tests); `npx tsc --noEmit --pretty false` passed; full frontend Jest passed
-(51 suites, 541 tests). PR CI, CodeQL, CodeRabbit, and final PR-head audit are
-still required before a merge-ready verdict.
+Verification: PR #261 merged by squash as `b178f09` after final review fixes.
+Updated PR-head CI and CodeQL passed. CodeRabbit's two actionable Feed findings
+were resolved/outdated after commit `bc01c29`. Local verification on the final
+branch head passed the focused Feed/Foundation suites (5 suites, 30 tests),
+`npx tsc --noEmit --pretty false`, and full frontend Jest (51 suites, 542
+tests).
 Explicit exclusions: no Search/Map redesign or edits; no revival of PR #254;
 no new recommender architecture; no backend or production-data changes.
 
@@ -69,10 +71,12 @@ individually (ignorable-cleanup / recoverable-background / user-actionable
 fallback under a new `https://` universal-link primary; E2E coverage is
 built journey-by-journey as each slice lands, not as one final sprint.
 
-**Next action for this lane:** claim **Foundation Gate** in this file
-(owner, branch, base SHA, allowed files, verification plan) before writing
-any frontend code against this order. Do not start Place Detail before
-Foundation Gate's contracts are committed.
+**Next action for this lane:** Foundation Gate, Place Detail, and Feed/Decision
+Session have now merged. The next frontend slice in the locked order is
+**Search/Map propagation-only**: reliability/state/query/accessibility
+hardening only, with no redesign or reopening of the certified Search/Map UX
+unless a new, proven contract gap is documented first. Claim that slice here
+(owner, branch, base SHA, allowed files, verification plan) before editing.
 
 ### Foundation Gate progress (Claude, 2026-09-11)
 
@@ -588,15 +592,15 @@ routes, dead-code/gap/broken-control checks, race-condition review.
 ## Next action
 
 Superseded by the top of this file — **frontend work now follows
-`docs/doctrine/CRAVE_FRONTEND_EXECUTION_ORDER.md`** (Foundation Gate next),
-not the wave numbering this paragraph used to point to (Waves 0-7 are
-merged baseline, done, not reopened). Independent lanes still open:
-production data-coverage (OSM backfill apply in progress per Codex's
+`docs/doctrine/CRAVE_FRONTEND_EXECUTION_ORDER.md`**. Foundation Gate, Place
+Detail, and Feed/Decision Session are merged; the next implementation slice is
+Search/Map propagation-only, not a visual redesign. Independent lanes still
+open: production data-coverage (OSM backfill apply in progress per Codex's
 relay, unverified here — see "Other active lanes" above; menu
 canary/population-coverage still need Railway/Supabase access — see
 `.agent-bridge/claude-to-codex.md`'s current handoff), and the Posting V2
-composer stack (Codex's, in progress, see above). The Penpot design track
-(Feed/Decision Session first) is a separate workflow.
+composer stack (Codex's, in progress, see above). The Penpot/design track is
+separate from this implementation order.
 
 Claim any task here before starting it — owner, branch, base SHA (must be
 current `main` or later), allowed files, and verification plan — per
