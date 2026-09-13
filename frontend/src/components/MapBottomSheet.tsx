@@ -17,7 +17,7 @@ import { Animated, PanResponder, StyleSheet, Text, TouchableOpacity, View } from
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import { Colors, Radius, Shadows, Spacing } from '../constants/colors';
+import { Colors, Radius, Shadows, Spacing, Typography } from '../constants/colors';
 import { TierBadge } from './TierBadge';
 import { TIERS } from '../utils/scoring';
 import type { TierKey } from '../utils/scoring';
@@ -202,6 +202,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   meta: { flex: 1, gap: Spacing.xs },
-  name: { color: Colors.text, fontSize: 16, fontWeight: '700' },
+  name: { ...Typography.subtitle, color: Colors.text },
   category: { color: Colors.textSecondary, fontSize: 13 },
 });
