@@ -24,7 +24,8 @@ from app.db.models.city import City
 from app.db.models.place import Place
 from app.db.models.crave_item import CraveItem
 from app.db.models.hitlist_save import HitlistSave
-from app.workers.share_parser_worker import _process_item
+from app.db.models.share_save_preference import ShareSavePreference
+from app.workers.share_parser_worker import _process_item, reconcile_matched_share_saves
 
 
 @pytest.fixture
@@ -164,3 +165,115 @@ def test_matched_share_with_no_submitted_by_does_not_error(db):
     db.refresh(item)
     assert item.status == "matched"
     assert db.query(HitlistSave).filter(HitlistSave.place_id == place.id).count() == 0
+
+
+def test_match_is_not_committed_when_automatic_save_cannot_be_created(db):
+    """A matched status must never promise a save that was not persisted."""
+    city = _make_city(db)
+    place = _make_place(db, city)
+    item = _make_item(db)
+
+    with patch(
+        "app.workers.share_parser_worker.get_oembed_data",
+        return_value={"title": place.name},
+    ), patch(
+        "app.workers.share_parser_worker._find_best_place_match",
+        return_value=(place.id, 0.95),
+    ), patch(
+        "app.workers.share_parser_worker._auto_save_matched_item",
+        side_effect=RuntimeError("save storage unavailable"),
+    ), pytest.raises(RuntimeError, match="save storage unavailable"):
+        _process_item(db, item)
+
+    db.rollback()
+    db.refresh(item)
+    assert item.status == "pending"
+    assert item.matched_place_id is None
+    assert db.query(HitlistSave).filter(HitlistSave.user_id == item.submitted_by).count() == 0
+
+
+def test_reconcile_creates_save_for_historic_matched_share(db):
+    city = _make_city(db)
+    place = _make_place(db, city)
+    item = _make_item(db)
+    item.status = "matched"
+    item.matched_place_id = place.id
+    item.match_confidence = 0.95
+    db.commit()
+
+    assert reconcile_matched_share_saves(db) == 1
+    saved = db.query(HitlistSave).filter(
+        HitlistSave.user_id == item.submitted_by,
+        HitlistSave.place_id == place.id,
+    ).one_or_none()
+    assert saved is not None
+
+
+def test_reconcile_respects_explicit_unsave_opt_out(db):
+    city = _make_city(db)
+    place = _make_place(db, city)
+    item = _make_item(db)
+    item.status = "matched"
+    item.matched_place_id = place.id
+    db.add(ShareSavePreference(user_id=item.submitted_by, place_id=place.id))
+    db.commit()
+
+    assert reconcile_matched_share_saves(db) == 0
+    assert db.query(HitlistSave).filter(
+        HitlistSave.user_id == item.submitted_by,
+        HitlistSave.place_id == place.id,
+    ).count() == 0
+
+
+def test_reconcile_does_not_starve_a_missing_save_behind_existing_ones(db):
+    city = _make_city(db)
+    place = _make_place(db, city)
+    user_id = f"user-{uuid.uuid4().hex[:12]}"
+    already_saved = _make_item(db, submitted_by=user_id)
+    already_saved.status = "matched"
+    already_saved.matched_place_id = place.id
+    db.add(HitlistSave(
+        user_id=user_id,
+        place_name=place.name,
+        place_id=place.id,
+        resolution_status="resolved",
+        dedup_key=f"save:{user_id}:{place.id}",
+    ))
+    db.commit()
+
+    missing = _make_item(db, submitted_by=f"user-{uuid.uuid4().hex[:12]}")
+    missing.status = "matched"
+    missing.matched_place_id = place.id
+    db.commit()
+
+    assert reconcile_matched_share_saves(db, limit=1) == 1
+    assert db.query(HitlistSave).filter(
+        HitlistSave.user_id == missing.submitted_by,
+        HitlistSave.place_id == place.id,
+    ).count() == 1
+
+
+def test_reconcile_does_not_let_an_inactive_place_consume_the_batch_limit(db):
+    """An inactive-place candidate must be excluded before `limit` is
+    applied, not filtered out after -- otherwise it silently occupies a
+    batch slot a real, active-place candidate needed."""
+    inactive_place = _make_place(db, _make_city(db))
+    inactive_place.is_active = False
+    db.commit()
+
+    stale = _make_item(db, submitted_by=f"user-{uuid.uuid4().hex[:12]}")
+    stale.status = "matched"
+    stale.matched_place_id = inactive_place.id
+    db.commit()
+
+    active_place = _make_place(db, _make_city(db))
+    valid = _make_item(db, submitted_by=f"user-{uuid.uuid4().hex[:12]}")
+    valid.status = "matched"
+    valid.matched_place_id = active_place.id
+    db.commit()
+
+    assert reconcile_matched_share_saves(db, limit=1) == 1
+    assert db.query(HitlistSave).filter(
+        HitlistSave.user_id == valid.submitted_by,
+        HitlistSave.place_id == active_place.id,
+    ).count() == 1
