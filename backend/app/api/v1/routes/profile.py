@@ -12,9 +12,7 @@ from app.core.rate_limit import rate_limit
 from app.core.user_auth import get_current_user_id, get_current_user_id_optional
 from app.db.session import get_db
 from app.services.profile import profile_service
-from app.services.social.block_service import is_blocked
 from app.services.social.taste_profile_service import get_taste_profile
-from app.services.social.recommendation_service import get_match_score
 from app.services.upload.r2_client import generate_presigned_upload_url, generate_public_url
 
 router = APIRouter(prefix="/profile", tags=["profile"])
@@ -145,36 +143,15 @@ def get_taste_profile_route(
     db: Session = Depends(get_db),
     viewer_id: Optional[str] = Depends(get_current_user_id_optional),
 ) -> dict:
-    """
-    "Taste Profile" — the equivalent of Beli's own stats screen (total
-    places ranked, tier breakdown, favorite cuisine, top city,
-    percentile). Gated on the same is_public check as GET /{user_id}
-    (public profile) rather than a separate rule, so it's consistent
-    with whatever visibility the person already chose for their profile
-    -- except for the owner themselves, who can always see their own
-    taste profile regardless of its visibility setting.
+    """Return private taste aggregates to their owner only.
 
-    Block enforcement now happens here too (previously client-side
-    only, via GET /blocks/status -- a direct API call bypassed it
-    entirely, since a blocked relationship never touched this route's
-    own response). A blocked relationship is symmetric (see
-    block_service.is_blocked): neither party can pull the other's
-    activity-derived data, which taste stats are, through this route.
-
-    Also includes "match_score" — Beli's pairwise taste-compatibility
-    number — whenever the viewer is signed in and looking at someone
-    else's profile. Auth is optional (get_current_user_id_optional)
-    rather than required, since this route is otherwise viewable by a
-    signed-out visitor; match_score is simply omitted (None) for them.
+    Public profile discoverability is deliberately separate from sensitive
+    Rank-derived data. There is no coarse-share opt-in field yet, so the only
+    privacy-safe default is owner-only.
     """
     profile = profile_service.get_profile(db, user_id)
-    if not profile or (not profile.is_public and viewer_id != user_id):
+    if not profile:
         raise HTTPException(status_code=404, detail="profile not found")
-    if viewer_id and viewer_id != user_id and is_blocked(db, user_a=viewer_id, user_b=user_id):
-        raise HTTPException(status_code=403, detail="blocked")
-    taste = get_taste_profile(db, user_id=user_id)
-    match_score = None
-    if viewer_id and viewer_id != user_id:
-        match_score = get_match_score(db, user_id=viewer_id, other_user_id=user_id)
-    taste["match_score"] = match_score
-    return taste
+    if viewer_id != user_id:
+        raise HTTPException(status_code=404, detail="profile not found")
+    return get_taste_profile(db, user_id=user_id)

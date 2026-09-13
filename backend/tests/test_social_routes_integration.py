@@ -390,18 +390,16 @@ def test_comparison_completion_marks_existing_save_visited(city, db):
     assert save.visited_at is not None
 
 
-def test_leaderboard_endpoint_reachable(users):
+def test_legacy_leaderboard_endpoint_is_retired(users):
     _as_user(users["alice"])
     resp = client.get("/api/v1/leaderboard")
-    assert resp.status_code == 200
-    assert "leaderboard" in resp.json()
+    assert resp.status_code == 410
 
 
-def test_friends_feed_endpoint_reachable(users):
+def test_legacy_friends_feed_endpoint_is_retired(users):
     _as_user(users["alice"])
     resp = client.get("/api/v1/feed/friends")
-    assert resp.status_code == 200
-    assert resp.json()["events"] == []
+    assert resp.status_code == 410
 
 
 def test_username_available_endpoint():
@@ -488,7 +486,7 @@ def test_get_taste_profile_owner_can_view_own_private_taste(users):
     assert resp.status_code == 200
 
 
-def test_get_taste_profile_blocked_caller_gets_403_even_when_public(users):
+def test_get_taste_profile_is_private_even_when_profile_is_public(users):
     # A blocks B. B calling this route directly (not through the app, which
     # would have hidden the "Taste Profile" link client-side) must not get
     # A's data just because A's profile is public.
@@ -501,10 +499,10 @@ def test_get_taste_profile_blocked_caller_gets_403_even_when_public(users):
 
     _as_optional_viewer(users["bob"])
     resp = client.get(f"/api/v1/profile/{users['alice']}/taste")
-    assert resp.status_code == 403
+    assert resp.status_code == 404
 
 
-def test_get_taste_profile_reverse_block_direction_also_403(users):
+def test_get_taste_profile_other_user_is_private_in_reverse_direction(users):
     # Enforcement is symmetric by product contract (block_service.is_blocked)
     # -- the blocker is equally denied the blocked party's data, not just
     # the other way around.
@@ -516,10 +514,10 @@ def test_get_taste_profile_reverse_block_direction_also_403(users):
 
     _as_optional_viewer(users["alice"])
     resp = client.get(f"/api/v1/profile/{users['bob']}/taste")
-    assert resp.status_code == 403
+    assert resp.status_code == 404
 
 
-def test_get_taste_profile_unblock_restores_access(users):
+def test_get_taste_profile_unblock_does_not_widen_private_default(users):
     _setup_profile(users["alice"], is_public=True)
     _setup_profile(users["bob"], is_public=True)
 
@@ -529,7 +527,7 @@ def test_get_taste_profile_unblock_restores_access(users):
 
     _as_optional_viewer(users["bob"])
     resp = client.get(f"/api/v1/profile/{users['alice']}/taste")
-    assert resp.status_code == 200
+    assert resp.status_code == 404
 
 
 def test_get_user_rankings_owner_can_view_own_private_rankings(users):
@@ -539,7 +537,7 @@ def test_get_user_rankings_owner_can_view_own_private_rankings(users):
     assert resp.status_code == 200
 
 
-def test_get_user_rankings_blocked_caller_gets_403_even_when_public(users):
+def test_get_user_rankings_remain_private_even_when_profile_is_public(users):
     _setup_profile(users["alice"], is_public=True)
     _setup_profile(users["bob"], is_public=True)
 
@@ -548,7 +546,7 @@ def test_get_user_rankings_blocked_caller_gets_403_even_when_public(users):
 
     _as_user(users["bob"])
     resp = client.get(f"/api/v1/rankings/user/{users['alice']}")
-    assert resp.status_code == 403
+    assert resp.status_code == 404
 
 
 def test_get_user_rankings_private_hidden_from_unrelated_viewer(users):

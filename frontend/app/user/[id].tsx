@@ -1,9 +1,7 @@
 // app/user/[id].tsx
 //
-// Someone else's profile: their ranked list plus a follow button. This is
-// what the leaderboard and feed link into, and it's the reason a follow
-// graph is worth having — you follow a person because you want to see
-// their list.
+// Public identity and relationship controls only. Rank and Taste data are
+// private unless a future explicit coarse-sharing contract is implemented.
 import React, { useCallback, useRef, useState } from 'react';
 import {
   Alert,
@@ -15,37 +13,32 @@ import {
 } from 'react-native';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
-import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 
 import { Colors, Radius, Spacing } from '../../src/constants/colors';
 import { EmptyState } from '../../src/components/EmptyState';
 import { ErrorState } from '../../src/components/ErrorState';
 import { SkeletonRowList } from '../../src/components/SkeletonCard';
-import { RankedPlaceRow } from '../../src/components/RankedPlaceRow';
 import { useAuthStore } from '../../src/stores/authStore';
 import {
   Profile,
-  RankedPlace,
   blockUser,
   fetchBlockStatus,
   fetchFollowStatus,
   fetchProfile,
-  fetchUserRankings,
   followUser,
   unblockUser,
   unfollowUser,
 } from '../../src/api/social';
-import { rankedListHeadline } from '../../src/utils/rankScore';
 import { withImageWidth, AVATAR_IMAGE_WIDTH } from '../../src/utils/imageUrl';
+import { requestAuthGate } from '../../src/stores/authGateStore';
 
 export default function UserProfileScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const router = useRouter();
   const me = useAuthStore((s) => s.user);
 
   const [profile, setProfile] = useState<Profile | null>(null);
-  const [rankings, setRankings] = useState<RankedPlace[]>([]);
   const [following, setFollowing] = useState(false);
   const [followsMe, setFollowsMe] = useState(false);
   const [blocked, setBlocked] = useState(false);
@@ -60,7 +53,6 @@ export default function UserProfileScreen() {
   const [profileError, setProfileError] = useState(false);
   const [busy, setBusy] = useState(false);
   const [blockBusy, setBlockBusy] = useState(false);
-  const [rankingsError, setRankingsError] = useState(false);
   const [relationshipError, setRelationshipError] = useState(false);
 
   const isSelf = !!me && me.id === id;
@@ -101,7 +93,6 @@ export default function UserProfileScreen() {
       // same-identity refocus/retry doesn't flash the skeleton over
       // still-good data while it quietly re-fetches in the background.
       setProfile(null);
-      setRankings([]);
       setFollowing(false);
       setFollowsMe(false);
       setBlocked(false);
@@ -128,28 +119,21 @@ export default function UserProfileScreen() {
     // never clear, so the component could never render past it.
     loadedForIdRef.current = id;
     loadedForViewerRef.current = viewerId;
-    setRankingsError(false);
     setRelationshipError(false);
     try {
       const p = await fetchProfile(id);
       if (myGeneration !== loadGenerationRef.current) return;
       setProfile(p);
 
-      const [r, status, blockStatus] = await Promise.all([
-        fetchUserRankings(id).catch(() => null),
-        isSelf
+      const [status, blockStatus] = await Promise.all([
+        !me || isSelf
           ? Promise.resolve({ following: false, followed_by: false })
           : fetchFollowStatus(id).catch(() => null),
-        isSelf
+        !me || isSelf
           ? Promise.resolve({ blocked: false })
           : fetchBlockStatus(id).catch(() => null),
       ]);
       if (myGeneration !== loadGenerationRef.current) return;
-      if (r === null) {
-        setRankingsError(true);
-      } else {
-        setRankings(r);
-      }
       if (status === null || blockStatus === null) {
         setRelationshipError(true);
       } else {
@@ -181,6 +165,18 @@ export default function UserProfileScreen() {
 
   const toggleFollow = async () => {
     if (!id || busy || isSelf) return;
+    if (!me) {
+      requestAuthGate({
+        actionType: 'follow-user',
+        reason: 'follow',
+        sourceRoute: `/user/${id}`,
+        targetIds: [id],
+        destination: `/user/${id}`,
+        idempotent: true,
+        resume: () => undefined,
+      });
+      return;
+    }
     setBusy(true);
     // Optimistic — the button is the whole interaction, so it must respond
     // instantly; reverted below if the request fails.
@@ -195,6 +191,10 @@ export default function UserProfileScreen() {
       }
     } catch {
       setFollowing(previous);
+      Alert.alert(
+        previous ? "Couldn't unfollow" : "Couldn't follow",
+        'Your change was not saved. Try again.',
+      );
     } finally {
       setBusy(false);
     }
@@ -298,7 +298,7 @@ export default function UserProfileScreen() {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      {!isSelf && !relationshipError ? (
+      {!!me && !isSelf && !relationshipError ? (
         <TouchableOpacity
           style={styles.optionsBtn}
           onPress={showOptions}
@@ -373,49 +373,9 @@ export default function UserProfileScreen() {
             </TouchableOpacity>
           ) : null}
 
-          {rankingsError ? (
-            <ErrorState message="Couldn't load ranked places" onRetry={load} />
-          ) : (
-            <>
-              <Text style={styles.headline}>{rankedListHeadline(rankings.length)}</Text>
-
-              {rankings.length > 0 && (
-                <TouchableOpacity
-                  style={styles.tasteProfileLink}
-                  onPress={() => router.push(`/taste-profile/${id}`)}
-                  accessibilityRole="button"
-                  accessibilityLabel={isSelf ? 'View your Taste Profile' : `View ${profile.username}'s Taste Profile`}
-                >
-                  <Ionicons name="restaurant-outline" size={16} color={Colors.primary} />
-                  <Text style={styles.tasteProfileLinkText}>
-                    {isSelf ? 'Your Taste Profile' : 'Taste Profile'}
-                  </Text>
-                  <Ionicons name="chevron-forward" size={16} color={Colors.textSecondary} />
-                </TouchableOpacity>
-              )}
-
-              {rankings.length === 0 ? (
-                <Text style={styles.emptyText}>
-                  {isSelf ? "You haven't" : `@${profile.username} hasn't`} ranked anything yet.
-                </Text>
-              ) : (
-                <View style={styles.list}>
-                  {rankings.map((r, i) => (
-                    <RankedPlaceRow
-                      key={r.place_id}
-                      position={i + 1}
-                      name={r.name ?? 'Unknown place'}
-                      imageUrl={r.primary_image_url}
-                      score={r.rank_score}
-                      tier={r.tier}
-                      note={r.note}
-                      onPress={() => router.push(`/place/${r.place_id}`)}
-                    />
-                  ))}
-                </View>
-              )}
-            </>
-          )}
+          <Text style={styles.privacyNote}>
+            Ranked places and Taste Profile insights are private unless their owner explicitly shares them.
+          </Text>
         </>
       )}
     </ScrollView>
@@ -470,14 +430,5 @@ const styles = StyleSheet.create({
   followingBtn: { backgroundColor: 'transparent', borderColor: Colors.border },
   followBtnText: { color: '#FFFFFF', fontSize: 15, fontWeight: '800' },
   followingBtnText: { color: Colors.text },
-  headline: { color: Colors.text, fontSize: 16, fontWeight: '700', marginTop: Spacing.sm },
-  tasteProfileLink: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.xs,
-    marginTop: Spacing.sm,
-  },
-  tasteProfileLinkText: { flex: 1, color: Colors.primary, fontSize: 14, fontWeight: '700' },
-  emptyText: { color: Colors.textSecondary, fontSize: 14 },
-  list: { gap: Spacing.sm },
+  privacyNote: { color: Colors.textSecondary, fontSize: 13, lineHeight: 19 },
 });

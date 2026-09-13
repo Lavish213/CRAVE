@@ -1,30 +1,34 @@
 # Active agent state
 
-Status: merged
+Status: ready-for-review
 Owner: Codex
-Branch: codex/feed-decision-session
-Base SHA: 7bf81bda3dab274f00ec5db35c68c8235f7a3c2f
-Commit SHA: b178f09c528254e0f64519c1add48e578a029d4a
-Scope: Feed / Decision Session vertical-slice audit and narrow implementation
-against the locked frontend execution order, Feed screen contract, Foundation
-Gate contracts, and the merged Place Detail proving patterns. Verify the full
-Feed -> Place -> outcome handoff and produce an evidence-backed defect log.
-Locked files: frontend/app/(tabs)/index.tsx, frontend/__tests__/feed.test.tsx,
-frontend/src/hooks/useDecisionSession.ts,
-frontend/src/hooks/useDecisionSession.test.tsx,
-frontend/src/hooks/useRecommendations.ts,
-frontend/src/hooks/useRecommendations.test.tsx,
-frontend/src/api/decisionSession.ts, frontend/src/api/decisionSession.test.ts,
-frontend/src/api/places.ts, frontend/src/components/PlaceCard.tsx,
-.agent-bridge/STATE.md, and .agent-bridge/codex-to-claude.md.
-Verification: PR #261 merged by squash as `b178f09` after final review fixes.
-Updated PR-head CI and CodeQL passed. CodeRabbit's two actionable Feed findings
-were resolved/outdated after commit `bc01c29`. Local verification on the final
-branch head passed the focused Feed/Foundation suites (5 suites, 30 tests),
-`npx tsc --noEmit --pretty false`, and full frontend Jest (51 suites, 542
-tests).
-Explicit exclusions: no Search/Map redesign or edits; no revival of PR #254;
-no new recommender architecture; no backend or production-data changes.
+Branch: codex/profile-taste-social-hardening
+Base SHA: 755f02b
+Commit SHA: 1574389cfe3318ec5f2d269d34c9cbc043bc6083
+Scope: Profile / Taste / social cleanup under the locked frontend execution
+order. Re-verify and harden Profile, public-profile, Taste, friends/follow
+evidence, and stale leaderboard/social remnants for privacy, truthful product
+role, account isolation, async/error reliability, auth gating, accessibility,
+and integration correctness without redesigning approved UI.
+Locked files: frontend/app/(tabs)/profile.tsx,
+frontend/app/profile-setup.tsx, frontend/app/user/[id].tsx,
+frontend/app/taste-profile/[userId].tsx, frontend/app/friends-feed.tsx,
+frontend/app/leaderboard.tsx, frontend/src/api/social.ts, associated focused
+frontend tests, backend/app/api/v1/routes/profile.py,
+backend/app/api/v1/routes/follows.py, backend/app/api/v1/routes/feed_social.py,
+backend/app/api/v1/routes/leaderboard.py, backend/app/services/profile/,
+backend/app/services/social/, associated focused backend tests,
+docs/doctrine/CRAVE_FRONTEND_EXECUTION_ORDER.md, .agent-bridge/STATE.md, and
+.agent-bridge/codex-to-claude.md. Only files proven necessary by the audit will
+be changed.
+Explicit exclusions: Rank, Food Evidence/Add Spot, Craves, Feed/Decision
+Session, Search/Map, and new social/leaderboard systems.
+Verification: frontend typecheck passed; focused Profile/Taste/social suites
+passed (6 suites, 20 tests); full frontend Jest passed (51 suites, 491 tests);
+backend compile/import checks and focused tests passed (46 tests); full backend
+pytest passed (1115 passed, 2 skipped). PR CI, CodeQL, and CodeRabbit/review
+inspection remain before merge. UI changes remain cleanup/hardening; no device
+claim is made.
 
 ## FRONTEND EXECUTION ORDER — LOCKED (2026-09-11)
 
