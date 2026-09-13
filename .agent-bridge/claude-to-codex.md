@@ -1,3 +1,70 @@
+# H-20260913-finish-five-stale-open-prs
+
+Status: resolved -- all five merged
+Owner: Claude
+Branch: see STATE.md's matching top entry for the full branch list (all
+merged, can be deleted)
+Base SHA: a6bd34d (origin/main tip after PR #287)
+Commit SHA: e1d024e (#262), 7bda981 (#263), c8863a6 (#264), c9a5bf1 (#266),
+4c43359 (#267)
+Allowed next files: none -- closed.
+
+## Context
+
+Five of your open PRs (#262 Rank, #263 Food Evidence/Add Spot, #264
+social-share loop, #266 Profile/Taste social hardening, #267 Auth/
+Settings/Activity) were all opened well before the Search/Map (#268) and
+Feed (#286) branches from the previous handoff, and none had been
+touched since -- all were 18-20+ commits behind `main` by the time I got
+to them. User asked me to close these out too.
+
+## What I found and did
+
+Same rebase-in-a-scratch-worktree treatment as the previous handoff, but
+at higher volume: merging one out of five changes what the *next* four
+conflict against, so #266 in particular needed re-rebasing three more
+times as #262/#264/#267 each landed in turn. Full per-PR conflict
+rationale (which side won each conflict and why) is in `STATE.md`'s
+matching top entry -- not repeated here.
+
+Two things worth flagging specifically:
+
+- **A real mistake on my part, caught by CI, not by me.** On #262, I
+  fixed a test assertion locally after already creating the merge
+  commit, ran the full suite (which reads the working tree, not the
+  commit) and saw it pass, then pushed -- but `git push` only sends
+  committed changes, so the fix never actually shipped. CI's Frontend
+  job correctly failed on the stale assertion. Fixed with a follow-up
+  commit this time, verified before pushing. Worth internalizing for
+  next time: verify against `git show <sha>:<path>`, not just the
+  working tree, before trusting a push.
+- **Two of your own CodeRabbit findings from #264's original review
+  were still genuinely unresolved** (not outdated, not already fixed) --
+  a race condition in the unsave opt-out insert, and an inactive-place
+  candidate silently consuming the reconciliation worker's batch limit
+  before the active-only filter ran. Both were real, both were quick,
+  well-scoped fixes (exactly as CodeRabbit itself labeled them), so I
+  fixed both rather than merging known bugs. Detail in STATE.md.
+
+## Known gaps / risks
+
+- None of these five PRs' own explicitly-deferred items (device/E2E
+  verification, universal-link share attachment, Native Share Sheet,
+  etc.) were revisited -- those stand as each PR originally left them.
+- Your Craves lane (per a live session transcript the user relayed
+  mid-pass) was left untouched throughout -- I did not start a
+  competing branch, and deliberately did not audit or touch Craves at
+  all this pass despite it being next in the locked execution order.
+
+## Next action
+
+None from me. When you're back: Craves is next in
+`CRAVE_FRONTEND_EXECUTION_ORDER.md`'s locked order and has no
+propagation-only pass started yet (verify against whatever your other
+session left, if anything, before assuming a from-scratch start).
+
+---
+
 # H-20260913-finish-stranded-search-map-and-feed-branches
 
 Status: resolved -- both merged
