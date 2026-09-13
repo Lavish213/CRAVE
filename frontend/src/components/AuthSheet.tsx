@@ -337,7 +337,7 @@ export function AuthSheet({ visible, onClose, reason = 'default' }: Props) {
                 </TouchableOpacity>
               </View>
 
-              <View style={styles.legalRow} accessibilityRole="text">
+              <View style={styles.legalRow}>
                 <Text style={styles.legal}>By continuing you agree to our</Text>
                 <TouchableOpacity
                   onPress={() => openLegalRoute('/legal/terms')}

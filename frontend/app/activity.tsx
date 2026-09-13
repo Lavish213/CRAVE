@@ -30,7 +30,7 @@ export default function ActivityScreen() {
     queryKey: user
       ? foundationQueryKey({ scope: 'user', entity: 'activity', userId: user.id })
       : ['crave', 'user', 'activity', null, null],
-    queryFn: () => fetchMyActivity(),
+    queryFn: ({ signal }) => fetchMyActivity(30, 0, signal),
     enabled: Boolean(user),
     staleTime: STALE_TIME.short,
   });

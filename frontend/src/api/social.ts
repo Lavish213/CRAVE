@@ -289,11 +289,19 @@ export async function fetchFriendsFeed(limit = 30, offset = 0): Promise<Activity
   return data.events ?? [];
 }
 
-export async function fetchMyActivity(limit = 30, offset = 0): Promise<ActivityEvent[]> {
+export async function fetchMyActivity(
+  limit = 30,
+  offset = 0,
+  signal?: AbortSignal,
+): Promise<ActivityEvent[]> {
   const { data } = await client.get<{ events: ActivityEvent[] }>('/api/v1/feed/activity', {
     params: { limit, offset },
+    signal,
   });
-  return data.events ?? [];
+  if (!data || !Array.isArray(data.events)) {
+    throw new Error('Invalid activity response: events must be an array.');
+  }
+  return data.events;
 }
 
 // ---------------------------------------------------------------------------

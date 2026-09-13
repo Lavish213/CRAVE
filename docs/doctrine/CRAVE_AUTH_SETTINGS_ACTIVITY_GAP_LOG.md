@@ -1,7 +1,7 @@
 # Auth / Settings / Activity completion gap log
 
-Date: 2026-09-12  
-Base: `755f02bb13315c7149a3e110eb05022f3e1b3513` (`origin/main`)  
+Date: 2026-09-12
+Base: `755f02bb13315c7149a3e110eb05022f3e1b3513` (`origin/main`)
 Scope: completion/hardening only; Rank, Food Evidence/Add Spot,
 Profile/Taste/social cleanup, Craves, Feed, Search/Map, Place Detail, and
 Posting V2 were not reopened.

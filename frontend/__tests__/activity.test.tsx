@@ -62,6 +62,7 @@ it('renders only factual backend events and opens ranked places', async () => {
   }]);
   const { findByLabelText } = renderScreen();
   fireEvent.press(await findByLabelText('You ranked Saffron'));
+  expect(mockedFetch).toHaveBeenCalledWith(30, 0, expect.any(AbortSignal));
   expect(mockPush).toHaveBeenCalledWith('/place/place-1');
 });
 
