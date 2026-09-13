@@ -27,25 +27,7 @@ import { useRecentSearchesStore } from '../stores/recentSearchesStore';
 import { fetchMyRankings } from '../api/social';
 import { SearchScope, useDiscoveryContextStore } from '../stores/discoveryContextStore';
 import { foundationQueryKey, STALE_TIME } from '../contracts/foundationGate';
-
-// Foundation Gate's error-taxonomy propagation into Search (see
-// docs/doctrine/CRAVE_FOUNDATION_GATE_CONTRACTS.md's §1 -- "ownership" of
-// error copy is explicitly in the Search/Map propagation scope boundary,
-// not a redesign of it). Matches the same offline/rate-limited
-// distinction cravesStore's own `_classifyError` already established --
-// this screen just didn't have it: a 429 from search previously rendered
-// the same generic "Couldn't search right now" as a genuine offline
-// failure, even though client.ts's response interceptor already rewrites
-// `error.message` for a 429 -- ErrorState's `message` prop here was a
-// hardcoded string, so that rewritten message was silently discarded.
-function errorMessageFor(err: unknown, fallback: string): string {
-  const status = (err as { response?: { status?: number } } | null | undefined)?.response?.status;
-  if (status === 429) return "You're doing that too fast — wait a moment and try again.";
-  if (!(err as { response?: unknown } | null | undefined)?.response) {
-    return "Can't reach CRAVE — check your connection.";
-  }
-  return fallback;
-}
+import { errorMessageFor } from '../utils/errorMessage';
 
 function makeSearchSessionId(): string {
   return randomUUID();
