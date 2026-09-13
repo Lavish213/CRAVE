@@ -194,3 +194,40 @@ Review and merge `bc92ea70a7d11ef4e0776987ac8c77b6cbdd20cf`, then rerun the
 OSM backfill for real from merged `main`. For the menu canary, produce/review a
 10-place ID file first, preview it, then run with
 `--place-ids-file <reviewed-file> --run --confirm-count 10`.
+# H-20260912-food-evidence-add-spot-hardening
+
+Status: ready-for-review
+Owner: Codex
+Branch: codex/food-evidence-add-spot-hardening
+Base SHA: 7bf81bda3dab274f00ec5db35c68c8235f7a3c2f
+Commit SHA: bf63470 (plus final handoff commit)
+Allowed next files: none until independent review
+
+## Outcome
+
+Hardened Food Evidence / Add Spot without redesign: account-scoped durable
+draft ownership, awaited attachment before Place Detail navigation, visible
+retry for failed attachment, synchronous duplicate-capture protection, and
+visible picker/camera failures. Full defect/defer rationale is in
+`docs/audits/FOOD_EVIDENCE_ADD_SPOT_GAP_LOG_2026-09-12.md`.
+
+## Verification
+
+- `npx tsc --noEmit --pretty false` → passed.
+- `npm test -- --runInBand __tests__/food-evidence.test.tsx __tests__/add-spot.test.tsx src/stores/postingDraftStore.test.ts --silent --forceExit` → 3 suites passed, 38 tests passed.
+- `npm test -- --runInBand --silent --forceExit` → 51 suites passed, 540 tests passed.
+
+## Known gaps / risks
+
+- Physical-device camera/location/accessibility certification was not
+  available locally.
+- Location-free manual search, anonymous draft migration, full Posting V2
+  publish/visit semantics, and Dish Intelligence remain deliberately deferred
+  pending approved contracts/dependencies.
+
+## Next action
+
+Review the dedicated PR and its CI/CodeRabbit status; do not merge from this
+handoff.
+
+---

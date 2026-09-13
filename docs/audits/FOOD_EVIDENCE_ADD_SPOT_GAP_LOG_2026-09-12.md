@@ -1,19 +1,22 @@
 # Food Evidence / Add Spot gap log — 2026-09-12
 
-Authority: `docs/doctrine/CRAVE_FRONTEND_EXECUTION_ORDER.md`. Base `7bf81bd`.
-This lane hardened existing integration boundaries; it did not redesign them.
+Authority: `docs/doctrine/CRAVE_FRONTEND_EXECUTION_ORDER.md`. Base:
+`7bf81bda3dab274f00ec5db35c68c8235f7a3c2f` (`origin/main`). This was a
+hardening/integration audit, not a redesign.
 
-| Severity | Root cause and location | Status |
-| --- | --- | --- |
-| P1 | A routed draft ID was selected without verifying its owner; store mutations also trusted the caller. `frontend/app/add-spot.tsx`, `frontend/src/stores/postingDraftStore.ts` | Fixed with account-scoped selection and owner checks; regression coverage added. |
-| P1 | Navigation could leave Add Spot before media attachment finished, hiding failed writes and their retry path. Same files. | Fixed: attachment is awaited, successful attachment gates Place Detail navigation, and failed drafts remain visibly retryable. |
-| P2 | React state alone did not synchronously prevent rapid duplicate capture completion; camera/library promise failures could be hidden. `frontend/app/food-evidence.tsx` | Fixed with an in-flight guard and user-visible failure handling. |
-| P2 | Candidate and media retry idempotency required verification. Posting draft store and backend discovery promotion services. | Verified: draft outcome transitions prevent concurrent attachment; candidate corroboration and canonical-place promotion dedupe writes. Backend unchanged. |
-| P2 | Location denial has no approved location-free/manual Add Spot contract. | Deferred: adding Search/Map or unfinished Posting V2 behavior would cross the locked lane boundary. Existing retry and OS Settings paths remain intact. |
-| P2 | Anonymous drafting conflicts with the current merged owner-at-capture boundary. | Deferred pending an approved ownership/migration contract. |
-| P2 | Current main has no trustworthy full composer/private-log visit emission. | Capability-gated: no fabricated visit, Dish entity, taste signal, Rank eligibility, or analytics event was added. |
-| P3 | Nearby search is workflow state rather than TanStack Query state. | No change: coordinates/permission are ephemeral and existing run/account generation guards prevent stale or cross-account UI writes. |
+| Severity | Finding / root cause | Path | Status |
+| --- | --- | --- | --- |
+| P1 | A route `draftId` selected a persisted draft without checking its `ownerId`; after account switch, another account could display and attempt to attach that local media. Store mutations also trusted callers to enforce ownership. | `frontend/app/add-spot.tsx`, `frontend/src/stores/postingDraftStore.ts` | Fixed: selector and both place/candidate mutations require the active owner; regression tests added. |
+| P1 | Existing-place navigation happened before attachment completed. A failed write left a durable failed draft, but the journey had already left the only attachment surface and exposed no retry. | `frontend/app/add-spot.tsx`, `frontend/src/stores/postingDraftStore.ts` | Fixed: attachment is awaited, navigation occurs only after success, failed place attachments are explicitly retryable, and saved-media recovery copy remains visible. |
+| P2 | Rapid capture completions could create more than one durable draft because React's `saving` state does not synchronously guard event handlers. Picker/camera promise rejections were also unhandled outside draft persistence. | `frontend/app/food-evidence.tsx` | Fixed: synchronous in-flight guard plus visible camera/library errors. |
+| P2 | Candidate and media retries needed idempotency verification. | `frontend/src/stores/postingDraftStore.ts`, `backend/app/services/discovery/candidate_store_v2.py`, `backend/app/services/discovery/promote_service_v2.py` | Verified: draft outcome transition prevents concurrent attachments; candidate corroboration keys dedupe the same user; promotion resolves against canonical places. Backend unchanged. |
+| P2 | Location denial has no location-free/manual restaurant search path. Current approved Add Spot is explicitly a tight-radius GPS flow; the newer posting contract is still draft/YELLOW and importing Search/Map would cross the locked lane boundary. | `frontend/app/add-spot.tsx`, `docs/doctrine/CRAVE_SCREEN_CONTRACT_NATIVE_POSTING.md` | Deferred: requires an approved contract and a dedicated compatibility slice, not an unreviewed redesign here. Existing request-again and OS Settings flows are verified. |
+| P2 | Food Evidence requires sign-in before capture, while the draft native-posting contract proposes anonymous drafting and auth-at-publish. The current merged Posting V2-A boundary deliberately requires an owner at capture time. | `frontend/app/food-evidence.tsx`, `docs/doctrine/CRAVE_SCREEN_CONTRACT_NATIVE_POSTING.md` | Deferred: preserve current production boundary until anonymous draft ownership/migration is approved and implemented end to end. |
+| P2 | Full composer/private-log publish semantics and visit-evidence emission are not present on current `main`; therefore this lane cannot truthfully claim a persisted visit or unlock Rank eligibility. | `frontend/app/food-evidence.tsx`, `frontend/app/add-spot.tsx` | Correctly capability-gated/deferred. This flow captures media and identifies a restaurant only; no fabricated visit, Dish entity, taste signal, or analytics event was added. |
+| P3 | Add Spot remote search remains a short-lived workflow request rather than TanStack Query state. | `frontend/app/add-spot.tsx` | No change: location permission and coordinates are ephemeral workflow state; run-id cancellation and account-generation guards already prevent stale overwrites/cross-account UI writes. |
 
-Backend review found authenticated, API-keyed, rate-limited nearby endpoints with
-bounded coordinate/name validation and minimal candidate-status disclosure. No
-backend contract defect requiring a change was found.
+Backend review confirmed `/nearby/search`, `/nearby/confirm`, and candidate
+status require API key, authenticated user, and rate limiting; validation
+bounds coordinates and names. Candidate status exposes only an unguessable ID,
+resolution flags, and canonical place ID. No backend contract defect requiring
+a change was found.

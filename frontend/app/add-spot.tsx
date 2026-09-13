@@ -279,12 +279,9 @@ export default function AddSpotScreen() {
                 <TouchableOpacity
                   style={styles.actionBtn}
                   onPress={() => {
-                    // Fire-and-forget: attaching shouldn't block getting to
-                    // the place, and toast() renders from a root-mounted
-                    // container so its outcome still surfaces after
-                    // navigating away. attachDraftToPlace itself guards
-                    // against a double-claim (see its own comment) -- no
-                    // component-level ref needed here anymore.
+                    // Keep the user in this recovery surface until the
+                    // durable attachment handoff succeeds. Failed media
+                    // remains owned by the draft and can be retried here.
                     if (draft && candidate.place_id) {
                       if (openingPlaceId) return;
                       setOpeningPlaceId(candidate.place_id);
