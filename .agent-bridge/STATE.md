@@ -1,10 +1,10 @@
 # Active agent state
 
-Status: ready-for-review
+Status: merged
 Owner: Claude
-Branch: claude/video-report-and-record-gate
+Branch: claude/video-report-and-record-gate (merged, PR #269)
 Base SHA: 755f02b (origin/main tip after PR #260/#261/#265)
-Commit SHA: 9f3bebe
+Commit SHA: 6bf511e (merge commit on origin/main)
 Scope: End-to-end wiring audit (explicit user ask: "audit project end to
 end make sue no gaps and everything is wired up connected working stress
 test nuke it log all") -- introspected FastAPI's actual route table
@@ -21,8 +21,11 @@ Locked files: frontend/src/api/social.ts,
 frontend/src/components/PlaceVideoGallery.tsx,
 frontend/src/components/ReportVideoSheet.tsx (new),
 frontend/__tests__/place-video-gallery.test.tsx (new).
-Verification: PR #269 opened. `npx tsc --noEmit` clean. `npx jest --ci` ->
-52/52 suites, 546/546 tests (post #260/#261/#265 baseline). Backend
+Verification: PR #269 merged (`6bf511e`) -- CI green on the final head
+(Guard, Frontend, Backend x2, Analyze x2, CodeQL all success; Supabase
+Preview skipped as always), CodeRabbit skipped per repo policy (<10
+stars), no open review threads. `npx tsc --noEmit` clean. `npx jest --ci`
+-> 52/52 suites, 546/546 tests (post #260/#261/#265 baseline). Backend
 `python -m pytest -q` -> 1115 passed, 2 skipped (unrelated baseline check,
 confirms no backend regressions from any concurrent work).
 Explicit exclusions: no Search/Map redesign; no revival of PR #254; no
