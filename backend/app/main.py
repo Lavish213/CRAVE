@@ -11,6 +11,7 @@ from fastapi.responses import JSONResponse
 from app.config.settings import settings
 from app.api import router as api_router
 from app.api.v1.routes.health import router as health_router
+from app.api.v1.routes.universal_links import router as universal_links_router
 from app.middleware.request_id import RequestIDMiddleware
 from app.core.logging_config import RequestIDFilter
 from app.scheduler import create_scheduler
@@ -190,6 +191,7 @@ app = FastAPI(
 
 app.include_router(api_router, prefix="/api")
 app.include_router(health_router)
+app.include_router(universal_links_router)
 
 
 # ============================================================
