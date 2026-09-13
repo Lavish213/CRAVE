@@ -1,9 +1,10 @@
 # Active agent state
 
-Status: PR #289 open, CI/CodeRabbit pending
+Status: merged
 Owner: Claude
-Branch: claude/craves-propagation-289
+Branch: claude/craves-propagation-289 (merged, can be deleted)
 Base SHA: 4525a81 (origin/main tip after PR #288)
+Commit SHA: a8f463f (PR #289, squash-merged)
 Scope: Craves is next in `CRAVE_FRONTEND_EXECUTION_ORDER.md`'s locked
 order. User said "finish craves" directly. Confirmed via fresh
 `git fetch`/`git branch -a`/PR listing/`git log --all -- frontend/app/
@@ -32,14 +33,20 @@ pass (no redesign) against Codex's own relayed audit checklist.
   account-scoped flush on retry, no swallowed failures -- already meets
   the doctrine bar. No changes made; would have been unscoped rewrite
   risk with no confirmed gap.
-Locked files: none yet -- narrow scope, closing once CI/CodeRabbit clear.
+Locked files: none -- closed.
 Verification: `npx tsc --noEmit` clean. `npx jest --ci` -> 57/57 suites,
 552/552 tests (2 pre-existing `craves.test.tsx` assertions updated to
 match the now-correct classified copy against a mocked plain
 `Error('network')`; 1 new test for the degraded-subheading behavior).
 Backend untouched.
-Next action: merge PR #289 once CI is green and CodeRabbit
-review/threads are clear, then update this entry's Status/Commit SHA.
+Next action: none from me. Next in the locked order after Craves is
+Rank/Food Evidence/Profile-Taste/Auth-Settings-Activity propagation --
+already done this session (PRs #262/#263/#264/#266/#267, see the
+matching top entry below). With Craves also closed, every named slice
+through "Auth/Settings/Activity completion" in
+`CRAVE_FRONTEND_EXECUTION_ORDER.md`'s locked order is now merged; the
+next stage is cross-app accessibility/E2E/release certification --
+not started, needs explicit user direction before claiming.
 
 ---
 
