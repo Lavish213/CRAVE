@@ -716,6 +716,7 @@ export default function MapScreen() {
 
           const f = c.feature!;
           const color = TIER_COLORS[f.tier] ?? TIER_COLORS.default;
+          const selected = selectedFeature?.id === f.id;
           return (
             <Marker
               key={c.key}
@@ -732,12 +733,12 @@ export default function MapScreen() {
                   category: f.category ?? undefined,
                 });
               }}
-              tracksViewChanges={false}
-              accessibilityLabel={`${f.name}${f.category ? `, ${f.category}` : ''}`}
+              tracksViewChanges={selected}
+              accessibilityLabel={`${selected ? 'Selected place, ' : ''}${f.name}${f.category ? `, ${f.category}` : ''}`}
               accessibilityHint="Opens a place preview"
               accessibilityRole="button"
             >
-              <MapMarkerDot color={color} />
+              <MapMarkerDot color={color} selected={selected} />
             </Marker>
           );
         })}
@@ -973,8 +974,8 @@ const styles = StyleSheet.create({
     ...Shadows.control,
   },
   savedToggleButtonActive: {
-    backgroundColor: Colors.primary,
-    borderColor: Colors.primary,
+    backgroundColor: Colors.selectedBg,
+    borderColor: Colors.selectedBorder,
   },
   mapBannerText: {
     color: Colors.textSecondary,
@@ -983,6 +984,6 @@ const styles = StyleSheet.create({
   },
   searchContextBanner: { top: 60, maxWidth: '88%' },
   searchContextText: { color: Colors.text, fontSize: 13, fontWeight: '700' },
-  searchAreaButton: { top: 60, borderColor: Colors.primary },
-  searchAreaText: { color: Colors.primary, fontSize: 14, fontWeight: '800' },
+  searchAreaButton: { top: 60, borderColor: Colors.brand },
+  searchAreaText: { color: Colors.brand, fontSize: 14, fontWeight: '800' },
 });

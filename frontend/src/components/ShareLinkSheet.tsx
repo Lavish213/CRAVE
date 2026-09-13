@@ -333,7 +333,7 @@ export function ShareLinkSheet({ visible, onClose, onSubmitted }: Props) {
 }
 
 const styles = StyleSheet.create({
-  backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.65)' },
+  backdrop: { flex: 1, backgroundColor: Colors.sheetScrim },
   sheet: {
     backgroundColor: Colors.surface,
     borderTopLeftRadius: Radius.card,
@@ -383,9 +383,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderRadius: Radius.pill,
   },
-  modeBtnActive: { backgroundColor: Colors.primary },
+  modeBtnActive: { backgroundColor: Colors.selectedBg },
   modeBtnText: { fontSize: 13, fontWeight: '700', color: Colors.textSecondary },
-  modeBtnTextActive: { color: Colors.background },
+  modeBtnTextActive: { color: Colors.selectedText },
   inputWrap: { paddingHorizontal: Spacing.xl, gap: Spacing.sm },
   input: {
     height: 52,
@@ -402,9 +402,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: Radius.pill,
-    backgroundColor: Colors.primary + '22',
+    backgroundColor: Colors.chipActiveBg,
   },
-  platformChipText: { fontSize: 12, fontWeight: '700', color: Colors.primary },
+  platformChipText: { fontSize: 12, fontWeight: '700', color: Colors.chipActiveText },
   error: {
     color: Colors.error,
     fontSize: 13,
@@ -416,10 +416,10 @@ const styles = StyleSheet.create({
     marginHorizontal: Spacing.xl,
     height: 52,
     borderRadius: Radius.md,
-    backgroundColor: Colors.primary,
+    backgroundColor: Colors.actionPrimary,
     alignItems: 'center',
     justifyContent: 'center',
   },
   submitBtnDisabled: { opacity: 0.6 },
-  submitBtnText: { fontSize: 16, fontWeight: '700', color: Colors.background },
+  submitBtnText: { fontSize: 16, fontWeight: '700', color: Colors.onActionPrimary },
 });

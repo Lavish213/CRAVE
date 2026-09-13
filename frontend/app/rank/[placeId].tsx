@@ -653,7 +653,7 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.lg,
   },
   primaryBtn: {
-    backgroundColor: Colors.primary,
+    backgroundColor: Colors.actionPrimary,
     paddingHorizontal: Spacing.xl,
     paddingVertical: 14,
     borderRadius: Radius.pill,
@@ -662,7 +662,7 @@ const styles = StyleSheet.create({
     alignSelf: 'stretch',
     alignItems: 'center',
   },
-  primaryBtnText: { color: '#FFFFFF', fontSize: 15, fontWeight: '800' },
+  primaryBtnText: { color: Colors.onActionPrimary, fontSize: 15, fontWeight: '800' },
   shareBtn: {
     flexDirection: 'row',
     alignItems: 'center',

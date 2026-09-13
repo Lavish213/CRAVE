@@ -15,6 +15,7 @@ import { getTierForPlace } from '../utils/scoring';
 import { logRecommendationEvent, logRecommendationEvents } from '../utils/recommendationEventQueue';
 import { Colors, Radius, Spacing } from '../constants/colors';
 import { PlaceCardCompact } from '../components/PlaceCardCompact';
+import { PlaceCard } from '../components/PlaceCard';
 import type { SearchReasonRole } from '../components/DecisionStrip';
 import { CitySelectorStrip } from '../components/CitySelectorStrip';
 import { SkeletonRowList } from '../components/SkeletonCard';
@@ -23,6 +24,7 @@ import { EmptyState } from '../components/EmptyState';
 import { FilterSheet, FilterState, EMPTY_FILTERS, hasActiveFilters } from '../components/FilterSheet';
 import { useAuthStore } from '../stores/authStore';
 import { useCravesStore } from '../stores/cravesStore';
+import { useToast } from '../hooks/useToast';
 import { useRecentSearchesStore } from '../stores/recentSearchesStore';
 import { fetchMyRankings } from '../api/social';
 import { SearchScope, useDiscoveryContextStore } from '../stores/discoveryContextStore';
@@ -176,7 +178,8 @@ export default function SearchScreen() {
   const router = useRouter();
   const prefetchPlace = usePrefetchPlace();
   const user = useAuthStore((state) => state.user);
-  const saves = useCravesStore((state) => state.saves);
+  const { saves, addSave, removeSave, isSaved } = useCravesStore();
+  const toast = useToast((state) => state.show);
   const selectedCity = useCityStore((state) => state.selectedCity);
   const setSearchMapHandoff = useDiscoveryContextStore((state) => state.setSearchMapHandoff);
   const locationState = useLocationStatus();
@@ -336,6 +339,29 @@ export default function SearchScreen() {
     const pattern = CONSTRAINT_PATTERNS[key];
     if (!pattern) return;
     handleChange(query.replace(pattern, ' ').replace(/\s+/g, ' ').trim());
+  };
+
+  const handleSave = async (place: PlaceOut, position: number) => {
+    if (!user) {
+      toast('Sign in to save places');
+      return;
+    }
+
+    const meta = {
+      surface: 'search' as const,
+      position,
+      rank_percentile: place.rank_percentile,
+      city_id: selectedCity?.id ?? null,
+    };
+
+    if (isSaved(place.id)) {
+      const err = await removeSave(place.id, user.id, meta);
+      toast(err ?? 'Removed from Saves');
+      return;
+    }
+
+    const err = await addSave(place, user.id, meta);
+    toast(err ?? 'Saved');
   };
 
   /** Zero-state shortcut tap (recent search or the time-relevant intent
@@ -561,28 +587,49 @@ export default function SearchScreen() {
           renderItem={({ item }) => {
             const position = results.findIndex((place) => place.id === item.id);
             const reason = searchReasonForResult(item, position, priceWasRelaxed);
+            const openPlace = () => {
+              logRecommendationEvent({
+                surface: 'search',
+                event_type: 'click',
+                place_id: item.id,
+                position,
+                rank_percentile: item.rank_percentile,
+                query: debouncedQuery,
+                city_id: selectedCity?.id ?? null,
+                search_session_id: searchSessionIdRef.current,
+              });
+              router.push(
+                reason
+                  ? `/place/${item.id}?reason_role=${reason}&reason_source=search`
+                  : `/place/${item.id}`,
+              );
+            };
+            if (position === 0) {
+              return (
+                <View style={styles.heroResult}>
+                  <PlaceCard
+                    place={item}
+                    fitLabel={reason === 'best_match' ? 'Best match for you' : reason === 'safer_pick' ? 'Safer pick' : 'Worth exploring'}
+                    reasonCaption={reason === 'best_match'
+                      ? 'Fits this search best without relaxing what you asked for.'
+                      : reason === 'safer_pick'
+                        ? 'Strong match with reliable place signals.'
+                        : 'A useful alternative if you want another direction.'}
+                    reasonSource="search"
+                    saved={isSaved(item.id)}
+                    onSave={() => void handleSave(item, position)}
+                    onPress={openPlace}
+                    onPressIn={() => prefetchPlace(item.id)}
+                  />
+                </View>
+              );
+            }
             return (
               <View style={styles.rowSpacer}>
                 <PlaceCardCompact
                   place={item}
                   searchReason={reason}
-                  onPress={() => {
-                    logRecommendationEvent({
-                      surface: 'search',
-                      event_type: 'click',
-                      place_id: item.id,
-                      position,
-                      rank_percentile: item.rank_percentile,
-                      query: debouncedQuery,
-                      city_id: selectedCity?.id ?? null,
-                      search_session_id: searchSessionIdRef.current,
-                    });
-                    router.push(
-                      reason
-                        ? `/place/${item.id}?reason_role=${reason}&reason_source=search`
-                        : `/place/${item.id}`,
-                    );
-                  }}
+                  onPress={openPlace}
                   onPressIn={() => prefetchPlace(item.id)}
                 />
               </View>
@@ -636,6 +683,7 @@ const styles = StyleSheet.create({
   cityContext: { color: Colors.textSecondary, fontSize: 12, fontWeight: '500', paddingLeft: Spacing.xs },
   list: { padding: Spacing.md, paddingBottom: Spacing.xxl },
   rowSpacer: { marginBottom: Spacing.sm },
+  heroResult: { marginBottom: Spacing.lg },
   loadingRow: { paddingVertical: 20, alignItems: 'center', gap: Spacing.sm },
   hintText: { color: Colors.textSecondary, fontSize: 13 },
   zeroState: { paddingHorizontal: Spacing.md, paddingTop: Spacing.sm, gap: Spacing.xs },
@@ -645,7 +693,7 @@ const styles = StyleSheet.create({
   shortcutChip: { flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 44, paddingHorizontal: Spacing.md, borderRadius: Radius.full, borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.surface, alignSelf: 'flex-start' },
   shortcutText: { color: Colors.text, fontSize: 13, fontWeight: '600' },
   interpretationPanel: { marginHorizontal: Spacing.md, marginBottom: Spacing.xs, padding: Spacing.sm, backgroundColor: Colors.surface, borderRadius: Radius.md, borderWidth: 1, borderColor: Colors.border },
-  interpretationTitle: { color: Colors.primary, fontSize: 10, fontWeight: '800', letterSpacing: 1.2 },
+  interpretationTitle: { color: Colors.brand, fontSize: 10, fontWeight: '800', letterSpacing: 1.2 },
   interpretationQuery: { color: Colors.text, fontSize: 13, fontWeight: '700', marginTop: 4 },
   constraintRow: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.xs, marginTop: Spacing.xs },
   constraintChip: { minHeight: 36, justifyContent: 'center', paddingHorizontal: Spacing.sm, borderRadius: Radius.full, backgroundColor: Colors.surfaceElevated },
@@ -654,12 +702,12 @@ const styles = StyleSheet.create({
   relaxationText: { color: Colors.textSecondary, fontSize: 12, lineHeight: 17, marginTop: Spacing.xs },
   scopeRow: { flexDirection: 'row', gap: Spacing.xs, paddingHorizontal: Spacing.md, paddingVertical: Spacing.xs },
   scopeChip: { minHeight: 44, justifyContent: 'center', paddingHorizontal: Spacing.md, borderRadius: Radius.full, borderWidth: 1, borderColor: Colors.border },
-  scopeChipActive: { backgroundColor: Colors.primary, borderColor: Colors.primary },
+  scopeChipActive: { backgroundColor: Colors.selectedBg, borderColor: Colors.selectedBorder },
   scopeText: { color: Colors.textSecondary, fontSize: 13, fontWeight: '700' },
-  scopeTextActive: { color: Colors.background },
+  scopeTextActive: { color: Colors.selectedText },
   resultsHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingBottom: Spacing.sm },
   resultCount: { color: Colors.textSecondary, fontSize: 11, fontWeight: '700', textTransform: 'uppercase' },
-  mapLink: { color: Colors.primary, fontSize: 13, fontWeight: '800' },
-  showMoreButton: { minHeight: 48, alignItems: 'center', justifyContent: 'center', marginTop: Spacing.sm, borderRadius: Radius.md, borderWidth: 1, borderColor: Colors.primary },
-  showMoreText: { color: Colors.primary, fontSize: 14, fontWeight: '800' },
+  mapLink: { color: Colors.brand, fontSize: 13, fontWeight: '800' },
+  showMoreButton: { minHeight: 48, alignItems: 'center', justifyContent: 'center', marginTop: Spacing.sm, borderRadius: Radius.md, borderWidth: 1, borderColor: Colors.brand },
+  showMoreText: { color: Colors.brand, fontSize: 14, fontWeight: '800' },
 });

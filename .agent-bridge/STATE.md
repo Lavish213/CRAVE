@@ -1,5 +1,54 @@
 # Active agent state
 
+Status: ready-for-review
+Owner: Codex
+Branch: codex/ui-v2-visual-refresh
+Base SHA: be0b0fb1d8fa011612721535e70ef1375b27e394
+Commit SHA: pending commit
+Scope: CRAVE UI V2 visual-system migration. Audit the current frontend visual
+system against the Search/Map/Core mockup direction, define a token/component
+migration plan, then implement the visual refresh through shared tokens and
+components before propagating screen polish. This is a visual-system/style
+migration only: no backend behavior, ranking/search intelligence, navigation
+contract, or data-model redesign unless a verified UI contract gap requires a
+separate follow-up.
+Locked files: docs/design/CRAVE_UI_V2_VISUAL_AUDIT.md,
+docs/design/CRAVE_UI_V2_TOKEN_MAP.md, frontend/src/constants/colors.ts,
+frontend/src/components/PlaceCard.tsx, frontend/src/components/PlaceCardCompact.tsx,
+frontend/src/components/MapMarker.tsx, frontend/src/components/MapBottomSheet.tsx,
+frontend/src/components/FilterSheet.tsx, frontend/src/components/SkeletonCard.tsx,
+frontend/src/components/EmptyState.tsx, frontend/src/components/ErrorState.tsx,
+frontend/src/components/Toast.tsx, frontend/src/components/SectionHeader.tsx,
+frontend/src/components/CitySelectorStrip.tsx, frontend/app/(tabs)/_layout.tsx,
+frontend/app/(tabs)/search.tsx, frontend/app/(tabs)/map.tsx,
+frontend/app/(tabs)/index.tsx, frontend/app/place/[id].tsx,
+frontend/app/(tabs)/craves.tsx, frontend/app/(tabs)/profile.tsx,
+frontend/app/settings.tsx, and focused tests/docs needed to verify the visual
+contract.
+Verification: static visual-token audit performed (`#38BDF8` old cyan now has
+0 frontend occurrences; remaining `Colors.primary` callers recorded as follow-up
+migration leads); `cd frontend && npx tsc --noEmit --pretty false` passed;
+focused Search/Map/Feed/Place Detail suite passed (6 suites, 112 tests); full
+frontend Jest passed (54 suites, 561 tests). Follow-up Search hero propagation:
+`npm test -- --runInBand __tests__/search.test.tsx
+__tests__/search-decision-support.test.tsx --silent --forceExit` passed (2
+suites, 35 tests). Screenshot/device proof not captured in this environment;
+still required before claiming visual final/device-verified.
+Explicit exclusions: production data jobs, backend routes/services, recommender
+model behavior, Search/Map ranking/product-contract changes, paid data sources,
+and deleting stale remote branches.
+
+## Prior completed work (compacted)
+
+Status before this claim: Claude's hitlist audit/misc cleanup merged in PR #276
+(`5e9c555`) and follow-up logging merged through PR #277 (`be0b0fb`). Remaining
+human-only gap from that lane: delete stale branch
+`claude/project-grade-systems-review-4ot7d0` from GitHub UI if desired.
+
+<!-- Previous state history retained below. -->
+
+---
+
 Status: merged
 Owner: Claude
 Branch: claude/hitlist-audit-and-misc-cleanup (merged, can be deleted)
