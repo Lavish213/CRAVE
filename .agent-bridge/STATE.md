@@ -1,10 +1,10 @@
 # Active agent state
 
-Status: ready-for-review
+Status: merged
 Owner: Codex
-Branch: codex/ui-v2-primary-sweep
+Branch: codex/ui-v2-primary-sweep (merged)
 Base SHA: 70f55469a270a5daf455a96225cb0fd2658b7cd3
-Commit SHA: PR head / merge record (self-referential branch commit SHA omitted)
+Commit SHA: ef917895409af61a731ced8822bb69d691bc7640
 Scope: UI V2 primary-screen semantic cleanup after PR #278. Reduce remaining
 `Colors.primary` overload, migrate obvious links/active states/CTAs to semantic
 tokens, and polish primary app screens without changing backend behavior,
