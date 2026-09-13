@@ -151,9 +151,11 @@ export async function deletePlaceSave(placeName: string): Promise<void> {
 export async function fetchCravesReasoned(opts?: {
   lat?: number;
   lng?: number;
+  signal?: AbortSignal;
 }): Promise<DecisionSessionResponse> {
   const { data } = await client.get<DecisionSessionResponse>('/api/v1/craves/reasoned', {
     params: { lat: opts?.lat, lng: opts?.lng },
+    signal: opts?.signal,
   });
   if (!Array.isArray(data?.cards)) {
     return { cards: [], degraded: true };

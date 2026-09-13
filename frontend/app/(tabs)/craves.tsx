@@ -34,11 +34,12 @@ import { useAuthStore } from '../../src/stores/authStore';
 import { AuthSheet } from '../../src/components/AuthSheet';
 import { ShareLinkSheet } from '../../src/components/ShareLinkSheet';
 import { logRecommendationEvent, logRecommendationEvents } from '../../src/utils/recommendationEventQueue';
+import { errorMessageFor } from '../../src/utils/errorMessage';
 
 const VIEWABILITY_CONFIG = { itemVisiblePercentThreshold: 50, minimumViewTime: 250 };
 
 type CravesRow =
-  | { kind: 'reasoned-header' }
+  | { kind: 'reasoned-header'; degraded: boolean }
   | { kind: 'reasoned-loading' }
   | { kind: 'reasoned-empty' }
   | { kind: 'reasoned-card'; card: DecisionSessionCard; position: number }
@@ -65,11 +66,11 @@ export default function CravesScreen() {
 
   const [craves, setCraves] = useState<CraveItem[]>([]);
   const [cravesLoading, setCravesLoading] = useState(false);
-  const [cravesError, setCravesError] = useState(false);
+  const [cravesError, setCravesError] = useState<string | null>(null);
   const [cravesLoadedForUserId, setCravesLoadedForUserId] = useState<string | null>(null);
   const [placeSaves, setPlaceSaves] = useState<PlaceSaveItem[]>([]);
   const [placeSavesLoading, setPlaceSavesLoading] = useState(false);
-  const [placeSavesError, setPlaceSavesError] = useState(false);
+  const [placeSavesError, setPlaceSavesError] = useState<string | null>(null);
   const [placeSavesLoadedForUserId, setPlaceSavesLoadedForUserId] = useState<string | null>(null);
   const [deletingPlaceSaveId, setDeletingPlaceSaveId] = useState<string | null>(null);
   const [authVisible, setAuthVisible] = useState(false);
@@ -83,10 +84,10 @@ export default function CravesScreen() {
     accountGenerationRef.current += 1;
     exposedRowsRef.current = new Set();
     setCraves([]);
-    setCravesError(false);
+    setCravesError(null);
     setCravesLoadedForUserId(null);
     setPlaceSaves([]);
-    setPlaceSavesError(false);
+    setPlaceSavesError(null);
     setPlaceSavesLoadedForUserId(null);
   }, [user?.id]);
 
@@ -94,7 +95,7 @@ export default function CravesScreen() {
     const myGeneration = accountGenerationRef.current;
     const targetUserId = user?.id ?? null;
     setCravesLoading(true);
-    setCravesError(false);
+    setCravesError(null);
     return getCraveItems()
       .then((items) => {
         if (myGeneration !== accountGenerationRef.current) return;
@@ -109,7 +110,7 @@ export default function CravesScreen() {
             : undefined;
           console.log('[CRAVES] CRAVES_ERROR', status, err instanceof Error ? err.message : String(err));
         }
-        setCravesError(true);
+        setCravesError(errorMessageFor(err, "Couldn't load Craves right now."));
       })
       .finally(() => {
         if (myGeneration !== accountGenerationRef.current) return;
@@ -122,7 +123,7 @@ export default function CravesScreen() {
     const myGeneration = accountGenerationRef.current;
     const targetUserId = user?.id ?? null;
     setPlaceSavesLoading(true);
-    setPlaceSavesError(false);
+    setPlaceSavesError(null);
     return getMyPlaceSaves()
       .then((items) => {
         if (myGeneration !== accountGenerationRef.current) return;
@@ -133,7 +134,7 @@ export default function CravesScreen() {
         if (__DEV__) console.log('[CRAVES] PLACE_SAVES_ERROR', err instanceof Error ? err.message : String(err));
         // Preserve last successful data. A failed request is not a
         // successful empty response.
-        setPlaceSavesError(true);
+        setPlaceSavesError(errorMessageFor(err, "Couldn't load added places right now."));
       })
       .finally(() => {
         if (myGeneration !== accountGenerationRef.current) return;
@@ -201,17 +202,18 @@ export default function CravesScreen() {
     // viewport, not the full saved list -- this is "resolve saved intent",
     // not a bookmark browser.
     const hasAnySaved = saves.length > 0 || craves.length > 0 || placeSaves.length > 0;
+    const reasonedDegraded = Boolean(reasonedQuery.data?.degraded);
     if (reasonedQuery.isLoading && hasAnySaved) {
-      next.push({ kind: 'reasoned-header' }, { kind: 'reasoned-loading' });
+      next.push({ kind: 'reasoned-header', degraded: false }, { kind: 'reasoned-loading' });
     } else if (reasonedQuery.data && reasonedQuery.data.cards.length > 0) {
-      next.push({ kind: 'reasoned-header' });
+      next.push({ kind: 'reasoned-header', degraded: reasonedDegraded });
       reasonedQuery.data.cards.forEach((card, position) => {
         next.push({ kind: 'reasoned-card', card, position });
       });
     } else if (reasonedQuery.isSuccess && hasAnySaved) {
       // Contract §12: honest "nothing fits right now," distinct from the
       // true empty-saved-list state below -- never just blank.
-      next.push({ kind: 'reasoned-header' }, { kind: 'reasoned-empty' });
+      next.push({ kind: 'reasoned-header', degraded: reasonedDegraded }, { kind: 'reasoned-empty' });
     }
 
     for (const cluster of clusters) {
@@ -508,7 +510,11 @@ export default function CravesScreen() {
             return (
               <View style={styles.cravesHeader}>
                 <Text style={styles.cravesTitle}>Try one of these</Text>
-                <Text style={styles.cravesSub}>From your saved places, right now</Text>
+                <Text style={styles.cravesSub}>
+                  {row.degraded
+                    ? 'Confidence is lower right now, so these are the best answers CRAVE can support.'
+                    : 'From your saved places, right now'}
+                </Text>
               </View>
             );
           }
@@ -681,9 +687,7 @@ export default function CravesScreen() {
                 accessibilityLabel={isCravesError ? 'Retry loading Craves' : 'Retry loading added places'}
               >
                 <Text style={styles.cravesSub}>
-                  {isCravesError
-                    ? "Couldn't load Craves right now — tap to retry."
-                    : "Couldn't load added places right now — tap to retry."}
+                  {`${(isCravesError ? cravesError : placeSavesError) ?? (isCravesError ? "Couldn't load Craves right now." : "Couldn't load added places right now.")} Tap to retry.`}
                 </Text>
               </TouchableOpacity>
             );
