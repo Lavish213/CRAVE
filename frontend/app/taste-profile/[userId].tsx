@@ -32,6 +32,7 @@ import {
 } from '../../src/api/social';
 import { useAuthStore } from '../../src/stores/authStore';
 import { TIER_LABELS, tierColor } from '../../src/utils/rankScore';
+import { errorMessageFor } from '../../src/utils/errorMessage';
 
 export default function TasteProfileScreen() {
   const { userId } = useLocalSearchParams<{ userId: string }>();
@@ -43,17 +44,19 @@ export default function TasteProfileScreen() {
   const [blocked, setBlocked] = useState(false);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
-  const [accessError, setAccessError] = useState(false);
-  // Distinct from notFound -- a network failure/timeout/5xx on the
-  // profile fetch previously collapsed into the same "Profile not found"
-  // EmptyState as a genuine 404, with no retry affordance. Same fix as
-  // user/[id].tsx's identical profileError.
-  const [profileError, setProfileError] = useState(false);
+  // Holds the classified message directly (not just a boolean) -- see
+  // errorMessageFor in src/utils/errorMessage.ts. Distinct from notFound
+  // -- a network failure/timeout/5xx on the profile fetch previously
+  // collapsed into the same "Profile not found" EmptyState as a genuine
+  // 404, with no retry affordance. Same fix as user/[id].tsx's identical
+  // profileError.
+  const [accessError, setAccessError] = useState<string | null>(null);
+  const [profileError, setProfileError] = useState<string | null>(null);
   // Distinct from "no taste profile yet" -- a failed fetchTasteProfile
   // call (network error, 5xx) previously left `taste` at null with
   // nothing to tell it apart from a real empty profile, so it rendered
   // the same "hasn't ranked anything yet" copy with no way to retry.
-  const [tasteError, setTasteError] = useState(false);
+  const [tasteError, setTasteError] = useState<string | null>(null);
 
   // expo-router can reuse this screen instance across a param change (e.g.
   // tapping from one person's taste profile into another's) -- without a
@@ -104,9 +107,9 @@ export default function TasteProfileScreen() {
     // CodeRabbit; the identity-gated `!profile` catch-all doesn't save
     // this, since profile/taste's own reset is correctly identity-gated).
     setNotFound(false);
-    setAccessError(false);
-    setProfileError(false);
-    setTasteError(false);
+    setAccessError(null);
+    setProfileError(null);
+    setTasteError(null);
     // Marked as "attempted" here, before the fetch settles either way --
     // same reasoning as user/[id].tsx's identical comment: the render-time
     // stale-gate below only needs to force the skeleton until an attempt
@@ -119,22 +122,36 @@ export default function TasteProfileScreen() {
       // Only fetchProfile is left to reject into the outer catch below --
       // fetchBlockStatus already resolves to null on failure so its own
       // outcome is checked explicitly instead, same as user/[id].tsx.
+      // Its error is captured via closure rather than discarded, so the
+      // ErrorState below can differentiate a 429/offline failure from a
+      // generic one instead of showing the same hardcoded copy for all
+      // three (see errorMessageFor in src/utils/errorMessage.ts).
+      let blockStatusErr: unknown = null;
       const [p, blockStatus] = await Promise.all([
         fetchProfile(userId),
-        isSelf ? Promise.resolve({ blocked: false }) : fetchBlockStatus(userId).catch(() => null),
+        isSelf
+          ? Promise.resolve({ blocked: false })
+          : fetchBlockStatus(userId).catch((err) => {
+              blockStatusErr = err;
+              return null;
+            }),
       ]);
       if (myGeneration !== loadGenerationRef.current) return;
       setProfile(p);
       if (blockStatus === null) {
-        setAccessError(true);
+        setAccessError(errorMessageFor(blockStatusErr, "Couldn't verify profile access"));
         return;
       }
       setBlocked(blockStatus.blocked);
       if (!blockStatus.blocked) {
-        const taste = await fetchTasteProfile(userId).catch(() => null);
+        let tasteErr: unknown = null;
+        const taste = await fetchTasteProfile(userId).catch((err) => {
+          tasteErr = err;
+          return null;
+        });
         if (myGeneration !== loadGenerationRef.current) return;
         if (taste === null) {
-          setTasteError(true);
+          setTasteError(errorMessageFor(tasteErr, "Couldn't load taste profile"));
         } else {
           setTaste(taste);
         }
@@ -146,7 +163,7 @@ export default function TasteProfileScreen() {
       // gate). Anything else is an infrastructure failure and must stay
       // retryable, same distinction user/[id].tsx already makes.
       if (err?.response?.status === 404) setNotFound(true);
-      else setProfileError(true);
+      else setProfileError(errorMessageFor(err, "Couldn't load this profile"));
     } finally {
       if (myGeneration === loadGenerationRef.current) setLoading(false);
     }
@@ -191,11 +208,11 @@ export default function TasteProfileScreen() {
   // catch-all) get the same retryable treatment -- neither is the "not
   // found" product truth above.
   if (profileError || !profile) {
-    return <ErrorState message="Couldn't load this profile" onRetry={load} />;
+    return <ErrorState message={profileError ?? "Couldn't load this profile"} onRetry={load} />;
   }
 
   if (accessError) {
-    return <ErrorState message="Couldn't verify profile access" onRetry={load} />;
+    return <ErrorState message={accessError} onRetry={load} />;
   }
 
   if (blocked) {
@@ -209,7 +226,7 @@ export default function TasteProfileScreen() {
   }
 
   if (tasteError) {
-    return <ErrorState message="Couldn't load taste profile" onRetry={load} />;
+    return <ErrorState message={tasteError} onRetry={load} />;
   }
 
   if (!taste || taste.total_ranked === 0) {
