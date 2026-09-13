@@ -20,7 +20,7 @@ import { useToast } from '../../src/hooks/useToast';
 import { useRecommendations } from '../../src/hooks/useRecommendations';
 import { useLocation } from '../../src/hooks/useLocation';
 import { usePrefetchPlace } from '../../src/hooks/usePrefetchPlace';
-import { Colors, Spacing } from '../../src/constants/colors';
+import { Colors, Spacing, Typography, Radius } from '../../src/constants/colors';
 import { getTierForPlace } from '../../src/utils/scoring';
 import { logRecommendationEvent, logRecommendationEvents } from '../../src/utils/recommendationEventQueue';
 import { PlaceCard } from '../../src/components/PlaceCard';
@@ -430,7 +430,9 @@ export default function FeedScreen() {
 
   const decisionHeader = (
     <View style={styles.decisionSectionHeader}>
-      <Text style={styles.decisionEyebrow}>DECISION SESSION</Text>
+      <View style={styles.decisionEyebrowChip}>
+        <Text style={styles.decisionEyebrow}>DECISION SESSION</Text>
+      </View>
       <Text style={styles.decisionHeading}>What should I eat?</Text>
       <Text style={styles.decisionSubheading}>
         {decisionSession.data?.degraded
@@ -603,18 +605,23 @@ const styles = StyleSheet.create({
     paddingTop: Spacing.md,
     paddingBottom: Spacing.lg,
   },
+  decisionEyebrowChip: {
+    alignSelf: 'flex-start',
+    backgroundColor: Colors.chipActiveBg,
+    borderRadius: Radius.pill,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 4,
+    marginBottom: Spacing.sm,
+  },
   decisionEyebrow: {
-    color: Colors.brand,
-    fontSize: 12,
+    color: Colors.chipActiveText,
+    fontSize: 11,
     fontWeight: '800',
-    letterSpacing: 1.6,
-    marginBottom: Spacing.xs,
+    letterSpacing: 1.4,
   },
   decisionHeading: {
+    ...Typography.headline,
     color: Colors.text,
-    fontSize: 28,
-    fontWeight: '900',
-    letterSpacing: -0.5,
     marginBottom: Spacing.xs,
   },
   decisionSubheading: {

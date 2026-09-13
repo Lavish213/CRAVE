@@ -6,7 +6,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Application from 'expo-application';
 import * as Haptics from 'expo-haptics';
 import { useRouter, useFocusEffect } from 'expo-router';
-import { Colors, Spacing, Radius } from '../src/constants/colors';
+import { Colors, Spacing, Radius, Typography } from '../src/constants/colors';
 import { useCityStore } from '../src/stores/cityStore';
 import { useAuthStore } from '../src/stores/authStore';
 import { useToast } from '../src/hooks/useToast';
@@ -172,8 +172,8 @@ export default function MoreScreen() {
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <View style={styles.header}>
-        <Text style={styles.wordmark}>CRAVE</Text>
-        <Text style={styles.tagline}>Your cultural discovery engine</Text>
+        <Text style={styles.eyebrow}>SETTINGS</Text>
+        <Text style={styles.headline}>Make CRAVE fit you.</Text>
       </View>
 
       <SectionTitle title="CITY" />
@@ -312,16 +312,16 @@ const styles = StyleSheet.create({
     paddingTop: Spacing.xl,
     paddingBottom: Spacing.lg,
   },
-  wordmark: {
-    fontSize: 26,
-    fontWeight: '900',
+  eyebrow: {
+    fontSize: 12,
+    fontWeight: '800',
     color: Colors.brand,
-    letterSpacing: 3,
+    letterSpacing: 1.6,
+    textTransform: 'uppercase',
   },
-  tagline: {
-    fontSize: 13,
-    color: Colors.textSecondary,
-    fontWeight: '500',
+  headline: {
+    ...Typography.headline,
+    color: Colors.text,
     marginTop: Spacing.xs,
   },
   sectionTitle: {
