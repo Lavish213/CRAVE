@@ -144,6 +144,25 @@ describe('zeroResultInfo (Search Screen Contract §11)', () => {
     expect(info.body).toBe('Nothing matched "q" right now.');
     expect(info.body).not.toMatch(/broader|broaden/i);
   });
+
+  it('names a required dietary category as the honest reason for zero results instead of a vague generic message (SM-05)', () => {
+    const info = zeroResultInfo(
+      { ...baseInterpretation, required_categories: ['Vegan'], hard_constraints: ['vegan'] },
+      false,
+    );
+    expect(info.relaxKey).toBeUndefined();
+    expect(info.body).toBe('No Vegan matches nearby right now.');
+    expect(info.keeping).toEqual(['Vegan']);
+  });
+
+  it('keeps a required category listed alongside a genuine soft relaxation offer (SM-05/06 Required-vs-Preferred)', () => {
+    const info = zeroResultInfo(
+      { ...baseInterpretation, required_categories: ['Vegan'], hard_constraints: ['vegan'], context: ['near_me'] },
+      false,
+    );
+    expect(info.relaxKey).toBe('near_me');
+    expect(info.keeping).toEqual(['Vegan']);
+  });
 });
 
 describe('SearchScreen — zero-state decision support (Search Screen Contract §5/§6)', () => {
@@ -256,5 +275,24 @@ describe('SearchScreen — zero-result relaxation offer end to end (Search Scree
     await findByText('Nothing matched "ramen" right now.');
     expect(mockedSearchPlaces).toHaveBeenCalledTimes(2);
     expect(mockedSearchPlaces.mock.calls[1][0].query).toBe('ramen');
+  });
+
+  it('labels a required dietary category distinctly from a soft preference, and keeps it listed in the recovery card (SM-05/06)', async () => {
+    mockedSearchPlaces.mockResolvedValue(makeSearchResult([], {
+      total: 0,
+      interpretation: {
+        original_query: 'vegan ramen near me', lookup_query: 'ramen', price_tier: null,
+        required_categories: ['Vegan'], hard_constraints: ['vegan'],
+        unsupported_hard_constraints: [], context: ['near_me'], uncertain: false,
+      },
+    }));
+
+    const { getByLabelText, findByText, getByText } = renderScreen();
+    act(() => getByLabelText('Search input').props.onChangeText('vegan ramen near me'));
+
+    expect(await findByText('Vegan · Required ×')).toBeTruthy();
+    expect(getByText('near me ×')).toBeTruthy();
+    expect(getByText('Keeping (required)')).toBeTruthy();
+    expect(getByText('Vegan')).toBeTruthy();
   });
 });
