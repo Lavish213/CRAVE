@@ -70,7 +70,7 @@ function makeSearchResult(items: any[], overrides: Record<string, unknown> = {})
     interpretation: {
       original_query: 'query', lookup_query: 'query', price_tier: null,
       required_categories: [], hard_constraints: [],
-      unsupported_hard_constraints: [], context: [], uncertain: false,
+      unsupported_hard_constraints: [], context: [], required_amenities: [], uncertain: false,
     },
     exact_match_id: null,
     relaxed_constraints: [],

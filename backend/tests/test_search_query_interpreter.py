@@ -60,3 +60,29 @@ def test_not_vegan_is_not_inverted_into_positive_vegan_filter():
     assert result.required_categories == ()
     assert "vegan" not in result.hard_constraints
     assert result.uncertain is True
+
+
+def test_patio_is_recognized_as_a_required_amenity():
+    result = interpret_search_query("vegan ramen patio")
+
+    assert result.lookup_query == "ramen"
+    assert result.required_categories == ("Vegan",)
+    assert result.required_amenities == ("outdoor_seating",)
+    # Amenities are enforced the same as dietary hard constraints -- never
+    # folded into required_categories (which drives a category-table join,
+    # not a plain column filter) or hard_constraints (documented elsewhere
+    # as always the dietary/allergy set).
+    assert "outdoor_seating" not in result.hard_constraints
+
+
+def test_outdoor_seating_phrase_is_equivalent_to_patio():
+    result = interpret_search_query("ramen with outdoor seating")
+
+    assert result.required_amenities == ("outdoor_seating",)
+
+
+def test_no_outdoor_seating_is_not_inverted_into_a_positive_amenity_requirement():
+    result = interpret_search_query("no outdoor seating ramen")
+
+    assert result.required_amenities == ()
+    assert result.uncertain is True

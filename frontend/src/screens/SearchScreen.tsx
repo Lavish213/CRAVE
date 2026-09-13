@@ -116,9 +116,16 @@ export function zeroResultInfo(
   }
 
   // required_categories are always the dietary/allergy phrases the
-  // interpreter also records as hard_constraints (see query_interpreter.py)
-  // -- never offered here. context entries (near_me/date_night/open_late/
+  // interpreter also records as hard_constraints (see query_interpreter.py).
+  // required_amenities (outdoor seating, ...) carry the same never-relaxed
+  // standing but are filtered against a plain Place-truth column, not a
+  // category join -- a separate field, same treatment here. Neither is
+  // ever offered below. context entries (near_me/date_night/open_late/
   // quick) and an unrelaxed price tier are the only genuinely soft signals.
+  const requiredLabels = [
+    ...interpretation.required_categories,
+    ...interpretation.required_amenities.map((key) => key.replace(/_/g, ' ')),
+  ];
   const hardSet = new Set(interpretation.hard_constraints);
   const candidates: { key: string; label: string }[] = [];
   if (interpretation.price_tier != null && !priceWasRelaxed) {
@@ -133,24 +140,25 @@ export function zeroResultInfo(
     return {
       title: 'No results with these filters',
       body: `No matches with ${target.label}.`,
-      keeping: interpretation.required_categories.length > 0 ? interpretation.required_categories : undefined,
+      keeping: requiredLabels.length > 0 ? requiredLabels : undefined,
       relaxKey: target.key,
       relaxLabel: target.label,
     };
   }
 
-  // A supported dietary/allergy category (Vegan, Halal, ...) is enforced
-  // server-side and never auto-relaxed (contract §9/§16) -- if it's the
-  // only active constraint left once price/context are ruled out, it's
-  // the honest, specific reason for zero results. Naming it beats the
-  // vague generic fallback below, which gave no way to act on it (SM-05's
-  // required-constraint recovery contract: name what's blocking, don't
-  // silently relax it, but don't stay silent about it either).
-  if (interpretation.required_categories.length > 0) {
+  // A supported dietary/allergy category (Vegan, Halal, ...) or a required
+  // amenity (outdoor seating) is enforced server-side and never auto-
+  // relaxed (contract §9/§16) -- if it's the only active constraint left
+  // once price/context are ruled out, it's the honest, specific reason for
+  // zero results. Naming it beats the vague generic fallback below, which
+  // gave no way to act on it (SM-05's required-constraint recovery
+  // contract: name what's blocking, don't silently relax it, but don't
+  // stay silent about it either).
+  if (requiredLabels.length > 0) {
     return {
       title: 'No results',
-      body: `No ${interpretation.required_categories.join(' + ')} matches nearby right now.`,
-      keeping: interpretation.required_categories,
+      body: `No ${requiredLabels.join(' + ')} matches nearby right now.`,
+      keeping: requiredLabels,
     };
   }
 
@@ -194,6 +202,7 @@ const CONSTRAINT_PATTERNS: Record<string, RegExp> = {
   Halal: /\bhalal\b/gi,
   Kosher: /\bkosher\b/gi,
   'Gluten Free': /\bgluten[-\s]?free\b/gi,
+  outdoor_seating: /\b(?:patio|outdoor\s+seating)\b/gi,
 };
 
 export default function SearchScreen() {
@@ -474,6 +483,16 @@ export default function SearchScreen() {
                 accessibilityLabel={`Remove ${key.replace('_', ' ')} constraint, required`}
               >
                 <Text style={[styles.constraintText, styles.constraintTextRequired]}>{key.replace('_', ' ')} · Required ×</Text>
+              </TouchableOpacity>
+            ))}
+            {searchData.interpretation.required_amenities.map((key) => (
+              <TouchableOpacity
+                key={key}
+                style={[styles.constraintChip, styles.constraintChipRequired]}
+                onPress={() => removeInterpretedConstraint(key)}
+                accessibilityLabel={`Remove ${key.replace(/_/g, ' ')} constraint, required`}
+              >
+                <Text style={[styles.constraintText, styles.constraintTextRequired]}>{key.replace(/_/g, ' ')} · Required ×</Text>
               </TouchableOpacity>
             ))}
             {searchData.interpretation.context.map((key) => (
