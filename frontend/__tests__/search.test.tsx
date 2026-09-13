@@ -135,7 +135,13 @@ describe('SearchScreen — debounce, clear, and retry', () => {
   });
 
   it('retry button actually refetches the failed query, not a no-op', async () => {
-    mockedSearchPlaces.mockRejectedValueOnce(new Error('network'));
+    // A real backend error response (status 500), not a bare network
+    // Error -- the latter is now classified as offline (no `.response`
+    // at all) and shows different copy; see errorMessageFor in
+    // SearchScreen.tsx.
+    const serverErr: any = new Error('server error');
+    serverErr.response = { status: 500 };
+    mockedSearchPlaces.mockRejectedValueOnce(serverErr);
     const { getByLabelText, findByText } = renderScreen();
 
     act(() => {
@@ -149,6 +155,30 @@ describe('SearchScreen — debounce, clear, and retry', () => {
 
     await waitFor(() => expect(mockedSearchPlaces).toHaveBeenCalledTimes(2));
     expect(await findByText('1 result')).toBeTruthy();
+  });
+
+  it('shows offline-specific copy for a genuine connectivity failure (no response at all)', async () => {
+    mockedSearchPlaces.mockRejectedValueOnce(new Error('network unreachable'));
+    const { getByLabelText, findByText } = renderScreen();
+
+    act(() => {
+      getByLabelText('Search input').props.onChangeText('ramen');
+    });
+
+    expect(await findByText("Can't reach CRAVE — check your connection.")).toBeTruthy();
+  });
+
+  it('surfaces the rate-limit-specific message on a 429, instead of the generic search-failure copy', async () => {
+    const rateLimited: any = new Error('Rate limit reached. Please wait a moment.');
+    rateLimited.response = { status: 429 };
+    mockedSearchPlaces.mockRejectedValueOnce(rateLimited);
+    const { getByLabelText, findByText } = renderScreen();
+
+    act(() => {
+      getByLabelText('Search input').props.onChangeText('ramen');
+    });
+
+    expect(await findByText("You're doing that too fast — wait a moment and try again.")).toBeTruthy();
   });
 });
 

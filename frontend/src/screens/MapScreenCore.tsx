@@ -33,6 +33,24 @@ function _makeMapSessionId(): string {
   return `map_${Date.now().toString(36)}_${mapSessionSequence.toString(36)}`;
 }
 
+// Foundation Gate's error-taxonomy propagation into Map (see
+// docs/doctrine/CRAVE_FOUNDATION_GATE_CONTRACTS.md's §1 -- "error...
+// ownership" is explicitly in the Search/Map propagation scope boundary).
+// Same offline/rate-limited distinction as SearchScreen.tsx's
+// errorMessageFor and cravesStore's own `_classifyError` -- previously
+// both fetch failures here collapsed into one generic "Could not load
+// places" regardless of cause, even though a 429 or a genuine offline
+// state are each a different, already-classified failure elsewhere in
+// the app.
+function errorMessageFor(err: unknown, fallback: string): string {
+  const status = (err as { response?: { status?: number } } | null | undefined)?.response?.status;
+  if (status === 429) return "You're doing that too fast — wait a moment and try again.";
+  if (!(err as { response?: unknown } | null | undefined)?.response) {
+    return "Can't reach CRAVE — check your connection.";
+  }
+  return fallback;
+}
+
 const PREFETCH_RADIUS_MULTIPLIER = 1.6;
 const STREET_CLUSTER_RADIUS = 44;
 const NEIGHBORHOOD_CLUSTER_RADIUS = 56;
@@ -245,6 +263,7 @@ export default function MapScreen() {
   const [mapLoading, setMapLoading] = useState(false);
   const [mapLoaded, setMapLoaded] = useState(false);
   const [mapError, setMapError] = useState(false);
+  const [mapErrorMessage, setMapErrorMessage] = useState<string | null>(null);
   const [pendingSearchRegion, setPendingSearchRegion] = useState<Region | null>(null);
   const requestIdRef = useRef(0);
   const lastFetchCoverageRef = useRef<FetchCoverage | null>(null);
@@ -307,6 +326,7 @@ export default function MapScreen() {
       const requestContextKey = `city:${selectedCity?.id ?? 'nearby'}`;
       lastAttemptRef.current = { lat, lng, radiusKm };
       setMapError(false);
+      setMapErrorMessage(null);
       setMapLoading(true);
       fetchMapGeoJSON({
         city_id: selectedCity?.id,
@@ -340,6 +360,8 @@ export default function MapScreen() {
           lastFetchCoverageRef.current = { lat, lng, radiusKm };
         })
         .catch((err) => {
+          // user_actionable: surfaces a retryable error banner below, not
+          // swallowed.
           if (myRequestId !== requestIdRef.current) return;
           if (__DEV__) {
             console.log('[MAP] LOAD_FAILED', {
@@ -352,6 +374,7 @@ export default function MapScreen() {
             });
           }
           setMapError(true);
+          setMapErrorMessage(errorMessageFor(err, 'Could not load places — tap to retry'));
         })
         .finally(() => {
           if (myRequestId !== requestIdRef.current) return;
@@ -410,6 +433,7 @@ export default function MapScreen() {
     setMapLoaded(true);
     setMapLoading(false);
     setMapError(false);
+    setMapErrorMessage(null);
     fitFeatures(mapped, true);
   }, [fitFeatures, searchMapHandoff]);
 
@@ -444,6 +468,7 @@ export default function MapScreen() {
     const myRequestId = ++requestIdRef.current;
     const requestContextKey = `saved:${user?.id ?? 'signed-out'}`;
     setMapError(false);
+    setMapErrorMessage(null);
     setMapLoading(true);
     fetchSavedPlacesGeoJSON()
       .then((normalized) => {
@@ -471,6 +496,8 @@ export default function MapScreen() {
         }
       })
       .catch((err) => {
+        // user_actionable: surfaces a retryable error banner below, not
+        // swallowed.
         if (myRequestId !== requestIdRef.current) return;
         if (__DEV__) {
           console.log('[MAP] SAVED_LOAD_FAILED', {
@@ -479,6 +506,7 @@ export default function MapScreen() {
           });
         }
         setMapError(true);
+        setMapErrorMessage(errorMessageFor(err, 'Could not load places — tap to retry'));
       })
       .finally(() => {
         if (myRequestId !== requestIdRef.current) return;
@@ -794,7 +822,7 @@ export default function MapScreen() {
           <Text style={styles.mapBannerText}>
             {activeFeatures.length > 0
               ? 'Showing previously loaded places — tap to retry'
-              : 'Could not load places — tap to retry'}
+              : mapErrorMessage ?? 'Could not load places — tap to retry'}
           </Text>
         </TouchableOpacity>
       )}
