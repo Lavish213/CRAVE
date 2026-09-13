@@ -13,7 +13,7 @@ import { PlaceOut } from '../api/places';
 import type { SearchInterpretation } from '../api/search';
 import { getTierForPlace } from '../utils/scoring';
 import { logRecommendationEvent, logRecommendationEvents } from '../utils/recommendationEventQueue';
-import { Colors, Radius, Spacing } from '../constants/colors';
+import { Colors, Radius, Spacing, Typography } from '../constants/colors';
 import { PlaceCardCompact } from '../components/PlaceCardCompact';
 import { PlaceCard } from '../components/PlaceCard';
 import type { SearchReasonRole } from '../components/DecisionStrip';
@@ -468,7 +468,9 @@ export default function SearchScreen() {
 
       {searched && searchData?.interpretation && (
         <View style={styles.interpretationPanel}>
-          <Text style={styles.interpretationTitle}>{searchData.interpretation.uncertain ? 'CHECK THIS SEARCH' : 'UNDERSTOOD'}</Text>
+          <View style={styles.interpretationEyebrowChip}>
+            <Text style={styles.interpretationTitle}>{searchData.interpretation.uncertain ? 'CHECK THIS SEARCH' : 'UNDERSTOOD'}</Text>
+          </View>
           <Text style={styles.interpretationQuery}>Searching for {searchData.interpretation.lookup_query}</Text>
           <View style={styles.constraintRow}>
             {searchData.interpretation.price_tier != null && (
@@ -760,13 +762,20 @@ const styles = StyleSheet.create({
   loadingRow: { paddingVertical: 20, alignItems: 'center', gap: Spacing.sm },
   hintText: { color: Colors.textSecondary, fontSize: 13 },
   zeroState: { paddingHorizontal: Spacing.md, paddingTop: Spacing.sm, gap: Spacing.xs },
-  zeroStateTitle: { color: Colors.text, fontSize: 17, fontWeight: '800', marginBottom: Spacing.xs },
+  zeroStateTitle: { ...Typography.headline, color: Colors.text, marginBottom: Spacing.xs },
   zeroStateSectionLabel: { color: Colors.textSecondary, fontSize: 11, fontWeight: '700', textTransform: 'uppercase', marginTop: Spacing.sm, marginBottom: Spacing.xs },
   shortcutRow: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.xs },
   shortcutChip: { flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 44, paddingHorizontal: Spacing.md, borderRadius: Radius.full, borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.surface, alignSelf: 'flex-start' },
   shortcutText: { color: Colors.text, fontSize: 13, fontWeight: '600' },
   interpretationPanel: { marginHorizontal: Spacing.md, marginBottom: Spacing.xs, padding: Spacing.sm, backgroundColor: Colors.surface, borderRadius: Radius.md, borderWidth: 1, borderColor: Colors.border },
-  interpretationTitle: { color: Colors.brand, fontSize: 10, fontWeight: '800', letterSpacing: 1.2 },
+  interpretationEyebrowChip: {
+    alignSelf: 'flex-start',
+    backgroundColor: Colors.chipActiveBg,
+    borderRadius: Radius.pill,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 4,
+  },
+  interpretationTitle: { color: Colors.chipActiveText, fontSize: 10, fontWeight: '800', letterSpacing: 1.2 },
   interpretationQuery: { color: Colors.text, fontSize: 13, fontWeight: '700', marginTop: 4 },
   constraintRow: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.xs, marginTop: Spacing.xs },
   constraintChip: { minHeight: 36, justifyContent: 'center', paddingHorizontal: Spacing.sm, borderRadius: Radius.full, backgroundColor: Colors.surfaceElevated },
