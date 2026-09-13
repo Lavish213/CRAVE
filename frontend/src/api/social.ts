@@ -240,8 +240,8 @@ export async function submitComparison(
   return data;
 }
 
-export async function fetchMyRankings(): Promise<RankedPlace[]> {
-  const { data } = await client.get<{ rankings: RankedPlace[] }>('/api/v1/rankings/me');
+export async function fetchMyRankings(options?: { signal?: AbortSignal }): Promise<RankedPlace[]> {
+  const { data } = await client.get<{ rankings: RankedPlace[] }>('/api/v1/rankings/me', { signal: options?.signal });
   return data.rankings ?? [];
 }
 

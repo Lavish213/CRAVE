@@ -105,6 +105,48 @@ def test_queue_only_includes_declared_and_verified(db, rank_places):
     assert {item["evidence_tier"] for item in items} == {"declared", "verified"}
 
 
+def test_start_ranking_rejects_inferred_only_visit(db, rank_places):
+    user_id = f"rank-inferred-{uuid.uuid4()}"
+    _evidence(
+        db, user_id=user_id, place_id=rank_places[0].id, tier="inferred",
+        when=datetime.now(timezone.utc),
+    )
+    _as_user(user_id)
+
+    response = client.post(
+        "/api/v1/rankings",
+        json={"place_id": rank_places[0].id, "tier": "liked"},
+    )
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "Rank requires a declared or verified visit."
+
+
+def test_start_ranking_accepts_declared_visit_and_uses_its_timestamp(db, rank_places, monkeypatch):
+    user_id = f"rank-declared-{uuid.uuid4()}"
+    visited_at = datetime.now(timezone.utc) - timedelta(days=3)
+    _evidence(db, user_id=user_id, place_id=rank_places[0].id, tier="declared", when=visited_at)
+    captured = {}
+
+    def fake_start(_db, **kwargs):
+        captured.update(kwargs)
+        return {"status": "comparing", "comparison_token": "signed", "opponent_place_id": rank_places[1].id}
+
+    monkeypatch.setattr("app.api.v1.routes.rankings.ranking_service.start_ranking", fake_start)
+    _as_user(user_id)
+    response = client.post(
+        "/api/v1/rankings",
+        json={
+            "place_id": rank_places[0].id,
+            "tier": "liked",
+            "visited_at": datetime.now(timezone.utc).isoformat(),
+        },
+    )
+
+    assert response.status_code == 201
+    assert captured["visited_at"].replace(tzinfo=timezone.utc) == visited_at
+
+
 def test_queue_excludes_already_ranked_place(db, rank_places):
     user_id = f"queue-user-{uuid.uuid4()}"
     now = datetime.now(timezone.utc)
