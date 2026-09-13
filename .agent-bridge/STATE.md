@@ -44,13 +44,17 @@ Verification: backend `python -m compileall`/`import app.main` clean,
 `pytest -q` -> 1139 passed, 2 skipped (8 new). Frontend
 `npx tsc --noEmit` clean, `npx jest --ci` -> 59/59 suites, 556/556
 tests (1 new).
-Next action: once the user supplies the real Team ID and SHA-256
+Next action: handed off to Codex, 2026-09-13 -- see
+`claude-to-codex.md`'s `H-20260913-eas-credentials-for-universal-links`
+entry for the full retrieval steps (this sandbox has no EAS/Expo
+network access at all -- confirmed, not a login issue alone). Once
+whoever has real access supplies the real Team ID and SHA-256
 fingerprint, swap them into the two constants at the top of
 `universal_links.py` and push -- a one-line-each change, no other code
 affected. After that, DNS needs to actually point crave.app at the
-Railway deploy (user's own infra, not something this session can do),
-and a real on-device tap-through test on both platforms is the only
-way to confirm the whole chain works end to end.
+Railway deploy (user's own infra, not something any agent session can
+do), and a real on-device tap-through test on both platforms is the
+only way to confirm the whole chain works end to end.
 
 ---
 
