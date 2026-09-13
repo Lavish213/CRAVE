@@ -47,7 +47,7 @@ const eb = StyleSheet.create({
     marginBottom: Spacing.lg,
   },
   btn: {
-    backgroundColor: Colors.primary,
+    backgroundColor: Colors.actionPrimary,
     paddingHorizontal: Spacing.lg,
     minHeight: 44,
     borderRadius: 8,
@@ -56,7 +56,7 @@ const eb = StyleSheet.create({
   },
   btnText: {
     ...Typography.body,
-    color: Colors.text,
+    color: Colors.onActionPrimary,
     fontWeight: '700',
   },
 });
@@ -180,7 +180,7 @@ export default function RootLayout() {
         <Stack
           screenOptions={{
             headerStyle: { backgroundColor: Colors.background },
-            headerTintColor: '#FFFFFF',
+            headerTintColor: Colors.text,
             headerTitleStyle: { fontWeight: '700' },
             contentStyle: { backgroundColor: Colors.background },
           }}

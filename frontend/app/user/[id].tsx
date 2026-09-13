@@ -33,6 +33,7 @@ import {
 } from '../../src/api/social';
 import { withImageWidth, AVATAR_IMAGE_WIDTH } from '../../src/utils/imageUrl';
 import { requestAuthGate } from '../../src/stores/authGateStore';
+import { errorMessageFor } from '../../src/utils/errorMessage';
 
 export default function UserProfileScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -50,10 +51,15 @@ export default function UserProfileScreen() {
   // infrastructure failure is not the same product truth as "this account
   // doesn't exist, or its list is private," and unlike that EmptyState,
   // this is retryable.
-  const [profileError, setProfileError] = useState(false);
+  const [profileError, setProfileError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [blockBusy, setBlockBusy] = useState(false);
-  const [relationshipError, setRelationshipError] = useState(false);
+  // Hold the classified message directly (not just a boolean) -- see
+  // errorMessageFor in src/utils/errorMessage.ts. A 429 or a genuine
+  // offline failure on either of these previously rendered the exact
+  // same hardcoded "Couldn't load..." copy, silently discarding the
+  // more specific message client.ts's own interceptor already attaches.
+  const [relationshipError, setRelationshipError] = useState<string | null>(null);
 
   const isSelf = !!me && me.id === id;
 
@@ -61,15 +67,15 @@ export default function UserProfileScreen() {
   // tapping from one user's profile into another's, from a shared list) --
   // without a guard, a slow response for the *previous* id could resolve
   // after the new one's and silently repaint this screen with the wrong
-  // person's profile/rankings/follow state.
+  // person's profile/follow state.
   const loadGenerationRef = useRef(0);
   // Whose data this screen currently holds. `loading` previously only
   // ever flipped back to false (from the first load's `finally`) -- a
   // subsequent load() for a *different* id never set it back to true, so
   // between navigating to a new id and that id's fetch resolving, this
   // screen fell through the `if (loading)` skeleton gate entirely and
-  // rendered the *previous* person's profile/rankings/follow state with
-  // no loading indicator. The stale-response race above was already
+  // rendered the *previous* person's profile/follow state with no
+  // loading indicator. The stale-response race above was already
   // guarded; this is the separate "nothing resets the visible state when
   // a fresh load starts" gap.
   const loadedForIdRef = useRef<string | null>(null);
@@ -107,7 +113,7 @@ export default function UserProfileScreen() {
     // cleared the flag for a same-identity attempt (confirmed by
     // CodeRabbit).
     setNotFound(false);
-    setProfileError(false);
+    setProfileError(null);
     // Marked as "attempted" here, before the fetch settles either way --
     // not only on success. This id/viewer pairing has been *addressed* by
     // this generation regardless of outcome; the render-time stale-gate
@@ -119,23 +125,34 @@ export default function UserProfileScreen() {
     // never clear, so the component could never render past it.
     loadedForIdRef.current = id;
     loadedForViewerRef.current = viewerId;
-    setRelationshipError(false);
+    setRelationshipError(null);
     try {
       const p = await fetchProfile(id);
       if (myGeneration !== loadGenerationRef.current) return;
       setProfile(p);
 
+      // Captured via closure rather than discarded in the `.catch()`
+      // itself -- these previously collapsed any failure into a bare
+      // `null`, with no way to tell a 429 apart from a genuine offline
+      // failure once it reached the ErrorState below.
+      let relationshipErr: unknown = null;
       const [status, blockStatus] = await Promise.all([
         !me || isSelf
           ? Promise.resolve({ following: false, followed_by: false })
-          : fetchFollowStatus(id).catch(() => null),
+          : fetchFollowStatus(id).catch((err) => {
+              relationshipErr = err;
+              return null;
+            }),
         !me || isSelf
           ? Promise.resolve({ blocked: false })
-          : fetchBlockStatus(id).catch(() => null),
+          : fetchBlockStatus(id).catch((err) => {
+              relationshipErr = err;
+              return null;
+            }),
       ]);
       if (myGeneration !== loadGenerationRef.current) return;
       if (status === null || blockStatus === null) {
-        setRelationshipError(true);
+        setRelationshipError(errorMessageFor(relationshipErr, "Couldn't load relationship controls"));
       } else {
         setFollowing(status.following);
         setFollowsMe(status.followed_by);
@@ -151,7 +168,7 @@ export default function UserProfileScreen() {
       // back -- this previously did exactly that, mislabeling a transient
       // failure as a nonexistent/private account.
       if (err?.response?.status === 404) setNotFound(true);
-      else setProfileError(true);
+      else setProfileError(errorMessageFor(err, "Couldn't load this profile"));
     } finally {
       if (myGeneration === loadGenerationRef.current) setLoading(false);
     }
@@ -267,10 +284,6 @@ export default function UserProfileScreen() {
   const isStaleForCurrentIdentity =
     loadedForIdRef.current !== id || loadedForViewerRef.current !== (me?.id ?? null);
   if (loading || isStaleForCurrentIdentity) {
-    // Matches the ranked-list-of-places shape this screen eventually
-    // shows (RankedPlaceRow), same treatment as app/(tabs)/profile.tsx's
-    // own ranked list -- this screen was still a plain ActivityIndicator,
-    // inconsistent with every other list-shaped screen in the app.
     return (
       <View style={styles.content}>
         <SkeletonRowList count={5} />
@@ -293,7 +306,7 @@ export default function UserProfileScreen() {
   // catch-all) get the same retryable treatment -- neither is the "not
   // found" product truth above.
   if (profileError || !profile) {
-    return <ErrorState message="Couldn't load this profile" onRetry={load} />;
+    return <ErrorState message={profileError ?? "Couldn't load this profile"} onRetry={load} />;
   }
 
   return (
@@ -350,7 +363,7 @@ export default function UserProfileScreen() {
         <>
           {relationshipError ? (
             <ErrorState
-              message="Couldn't load relationship controls"
+              message={relationshipError}
               onRetry={load}
             />
           ) : !isSelf ? (
@@ -365,7 +378,7 @@ export default function UserProfileScreen() {
               <Ionicons
                 name={following ? 'checkmark' : 'add'}
                 size={17}
-                color={following ? Colors.text : '#FFFFFF'}
+                color={following ? Colors.text : Colors.onActionPrimary}
               />
               <Text style={[styles.followBtnText, following ? styles.followingBtnText : null]}>
                 {following ? 'Following' : 'Follow'}
@@ -405,7 +418,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     paddingHorizontal: Spacing.lg,
   },
-  unblockLink: { color: Colors.primary, fontSize: 14, fontWeight: '700' },
+  unblockLink: { color: Colors.brand, fontSize: 14, fontWeight: '700' },
   header: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md },
   avatar: { width: 64, height: 64, borderRadius: Radius.full, backgroundColor: Colors.surfaceElevated },
   avatarFallback: { alignItems: 'center', justifyContent: 'center' },
@@ -420,15 +433,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
-    backgroundColor: Colors.primary,
+    backgroundColor: Colors.actionPrimary,
     borderRadius: Radius.pill,
     paddingVertical: 12,
     minHeight: 46,
     borderWidth: 1,
-    borderColor: Colors.primary,
+    borderColor: Colors.selectedBorder,
   },
   followingBtn: { backgroundColor: 'transparent', borderColor: Colors.border },
-  followBtnText: { color: '#FFFFFF', fontSize: 15, fontWeight: '800' },
+  followBtnText: { color: Colors.onActionPrimary, fontSize: 15, fontWeight: '800' },
   followingBtnText: { color: Colors.text },
   privacyNote: { color: Colors.textSecondary, fontSize: 13, lineHeight: 19 },
 });

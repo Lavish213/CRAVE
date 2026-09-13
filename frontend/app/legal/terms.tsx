@@ -102,6 +102,6 @@ const styles = StyleSheet.create({
   h2: { color: Colors.text, fontSize: 17, fontWeight: '700', marginTop: Spacing.xl, marginBottom: Spacing.sm },
   p: { color: Colors.textSecondary, fontSize: 14.5, lineHeight: 21, marginBottom: Spacing.sm },
   li: { flexDirection: 'row', marginBottom: Spacing.sm, paddingRight: Spacing.xs },
-  liBullet: { color: Colors.primary, fontSize: 14.5, marginRight: Spacing.sm, lineHeight: 21 },
+  liBullet: { color: Colors.brand, fontSize: 14.5, marginRight: Spacing.sm, lineHeight: 21 },
   liText: { flex: 1, color: Colors.textSecondary, fontSize: 14.5, lineHeight: 21 },
 });

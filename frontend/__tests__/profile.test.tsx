@@ -1,5 +1,5 @@
 import React from 'react';
-import { fireEvent, render } from '@testing-library/react-native';
+import { act, fireEvent, render } from '@testing-library/react-native';
 import ProfileScreen from '../app/(tabs)/profile';
 import { useAuthStore } from '../src/stores/authStore';
 import { fetchMyProfile, fetchMyRankings, fetchTasteProfile } from '../src/api/social';
@@ -13,20 +13,54 @@ jest.mock('../src/stores/authStore', () => ({ useAuthStore: jest.fn() }));
 jest.mock('../src/api/social', () => ({
   fetchMyProfile: jest.fn(), fetchMyRankings: jest.fn(), fetchTasteProfile: jest.fn(),
 }));
-jest.mock('../src/components/AuthSheet', () => ({ AuthSheet: () => null }));
+jest.mock('../src/components/AuthSheet', () => {
+  const { Text } = require('react-native');
+  return {
+    AuthSheet: ({ visible }: { visible: boolean }) =>
+      visible ? <Text testID="auth-sheet-visible">auth</Text> : null,
+  };
+});
 
 const mockedAuth = useAuthStore as unknown as jest.Mock;
 const mockedProfile = fetchMyProfile as jest.MockedFunction<typeof fetchMyProfile>;
 const mockedRankings = fetchMyRankings as jest.MockedFunction<typeof fetchMyRankings>;
 const mockedTaste = fetchTasteProfile as jest.MockedFunction<typeof fetchTasteProfile>;
 
+function setAuthedUser(user: { id: string } | null) {
+  mockedAuth.mockImplementation((selector: (s: { user: unknown }) => unknown) => selector({ user }));
+}
+
 describe('ProfileScreen food identity', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    mockedAuth.mockImplementation((selector: (s: unknown) => unknown) => selector({ user: { id: 'me' } }));
+    setAuthedUser({ id: 'me' });
     mockedProfile.mockResolvedValue({ id: 'me', username: 'alice', display_name: 'Alice', avatar_url: null, bio: null, is_public: true });
     mockedRankings.mockResolvedValue([]);
     mockedTaste.mockResolvedValue({ total_ranked: 0, tier_counts: { liked: 0, fine: 0, disliked: 0 }, favorite_cuisine: null, top_city: null });
+  });
+
+  it('shows a sign-in prompt when signed out and opens AuthSheet', async () => {
+    setAuthedUser(null);
+    const { getByText, findByTestId } = render(<ProfileScreen />);
+    expect(getByText('Sign in to build your food identity')).toBeTruthy();
+    fireEvent.press(getByText('Sign in'));
+    expect(await findByTestId('auth-sheet-visible')).toBeTruthy();
+  });
+
+  it('prompts to choose a username when signed in but no profile exists', async () => {
+    mockedProfile.mockResolvedValue(null);
+    const { findByText } = render(<ProfileScreen />);
+    fireEvent.press(await findByText('Choose username'));
+    expect(mockPush).toHaveBeenCalledWith('/profile-setup');
+  });
+
+  it('does not mistake a failed profile request for a missing username', async () => {
+    // A bare network Error (no `.response`) is classified as a genuine
+    // offline failure -- see errorMessageFor in src/utils/errorMessage.ts.
+    mockedProfile.mockRejectedValue(new Error('network'));
+    const { findByText, queryByText } = render(<ProfileScreen />);
+    expect(await findByText("Can't reach CRAVE — check your connection.")).toBeTruthy();
+    expect(queryByText('Pick a username')).toBeNull();
   });
 
   it('centers private food identity without vanity or legacy social links', async () => {
@@ -67,5 +101,39 @@ describe('ProfileScreen food identity', () => {
     const { findByText, queryByText } = render(<ProfileScreen />);
     expect(await findByText('2 places ranked. Most of your food history is in Oakland.')).toBeTruthy();
     expect(queryByText(/You know what you like|Your list is taking shape/)).toBeNull();
+  });
+
+  it('clears the previous account state immediately on account switch', async () => {
+    setAuthedUser({ id: 'user-A' });
+    mockedProfile.mockResolvedValue({ id: 'user-A', username: 'alice', display_name: 'Alice', avatar_url: null, bio: null, is_public: true });
+    const { rerender, findByText, queryByText } = render(<ProfileScreen />);
+    expect(await findByText('Alice')).toBeTruthy();
+
+    setAuthedUser({ id: 'user-B' });
+    mockedProfile.mockImplementationOnce(() => new Promise(() => {}));
+    mockedRankings.mockImplementationOnce(() => new Promise(() => {}));
+    rerender(<ProfileScreen />);
+    expect(queryByText('Alice')).toBeNull();
+  });
+
+  it('does not let a stale response from a previous account overwrite the new account', async () => {
+    setAuthedUser({ id: 'user-A' });
+    mockedProfile.mockResolvedValue({ id: 'user-A', username: 'alice', display_name: 'Alice', avatar_url: null, bio: null, is_public: true });
+    let resolveSlowA: (v: { id: string; username: string; display_name: string; avatar_url: null; bio: null; is_public: boolean }) => void;
+    mockedProfile.mockImplementationOnce(
+      () => new Promise((resolve) => { resolveSlowA = resolve; }),
+    );
+    const { rerender, findByText } = render(<ProfileScreen />);
+
+    setAuthedUser({ id: 'user-B' });
+    mockedProfile.mockResolvedValue({ id: 'user-B', username: 'bob', display_name: 'Bob', avatar_url: null, bio: null, is_public: true });
+    rerender(<ProfileScreen />);
+    expect(await findByText('Bob')).toBeTruthy();
+
+    await act(async () => {
+      resolveSlowA!({ id: 'user-A', username: 'alice', display_name: 'Alice', avatar_url: null, bio: null, is_public: true });
+    });
+
+    expect(await findByText('Bob')).toBeTruthy();
   });
 });

@@ -185,7 +185,7 @@ export default function MoreScreen() {
           icon="add-circle-outline"
           label="Add a new spot"
           sublabel="Found somewhere CRAVE doesn't have yet?"
-          tint={Colors.primary}
+          tint={Colors.brand}
           onPress={() => router.push('/add-spot')}
         />
       </View>
@@ -308,7 +308,7 @@ const styles = StyleSheet.create({
   wordmark: {
     fontSize: 26,
     fontWeight: '900',
-    color: Colors.primary,
+    color: Colors.brand,
     letterSpacing: 3,
   },
   tagline: {

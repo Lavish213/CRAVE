@@ -54,8 +54,10 @@ describe('TasteProfileScreen privacy', () => {
   });
 
   it('distinguishes a failed owner fetch from an empty profile', async () => {
+    // A bare network Error (no `.response`) is classified as a genuine
+    // offline failure -- see errorMessageFor in src/utils/errorMessage.ts.
     mockedFetchTaste.mockRejectedValue(new Error('network'));
     const { findByText } = render(<TasteProfileScreen />);
-    expect(await findByText("Couldn't load taste profile")).toBeTruthy();
+    expect(await findByText("Can't reach CRAVE — check your connection.")).toBeTruthy();
   });
 });

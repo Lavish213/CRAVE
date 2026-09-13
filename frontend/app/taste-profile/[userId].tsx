@@ -20,6 +20,7 @@ import {
 } from '../../src/api/social';
 import { useAuthStore } from '../../src/stores/authStore';
 import { TIER_LABELS, tierColor } from '../../src/utils/rankScore';
+import { errorMessageFor } from '../../src/utils/errorMessage';
 
 export default function TasteProfileScreen() {
   const { userId } = useLocalSearchParams<{ userId: string }>();
@@ -30,16 +31,18 @@ export default function TasteProfileScreen() {
   const [taste, setTaste] = useState<TasteProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
-  // Distinct from notFound -- a network failure/timeout/5xx on the
-  // profile fetch previously collapsed into the same "Profile not found"
-  // EmptyState as a genuine 404, with no retry affordance. Same fix as
-  // user/[id].tsx's identical profileError.
-  const [profileError, setProfileError] = useState(false);
+  // Holds the classified message directly (not just a boolean) -- see
+  // errorMessageFor in src/utils/errorMessage.ts. Distinct from notFound
+  // -- a network failure/timeout/5xx on the profile fetch previously
+  // collapsed into the same "Profile not found" EmptyState as a genuine
+  // 404, with no retry affordance. Same fix as user/[id].tsx's identical
+  // profileError.
+  const [profileError, setProfileError] = useState<string | null>(null);
   // Distinct from "no taste profile yet" -- a failed fetchTasteProfile
   // call (network error, 5xx) previously left `taste` at null with
   // nothing to tell it apart from a real empty profile, so it rendered
   // the same "hasn't ranked anything yet" copy with no way to retry.
-  const [tasteError, setTasteError] = useState(false);
+  const [tasteError, setTasteError] = useState<string | null>(null);
 
   // expo-router can reuse this screen instance across a param change (e.g.
   // tapping from one person's taste profile into another's) -- without a
@@ -49,21 +52,7 @@ export default function TasteProfileScreen() {
   const loadGenerationRef = useRef(0);
   // Whose data this screen currently holds -- both the profile being
   // viewed AND who was viewing it, same pattern as user/[id].tsx's
-  // identical guard (see its own comment for the full rationale: blocked/
-  // taste are relative to the viewer, not just the profile being viewed,
-  // so a viewer switch with the same target userId -- isSelf unchanged in
-  // both cases -- must still force a fresh load).
-  //
-  // Also closes a real confirmed bug: previously neither `taste` nor
-  // `blocked` were ever reset when a new load started, only overwritten on
-  // success. Profile A's taste profile loads and renders; navigating to
-  // profile B succeeds on the profile fetch (so the header correctly shows
-  // B) but then B's *taste* fetch itself fails (network error, 5xx) --
-  // the catch block only ever sets `notFound` for a 404, so `taste` was
-  // simply left holding A's stale data, which then rendered in full under
-  // B's identity. Resetting profile/taste/blocked whenever the identity
-  // pairing changes (not on every load -- a same-identity refocus
-  // shouldn't flash the skeleton) closes this.
+  // identical guard.
   const loadedForIdRef = useRef<string | null>(null);
   const loadedForViewerRef = useRef<string | null>(null);
 
@@ -87,16 +76,10 @@ export default function TasteProfileScreen() {
     }
     // Outcome flags describe *this* attempt, not the identity pairing --
     // they must reset on every attempt, including a same-identity retry
-    // from ErrorState's onRetry (accessError) or a plain refocus after a
-    // transient 404. Previously gated inside the block above: a retry
-    // that actually succeeded still rendered the stale error screen over
-    // the freshly-fetched, perfectly good data, since nothing ever
-    // cleared the flag for a same-identity attempt (confirmed by
-    // CodeRabbit; the identity-gated `!profile` catch-all doesn't save
-    // this, since profile/taste's own reset is correctly identity-gated).
+    // from ErrorState's onRetry or a plain refocus after a transient 404.
     setNotFound(false);
-    setProfileError(false);
-    setTasteError(false);
+    setProfileError(null);
+    setTasteError(null);
     // Marked as "attempted" here, before the fetch settles either way --
     // same reasoning as user/[id].tsx's identical comment: the render-time
     // stale-gate below only needs to force the skeleton until an attempt
@@ -106,16 +89,17 @@ export default function TasteProfileScreen() {
     loadedForIdRef.current = userId;
     loadedForViewerRef.current = viewerId;
     try {
-      // Only fetchProfile is left to reject into the outer catch below --
-      // fetchBlockStatus already resolves to null on failure so its own
-      // outcome is checked explicitly instead, same as user/[id].tsx.
       const p = await fetchProfile(userId);
       if (myGeneration !== loadGenerationRef.current) return;
       setProfile(p);
-      const taste = await fetchTasteProfile(userId).catch(() => null);
+      let tasteErr: unknown = null;
+      const taste = await fetchTasteProfile(userId).catch((err) => {
+        tasteErr = err;
+        return null;
+      });
       if (myGeneration !== loadGenerationRef.current) return;
       if (taste === null) {
-        setTasteError(true);
+        setTasteError(errorMessageFor(tasteErr, "Couldn't load taste profile"));
       } else {
         setTaste(taste);
       }
@@ -126,7 +110,7 @@ export default function TasteProfileScreen() {
       // gate). Anything else is an infrastructure failure and must stay
       // retryable, same distinction user/[id].tsx already makes.
       if (err?.response?.status === 404) setNotFound(true);
-      else setProfileError(true);
+      else setProfileError(errorMessageFor(err, "Couldn't load this profile"));
     } finally {
       if (myGeneration === loadGenerationRef.current) setLoading(false);
     }
@@ -181,11 +165,11 @@ export default function TasteProfileScreen() {
   // catch-all) get the same retryable treatment -- neither is the "not
   // found" product truth above.
   if (profileError || !profile) {
-    return <ErrorState message="Couldn't load this profile" onRetry={load} />;
+    return <ErrorState message={profileError ?? "Couldn't load this profile"} onRetry={load} />;
   }
 
   if (tasteError) {
-    return <ErrorState message="Couldn't load taste profile" onRetry={load} />;
+    return <ErrorState message={tasteError} onRetry={load} />;
   }
 
   if (!taste || taste.total_ranked === 0) {
@@ -193,16 +177,11 @@ export default function TasteProfileScreen() {
       <EmptyState
         icon="restaurant-outline"
         title="No taste profile yet"
-        body={
-          isSelf
-            ? "Rank a few places you've eaten and your taste profile will build up here."
-            : `@${profile.username} hasn't ranked anything yet.`
-        }
+        body="Rank a few places you've eaten and your taste profile will build up here."
       />
     );
   }
 
-  const displayName = profile.display_name ?? profile.username;
   const tierEntries: Array<{ key: keyof TasteProfile['tier_counts']; count: number }> = [
     { key: 'liked', count: taste.tier_counts.liked },
     { key: 'fine', count: taste.tier_counts.fine },
@@ -211,9 +190,7 @@ export default function TasteProfileScreen() {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <Text style={styles.title}>
-        {isSelf ? 'Your Taste Profile' : `${displayName}'s Taste Profile`}
-      </Text>
+      <Text style={styles.title}>Your Taste Profile</Text>
 
       <View style={styles.heroRow}>
         <View style={styles.heroTile}>
@@ -240,7 +217,7 @@ export default function TasteProfileScreen() {
 
       {taste.top_city && (
         <View style={styles.card}>
-          <Ionicons name="location-outline" size={20} color={Colors.primary} />
+          <Ionicons name="location-outline" size={20} color={Colors.brand} />
           <View style={styles.cardMeta}>
             <Text style={styles.cardLabel}>Top city</Text>
             <Text style={styles.cardValue}>
@@ -278,7 +255,7 @@ const styles = StyleSheet.create({
   heroLabel: { color: Colors.textSecondary, fontSize: 12, marginTop: 2, fontWeight: '600' },
   section: { gap: Spacing.sm },
   sectionLabel: {
-    color: Colors.primary,
+    color: Colors.brand,
     fontSize: 11,
     fontWeight: '800',
     letterSpacing: 1.2,

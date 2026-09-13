@@ -303,13 +303,13 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.xl,
   },
   permissionButton: {
-    backgroundColor: Colors.primary,
+    backgroundColor: Colors.actionPrimary,
     paddingHorizontal: Spacing.xl,
     paddingVertical: Spacing.md,
     borderRadius: Radius.pill,
   },
   permissionButtonText: {
-    color: Colors.background,
+    color: Colors.onActionPrimary,
     fontWeight: '700',
     fontSize: 15,
   },

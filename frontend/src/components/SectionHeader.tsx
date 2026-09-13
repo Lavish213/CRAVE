@@ -31,7 +31,7 @@ const styles = StyleSheet.create({
     width: 2,
     height: 18,
     borderRadius: 1,
-    backgroundColor: Colors.primary,
+    backgroundColor: Colors.brand,
   },
   top: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, flex: 1 },
   label: { fontSize: 22, fontWeight: '800', color: Colors.text, letterSpacing: 0.3, flex: 1 },

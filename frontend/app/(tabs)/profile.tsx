@@ -34,6 +34,7 @@ import {
   RECOMMENDATION_THRESHOLD,
   recommendationProgress,
 } from '../../src/utils/rankScore';
+import { errorMessageFor } from '../../src/utils/errorMessage';
 
 export default function ProfileScreen() {
   const router = useRouter();
@@ -45,7 +46,12 @@ export default function ProfileScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [authVisible, setAuthVisible] = useState(false);
-  const [profileError, setProfileError] = useState(false);
+  // Holds the classified message directly (not just a boolean) -- see
+  // errorMessageFor in src/utils/errorMessage.ts. The other two failure
+  // flags below degrade gracefully inline (a "temporarily unavailable"
+  // caption, no blocking ErrorState), so only this one -- the sole
+  // full-screen ErrorState in this file -- needs a classified message.
+  const [profileError, setProfileError] = useState<string | null>(null);
   const [rankingsError, setRankingsError] = useState(false);
   const [tasteError, setTasteError] = useState(false);
 
@@ -65,12 +71,16 @@ export default function ProfileScreen() {
       setTaste(null);
       setLoading(true);
     }
-    setProfileError(false);
+    setProfileError(null);
     setRankingsError(false);
     setTasteError(false);
     try {
+      let profileErr: unknown = null;
       const [p, r, t] = await Promise.all([
-        fetchMyProfile().then((value) => ({ value, failed: false })).catch(() => ({ value: null, failed: true })),
+        fetchMyProfile().then((value) => ({ value, failed: false })).catch((err) => {
+          profileErr = err;
+          return { value: null, failed: true };
+        }),
         fetchMyRankings().then((value) => ({ value, failed: false })).catch(() => ({ value: [] as RankedPlace[], failed: true })),
         fetchTasteProfile(user.id).then((value) => ({ value, failed: false })).catch(() => ({ value: null, failed: true })),
       ]);
@@ -79,7 +89,7 @@ export default function ProfileScreen() {
       setProfile(p.value);
       setRankings(r.value);
       setTaste(t.value);
-      setProfileError(p.failed);
+      setProfileError(p.failed ? errorMessageFor(profileErr, "Couldn't load your profile") : null);
       setRankingsError(r.failed);
       setTasteError(t.failed);
     } finally {
@@ -127,7 +137,7 @@ export default function ProfileScreen() {
   }
 
   if (profileError) {
-    return <ErrorState message="Couldn't load your profile" onRetry={load} />;
+    return <ErrorState message={profileError} onRetry={load} />;
   }
 
   if (!profile) {
@@ -149,7 +159,7 @@ export default function ProfileScreen() {
       style={styles.container}
       contentContainerStyle={styles.content}
       refreshControl={
-        <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={Colors.primary} />
+        <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={Colors.brand} />
       }
     >
       <View style={styles.header}>
@@ -205,7 +215,7 @@ export default function ProfileScreen() {
 
       {!rankingsError && !unlocked ? (
         <View style={styles.unlockCard}>
-          <Ionicons name="sparkles-outline" size={18} color={Colors.primary} />
+          <Ionicons name="sparkles-outline" size={18} color={Colors.brand} />
           <Text style={styles.unlockText}>
             Rank {remaining} more {remaining === 1 ? 'place' : 'places'} to give CRAVE a stronger read on your taste.
           </Text>
@@ -219,7 +229,7 @@ export default function ProfileScreen() {
         accessibilityLabel="Open Rank"
       >
         <View style={styles.rankIcon}>
-          <Ionicons name="podium-outline" size={22} color={Colors.primary} />
+          <Ionicons name="podium-outline" size={22} color={Colors.brand} />
         </View>
         <View style={styles.rankMeta}>
           <Text style={styles.rankTitle}>Rank</Text>
