@@ -136,3 +136,20 @@ def latest_rank_eligible_by_place(
         if len(out) >= limit:
             break
     return out
+
+
+def rank_eligible_visit_for_place(
+    db: Session, *, user_id: str, place_id: str,
+) -> VisitEvidence | None:
+    """Return the latest explicit/verified visit that may unlock Rank."""
+    return (
+        db.query(VisitEvidence)
+        .filter(
+            VisitEvidence.user_id == user_id,
+            VisitEvidence.place_id == place_id,
+            VisitEvidence.factual_history.is_(True),
+            VisitEvidence.tier.in_(RANK_ELIGIBLE_TIERS),
+        )
+        .order_by(VisitEvidence.occurred_at.desc(), VisitEvidence.created_at.desc())
+        .first()
+    )
