@@ -5,7 +5,9 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import CravesScreen from '../app/(tabs)/craves';
 import {
   CraveItem, getCraveItems, getMyPlaceSaves, PlaceSaveItem, fetchCravesReasoned,
+  deletePlaceSave, suggestPlace,
 } from '../src/api/crave';
+import { useToast } from '../src/hooks/useToast';
 import { SavedPlace } from '../src/api/saves';
 import { logRecommendationEvent, logRecommendationEvents } from '../src/utils/recommendationEventQueue';
 
@@ -71,6 +73,11 @@ jest.mock('../src/api/crave', () => ({
   getCraveItems: jest.fn(),
   getMyPlaceSaves: jest.fn(),
   fetchCravesReasoned: jest.fn(),
+  deletePlaceSave: jest.fn(),
+  submitPlaceSave: jest.fn(),
+  submitShare: jest.fn(),
+  suggestPlace: jest.fn(),
+  detectSourceType: jest.fn(() => 'web'),
 }));
 jest.mock('../src/hooks/usePrefetchPlace', () => ({ usePrefetchPlace: () => jest.fn() }));
 jest.mock('../src/hooks/useLocation', () => ({ useLocation: jest.fn(() => null) }));
@@ -91,6 +98,8 @@ jest.mock('expo-haptics', () => ({
 const mockedGetCraveItems = getCraveItems as jest.MockedFunction<typeof getCraveItems>;
 const mockedGetMyPlaceSaves = getMyPlaceSaves as jest.MockedFunction<typeof getMyPlaceSaves>;
 const mockedFetchCravesReasoned = fetchCravesReasoned as jest.MockedFunction<typeof fetchCravesReasoned>;
+const mockedDeletePlaceSave = deletePlaceSave as jest.MockedFunction<typeof deletePlaceSave>;
+const mockedSuggestPlace = suggestPlace as jest.MockedFunction<typeof suggestPlace>;
 const mockedLogOne = logRecommendationEvent as jest.Mock;
 const mockedLogMany = logRecommendationEvents as jest.Mock;
 
@@ -182,6 +191,7 @@ describe('CravesScreen — async truth and exposure instrumentation', () => {
     mockedGetMyPlaceSaves.mockResolvedValue([]);
     mockedFetchCravesReasoned.mockResolvedValue({ cards: [], degraded: true });
     mockedUseLocation.mockReturnValue(null);
+    useToast.setState({ message: null });
     jest.spyOn(Alert, 'alert').mockImplementation(() => {});
   });
 
@@ -289,6 +299,60 @@ describe('CravesScreen — async truth and exposure instrumentation', () => {
 
     expect(mockedLogMany.mock.calls.flatMap((call) => call[0])).toContainEqual(
       expect.objectContaining({ place_id: 'added-place', position: 0 }),
+    );
+  });
+
+  it('removes an Added row and calls deletePlaceSave when its trash icon is pressed', async () => {
+    mockedGetMyPlaceSaves.mockResolvedValue([
+      makePlaceSave({ id: 'a0', place_name: 'Unmatched Added' }),
+    ]);
+    mockedDeletePlaceSave.mockResolvedValue(undefined);
+
+    const { getByLabelText, queryByLabelText } = renderScreen();
+    await waitFor(() => expect(getByLabelText('Remove Unmatched Added from your list')).toBeTruthy());
+
+    fireEvent.press(getByLabelText('Remove Unmatched Added from your list'));
+
+    expect(mockedDeletePlaceSave).toHaveBeenCalledWith('Unmatched Added');
+    await waitFor(() =>
+      expect(queryByLabelText('Remove Unmatched Added from your list')).toBeNull(),
+    );
+  });
+
+  it('restores the row and shows an error toast if deletePlaceSave fails', async () => {
+    mockedGetMyPlaceSaves.mockResolvedValue([
+      makePlaceSave({ id: 'a0', place_name: 'Unmatched Added' }),
+    ]);
+    mockedDeletePlaceSave.mockRejectedValue(new Error('network'));
+
+    const { getByLabelText } = renderScreen();
+    await waitFor(() => expect(getByLabelText('Remove Unmatched Added from your list')).toBeTruthy());
+
+    fireEvent.press(getByLabelText('Remove Unmatched Added from your list'));
+
+    await waitFor(() => expect(useToast.getState().message).toBe("Couldn't remove that. Try again."));
+    expect(getByLabelText('Remove Unmatched Added from your list')).toBeTruthy();
+  });
+
+  it('lets a signed-in user suggest a place with no exact location, and shows the corroboration-aware toast', async () => {
+    mockedSuggestPlace.mockResolvedValue({
+      id: 'sug-1', place_name: 'Some Bistro', source_platform: 'unknown', created_at: null,
+    });
+
+    const { getByLabelText, getByPlaceholderText } = renderScreen();
+    await waitFor(() => expect(mockFlashListProps?.data.length).toBeGreaterThan(0));
+
+    fireEvent.press(getByLabelText('Share a link'));
+    fireEvent.press(getByLabelText('Switch to suggest mode'));
+    fireEvent.changeText(getByPlaceholderText('Restaurant name'), 'Some Bistro');
+    fireEvent.changeText(getByPlaceholderText('City (optional)'), 'Austin');
+    fireEvent.press(getByLabelText('Submit'));
+
+    await waitFor(() => expect(mockedSuggestPlace).toHaveBeenCalledWith('Some Bistro', 'Austin'));
+    await waitFor(() =>
+      expect(useToast.getState().message).toBe(
+        "Thanks — the more people suggest this place, the sooner we'll add it.",
+      ),
     );
   });
 

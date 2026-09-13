@@ -41,7 +41,9 @@ const styles = StyleSheet.create({
     bottom: 96,
     left: 24,
     right: 24,
-    backgroundColor: Colors.border + 'EE', // Colors.border is '#2A2A2A' — same color, translucent
+    backgroundColor: Colors.surfaceElevated,
+    borderWidth: 1,
+    borderColor: Colors.border,
     borderRadius: 12,
     paddingHorizontal: 18,
     paddingVertical: 13,

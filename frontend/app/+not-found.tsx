@@ -44,7 +44,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 22,
     paddingVertical: 11,
     borderRadius: 22,
-    backgroundColor: Colors.primary,
+    backgroundColor: Colors.actionPrimary,
   },
-  linkText: { color: '#FFFFFF', fontSize: 14, fontWeight: '700' },
+  linkText: { color: Colors.onActionPrimary, fontSize: 14, fontWeight: '700' },
 });

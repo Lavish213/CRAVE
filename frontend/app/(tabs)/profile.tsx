@@ -36,6 +36,7 @@ import {
   rankedListHeadline,
   recommendationProgress,
 } from '../../src/utils/rankScore';
+import { errorMessageFor } from '../../src/utils/errorMessage';
 
 function StatTile({
   value,
@@ -51,7 +52,7 @@ function StatTile({
   const inner = (
     <View style={styles.statTile}>
       <View style={styles.statValueRow}>
-        {icon ? <Ionicons name={icon} size={16} color={Colors.primary} /> : null}
+        {icon ? <Ionicons name={icon} size={16} color={Colors.brand} /> : null}
         <Text style={styles.statValue}>{value}</Text>
       </View>
       <Text style={styles.statLabel}>{label}</Text>
@@ -83,7 +84,12 @@ export default function ProfileScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [authVisible, setAuthVisible] = useState(false);
-  const [profileError, setProfileError] = useState(false);
+  // Holds the classified message directly (not just a boolean) -- see
+  // errorMessageFor in src/utils/errorMessage.ts. The other four failure
+  // flags below degrade gracefully inline (a "—" stat tile, no blocking
+  // ErrorState), so only this one -- the sole full-screen ErrorState in
+  // this file -- needs a classified message instead of a boolean.
+  const [profileError, setProfileError] = useState<string | null>(null);
   const [rankingsError, setRankingsError] = useState(false);
   const [followingError, setFollowingError] = useState(false);
   const [followersError, setFollowersError] = useState(false);
@@ -107,14 +113,23 @@ export default function ProfileScreen() {
       setStreak(null);
       setLoading(true);
     }
-    setProfileError(false);
+    setProfileError(null);
     setRankingsError(false);
     setFollowingError(false);
     setFollowersError(false);
     setStreakError(false);
     try {
+      // Only the profile fetch's error is captured -- it's the only one
+      // of these five whose failure renders a full-screen ErrorState
+      // (see errorMessageFor in src/utils/errorMessage.ts); the other
+      // four degrade gracefully to a "—" stat tile, which doesn't need
+      // a classified message.
+      let profileErr: unknown = null;
       const [p, r, following, followers, s] = await Promise.all([
-        fetchMyProfile().then((value) => ({ value, failed: false })).catch(() => ({ value: null, failed: true })),
+        fetchMyProfile().then((value) => ({ value, failed: false })).catch((err) => {
+          profileErr = err;
+          return { value: null, failed: true };
+        }),
         fetchMyRankings().then((value) => ({ value, failed: false })).catch(() => ({ value: [] as RankedPlace[], failed: true })),
         fetchFollowing().then((value) => ({ value, failed: false })).catch(() => ({ value: [] as string[], failed: true })),
         fetchFollowers().then((value) => ({ value, failed: false })).catch(() => ({ value: [] as string[], failed: true })),
@@ -127,7 +142,7 @@ export default function ProfileScreen() {
       setFollowingCount(following.value.length);
       setFollowerCount(followers.value.length);
       setStreak(s.value);
-      setProfileError(p.failed);
+      setProfileError(p.failed ? errorMessageFor(profileErr, "Couldn't load your profile") : null);
       setRankingsError(r.failed);
       setFollowingError(following.failed);
       setFollowersError(followers.failed);
@@ -177,7 +192,7 @@ export default function ProfileScreen() {
   }
 
   if (profileError) {
-    return <ErrorState message="Couldn't load your profile" onRetry={load} />;
+    return <ErrorState message={profileError} onRetry={load} />;
   }
 
   if (!profile) {
@@ -199,7 +214,7 @@ export default function ProfileScreen() {
       style={styles.container}
       contentContainerStyle={styles.content}
       refreshControl={
-        <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={Colors.primary} />
+        <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={Colors.brand} />
       }
     >
       <View style={styles.header}>
@@ -252,7 +267,7 @@ export default function ProfileScreen() {
 
       {!rankingsError && !unlocked ? (
         <View style={styles.unlockCard}>
-          <Ionicons name="sparkles-outline" size={18} color={Colors.primary} />
+          <Ionicons name="sparkles-outline" size={18} color={Colors.brand} />
           <Text style={styles.unlockText}>
             Rank {remaining} more {remaining === 1 ? 'place' : 'places'} to give CRAVE a stronger read on your taste.
           </Text>
@@ -266,7 +281,7 @@ export default function ProfileScreen() {
         accessibilityLabel="Open Rank"
       >
         <View style={styles.rankIcon}>
-          <Ionicons name="podium-outline" size={22} color={Colors.primary} />
+          <Ionicons name="podium-outline" size={22} color={Colors.brand} />
         </View>
         <View style={styles.rankMeta}>
           <Text style={styles.rankTitle}>Rank</Text>
@@ -288,7 +303,7 @@ export default function ProfileScreen() {
           accessibilityRole="button"
           accessibilityLabel="Friends activity"
         >
-          <Ionicons name="people-outline" size={18} color={Colors.primary} />
+          <Ionicons name="people-outline" size={18} color={Colors.brand} />
           <Text style={styles.linkBtnText}>Friends</Text>
         </TouchableOpacity>
         <TouchableOpacity
@@ -297,7 +312,7 @@ export default function ProfileScreen() {
           accessibilityRole="button"
           accessibilityLabel="Leaderboard"
         >
-          <Ionicons name="trophy-outline" size={18} color={Colors.primary} />
+          <Ionicons name="trophy-outline" size={18} color={Colors.brand} />
           <Text style={styles.linkBtnText}>Leaderboard</Text>
         </TouchableOpacity>
         {!rankingsError && rankings.length > 0 ? (
@@ -307,7 +322,7 @@ export default function ProfileScreen() {
             accessibilityRole="button"
             accessibilityLabel="Your Taste Profile"
           >
-            <Ionicons name="restaurant-outline" size={18} color={Colors.primary} />
+            <Ionicons name="restaurant-outline" size={18} color={Colors.brand} />
             <Text style={styles.linkBtnText}>Taste Profile</Text>
           </TouchableOpacity>
         ) : null}
@@ -388,5 +403,5 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.surface,
     minHeight: 44,
   },
-  linkBtnText: { color: Colors.primary, fontSize: 14, fontWeight: '700' },
+  linkBtnText: { color: Colors.brand, fontSize: 14, fontWeight: '700' },
 });

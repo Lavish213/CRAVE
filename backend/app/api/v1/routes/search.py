@@ -102,6 +102,7 @@ def search(
         hard_constraints=list(interpretation.hard_constraints),
         unsupported_hard_constraints=list(interpretation.unsupported_hard_constraints),
         context=list(interpretation.context),
+        required_amenities=list(interpretation.required_amenities),
         uncertain=interpretation.uncertain,
     )
 
@@ -149,6 +150,7 @@ def search(
             limit=page_size,
             offset=offset,
             required_category_names=interpretation.required_categories,
+            required_amenities=interpretation.required_amenities,
         )
     except Exception as exc:
         logger.exception(
@@ -177,6 +179,7 @@ def search(
                 limit=page_size,
                 offset=offset,
                 required_category_names=interpretation.required_categories,
+                required_amenities=interpretation.required_amenities,
             )
         except Exception as exc:
             logger.exception("search_relaxation_failed query=%s error=%s", query, exc)
@@ -200,6 +203,7 @@ def search(
                 limit=page_size,
                 offset=offset,
                 required_category_names=interpretation.required_categories,
+                required_amenities=interpretation.required_amenities,
             )
         except Exception as exc:
             logger.exception("search_relaxation_failed query=%s error=%s", query, exc)

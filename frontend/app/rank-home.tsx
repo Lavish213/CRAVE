@@ -15,6 +15,8 @@ import { Colors, Spacing, Typography } from '../src/constants/colors';
 import { useAuthStore } from '../src/stores/authStore';
 import { requestAuthGate } from '../src/stores/authGateStore';
 import { RANK_HOME_TIER_LABELS, RankHomeTier, rankHomeTier } from '../src/utils/rankScore';
+import { errorMessageFor } from '../src/utils/errorMessage';
+import { foundationQueryKey } from '../src/contracts/foundationGate';
 
 const TIER_ORDER: RankHomeTier[] = ['elite', 'love', 'good'];
 
@@ -23,12 +25,19 @@ export default function RankHomeScreen() {
   const user = useAuthStore((state) => state.user);
 
   const queueQuery = useQuery({
-    queryKey: ['rankQueue', user?.id],
+    queryKey: user
+      ? foundationQueryKey({ scope: 'user', entity: 'rankQueue', userId: user.id })
+      : ['crave', 'user', 'rankQueue', null, null],
     queryFn: () => fetchRankQueue(),
     enabled: Boolean(user?.id),
   });
+  // Same key shape place/[id].tsx and SearchScreen.tsx already use for this
+  // exact query -- shares the cache entry across all three instead of each
+  // screen independently fetching/caching the same response.
   const rankingsQuery = useQuery({
-    queryKey: ['myRankings', user?.id],
+    queryKey: user
+      ? foundationQueryKey({ scope: 'user', entity: 'myRankings', userId: user.id })
+      : ['crave', 'user', 'myRankings', null, null],
     queryFn: fetchMyRankings,
     enabled: Boolean(user?.id),
   });
@@ -90,7 +99,7 @@ export default function RankHomeScreen() {
     <ScrollView
       style={styles.container}
       contentContainerStyle={styles.content}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={Colors.primary} />}
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={Colors.brand} />}
     >
       <View style={styles.header}>
         <Text style={styles.title}>Rank</Text>
@@ -98,7 +107,10 @@ export default function RankHomeScreen() {
       </View>
 
       {queueQuery.isError ? (
-        <ErrorState message="Couldn't load places waiting to be ranked" onRetry={() => void queueQuery.refetch()} />
+        <ErrorState
+          message={errorMessageFor(queueQuery.error, "Couldn't load places waiting to be ranked")}
+          onRetry={() => void queueQuery.refetch()}
+        />
       ) : queue.length > 0 ? (
         <View style={styles.section}>
           <View style={styles.sectionHeadingRow}>
@@ -118,7 +130,10 @@ export default function RankHomeScreen() {
       ) : null}
 
       {rankingsQuery.isError ? (
-        <ErrorState message="Couldn't load your ranked places" onRetry={() => void rankingsQuery.refetch()} />
+        <ErrorState
+          message={errorMessageFor(rankingsQuery.error, "Couldn't load your ranked places")}
+          onRetry={() => void rankingsQuery.refetch()}
+        />
       ) : visibleRankings.length > 0 ? (
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Your ranked places</Text>
@@ -155,7 +170,7 @@ export default function RankHomeScreen() {
         accessibilityRole="button"
         accessibilityLabel="Open your Taste Profile"
       >
-        <Ionicons name="restaurant-outline" size={18} color={Colors.primary} />
+        <Ionicons name="restaurant-outline" size={18} color={Colors.brand} />
         <Text style={styles.explainText}>See what CRAVE is learning from your choices</Text>
         <Ionicons name="chevron-forward" size={16} color={Colors.textSecondary} />
       </TouchableOpacity>
@@ -176,7 +191,7 @@ const styles = StyleSheet.create({
   count: { ...Typography.caption, color: Colors.textSecondary },
   group: { gap: Spacing.sm },
   groupTitle: { ...Typography.label, color: Colors.textSecondary },
-  eliteTitle: { color: Colors.primary },
+  eliteTitle: { color: Colors.brand },
   list: { gap: Spacing.sm },
   explain: {
     minHeight: 48,

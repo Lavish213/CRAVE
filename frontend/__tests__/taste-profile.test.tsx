@@ -73,7 +73,7 @@ describe('TasteProfileScreen', () => {
     // already makes via its own profileError.
     mockedFetchProfile.mockRejectedValue(new Error('network'));
     const { findByText, queryByText } = render(<TasteProfileScreen />);
-    expect(await findByText("Couldn't load this profile")).toBeTruthy();
+    expect(await findByText("Can't reach CRAVE — check your connection.")).toBeTruthy();
     expect(queryByText('Profile not found')).toBeNull();
   });
 
@@ -82,7 +82,7 @@ describe('TasteProfileScreen', () => {
     mockedFetchTasteProfile.mockResolvedValue(makeTaste({ total_ranked: 12 }));
 
     const { findByText, findByLabelText, queryByText } = render(<TasteProfileScreen />);
-    expect(await findByText("Couldn't load this profile")).toBeTruthy();
+    expect(await findByText("Can't reach CRAVE — check your connection.")).toBeTruthy();
 
     mockedFetchProfile.mockResolvedValue(makeProfile());
     await act(async () => {
@@ -90,7 +90,7 @@ describe('TasteProfileScreen', () => {
     });
 
     expect(await findByText('12')).toBeTruthy();
-    expect(queryByText("Couldn't load this profile")).toBeNull();
+    expect(queryByText("Can't reach CRAVE — check your connection.")).toBeNull();
   });
 
   it('shows a blocked message without ever fetching the taste profile', async () => {
@@ -108,7 +108,7 @@ describe('TasteProfileScreen', () => {
 
     const { findByText } = render(<TasteProfileScreen />);
 
-    expect(await findByText("Couldn't verify profile access")).toBeTruthy();
+    expect(await findByText("Can't reach CRAVE — check your connection.")).toBeTruthy();
     expect(mockedFetchTasteProfile).not.toHaveBeenCalled();
   });
 
@@ -123,7 +123,7 @@ describe('TasteProfileScreen', () => {
     mockedFetchTasteProfile.mockResolvedValue(makeTaste({ total_ranked: 12 }));
 
     const { findByText, findByLabelText, queryByText } = render(<TasteProfileScreen />);
-    expect(await findByText("Couldn't verify profile access")).toBeTruthy();
+    expect(await findByText("Can't reach CRAVE — check your connection.")).toBeTruthy();
 
     mockedFetchBlockStatus.mockResolvedValue({ blocked: false });
     await act(async () => {
@@ -131,7 +131,7 @@ describe('TasteProfileScreen', () => {
     });
 
     expect(await findByText('12')).toBeTruthy();
-    expect(queryByText("Couldn't verify profile access")).toBeNull();
+    expect(queryByText("Can't reach CRAVE — check your connection.")).toBeNull();
   });
 
   it('shows a self-specific no-data message when viewing your own empty taste profile', async () => {
@@ -224,7 +224,7 @@ describe('TasteProfileScreen', () => {
     // data. bob's own taste fetch genuinely failed, so this now surfaces
     // as a retryable error rather than either alice's stale data or a
     // false "hasn't ranked anything yet" empty state.
-    expect(await findByText("Couldn't load taste profile")).toBeTruthy();
+    expect(await findByText("Can't reach CRAVE — check your connection.")).toBeTruthy();
     expect(queryByText('12')).toBeNull();
     expect(queryByText("@bob hasn't ranked anything yet.")).toBeNull();
   });
@@ -234,7 +234,7 @@ describe('TasteProfileScreen', () => {
     mockedFetchTasteProfile.mockRejectedValueOnce(new Error('network'));
 
     const { findByText, findByLabelText, queryByText } = render(<TasteProfileScreen />);
-    expect(await findByText("Couldn't load taste profile")).toBeTruthy();
+    expect(await findByText("Can't reach CRAVE — check your connection.")).toBeTruthy();
     expect(queryByText("@alice hasn't ranked anything yet.")).toBeNull();
 
     mockedFetchTasteProfile.mockResolvedValue(makeTaste({ total_ranked: 12 }));
@@ -243,7 +243,7 @@ describe('TasteProfileScreen', () => {
     });
 
     expect(await findByText('12')).toBeTruthy();
-    expect(queryByText("Couldn't load taste profile")).toBeNull();
+    expect(queryByText("Can't reach CRAVE — check your connection.")).toBeNull();
   });
 
   it('reloads when the viewer switches accounts even though the profile being viewed stays the same', async () => {

@@ -102,6 +102,44 @@ export async function getMyPlaceSaves(): Promise<PlaceSaveItem[]> {
   return Array.isArray(data?.items) ? data.items : [];
 }
 
+// The no-coordinates counterpart to submitPlaceSave -- "I know the name
+// and roughly the city, but not exactly where" (recalling a place from a
+// trip, hearing about one secondhand). Distinct backend table
+// (HitlistSuggestion, not HitlistSave) and a slightly lower starting
+// confidence (0.4 vs 0.45) -- see backend/app/services/hitlist/
+// suggest_intake.py. Both feed the same DiscoveryCandidate corroboration
+// pipeline as every other "someone thinks this place exists" signal (GPS
+// confirmations, social shares): a genuinely new contributor's suggestion
+// adds to that place's accumulated confidence rather than replacing it, so
+// repeated independent suggestions of the same place are what eventually
+// cross the auto-promotion threshold and turn it into a real, uploaded
+// Place -- not a single person's submission alone. There is no read-back
+// endpoint for suggestions (HitlistSuggestion is intentionally
+// write-only, unlike HitlistSave), so this is fire-and-forget by design.
+export interface PlaceSuggestResponse {
+  id: string;
+  place_name: string;
+  source_platform: string | null;
+  created_at: string | null;
+}
+
+export async function suggestPlace(
+  placeName: string,
+  cityHint?: string,
+): Promise<PlaceSuggestResponse> {
+  const { data } = await client.post<PlaceSuggestResponse>('/api/v1/hitlist/suggest', {
+    place_name: placeName.trim(),
+    city_hint: cityHint?.trim() || undefined,
+  });
+  return data;
+}
+
+/** Removes one "Added" list entry by its exact place_name (the backend's
+ * delete key -- HitlistSave has no separate client-facing id for this). */
+export async function deletePlaceSave(placeName: string): Promise<void> {
+  await client.delete('/api/v1/hitlist/delete', { params: { place_name: placeName } });
+}
+
 /**
  * Craves Screen Contract §5/§6's "reasoned subset" -- the same
  * build_decision_session() engine as Decision Session, scoped to this

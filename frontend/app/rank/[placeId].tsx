@@ -305,7 +305,7 @@ export default function RankPlaceScreen() {
   if (!place || place.id !== placeId) {
     return (
       <View style={styles.centered}>
-        <ActivityIndicator color={Colors.primary} size="large" />
+        <ActivityIndicator color={Colors.brand} size="large" />
       </View>
     );
   }
@@ -440,7 +440,7 @@ export default function RankPlaceScreen() {
               accessibilityRole="button"
               accessibilityLabel="Retry loading the other place"
             >
-              <Ionicons name="refresh" size={14} color={Colors.primary} />
+              <Ionicons name="refresh" size={14} color={Colors.brand} />
               <Text style={styles.opponentRetryText}>Couldn't load that place — retry</Text>
             </TouchableOpacity>
           ) : null}
@@ -458,7 +458,7 @@ export default function RankPlaceScreen() {
 
         {busy ? (
           <View style={styles.busyOverlay} pointerEvents="none">
-            <ActivityIndicator color={Colors.primary} />
+            <ActivityIndicator color={Colors.brand} />
           </View>
         ) : null}
       </View>
@@ -515,7 +515,7 @@ export default function RankPlaceScreen() {
         inflates.
       </Text>
 
-      {busy ? <ActivityIndicator color={Colors.primary} style={{ marginTop: Spacing.lg }} /> : null}
+      {busy ? <ActivityIndicator color={Colors.brand} style={{ marginTop: Spacing.lg }} /> : null}
     </ScrollView>
   );
 }
@@ -614,7 +614,7 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.sm,
     minHeight: 44,
   },
-  opponentRetryText: { color: Colors.primary, fontSize: 13, fontWeight: '700' },
+  opponentRetryText: { color: Colors.brand, fontSize: 13, fontWeight: '700' },
   busyOverlay: {
     ...StyleSheet.absoluteFillObject,
     alignItems: 'center',
@@ -653,7 +653,7 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.lg,
   },
   primaryBtn: {
-    backgroundColor: Colors.primary,
+    backgroundColor: Colors.actionPrimary,
     paddingHorizontal: Spacing.xl,
     paddingVertical: 14,
     borderRadius: Radius.pill,
@@ -662,7 +662,7 @@ const styles = StyleSheet.create({
     alignSelf: 'stretch',
     alignItems: 'center',
   },
-  primaryBtnText: { color: '#FFFFFF', fontSize: 15, fontWeight: '800' },
+  primaryBtnText: { color: Colors.onActionPrimary, fontSize: 15, fontWeight: '800' },
   shareBtn: {
     flexDirection: 'row',
     alignItems: 'center',

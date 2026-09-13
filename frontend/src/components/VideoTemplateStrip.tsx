@@ -62,8 +62,8 @@ const styles = StyleSheet.create({
     marginRight: Spacing.sm,
   },
   chipSelected: {
-    backgroundColor: Colors.primary,
-    borderColor: Colors.primary,
+    backgroundColor: Colors.selectedBg,
+    borderColor: Colors.selectedBorder,
   },
   chipText: {
     color: Colors.textSecondary,
@@ -71,6 +71,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   chipTextSelected: {
-    color: Colors.background,
+    color: Colors.selectedText,
   },
 });

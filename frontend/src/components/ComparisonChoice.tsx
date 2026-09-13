@@ -108,7 +108,7 @@ const styles = StyleSheet.create({
     minHeight: 140,
   },
   cardPressed: {
-    borderColor: Colors.primary,
+    borderColor: Colors.selectedBorder,
     transform: [{ scale: 0.98 }],
   },
   cardDisabled: { opacity: 0.5 },
