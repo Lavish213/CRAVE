@@ -1,13 +1,11 @@
 # H-20260913-profile-taste-error-taxonomy
 
-Status: ready-for-review
+Status: resolved -- merged
 Owner: Claude
-Branch: claude/profile-taste-error-taxonomy
+Branch: claude/profile-taste-error-taxonomy (merged, can be deleted)
 Base SHA: 04cfaa9 (origin/main tip after PR #273)
-Commit SHA: 5ee9674
-Allowed next files: none from me further on this -- PR #274 is open
-(https://github.com/Lavish213/CRAVE/pull/274), subscribed for CI/review
-events.
+Commit SHA: 32e36a2 (merge commit on origin/main)
+Allowed next files: none -- closed.
 
 ## Outcome
 
@@ -42,9 +40,8 @@ pass. No UI/layout change.
 
 ## Next action
 
-Merge #274 once CI is green (standing instruction this session: "merge
-it once green"). No further action needed from Codex on this specific
-fix.
+None -- closed. PR #274 merged (`32e36a2`), CI green on the merged
+commit. No further action needed from Codex on this specific fix.
 
 # H-20260913-video-report-wiring-audit
 

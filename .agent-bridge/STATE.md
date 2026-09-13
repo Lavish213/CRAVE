@@ -1,11 +1,11 @@
 # Active agent state
 
-Status: ready-for-review
+Status: merged
 Owner: Claude
-Branch: claude/profile-taste-error-taxonomy
+Branch: claude/profile-taste-error-taxonomy (merged, can be deleted)
 Base SHA: 04cfaa9 (origin/main tip after PR #273)
-Commit SHA: 5ee9674
-Scope: closes the gap PR #273 flagged -- `user/[id].tsx`,
+Commit SHA: 32e36a2 (merge commit on origin/main)
+Scope: closed the gap PR #273 flagged -- `user/[id].tsx`,
 `taste-profile/[userId].tsx`, and `(tabs)/profile.tsx` had
 `.catch(() => null)` sites that discarded the real error object
 entirely, so errorMessageFor() (added in #273) had nothing to classify
@@ -13,19 +13,23 @@ on these three screens. Captured the real error via an outer-scope
 closure variable inside each catch, then classified it once the
 surrounding Promise.all settles -- same 429/offline/generic taxonomy as
 every other screen fixed this pass. No UI/layout change.
-Locked files: frontend/app/user/[id].tsx,
-frontend/app/taste-profile/[userId].tsx, frontend/app/(tabs)/profile.tsx,
-frontend/__tests__/user-profile.test.tsx,
-frontend/__tests__/taste-profile.test.tsx, frontend/__tests__/profile.test.tsx.
-Verification: PR #274 opened (https://github.com/Lavish213/CRAVE/pull/274).
-`npx tsc --noEmit` clean. `npx jest --ci` -> 54/54 suites, 561/561 tests,
-including 11 pre-existing assertions fixed (their mocked rejections had
-no `.response`, so they're now correctly classified offline instead of
-matching the old generic fallback copy).
-Known gaps: none identified for this three-screen fix; the broader
-"fix all errors and gaps" sweep this pass belongs to is otherwise
-complete pending user confirmation.
-Next action: merge #274 once CI is green.
+Locked files: none -- closed.
+Verification: PR #274 (https://github.com/Lavish213/CRAVE/pull/274),
+merged `32e36a2`. `npx tsc --noEmit` clean. `npx jest --ci` -> 54/54
+suites, 561/561 tests, including 11 pre-existing assertions fixed
+(their mocked rejections had no `.response`, so they're now correctly
+classified offline instead of matching the old generic fallback copy).
+CI green on the merged commit (Frontend, both Backend jobs, both
+Analyze jobs, Guard, CodeQL); CodeRabbit posted only its standard
+fewer-than-10-stars skip notice.
+Known gaps: none identified for this three-screen fix. This closes out
+the "fix all errors and gaps wire all" error-taxonomy sweep the user
+asked for this pass -- swept across Search, Map, Leaderboard, Friends
+Feed, Rank Home, Feed, and now Profile/Taste. User has been told this
+pass is done; next work is new screens, per their own "so we can
+implement new screens."
+Next action: none from me -- awaiting the user's next screen/feature
+ask.
 
 **Coordination note, 2026-09-13:** the branch this file's protocol names
 as the designated branch for this lane,
