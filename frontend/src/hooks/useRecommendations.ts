@@ -2,40 +2,24 @@
 //
 // Personalized recommendations. `enabled` lets a hidden/feature-flagged
 // consumer preserve hook ordering without performing background network work.
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { PlaceOut, fetchRecommendations } from '../api/places';
+import { useQuery } from '@tanstack/react-query';
+import { fetchRecommendations } from '../api/places';
 import { useAuthStore } from '../stores/authStore';
+import { foundationQueryKey, STALE_TIME } from '../contracts/foundationGate';
 
-export function useRecommendations(enabled = true): PlaceOut[] {
+export function useRecommendations(enabled = true) {
   const user = useAuthStore((s) => s.user);
-  const [recommendations, setRecommendations] = useState<PlaceOut[]>([]);
-  const requestIdRef = useRef(0);
+  const userId = user?.id ?? null;
+  const shouldFetch = enabled && Boolean(userId);
 
-  const load = useCallback(() => {
-    const requestId = ++requestIdRef.current;
-    fetchRecommendations()
-      .then((data) => {
-        if (requestId !== requestIdRef.current) return;
-        setRecommendations(data);
-      })
-      .catch((err: unknown) => {
-        if (!__DEV__) return;
-        const status = typeof err === 'object' && err !== null && 'response' in err
-          ? (err as { response?: { status?: number } }).response?.status
-          : undefined;
-        const message = err instanceof Error ? err.message : String(err);
-        console.warn('[useRecommendations] fetch_failed', status, message);
-      });
-  }, []);
-
-  useEffect(() => {
-    if (!enabled || !user?.id) {
-      requestIdRef.current += 1;
-      setRecommendations([]);
-      return;
-    }
-    load();
-  }, [enabled, user?.id, load]);
-
-  return enabled ? recommendations : [];
+  return useQuery({
+    queryKey: shouldFetch && userId
+      ? foundationQueryKey({ scope: 'user', entity: 'recommendations', userId, params: { limit: 20 } })
+      : userId
+        ? ['crave', 'user', 'recommendations', userId, 'disabled']
+      : ['crave', 'user', 'recommendations', 'signed-out'],
+    queryFn: ({ signal }) => fetchRecommendations(20, signal),
+    enabled: shouldFetch,
+    staleTime: STALE_TIME.normal,
+  });
 }

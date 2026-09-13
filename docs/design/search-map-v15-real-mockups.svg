@@ -1,0 +1,214 @@
+<svg width="2500" height="1550" viewBox="0 0 2500 1550" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <filter id="phone" x="-20%" y="-15%" width="140%" height="135%">
+      <feDropShadow dx="0" dy="30" stdDeviation="30" flood-color="#000000" flood-opacity="0.46"/>
+    </filter>
+    <filter id="card" x="-18%" y="-18%" width="136%" height="136%">
+      <feDropShadow dx="0" dy="14" stdDeviation="16" flood-color="#000000" flood-opacity="0.24"/>
+    </filter>
+    <linearGradient id="app" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#17110E"/>
+      <stop offset="0.45" stop-color="#101315"/>
+      <stop offset="1" stop-color="#07090A"/>
+    </linearGradient>
+    <linearGradient id="cream" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFDF7"/>
+      <stop offset="1" stop-color="#F5EFE4"/>
+    </linearGradient>
+    <linearGradient id="photo" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#2A120D"/>
+      <stop offset="0.17" stop-color="#7D2118"/>
+      <stop offset="0.34" stop-color="#E65A31"/>
+      <stop offset="0.54" stop-color="#F1BE58"/>
+      <stop offset="0.72" stop-color="#536C32"/>
+      <stop offset="1" stop-color="#0B0C0D"/>
+    </linearGradient>
+    <radialGradient id="bowl" cx="50%" cy="46%" r="58%">
+      <stop offset="0" stop-color="#FFF3C8"/>
+      <stop offset="0.23" stop-color="#F2B64B"/>
+      <stop offset="0.47" stop-color="#E44E31"/>
+      <stop offset="0.74" stop-color="#702016"/>
+      <stop offset="1" stop-color="#190B08"/>
+    </radialGradient>
+    <linearGradient id="tile" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#221B16"/>
+      <stop offset="1" stop-color="#0E1214"/>
+    </linearGradient>
+    <pattern id="map" width="58" height="58" patternUnits="userSpaceOnUse">
+      <rect width="58" height="58" fill="#10181B"/>
+      <path d="M0 16 L58 6 M0 45 L58 32 M17 0 L27 58 M50 0 L40 58" stroke="#263237" stroke-width="1.9"/>
+      <path d="M0 30 C17 25 34 30 58 21" stroke="#493728" stroke-width="5"/>
+      <path d="M0 31 C17 26 34 31 58 22" stroke="#6D767D" stroke-width="1.3"/>
+    </pattern>
+    <style>
+      .font{font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"SF Pro Display",Arial,sans-serif}
+      .micro{font-size:10px}.tiny{font-size:12px}.small{font-size:14px}.body{font-size:16px}.h3{font-size:20px;font-weight:780}.title{font-size:28px;font-weight:850;letter-spacing:0}.big{font-size:38px;font-weight:880;letter-spacing:0}.hero{font-size:48px;font-weight:890;letter-spacing:0}.bold{font-weight:800}.med{font-weight:650}
+    </style>
+    <symbol id="ramenPhoto" viewBox="0 0 360 250">
+      <rect width="360" height="250" rx="32" fill="url(#photo)"/>
+      <circle cx="180" cy="112" r="90" fill="url(#bowl)"/>
+      <ellipse cx="212" cy="132" rx="58" ry="20" fill="#71AA55"/>
+      <ellipse cx="158" cy="150" rx="80" ry="18" fill="#F2C35A"/>
+      <circle cx="132" cy="91" r="20" fill="#FFF3C8"/>
+      <circle cx="232" cy="82" r="18" fill="#FFF8D8"/>
+      <path d="M98 160 C148 128 208 128 262 156" stroke="#FFF0B8" stroke-width="12" stroke-linecap="round" opacity=".82"/>
+      <path d="M94 184 C154 150 208 156 268 180" stroke="#FFF0B8" stroke-width="8" stroke-linecap="round" opacity=".72"/>
+      <rect y="158" width="360" height="92" fill="#000000" opacity=".34"/>
+    </symbol>
+    <symbol id="smallFood" viewBox="0 0 82 82">
+      <rect width="82" height="82" rx="18" fill="#21120D"/>
+      <circle cx="41" cy="41" r="30" fill="url(#bowl)"/>
+      <ellipse cx="50" cy="50" rx="20" ry="8" fill="#79AE57"/>
+      <ellipse cx="36" cy="54" rx="21" ry="7" fill="#F2C45A"/>
+    </symbol>
+    <symbol id="identityTile" viewBox="0 0 82 82">
+      <rect width="82" height="82" rx="18" fill="url(#tile)" stroke="#31383D"/>
+      <text x="15" y="32" class="font tiny bold" fill="#F4C96A">MID</text>
+      <text x="15" y="50" class="font tiny bold" fill="#F4C96A">NIGHT</text>
+      <text x="15" y="68" class="font micro med" fill="#B9C2C8">RAMEN</text>
+    </symbol>
+  </defs>
+
+  <rect width="2500" height="1550" fill="#07090A"/>
+  <text x="56" y="78" class="font hero" fill="#FFFDF6">CRAVE</text>
+  <text x="430" y="74" class="font title" fill="#FFFDF6">SEARCH / MAP V1.5 - REAL MOCKUPS</text>
+  <text x="430" y="112" class="font body" fill="#BAC3CA">Synthesis: editorial answer, semantic clarity, map parity, recovery honesty, fallback resilience.</text>
+  <rect x="2148" y="50" width="216" height="34" rx="17" fill="#2A2117" stroke="#725325"/>
+  <text x="2180" y="72" class="font tiny bold" fill="#F2C568">EXPLORATORY - NOT READY</text>
+
+  <!-- Phone 1 Search Home -->
+  <g transform="translate(56 165)" filter="url(#phone)">
+    <rect width="430" height="884" rx="48" fill="#030405"/>
+    <rect x="16" y="16" width="398" height="852" rx="38" fill="url(#app)"/>
+    <text x="42" y="72" class="font small bold" fill="#FFFFFF">9:41</text>
+    <text x="42" y="130" class="font title" fill="#FFFDF6">CRAVE</text>
+    <text x="42" y="226" class="font big" fill="#FFFDF6">What sounds good?</text>
+    <rect x="42" y="270" width="346" height="66" rx="33" fill="#F8F1E3" stroke="#FFFFFF" stroke-opacity=".18"/>
+    <text x="70" y="310" class="font body med" fill="#201A15">late-night ramen near me</text>
+    <circle cx="356" cy="303" r="20" fill="#101418"/><text x="348" y="310" class="font small bold" fill="#F4C96A">⌕</text>
+    <text x="42" y="414" class="font h3" fill="#FFFDF6">Again?</text>
+    <rect x="42" y="438" width="346" height="92" rx="24" fill="#161B1E" stroke="#2E363B"/>
+    <text x="68" y="474" class="font body bold" fill="#FFFDF6">Late-night ramen near home</text>
+    <text x="68" y="503" class="font small" fill="#B9C2C8">A craving you came back to twice.</text>
+    <text x="42" y="602" class="font h3" fill="#FFFDF6">Useful right now</text>
+    <rect x="42" y="632" width="154" height="54" rx="18" fill="#171C1F" stroke="#5C472D"/><text x="77" y="666" class="font body bold" fill="#EFC466">Open late</text>
+    <rect x="212" y="632" width="176" height="54" rx="18" fill="#171C1F" stroke="#3B5440"/><text x="263" y="666" class="font body bold" fill="#A6D5AA">Near me</text>
+    <rect x="42" y="724" width="346" height="76" rx="22" fill="#101519" stroke="#293139"/>
+    <text x="66" y="756" class="font small bold" fill="#FFFDF6">Austin context ready</text>
+    <text x="66" y="782" class="font tiny" fill="#B9C2C8">Use current location or selected city.</text>
+    <text x="42" y="838" class="font tiny bold" fill="#7FB4FF">Trace: contract + proposed local history</text>
+  </g>
+  <text x="56" y="1115" class="font h3" fill="#FFFDF6">01 Search Home</text>
+  <text x="56" y="1144" class="font small" fill="#B9C2C8">Human craving first, not directory utility.</text>
+
+  <!-- Phone 2 Results -->
+  <g transform="translate(544 165)" filter="url(#phone)">
+    <rect width="430" height="884" rx="48" fill="#030405"/>
+    <rect x="16" y="16" width="398" height="852" rx="38" fill="url(#app)"/>
+    <text x="42" y="72" class="font small bold" fill="#FFFFFF">9:41</text>
+    <text x="42" y="128" class="font title" fill="#FFFDF6">Late-night ramen</text>
+    <rect x="42" y="154" width="78" height="30" rx="15" fill="#151A1E" stroke="#35404A"/><text x="60" y="174" class="font tiny bold" fill="#D7DEE4">Ramen</text>
+    <rect x="130" y="154" width="98" height="30" rx="15" fill="#151A1E" stroke="#5B472D"/><text x="149" y="174" class="font tiny bold" fill="#EFC466">Open late</text>
+    <rect x="238" y="154" width="92" height="30" rx="15" fill="#151A1E" stroke="#3D5642"/><text x="258" y="174" class="font tiny bold" fill="#A6D5AA">Near me</text>
+    <text x="42" y="218" class="font body" fill="#C9C1B2">8 places fit.</text>
+    <g transform="translate(42 250)" filter="url(#card)">
+      <use href="#ramenPhoto" width="346" height="240"/>
+      <rect x="20" y="18" width="118" height="30" rx="15" fill="#F8F1E3"/>
+      <text x="38" y="38" class="font tiny bold" fill="#111418">Best match</text>
+      <text x="20" y="174" class="font title" fill="#FFFFFF">Tatsu Ramen</text>
+      <text x="20" y="204" class="font body med" fill="#F0E5D4">0.4 mi · open until 2 AM</text>
+    </g>
+    <text x="42" y="542" class="font h3" fill="#FFFDF6">Why this fits</text>
+    <text x="42" y="574" class="font body" fill="#D6DED9">You usually rank spots like this highly. It also matches late-night ramen and stays inside your usual distance.</text>
+    <text x="42" y="650" class="font h3" fill="#FFFDF6">Other strong options</text>
+    <rect x="42" y="680" width="160" height="116" rx="22" fill="#13191D" stroke="#2A333A"/><use href="#smallFood" x="58" y="696" width="58" height="58"/><text x="58" y="774" class="font small bold" fill="#FFFDF6">Kome Kitchen</text>
+    <rect x="228" y="680" width="160" height="116" rx="22" fill="#13191D" stroke="#2A333A"/><use href="#identityTile" x="244" y="696" width="58" height="58"/><text x="244" y="774" class="font small bold" fill="#FFFDF6">Midnight Ramen</text>
+    <rect x="42" y="820" width="346" height="44" rx="22" fill="#FFFFFF"/><text x="158" y="848" class="font body bold" fill="#111418">Show 5 more</text>
+  </g>
+  <text x="544" y="1115" class="font h3" fill="#FFFDF6">02 Populated Results</text>
+  <text x="544" y="1144" class="font small" fill="#B9C2C8">One answer, real alternatives, still bounded to 8.</text>
+
+  <!-- Phone 3 Map -->
+  <g transform="translate(1032 165)" filter="url(#phone)">
+    <rect width="430" height="884" rx="48" fill="#030405"/>
+    <rect x="16" y="16" width="398" height="852" rx="38" fill="#101619"/>
+    <rect x="16" y="124" width="398" height="636" fill="url(#map)"/>
+    <text x="42" y="72" class="font small bold" fill="#FFFFFF">9:41</text>
+    <text x="42" y="124" class="font title" fill="#FFFDF6">Late-night ramen</text>
+    <text x="42" y="154" class="font small" fill="#BDC7CE">8 matches · same as List</text>
+    <rect x="42" y="180" width="156" height="40" rx="20" fill="#FFFFFF" fill-opacity=".10" stroke="#FFFFFF" stroke-opacity=".15"/><text x="94" y="205" class="font body bold" fill="#FFFFFF">List</text>
+    <rect x="208" y="180" width="180" height="40" rx="20" fill="#F8F1E3"/><text x="278" y="205" class="font body bold" fill="#111418">Map</text>
+    <rect x="86" y="256" width="210" height="44" rx="22" fill="#F8F1E3" stroke="#FFFFFF" stroke-opacity=".3"/><text x="125" y="284" class="font body bold" fill="#0B3159">Search this area</text>
+    <circle cx="170" cy="438" r="15" fill="#F4C96A" stroke="#111619" stroke-width="6"/>
+    <circle cx="296" cy="368" r="11" fill="#7FB4FF" stroke="#111619" stroke-width="5"/>
+    <circle cx="314" cy="560" r="11" fill="#7FB4FF" stroke="#111619" stroke-width="5"/>
+    <circle cx="114" cy="592" r="11" fill="#7FB4FF" stroke="#111619" stroke-width="5"/>
+    <rect x="42" y="666" width="346" height="164" rx="30" fill="#12181C" fill-opacity=".93" stroke="#34404A"/>
+    <use href="#smallFood" x="66" y="692" width="74" height="74"/>
+    <text x="158" y="706" class="font tiny bold" fill="#F4C96A">SEARCH CANDIDATE</text>
+    <text x="158" y="740" class="font title" fill="#FFFDF6">Tatsu Ramen</text>
+    <text x="158" y="770" class="font body med" fill="#D9E0E5">0.4 mi · open until 2 AM</text>
+    <text x="66" y="808" class="font small" fill="#BFC7CE">Map is spatial view. It did not rerank.</text>
+  </g>
+  <text x="1032" y="1115" class="font h3" fill="#FFFDF6">03 Search Map</text>
+  <text x="1032" y="1144" class="font small" fill="#B9C2C8">Same candidates, visible parity, selected search-owned card.</text>
+
+  <!-- Phone 4 Zero Recovery -->
+  <g transform="translate(1520 165)" filter="url(#phone)">
+    <rect width="430" height="884" rx="48" fill="#030405"/>
+    <rect x="16" y="16" width="398" height="852" rx="38" fill="url(#app)"/>
+    <text x="42" y="72" class="font small bold" fill="#FFFFFF">9:41</text>
+    <text x="42" y="128" class="font title" fill="#FFFDF6">Vegan ramen patio</text>
+    <rect x="42" y="154" width="126" height="30" rx="15" fill="#151A1E" stroke="#3D5642"/><text x="61" y="174" class="font tiny bold" fill="#A6D5AA">Vegan required</text>
+    <rect x="178" y="154" width="78" height="30" rx="15" fill="#151A1E" stroke="#35404A"/><text x="196" y="174" class="font tiny bold" fill="#D7DEE4">Ramen</text>
+    <rect x="266" y="154" width="116" height="30" rx="15" fill="#151A1E" stroke="#5B472D"/><text x="286" y="174" class="font tiny bold" fill="#EFC466">Patio required</text>
+    <text x="42" y="246" class="font big" fill="#FFFDF6">Almost.</text>
+    <text x="42" y="302" class="font title" fill="#FFFDF6">Patio seating is blocking this search.</text>
+    <text x="42" y="354" class="font body" fill="#C9D0D5">CRAVE found vegan ramen nearby, but no exact match with patio seating inside the current area.</text>
+    <text x="42" y="460" class="font h3" fill="#FFFDF6">Keeping</text>
+    <rect x="42" y="490" width="130" height="38" rx="19" fill="#151A1E" stroke="#3D5642"/><text x="63" y="514" class="font small bold" fill="#A6D5AA">Vegan</text>
+    <rect x="184" y="490" width="112" height="38" rx="19" fill="#151A1E" stroke="#35404A"/><text x="208" y="514" class="font small bold" fill="#D7DEE4">Ramen</text>
+    <text x="42" y="596" class="font h3" fill="#FFFDF6">Removing only</text>
+    <rect x="42" y="626" width="184" height="40" rx="20" fill="#2A1512" stroke="#9A493C"/><text x="66" y="651" class="font small bold" fill="#FFB4A6">Patio seating</text>
+    <rect x="42" y="722" width="346" height="56" rx="28" fill="#FFFFFF"/><text x="88" y="757" class="font body bold" fill="#111418">Show results without patio</text>
+    <rect x="42" y="800" width="346" height="50" rx="25" fill="#FFFFFF" fill-opacity=".10" stroke="#FFFFFF" stroke-opacity=".16"/><text x="167" y="831" class="font body bold" fill="#FFFFFF">Edit search</text>
+  </g>
+  <text x="1520" y="1115" class="font h3" fill="#FFFDF6">04 Zero Recovery</text>
+  <text x="1520" y="1144" class="font small" fill="#B9C2C8">CRAVE refuses to cheat. One justified relaxation.</text>
+
+  <!-- Phone 5 Low confidence + fallback -->
+  <g transform="translate(2008 165)" filter="url(#phone)">
+    <rect width="430" height="884" rx="48" fill="#030405"/>
+    <rect x="16" y="16" width="398" height="852" rx="38" fill="url(#app)"/>
+    <text x="42" y="72" class="font small bold" fill="#FFFFFF">9:41</text>
+    <text x="42" y="128" class="font title" fill="#FFFDF6">Vegan ramen</text>
+    <rect x="42" y="154" width="126" height="30" rx="15" fill="#151A1E" stroke="#3D5642"/><text x="61" y="174" class="font tiny bold" fill="#A6D5AA">Vegan required</text>
+    <rect x="178" y="154" width="78" height="30" rx="15" fill="#151A1E" stroke="#35404A"/><text x="196" y="174" class="font tiny bold" fill="#D7DEE4">Ramen</text>
+    <text x="42" y="222" class="font body" fill="#C9C1B2">8 places fit. Evidence varies.</text>
+    <rect x="42" y="270" width="346" height="202" rx="28" fill="#13191D" stroke="#2A333A" filter="url(#card)"/>
+    <use href="#smallFood" x="66" y="298" width="86" height="86"/>
+    <text x="174" y="310" class="font tiny bold" fill="#EFC466">STRONG FIT · LIMITED TASTE HISTORY</text>
+    <text x="174" y="348" class="font title" fill="#FFFDF6">Nori Kitchen</text>
+    <text x="174" y="380" class="font body" fill="#D7DED9">Looks promising</text>
+    <text x="66" y="426" class="font small" fill="#C7D0D6">It matches the search, but CRAVE is still learning your ramen taste.</text>
+    <rect x="42" y="520" width="346" height="202" rx="28" fill="#13191D" stroke="#2A333A" filter="url(#card)"/>
+    <rect x="66" y="548" width="96" height="96" rx="22" fill="url(#tile)" stroke="#31383D"/>
+    <text x="90" y="590" class="font tiny bold" fill="#F4C96A">MID</text>
+    <text x="90" y="612" class="font tiny bold" fill="#F4C96A">NIGHT</text>
+    <text x="90" y="634" class="font micro med" fill="#B9C2C8">RAMEN</text>
+    <text x="184" y="560" class="font tiny bold" fill="#C8D0D6">NO VERIFIED PHOTO</text>
+    <text x="184" y="598" class="font title" fill="#FFFDF6">Midnight Ramen</text>
+    <text x="184" y="630" class="font body" fill="#D7DED9">Image missing, not quality missing.</text>
+    <text x="66" y="678" class="font small" fill="#C7D0D6">Typography tile uses cuisine and neighborhood instead of borrowed food imagery.</text>
+    <rect x="42" y="790" width="346" height="48" rx="24" fill="#FFFFFF"/><text x="148" y="821" class="font body bold" fill="#111418">Keep exploring</text>
+  </g>
+  <text x="2008" y="1115" class="font h3" fill="#FFFDF6">05 Low Confidence + Missing Media</text>
+  <text x="2008" y="1144" class="font small" fill="#B9C2C8">Truthful weak evidence without making the place look bad.</text>
+
+  <rect x="56" y="1240" width="2328" height="132" rx="34" fill="#12181C" stroke="#2C353C"/>
+  <text x="92" y="1292" class="font title" fill="#FFFDF6">Brutal self-grade</text>
+  <text x="330" y="1292" class="font body" fill="#CBD3D9">8.6/10 direction. Stronger because these are actual screens, not stress thumbnails.</text>
+  <text x="92" y="1334" class="font body" fill="#CBD3D9">Still not 9: imagery is simulated, long-text/accessibility variants are not proven here, and real Penpot components/device evidence are still missing.</text>
+  <text x="92" y="1412" class="font h3" fill="#F2C568">Next</text>
+  <text x="165" y="1412" class="font body" fill="#D2BFA9">Nuke these actual mockups. If they survive, update anatomy to Contract-complete and then propagate the full 16 states.</text>
+</svg>

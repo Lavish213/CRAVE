@@ -66,12 +66,18 @@ describe('fetchDecisionSession', () => {
     });
   });
 
-  it('treats a malformed cards payload as an empty degraded session', async () => {
+  it('rejects a malformed cards payload instead of masquerading as an empty session', async () => {
     mockedGet.mockResolvedValue({ data: { cards: null, degraded: false } });
 
-    await expect(fetchDecisionSession({})).resolves.toEqual({
-      cards: [],
-      degraded: true,
+    await expect(fetchDecisionSession({})).rejects.toThrow('cards must be an array');
+  });
+
+  it('threads the cancellation signal to the request', async () => {
+    mockedGet.mockResolvedValue({ data: { cards: [], degraded: true } });
+    const controller = new AbortController();
+    await fetchDecisionSession({}, controller.signal);
+    expect(mockedGet).toHaveBeenCalledWith('/api/v1/decision-session', {
+      params: {}, signal: controller.signal,
     });
   });
 });

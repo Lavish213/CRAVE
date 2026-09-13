@@ -198,7 +198,7 @@ export default function ProfileSetupScreen() {
           accessibilityLabel="Continue"
         >
           {submitting ? (
-            <ActivityIndicator color="#FFFFFF" />
+            <ActivityIndicator color={Colors.onActionPrimary} />
           ) : (
             <Text style={styles.ctaText}>Continue</Text>
           )}
@@ -234,7 +234,7 @@ const styles = StyleSheet.create({
   hint: { fontSize: 12, marginTop: 2 },
   error: { color: Colors.error, fontSize: 13 },
   cta: {
-    backgroundColor: Colors.primary,
+    backgroundColor: Colors.actionPrimary,
     borderRadius: Radius.pill,
     paddingVertical: 15,
     alignItems: 'center',
@@ -242,5 +242,5 @@ const styles = StyleSheet.create({
     minHeight: 50,
   },
   ctaDisabled: { opacity: 0.4 },
-  ctaText: { color: '#FFFFFF', fontSize: 15, fontWeight: '800' },
+  ctaText: { color: Colors.onActionPrimary, fontSize: 15, fontWeight: '800' },
 });

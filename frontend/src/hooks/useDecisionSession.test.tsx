@@ -39,10 +39,10 @@ describe('useDecisionSession', () => {
     const { result } = renderHook(() => useDecisionSession(), { wrapper });
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
-    expect(mockedFetch).toHaveBeenCalledWith({
-      city_id: 'city-sf',
-      radius_miles: 20,
-    });
+    expect(mockedFetch).toHaveBeenCalledWith(
+      { city_id: 'city-sf', radius_miles: 20 },
+      expect.any(AbortSignal),
+    );
     expect(result.current.data).toEqual({ cards: [], degraded: false });
   });
 });

@@ -6,6 +6,7 @@ import {
 } from '../api/decisionSession';
 import { useCityStore } from '../stores/cityStore';
 import { useLocation } from './useLocation';
+import { foundationQueryKey, STALE_TIME } from '../contracts/foundationGate';
 
 const DECISION_RADIUS_MILES = 20;
 
@@ -21,8 +22,17 @@ export function useDecisionSession() {
   }), [selectedCity?.id, userLocation?.lat, userLocation?.lng]);
 
   return useQuery({
-    queryKey: ['decision-session', params],
-    queryFn: () => fetchDecisionSession(params),
-    staleTime: 2 * 60 * 1000,
+    queryKey: foundationQueryKey({
+      scope: selectedCity ? 'city' : 'session',
+      entity: 'decision-session',
+      params: {
+        city_id: params.city_id,
+        lat: params.lat,
+        lng: params.lng,
+        radius_miles: params.radius_miles,
+      },
+    }),
+    queryFn: ({ signal }) => fetchDecisionSession(params, signal),
+    staleTime: STALE_TIME.normal,
   });
 }
