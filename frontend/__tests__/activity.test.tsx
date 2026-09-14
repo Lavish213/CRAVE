@@ -67,9 +67,25 @@ it('renders only factual backend events and opens ranked places', async () => {
 });
 
 it('distinguishes a failed load from an empty history', async () => {
-  mockedFetch.mockRejectedValue(new Error('offline'));
+  // A real backend error (has a `response`) falls back to this screen's
+  // own generic copy -- classification now goes through the shared
+  // errorMessageFor/Foundation Gate taxonomy instead of a hardcoded
+  // string, but only the two specifically-classified kinds (rate-limited,
+  // offline) override it. See the next test for that offline case.
+  mockedFetch.mockRejectedValue({ response: { status: 500 } });
   const { findByText } = renderScreen();
   expect(await findByText("Couldn't load your activity")).toBeTruthy();
+});
+
+it('shows offline-specific copy for a genuine connectivity failure, not the generic message', async () => {
+  // Real gap this closes: this screen used to render the exact same
+  // "Couldn't load your activity" for a real backend error and a request
+  // that never reached the backend at all -- no response means offline,
+  // same classification every other errorMessageFor caller in the app
+  // already gets.
+  mockedFetch.mockRejectedValue(new Error('offline'));
+  const { findByText } = renderScreen();
+  expect(await findByText("Can't reach CRAVE — check your connection.")).toBeTruthy();
 });
 
 it('shows an honest empty state', async () => {

@@ -110,6 +110,33 @@ describe('RankPlaceScreen', () => {
     );
   });
 
+  it('gate -> sign in -> resume loads the place on its own, no second tap required', async () => {
+    // Real gap this closes: resume used to be `() => undefined` -- a user
+    // who hit this gate, signed in, and returned landed back on this exact
+    // screen with no place ever fetched (this mount effect deliberately
+    // does not auto-refetch itself on a `user` transition, to avoid racing
+    // resume). Without a real resume, they'd need some *other*, unrelated
+    // action to actually see the tier picker.
+    setAuth(null);
+    const { findByLabelText } = render(<RankPlaceScreen />);
+    fireEvent.press(await findByLabelText('Sign in'));
+
+    expect(mockedFetchPlaceDetail).not.toHaveBeenCalled();
+    const envelope = mockRequestAuthGate.mock.calls[0][0];
+    expect(typeof envelope.resume).toBe('function');
+
+    // Sign-in actually completes elsewhere (AuthSheet + authStore), then
+    // AuthGateHost invokes this envelope's resume -- exactly what a real
+    // post-sign-in resume does, with no further tap from the user.
+    setAuth({ id: 'user-1' });
+    await act(async () => {
+      await envelope.resume();
+    });
+
+    expect(mockedFetchPlaceDetail).toHaveBeenCalledWith('place-A');
+    expect(mockedFetchPlaceDetail).toHaveBeenCalledTimes(1);
+  });
+
   it('actually retries the place fetch on error, instead of just navigating back', async () => {
     // Confirmed release defect (docs/SCREEN_UX_FINDINGS_TRIAGE.md):
     // this button previously called router.back() -- a misleading
@@ -332,6 +359,38 @@ describe('RankPlaceScreen', () => {
     // (or any stale content) while it's now showing place-B.
     expect(queryByText('OUT OF 10')).toBeNull();
     expect(await findByText('New Route Place')).toBeTruthy();
+  });
+
+  it('re-enables tier controls on the newly loaded place after a placeId change interrupts an in-flight submission', async () => {
+    // The generation guard that protects a late-resolving submission from
+    // committing under the wrong place has a real side effect: handlePickTier's
+    // own `finally` skips its `setBusy(false)` once the generation no longer
+    // matches (exactly what a placeId change causes), so resetAndLoad has to
+    // clear `busy` itself -- otherwise the newly loaded place's tier and
+    // comparison controls stayed disabled, and the busy overlay stuck on
+    // screen, indefinitely.
+    mockedStartRanking.mockImplementation(() => new Promise(() => {})); // place-A's submission never resolves
+
+    const { rerender, findByText, findByLabelText } = render(<RankPlaceScreen />);
+    await findByText('Tasty Spot');
+    fireEvent.press(await findByLabelText('Loved it'));
+    // place-A's tier submission is now in flight, unresolved -- busy is true.
+
+    mockPlaceId = 'place-B';
+    mockedFetchPlaceDetail.mockResolvedValue(makePlace('place-B', { name: 'New Route Place' }));
+    mockedStartRanking.mockResolvedValue(COMPARING_STEP());
+    rerender(<RankPlaceScreen />);
+    await findByText('New Route Place');
+
+    await act(async () => {
+      fireEvent.press(await findByLabelText('Loved it'));
+    });
+
+    // If `busy` were still stuck true from place-A's abandoned submission,
+    // this disabled tier button would never have called startRanking again.
+    expect(mockedStartRanking).toHaveBeenLastCalledWith(
+      expect.objectContaining({ place_id: 'place-B' }),
+    );
   });
 
   it('does not let a stale place from before a placeId change render under the new route', async () => {

@@ -360,6 +360,294 @@ export default function CravesScreen() {
     handleViewableItemsChangedRef.current(info);
   }).current;
 
+  // Hoisted out of the FlashList `renderItem` prop and memoized: an inline
+  // renderItem is reconstructed on every render of this screen, and every
+  // onPress/onPressIn closure it builds for each row goes with it -- new
+  // function identities on every unrelated state change (e.g. one row's
+  // delete completing) defeat PlaceCardCompact's own React.memo wrapping,
+  // forcing every visible card to re-render instead of just the one that
+  // actually changed. Depends only on the handful of stable/rarely-changing
+  // values the row bodies actually reference, not on `rows`/`saves`
+  // themselves, so this reference stays stable across the vast majority of
+  // re-renders (a save toggling, a viewability tick, etc.).
+  const renderRow = React.useCallback(
+    ({ item: row }: { item: CravesRow }) => {
+      if (row.kind === 'reasoned-header') {
+        return (
+          <View style={styles.cravesHeader}>
+            <Text style={styles.cravesTitle}>Try one of these</Text>
+            <Text style={styles.cravesSub}>
+              {row.degraded
+                ? 'Confidence is lower right now, so these are the best answers CRAVE can support.'
+                : 'From your saved places, right now'}
+            </Text>
+          </View>
+        );
+      }
+
+      if (row.kind === 'reasoned-loading') {
+        return <View style={styles.list}><SkeletonRowList count={2} /></View>;
+      }
+
+      if (row.kind === 'reasoned-empty') {
+        return (
+          <View style={styles.reasonedEmpty}>
+            <Text style={styles.cravesSub}>
+              Nothing in your Craves fits right now — try Search to find something new.
+            </Text>
+          </View>
+        );
+      }
+
+      if (row.kind === 'reasoned-card') {
+        return (
+          <View style={styles.rowSpacer}>
+            <PlaceCardCompact
+              place={row.card.place}
+              craveRole={row.card.role}
+              onPress={() => {
+                logRecommendationEvent({
+                  surface: 'craves',
+                  event_type: 'click',
+                  place_id: row.card.place.id,
+                  position: row.position,
+                  rank_percentile: row.card.place.rank_percentile,
+                  city_id: row.card.place.city_id ?? null,
+                  decision_role: row.card.role,
+                });
+                router.push(`/place/${row.card.place.id}?reason_role=${row.card.role}&reason_source=craves`);
+              }}
+              onPressIn={() => prefetchPlace(row.card.place.id)}
+            />
+          </View>
+        );
+      }
+
+      if (row.kind === 'cluster-header') {
+        return (
+          <SectionHeader
+            label={row.cluster.label}
+            subtext={row.cluster.subtext}
+            count={row.cluster.items.length}
+          />
+        );
+      }
+
+      if (row.kind === 'cluster-item') {
+        return (
+          <View style={styles.rowSpacer}>
+            <PlaceCardCompact
+              place={row.item}
+              visited={row.item.visited}
+              hasNotes={!!row.item.notes}
+              onPress={() => {
+                logRecommendationEvent({
+                  surface: 'craves',
+                  event_type: 'click',
+                  place_id: row.item.id,
+                  position: row.position,
+                  rank_percentile: row.item.rank_percentile,
+                  city_id: row.item.city_id ?? null,
+                });
+                router.push(`/place/${row.item.id}`);
+              }}
+              onPressIn={() => prefetchPlace(row.item.id)}
+            />
+          </View>
+        );
+      }
+
+      if (row.kind === 'full-list-header') {
+        return (
+          <View style={styles.cravesHeader}>
+            <Text style={styles.cravesTitle}>All saves</Text>
+          </View>
+        );
+      }
+
+      if (row.kind === 'save') {
+        return (
+          <View style={styles.rowSpacer}>
+            <PlaceCardCompact
+              place={row.item}
+              visited={row.item.visited}
+              hasNotes={!!row.item.notes}
+              onPress={() => {
+                logRecommendationEvent({
+                  surface: 'craves',
+                  event_type: 'click',
+                  place_id: row.item.id,
+                  position: row.position,
+                  rank_percentile: row.item.rank_percentile,
+                  city_id: row.item.city_id ?? null,
+                });
+                router.push(`/place/${row.item.id}`);
+              }}
+              onPressIn={() => prefetchPlace(row.item.id)}
+              rightAction={
+                <TouchableOpacity
+                  onPress={() => {
+                    if (!user) return;
+                    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    // Craves Screen Contract §17: remove now requires
+                    // confirmation -- there was previously no
+                    // confirmation step at all before this deleted a
+                    // save outright.
+                    Alert.alert(
+                      `Remove ${row.item.name}?`,
+                      "This removes it from your Craves. You can save it again anytime.",
+                      [
+                        { text: 'Cancel', style: 'cancel' },
+                        {
+                          text: 'Remove',
+                          style: 'destructive',
+                          onPress: async () => {
+                            void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                            const err = await removeSave(row.item.id, user.id, {
+                              surface: 'craves',
+                              rank_percentile: row.item.rank_percentile,
+                              city_id: row.item.city_id ?? null,
+                            });
+                            toast(err ?? 'Removed from Saves');
+                          },
+                        },
+                      ],
+                    );
+                  }}
+                  style={styles.removeBtn}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  accessibilityLabel={`Remove ${row.item.name} from saves`}
+                  accessibilityRole="button"
+                >
+                  <Ionicons name="close" size={18} color={Colors.textSecondary} />
+                </TouchableOpacity>
+              }
+            />
+          </View>
+        );
+      }
+
+      if (row.kind === 'section') {
+        return (
+          <View style={styles.cravesHeader}>
+            <Text style={styles.cravesTitle}>{row.section === 'craves' ? 'Craves' : 'Added'}</Text>
+            <Text style={styles.cravesSub}>
+              {row.section === 'craves'
+                ? "Places you've craved, tracked by CRAVE"
+                : 'Places you typed in by name'}
+            </Text>
+          </View>
+        );
+      }
+
+      if (row.kind === 'craves-loading' || row.kind === 'place-saves-loading') {
+        return <ActivityIndicator color={Colors.brand} style={styles.sectionSpinner} />;
+      }
+
+      if (row.kind === 'craves-error' || row.kind === 'place-saves-error') {
+        const isCravesError = row.kind === 'craves-error';
+        return (
+          <TouchableOpacity
+            style={styles.inlineError}
+            onPress={() => void (isCravesError ? loadCraves() : loadPlaceSaves())}
+            accessibilityRole="button"
+            accessibilityLabel={isCravesError ? 'Retry loading Craves' : 'Retry loading added places'}
+          >
+            <Text style={styles.cravesSub}>
+              {`${(isCravesError ? cravesError : placeSavesError) ?? (isCravesError ? "Couldn't load Craves right now." : "Couldn't load added places right now.")} Tap to retry.`}
+            </Text>
+          </TouchableOpacity>
+        );
+      }
+
+      if (row.kind === 'crave') {
+        return (
+          <View style={styles.craveRow}>
+            {row.item.thumbnail_url ? (
+              <Image
+                source={withImageWidth(row.item.thumbnail_url, AVATAR_IMAGE_WIDTH)}
+                style={styles.craveThumb}
+                contentFit="cover"
+                cachePolicy="memory-disk"
+              />
+            ) : null}
+            <View style={styles.craveMeta}>
+              <Text style={styles.craveName} numberOfLines={1}>
+                {row.item.parsed_place_name ?? row.item.url}
+              </Text>
+              <Text style={row.item.matched_place_id ? styles.craveStatusMatched : styles.craveStatusPending}>
+                {row.item.matched_place_id ? '● Matched' : 'Searching…'}
+                {row.item.author_name ? `  ·  @${row.item.author_name}` : ''}
+              </Text>
+            </View>
+            {row.item.matched_place_id ? (
+              <TouchableOpacity
+                style={styles.craveOpenBtn}
+                onPress={() => {
+                  logRecommendationEvent({
+                    surface: 'craves',
+                    event_type: 'click',
+                    place_id: row.item.matched_place_id!,
+                    position: row.matchedPosition,
+                  });
+                  router.push(`/place/${row.item.matched_place_id!}`);
+                }}
+                accessibilityRole="button"
+                accessibilityLabel={`Open matched place for ${row.item.parsed_place_name ?? 'this place'}`}
+              >
+                <Text style={styles.craveViewBtn}>View →</Text>
+              </TouchableOpacity>
+            ) : null}
+          </View>
+        );
+      }
+
+      return (
+        <View style={styles.craveRow}>
+          <View style={styles.craveMeta}>
+            <Text style={styles.craveName} numberOfLines={1}>{row.item.place_name}</Text>
+            <Text style={row.item.place_id ? styles.craveStatusMatched : styles.craveStatusPending}>
+              {row.item.place_id ? '● Matched' : 'Searching…'}
+            </Text>
+          </View>
+          {row.item.place_id ? (
+            <TouchableOpacity
+              style={styles.craveOpenBtn}
+              onPress={() => {
+                logRecommendationEvent({
+                  surface: 'craves',
+                  event_type: 'click',
+                  place_id: row.item.place_id!,
+                  position: row.matchedPosition,
+                });
+                router.push(`/place/${row.item.place_id!}`);
+              }}
+              accessibilityRole="button"
+              accessibilityLabel={`Open matched place for ${row.item.place_name}`}
+            >
+              <Text style={styles.craveViewBtn}>View →</Text>
+            </TouchableOpacity>
+          ) : null}
+          <TouchableOpacity
+            style={styles.craveDeleteBtn}
+            onPress={() => void handleDeletePlaceSave(row.item)}
+            disabled={deletingPlaceSaveId === row.item.id}
+            accessibilityRole="button"
+            accessibilityLabel={`Remove ${row.item.place_name} from your list`}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            {deletingPlaceSaveId === row.item.id ? (
+              <ActivityIndicator size="small" color={Colors.textSecondary} />
+            ) : (
+              <Ionicons name="trash-outline" size={18} color={Colors.textSecondary} />
+            )}
+          </TouchableOpacity>
+        </View>
+      );
+    },
+    [router, prefetchPlace, removeSave, toast, user, loadCraves, loadPlaceSaves, handleDeletePlaceSave, deletingPlaceSaveId, cravesError, placeSavesError],
+  );
+
   if (__DEV__) {
     console.log('[CRAVES] RENDER', {
       user: !!user,
@@ -505,279 +793,7 @@ export default function CravesScreen() {
             tintColor={Colors.brand}
           />
         }
-        renderItem={({ item: row }) => {
-          if (row.kind === 'reasoned-header') {
-            return (
-              <View style={styles.cravesHeader}>
-                <Text style={styles.cravesTitle}>Try one of these</Text>
-                <Text style={styles.cravesSub}>
-                  {row.degraded
-                    ? 'Confidence is lower right now, so these are the best answers CRAVE can support.'
-                    : 'From your saved places, right now'}
-                </Text>
-              </View>
-            );
-          }
-
-          if (row.kind === 'reasoned-loading') {
-            return <View style={styles.list}><SkeletonRowList count={2} /></View>;
-          }
-
-          if (row.kind === 'reasoned-empty') {
-            return (
-              <View style={styles.reasonedEmpty}>
-                <Text style={styles.cravesSub}>
-                  Nothing in your Craves fits right now — try Search to find something new.
-                </Text>
-              </View>
-            );
-          }
-
-          if (row.kind === 'reasoned-card') {
-            return (
-              <View style={styles.rowSpacer}>
-                <PlaceCardCompact
-                  place={row.card.place}
-                  craveRole={row.card.role}
-                  onPress={() => {
-                    logRecommendationEvent({
-                      surface: 'craves',
-                      event_type: 'click',
-                      place_id: row.card.place.id,
-                      position: row.position,
-                      rank_percentile: row.card.place.rank_percentile,
-                      city_id: row.card.place.city_id ?? null,
-                      decision_role: row.card.role,
-                    });
-                    router.push(`/place/${row.card.place.id}?reason_role=${row.card.role}&reason_source=craves`);
-                  }}
-                  onPressIn={() => prefetchPlace(row.card.place.id)}
-                />
-              </View>
-            );
-          }
-
-          if (row.kind === 'cluster-header') {
-            return (
-              <SectionHeader
-                label={row.cluster.label}
-                subtext={row.cluster.subtext}
-                count={row.cluster.items.length}
-              />
-            );
-          }
-
-          if (row.kind === 'cluster-item') {
-            return (
-              <View style={styles.rowSpacer}>
-                <PlaceCardCompact
-                  place={row.item}
-                  visited={row.item.visited}
-                  hasNotes={!!row.item.notes}
-                  onPress={() => {
-                    logRecommendationEvent({
-                      surface: 'craves',
-                      event_type: 'click',
-                      place_id: row.item.id,
-                      position: row.position,
-                      rank_percentile: row.item.rank_percentile,
-                      city_id: row.item.city_id ?? null,
-                    });
-                    router.push(`/place/${row.item.id}`);
-                  }}
-                  onPressIn={() => prefetchPlace(row.item.id)}
-                />
-              </View>
-            );
-          }
-
-          if (row.kind === 'full-list-header') {
-            return (
-              <View style={styles.cravesHeader}>
-                <Text style={styles.cravesTitle}>All saves</Text>
-              </View>
-            );
-          }
-
-          if (row.kind === 'save') {
-            return (
-              <View style={styles.rowSpacer}>
-                <PlaceCardCompact
-                  place={row.item}
-                  visited={row.item.visited}
-                  hasNotes={!!row.item.notes}
-                  onPress={() => {
-                    logRecommendationEvent({
-                      surface: 'craves',
-                      event_type: 'click',
-                      place_id: row.item.id,
-                      position: row.position,
-                      rank_percentile: row.item.rank_percentile,
-                      city_id: row.item.city_id ?? null,
-                    });
-                    router.push(`/place/${row.item.id}`);
-                  }}
-                  onPressIn={() => prefetchPlace(row.item.id)}
-                  rightAction={
-                    <TouchableOpacity
-                      onPress={() => {
-                        void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                        // Craves Screen Contract §17: remove now requires
-                        // confirmation -- there was previously no
-                        // confirmation step at all before this deleted a
-                        // save outright.
-                        Alert.alert(
-                          `Remove ${row.item.name}?`,
-                          "This removes it from your Craves. You can save it again anytime.",
-                          [
-                            { text: 'Cancel', style: 'cancel' },
-                            {
-                              text: 'Remove',
-                              style: 'destructive',
-                              onPress: async () => {
-                                void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                                const err = await removeSave(row.item.id, user.id, {
-                                  surface: 'craves',
-                                  rank_percentile: row.item.rank_percentile,
-                                  city_id: row.item.city_id ?? null,
-                                });
-                                toast(err ?? 'Removed from Saves');
-                              },
-                            },
-                          ],
-                        );
-                      }}
-                      style={styles.removeBtn}
-                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                      accessibilityLabel={`Remove ${row.item.name} from saves`}
-                      accessibilityRole="button"
-                    >
-                      <Ionicons name="close" size={18} color={Colors.textSecondary} />
-                    </TouchableOpacity>
-                  }
-                />
-              </View>
-            );
-          }
-
-          if (row.kind === 'section') {
-            return (
-              <View style={styles.cravesHeader}>
-                <Text style={styles.cravesTitle}>{row.section === 'craves' ? 'Craves' : 'Added'}</Text>
-                <Text style={styles.cravesSub}>
-                  {row.section === 'craves'
-                    ? "Places you've craved, tracked by CRAVE"
-                    : 'Places you typed in by name'}
-                </Text>
-              </View>
-            );
-          }
-
-          if (row.kind === 'craves-loading' || row.kind === 'place-saves-loading') {
-            return <ActivityIndicator color={Colors.brand} style={styles.sectionSpinner} />;
-          }
-
-          if (row.kind === 'craves-error' || row.kind === 'place-saves-error') {
-            const isCravesError = row.kind === 'craves-error';
-            return (
-              <TouchableOpacity
-                style={styles.inlineError}
-                onPress={() => void (isCravesError ? loadCraves() : loadPlaceSaves())}
-                accessibilityRole="button"
-                accessibilityLabel={isCravesError ? 'Retry loading Craves' : 'Retry loading added places'}
-              >
-                <Text style={styles.cravesSub}>
-                  {`${(isCravesError ? cravesError : placeSavesError) ?? (isCravesError ? "Couldn't load Craves right now." : "Couldn't load added places right now.")} Tap to retry.`}
-                </Text>
-              </TouchableOpacity>
-            );
-          }
-
-          if (row.kind === 'crave') {
-            return (
-              <View style={styles.craveRow}>
-                {row.item.thumbnail_url ? (
-                  <Image
-                    source={withImageWidth(row.item.thumbnail_url, AVATAR_IMAGE_WIDTH)}
-                    style={styles.craveThumb}
-                    contentFit="cover"
-                    cachePolicy="memory-disk"
-                  />
-                ) : null}
-                <View style={styles.craveMeta}>
-                  <Text style={styles.craveName} numberOfLines={1}>
-                    {row.item.parsed_place_name ?? row.item.url}
-                  </Text>
-                  <Text style={row.item.matched_place_id ? styles.craveStatusMatched : styles.craveStatusPending}>
-                    {row.item.matched_place_id ? '● Matched' : 'Searching…'}
-                    {row.item.author_name ? `  ·  @${row.item.author_name}` : ''}
-                  </Text>
-                </View>
-                {row.item.matched_place_id ? (
-                  <TouchableOpacity
-                    style={styles.craveOpenBtn}
-                    onPress={() => {
-                      logRecommendationEvent({
-                        surface: 'craves',
-                        event_type: 'click',
-                        place_id: row.item.matched_place_id!,
-                        position: row.matchedPosition,
-                      });
-                      router.push(`/place/${row.item.matched_place_id!}`);
-                    }}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Open matched place for ${row.item.parsed_place_name ?? 'this place'}`}
-                  >
-                    <Text style={styles.craveViewBtn}>View →</Text>
-                  </TouchableOpacity>
-                ) : null}
-              </View>
-            );
-          }
-
-          return (
-            <View style={styles.craveRow}>
-              <View style={styles.craveMeta}>
-                <Text style={styles.craveName} numberOfLines={1}>{row.item.place_name}</Text>
-                <Text style={row.item.place_id ? styles.craveStatusMatched : styles.craveStatusPending}>
-                  {row.item.place_id ? '● Matched' : 'Searching…'}
-                </Text>
-              </View>
-              {row.item.place_id ? (
-                <TouchableOpacity
-                  style={styles.craveOpenBtn}
-                  onPress={() => {
-                    logRecommendationEvent({
-                      surface: 'craves',
-                      event_type: 'click',
-                      place_id: row.item.place_id!,
-                      position: row.matchedPosition,
-                    });
-                    router.push(`/place/${row.item.place_id!}`);
-                  }}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Open matched place for ${row.item.place_name}`}
-                >
-                  <Text style={styles.craveViewBtn}>View →</Text>
-                </TouchableOpacity>
-              ) : null}
-              <TouchableOpacity
-                style={styles.craveDeleteBtn}
-                onPress={() => void handleDeletePlaceSave(row.item)}
-                disabled={deletingPlaceSaveId === row.item.id}
-                accessibilityRole="button"
-                accessibilityLabel={`Remove ${row.item.place_name} from your list`}
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              >
-                {deletingPlaceSaveId === row.item.id ? (
-                  <ActivityIndicator size="small" color={Colors.textSecondary} />
-                ) : (
-                  <Ionicons name="trash-outline" size={18} color={Colors.textSecondary} />
-                )}
-              </TouchableOpacity>
-            </View>
-          );
-        }}
+        renderItem={renderRow}
         contentContainerStyle={styles.list}
         ListHeaderComponent={
           <View style={styles.screenHeader}>

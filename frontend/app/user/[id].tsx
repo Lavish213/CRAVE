@@ -190,6 +190,11 @@ export default function UserProfileScreen() {
         targetIds: [id],
         destination: `/user/${id}`,
         idempotent: true,
+        // Intentionally deferred, not forgotten: one of the 4 lower-value
+        // auth-gate call sites left as a no-op resume this pass (Save on
+        // place/[id].tsx and Rank submission on rank/[placeId].tsx got the
+        // real resume wiring) -- follow is a real candidate for a resume
+        // closure later, just out of scope for this pass.
         resume: () => undefined,
       });
       return;

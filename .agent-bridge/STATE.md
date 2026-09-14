@@ -2,6 +2,80 @@
 
 Status: ready-for-review
 Owner: Claude
+Branch: claude/frontend-architecture-fixes
+Base SHA: 9ea03b8 (origin/main tip after PR #304; this entry originally
+targeted 755a722/commit a7f914a before a merge-conflict rebase and a
+CodeRabbit-driven fix landed on top -- see below, not a fresh handoff)
+Commit SHA: pending (see PR #306 for the authoritative head SHA once pushed)
+Scope: four independently-verified engineering-audit findings, frontend only:
+(1) `usePrefetchPlace.ts`'s prefetch queryKey didn't match Place Detail's real
+`foundationQueryKey` cache key, wasting every prefetch-on-tap; (2) three
+duplicated ad-hoc error classifiers (`errorMessage.ts`, `cravesStore.ts`'s
+`_classifyError`, `place/[id].tsx`'s inline copy) plus `activity.tsx`'s
+hardcoded error string, consolidated to delegate to the already-built,
+already-tested `foundationGate.ts` taxonomy; (3) `authGateStore.ts`'s
+`resume`-after-sign-in contract is fully built/tested but every real call site
+no-ops it -- wiring real `resume` closures for the two highest-value cases
+(Save on `place/[id].tsx`, Rank on `rank/[placeId].tsx`), leaving the other 4
+call sites (`activity.tsx`, `rank-home.tsx`, `user/[id].tsx`,
+`PlaceVideoGallery.tsx`) as deliberately-deferred no-ops; (4) four screens'
+inline FlashList `renderItem` closures defeat `PlaceCard`/`PlaceCardCompact`'s
+`React.memo` -- hoisting with `useCallback` in `(tabs)/index.tsx`,
+`(tabs)/craves.tsx`, `SearchScreen.tsx`, `activity.tsx`.
+Locked files: `frontend/src/hooks/usePrefetchPlace.ts`,
+`frontend/src/utils/errorMessage.ts`, `frontend/src/stores/cravesStore.ts`,
+`frontend/src/stores/authGateStore.ts`, `frontend/app/place/[id].tsx`,
+`frontend/app/rank/[placeId].tsx`, `frontend/app/activity.tsx`,
+`frontend/app/(tabs)/index.tsx`, `frontend/app/(tabs)/craves.tsx`,
+`frontend/src/screens/SearchScreen.tsx`, plus each touched file's own test.
+Verification (original, pre-merge commit a7f914a): `npx tsc --noEmit` ->
+clean. `npx jest --ci` -> 60/60 suites, 563/563 tests passed (new:
+`usePrefetchPlace.test.tsx`, a `rank-place.test.tsx` resume test, a
+`place-detail.test.tsx` resume test, an `activity.test.tsx`
+offline-classification test; one pre-existing `activity.test.tsx` assertion
+updated to the now-more-specific offline copy, not weakened). Real diff read
+adversarially before pushing, including re-verifying every file against this
+worktree's own current `origin/main` content after discovering an earlier
+read pass had accidentally pulled from a stale sibling checkout
+(`/home/user/CRAVE/frontend`, ~15 commits behind this worktree) -- caught
+before any edit landed on the wrong base.
+Verification (current head, after the merge + CodeRabbit fix below):
+`npx tsc --noEmit` -> clean. `npx jest --ci` -> 61/61 suites, 574/574 tests
+(+1 suite/+10 tests vs. the original 60/563 are PRs #302/#303/#304's own
+tests, brought in by merging `main`; +1 more test is the new regression test
+for the CodeRabbit-found bug below).
+`__tests__/rank-place.test.tsx` specifically -> 17/17 (1 new, see below).
+CodeRabbit review on this PR found two real issues, both fixed here rather
+than deferred:
+- **Major**: `resetAndLoad` (`rank/[placeId].tsx`) cleared
+  `submittingRef.current` when a `placeId` change interrupted an in-flight
+  `startRanking`/`submitComparison`, but not `busy` -- the abandoned
+  submission's own `finally` skips its `setBusy(false)` for that exact case
+  (its generation no longer matches), so the newly loaded place's tier and
+  comparison controls, plus the busy overlay, stayed disabled/stuck
+  indefinitely. Fixed by clearing `busy` in `resetAndLoad` too. Added a
+  regression test (independently confirmed to fail on the pre-fix code via
+  a local revert-and-rerun) proving a tier button on the new place still
+  calls `startRanking` after this exact interruption.
+- **Minor**: this entry's own commit SHA/verification numbers were stale
+  relative to the actual PR head after the merge -- see the two
+  "Verification" paragraphs above, now split pre- and post-merge instead of
+  overwriting the original with unverified numbers.
+Known gaps: cravesStore.ts's `_classifyError` was already delegating to
+`errorMessageFor` (PR #295, prior session) -- the audit's finding for that
+file was stale; confirmed via `git log`, not re-changed. The other 4
+auth-gate call sites' `resume` intentionally stay `() => undefined` (see
+scope above) -- not a gap, a deliberate scope boundary per the ask.
+PR: https://github.com/Lavish213/CRAVE/pull/306 (opened against `main`,
+CodeRabbit review completed and both findings fixed above).
+Next action: none from me -- do not merge. User is coordinating several
+parallel PRs against `main` and will watch CI/CodeRabbit and sequence
+merges themselves.
+
+---
+
+Status: merged
+Owner: Claude
 Branch: claude/dedupe-hygiene-audit-trail
 Base SHA: 755a722 (origin/main tip, includes menu-source-governance below
 already merged as PR #301 -- see staleness note under that entry)

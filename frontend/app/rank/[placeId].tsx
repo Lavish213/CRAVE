@@ -117,15 +117,26 @@ export default function RankPlaceScreen() {
       });
   }, []);
 
-  useEffect(() => {
-    if (!placeId || !user?.id) return;
+  // Resets the whole ranking flow and (re)loads `place` for a given id --
+  // shared by the mount/placeId-change effect below and the sign-in gate's
+  // own `resume` (see the signed-out branch further down), so the exact
+  // same real fetch either happens automatically on mount/placeId-change
+  // or is explicitly triggered once sign-in actually completes, instead of
+  // two different code paths that could drift from each other.
+  const resetAndLoad = useCallback((id: string) => {
     const myGeneration = ++placeGenerationRef.current;
-    // A submission still in flight for the *previous* place must not go
-    // on blocking this (new) place's own tier/comparison controls until
-    // that stale request happens to settle -- its own generation check
-    // already keeps its result from being applied, but the lock itself
-    // needs releasing here too, not left to that unrelated `finally`.
+    // A submission still in flight for the *previous* place/account must
+    // not go on blocking this fresh load until that stale request happens
+    // to settle -- its own generation check already keeps its result from
+    // being applied, but the lock itself needs releasing here too, not
+    // left to that unrelated `finally`. That same generation check is also
+    // why `finally` skips its own `setBusy(false)` in this exact case (its
+    // generation no longer matches), so this has to clear `busy` too --
+    // without it, the newly loaded place's tier/comparison controls stayed
+    // disabled and the busy overlay stuck on-screen indefinitely (caught in
+    // review, not by a device tester).
     submittingRef.current = false;
+    setBusy(false);
     setPlace(null);
     setError(null);
     setOpponent(null);
@@ -136,8 +147,34 @@ export default function RankPlaceScreen() {
     setResult(null);
     setRound(0);
     setBeatOpponentName(null);
-    loadPlace(placeId, myGeneration);
-  }, [placeId, user?.id, loadPlace]);
+    loadPlace(id, myGeneration);
+  }, [loadPlace]);
+
+  useEffect(() => {
+    if (!placeId) return;
+    // Checked here, but deliberately NOT a dependency of this effect: if
+    // this screen mounts signed out, it must not silently re-fetch itself
+    // the instant `user` later becomes truthy -- that would race/duplicate
+    // the sign-in gate's own `resume` below, which now explicitly re-runs
+    // this exact same reset+load once sign-in actually completes, rather
+    // than relying on this effect's own reactivity to do it implicitly (a
+    // real, previously-untested mutation-never-resumes gap: `resume` was
+    // `() => undefined` and nothing else stepped in for a screen that
+    // hadn't loaded a `place` yet). A genuine placeId change still re-runs
+    // this via its own dependency either way.
+    //
+    // Trade-off accepted: an account switch (A -> B) while already signed
+    // in and mid-flow on this exact screen no longer resets local state on
+    // its own. The backend still scopes every submission to whichever
+    // account is actually authenticated at call time -- handleChoose's own
+    // token-mismatch handling already treats a stale/foreign comparison
+    // token as a recoverable inline error, not a silent cross-account
+    // write, so this doesn't reopen an account-isolation gap, only a rare
+    // UI-staleness one.
+    if (!user?.id) return;
+    resetAndLoad(placeId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [placeId, resetAndLoad]);
 
   // The opponent id from the most recent comparison step -- kept
   // separately from the resolved `opponent` object so a failed detail
@@ -290,9 +327,17 @@ export default function RankPlaceScreen() {
     // authGateStore, see rank-home.tsx's identical pattern): tapping
     // "Sign in" opens the shared AuthSheet, and once signed in this
     // component's own useAuthStore subscription re-renders past this
-    // branch on its own -- resume is a no-op because we're already on
-    // the exact place this deep link pointed at, there's nothing further
-    // to navigate to.
+    // branch on its own. `resume` now does real work rather than being a
+    // no-op: this screen's own mount effect deliberately no longer
+    // refetches itself on a `user` transition (see that effect's own
+    // comment), so without this, a user who signs in from here would land
+    // back on this same screen with no place ever loaded -- a second,
+    // seemingly-unrelated action (backing out and back in, or another
+    // screen's own gate) would have been needed to actually see the tier
+    // picker. `resetAndLoad` doesn't close over this render's `user` at
+    // all (it never needed to -- fetching a place is unauthenticated-safe
+    // either way), so there's no stale-closure risk in calling it later
+    // from a completely different point in time than this render.
     return (
       <EmptyState
         icon="person-circle-outline"
@@ -306,7 +351,10 @@ export default function RankPlaceScreen() {
           targetIds: placeId ? [placeId] : undefined,
           destination: placeId ? `/rank/${placeId}` : '/rank-home',
           idempotent: true,
-          resume: () => undefined,
+          resume: () => {
+            if (!placeId) return;
+            resetAndLoad(placeId);
+          },
         })}
       />
     );

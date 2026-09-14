@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Animated,
   ActivityIndicator,
@@ -366,7 +366,15 @@ export default function FeedScreen() {
     handleViewableItemsChangedRef.current(info);
   }).current;
 
-  const handleSave = async (
+  // Memoized: previously a plain function reassigned on every render, so
+  // every row's onSave closure built from it (below) was also brand new
+  // each time -- even for cards whose own saved state hadn't changed. That
+  // defeats PlaceCard's React.memo (toggling one save re-rendered every
+  // visible card). isSaved/addSave/removeSave are zustand actions and stay
+  // referentially stable across store updates, so this identity only
+  // changes when something that actually matters to it changes (sign-in,
+  // city).
+  const handleSave = useCallback(async (
     place: PlaceOut,
     surface: 'feed' | 'decision_session',
     position: number,
@@ -400,9 +408,9 @@ export default function FeedScreen() {
     void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     const err = await addSave(place, user.id, saveMeta);
     toast(err ?? 'Saved');
-  };
+  }, [user, selectedCity?.id, isSaved, removeSave, addSave, toast]);
 
-  const renderDecisionCard = (card: DecisionSessionCard, position: number) => (
+  const renderDecisionCard = useCallback((card: DecisionSessionCard, position: number) => (
     <View style={styles.rowSpacer}>
       <PlaceCard
         place={card.place}
@@ -426,7 +434,7 @@ export default function FeedScreen() {
         style={styles.decisionCard}
       />
     </View>
-  );
+  ), [router, selectedCity?.id, prefetchPlace, handleSave, isSaved]);
 
   const decisionHeader = (
     <View style={styles.decisionSectionHeader}>
@@ -468,6 +476,49 @@ export default function FeedScreen() {
       ) : null}
     </View>
   );
+
+  // Hoisted out of the FlashList `renderItem` prop and memoized for the
+  // same reason handleSave/renderDecisionCard are above: an inline
+  // renderItem is a brand-new function every render of this screen, and
+  // every row's onPress/onSave/onPressIn closure it builds goes with it --
+  // new identities on every unrelated re-render (a filter sheet opening,
+  // an unrelated Decision Session refetch, etc.) defeat PlaceCard's own
+  // React.memo, forcing every visible card to re-render instead of just
+  // the one whose own props actually changed.
+  const renderFeedRow = useCallback(({ item: row }: { item: FeedRow }) => {
+    if (row.kind === 'decision') return renderDecisionCard(row.card, row.position);
+
+    if (row.kind === 'discovery_header') {
+      return (
+        <View style={styles.discoveryHeader}>
+          <Text style={styles.discoveryHeading}>{row.section.title}</Text>
+          <Text style={styles.discoverySubheading}>{row.section.subtitle}</Text>
+        </View>
+      );
+    }
+
+    return (
+      <View style={styles.rowSpacer}>
+        <PlaceCard
+          place={row.place}
+          onPress={() => {
+            logRecommendationEvent({
+              surface: 'feed',
+              event_type: 'click',
+              place_id: row.place.id,
+              position: row.position,
+              rank_percentile: row.place.rank_percentile,
+              city_id: selectedCity?.id ?? null,
+            });
+            router.push(`/place/${row.place.id}`);
+          }}
+          onPressIn={() => prefetchPlace(row.place.id)}
+          onSave={() => handleSave(row.place, 'feed', row.position)}
+          saved={isSaved(row.place.id)}
+        />
+      </View>
+    );
+  }, [renderDecisionCard, router, selectedCity?.id, prefetchPlace, handleSave, isSaved]);
 
   return (
     <View style={styles.container}>
@@ -521,40 +572,7 @@ export default function FeedScreen() {
                 return `discovery-header-${row.section.reason}`;
               }}
               getItemType={(row) => row.kind}
-              renderItem={({ item: row }) => {
-                if (row.kind === 'decision') return renderDecisionCard(row.card, row.position);
-
-                if (row.kind === 'discovery_header') {
-                  return (
-                    <View style={styles.discoveryHeader}>
-                      <Text style={styles.discoveryHeading}>{row.section.title}</Text>
-                      <Text style={styles.discoverySubheading}>{row.section.subtitle}</Text>
-                    </View>
-                  );
-                }
-
-                return (
-                  <View style={styles.rowSpacer}>
-                    <PlaceCard
-                      place={row.place}
-                      onPress={() => {
-                        logRecommendationEvent({
-                          surface: 'feed',
-                          event_type: 'click',
-                          place_id: row.place.id,
-                          position: row.position,
-                          rank_percentile: row.place.rank_percentile,
-                          city_id: selectedCity?.id ?? null,
-                        });
-                        router.push(`/place/${row.place.id}`);
-                      }}
-                      onPressIn={() => prefetchPlace(row.place.id)}
-                      onSave={() => handleSave(row.place, 'feed', row.position)}
-                      saved={isSaved(row.place.id)}
-                    />
-                  </View>
-                );
-              }}
+              renderItem={renderFeedRow}
               contentContainerStyle={styles.list}
               onEndReached={handleEndReached}
               onEndReachedThreshold={0.3}
