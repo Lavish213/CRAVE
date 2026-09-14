@@ -49,6 +49,16 @@ def promote_ready_candidates_v2(
     - Commits once per run
     - Rolls back per failure
     - Fully idempotent
+
+    Candidate selection uses SELECT ... FOR UPDATE SKIP LOCKED (a no-op on
+    SQLite, real row locking on Postgres) so two concurrent runs of this
+    function -- a horizontally-scaled web tier, or a manual script during an
+    incident, both topologies this app's own deploy docs describe as
+    supported -- can never pick up the same candidate. Without it, a
+    duplicate pick only failed safely by accident, via unrelated unique
+    constraints on the writes downstream (PlaceClaim's, Place's deterministic
+    id) turning a genuine double-promotion into a caught IntegrityError; this
+    makes that a designed guarantee instead of a side effect of other code.
     """
 
     if not limit or limit <= 0:
@@ -74,6 +84,7 @@ def promote_ready_candidates_v2(
         )
         .order_by(DiscoveryCandidate.created_at.asc())
         .limit(limit * 2)
+        .with_for_update(skip_locked=True)
         .all()
     )
 
