@@ -58,7 +58,7 @@ cryptography>=42.0.0
 redis>=5.0.0
 
 # Utilities
-python-dotenv>=1.2.0
+python-dotenv>=1.2.3
 
 # Object storage (Cloudflare R2 image uploads)
 boto3>=1.34.0
