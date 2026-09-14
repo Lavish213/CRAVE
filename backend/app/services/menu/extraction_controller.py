@@ -383,6 +383,12 @@ class ExtractionController:
                         data = json.loads(script.string or "")
                         menu_url = self._extract_has_menu_url(data)
                         if menu_url and menu_url != website:
+                            if classify_fetch_strategy(menu_url).strategy == STRATEGY_FAIL_FAST:
+                                # hasMenu pointed at a governed source (e.g. a Toast/
+                                # ChowNow ordering page) -- do not let structured-data
+                                # discovery bypass the same fail-fast wall the
+                                # pre-flight check already enforces for `website`.
+                                continue
                             try:
                                 menu_html = fetch_html(menu_url)
                             except Exception:

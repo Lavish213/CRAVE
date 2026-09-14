@@ -187,3 +187,41 @@ def test_advanced_iframe_discovery_skips_provider_api_required_iframes(monkeypat
         "https://example-restaurant.test/menu",
         "Example Restaurant",
     ) == []
+
+
+def test_html_structured_hasmenu_does_not_bypass_provider_api_required(monkeypatch):
+    """
+    A JSON-LD `hasMenu` pointer is a structured-data lead the extractor follows
+    on its own initiative, not something the top-level pre-flight classify_fetch_strategy(website)
+    check ever sees -- so without its own check it silently re-opened the exact
+    Toast/ChowNow wall this module exists to enforce (caught by CodeRabbit review
+    on PR #301, root-caused and fixed here rather than dismissed).
+    """
+    from app.services.menu import extraction_controller as extraction_controller_module
+    from app.services.menu.extraction_controller import ExtractionController
+
+    homepage_html = (
+        '<html><head><script type="application/ld+json">'
+        '{"@type": "Restaurant", '
+        '"hasMenu": "https://order.toasttab.com/online/example"}'
+        "</script></head><body></body></html>"
+    )
+
+    # A raise-on-call mock would be silently swallowed by _try_html_structured's
+    # own `except Exception: continue` around the hasMenu fetch, so record calls
+    # instead of asserting inside the mock.
+    fetched_urls = []
+
+    def _fetch_html(url):
+        fetched_urls.append(url)
+        if url == "https://example-restaurant.test":
+            return homepage_html
+        return "<html>should never be reached</html>"
+
+    monkeypatch.setattr(extraction_controller_module, "fetch_html", _fetch_html)
+
+    controller = ExtractionController()
+    items, failure = controller._try_html_structured(website="https://example-restaurant.test")
+
+    assert items == []
+    assert "https://order.toasttab.com/online/example" not in fetched_urls
