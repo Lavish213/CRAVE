@@ -1,5 +1,39 @@
 # Active agent state
 
+Status: implementing
+Owner: Codex
+Branch: codex/video-status-polling
+Base SHA: c33753f (origin/main tip when this worktree was created)
+Commit SHA: bdcc2f62a1b128e6148dc91cb84c71aabff6ad7a
+Scope: offline-upload UX follow-up only: keep uploaded video rows visible
+after local upload completion when a backend `serverId` exists, poll the
+existing `/videos/{id}/status` API via the already-built `fetchVideoStatus`,
+surface processing/approved/rejected/failed review status honestly in
+`frontend/app/uploads.tsx`, and allow dismissing only already-uploaded local
+status rows. No backend changes, no native dependency changes, no simulator or
+device certification claimed.
+Locked files: frontend/app/uploads.tsx,
+frontend/src/hooks/useVideoStatusPoll.ts,
+frontend/src/hooks/useVideoStatusPoll.test.tsx,
+frontend/src/stores/videoQueueStore.ts,
+frontend/src/stores/videoQueueStore.test.ts,
+frontend/__tests__/uploads.test.tsx.
+Explicit exclusions: Codex's PR #309 data-pipeline dashboard branch/worktree,
+the stale main checkout at `/Users/angelowashington/CRAVE`, Railway production
+jobs, universal-link credentials, and native dev-client rebuild/device
+certification.
+Verification so far: focused frontend tests
+`npx jest --ci __tests__/uploads.test.tsx src/stores/videoQueueStore.test.ts src/hooks/useVideoStatusPoll.test.tsx --runInBand`
+-> 3/3 suites, 35/35 tests passed; `npx tsc --noEmit --pretty false` ->
+clean; full frontend suite `npx jest --ci --runInBand --forceExit` -> 63/63
+suites, 594/594 tests passed; `git diff --check` -> clean.
+Known gaps / risks: this does not add wifi-only sync policy, byte-level upload
+progress, or local+server merged feed placeholders; those remain separate
+offline-upload follow-ups.
+Next action: commit, push, open PR, request CodeRabbit, and wait for CI/review.
+
+---
+
 Status: merged (one post-merge CodeRabbit fix landed as a follow-up, see
 below -- do not treat the original PR #307 commit as the final state)
 Owner: Claude

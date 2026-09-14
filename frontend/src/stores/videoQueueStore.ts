@@ -134,6 +134,7 @@ interface VideoQueueStore {
 
   retryFailedVideo: (id: string) => void;
   deleteFailedVideo: (id: string) => Promise<void>;
+  dismissUploadedVideo: (id: string) => void;
 }
 
 let syncInFlight = false;
@@ -247,6 +248,10 @@ export const useVideoQueueStore = create<VideoQueueStore>()(
         if (!video || (video.syncState !== 'failed' && video.syncState !== 'missing_local_file')) return;
         await FileSystem.deleteAsync(video.localUri, { idempotent: true }).catch(() => {});
         set({ videos: get().videos.filter((v) => v.id !== id) });
+      },
+
+      dismissUploadedVideo: (id: string) => {
+        set({ videos: get().videos.filter((v) => v.id !== id || v.syncState !== 'synced') });
       },
     }),
     {

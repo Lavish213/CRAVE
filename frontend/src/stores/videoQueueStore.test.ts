@@ -213,6 +213,38 @@ describe('videoQueueStore', () => {
     expect(useVideoQueueStore.getState().videos).toHaveLength(0);
   });
 
+  it('dismissUploadedVideo removes only an already-uploaded status row', async () => {
+    (videosApi.requestVideoUpload as jest.Mock).mockResolvedValue({
+      video_id: 'server-1', upload_url: 'https://r2.example.test/put', key: 'k',
+    });
+    (videosApi.uploadVideoToSignedUrl as jest.Mock).mockResolvedValue(undefined);
+    (videosApi.confirmVideoUpload as jest.Mock).mockResolvedValue({ ok: true });
+
+    await useVideoQueueStore.getState().recordVideo({
+      sourceUri: 'file:///tmp/uploaded.mp4', placeId: 'place-1', contentType: 'video/mp4', uploadedBy: 'user-a',
+    });
+    await useVideoQueueStore.getState().recordVideo({
+      sourceUri: 'file:///tmp/queued.mp4', placeId: 'place-1', contentType: 'video/mp4', uploadedBy: 'user-a',
+    });
+    const uploadedId = useVideoQueueStore.getState().videos[1].id;
+    const queuedId = useVideoQueueStore.getState().videos[0].id;
+
+    await useVideoQueueStore.getState().runSyncPass('user-a');
+
+    // Make one row look like a still-queued upload again; dismissing a
+    // server-status message must not clear real pending local work.
+    useVideoQueueStore.setState({
+      videos: useVideoQueueStore.getState().videos.map((v) =>
+        v.id === queuedId ? { ...v, syncState: 'recorded' as const, serverId: null } : v
+      ),
+    });
+
+    useVideoQueueStore.getState().dismissUploadedVideo(uploadedId);
+    useVideoQueueStore.getState().dismissUploadedVideo(queuedId);
+
+    expect(useVideoQueueStore.getState().videos.map((v) => v.id)).toEqual([queuedId]);
+  });
+
   it('does not sync a video recorded by a different (not currently signed-in) user', async () => {
     await useVideoQueueStore.getState().recordVideo({
       sourceUri: 'file:///tmp/clip.mp4',

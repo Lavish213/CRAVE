@@ -11,6 +11,16 @@ import { useAuthStore } from '../src/stores/authStore';
 import { useVideoQueueStore, QueuedVideo } from '../src/stores/videoQueueStore';
 import { usePostingDraftStore, PostingDraft } from '../src/stores/postingDraftStore';
 
+let mockVideoPoll: {
+  status: import('../src/api/videos').VideoStatus | null;
+  error: string | null;
+  rejectReason: string | null;
+} = { status: null, error: null, rejectReason: null };
+
+jest.mock('../src/hooks/useVideoStatusPoll', () => ({
+  useVideoStatusPoll: jest.fn(() => mockVideoPoll),
+}));
+
 let mockUser: { id: string } | null = { id: 'user-1' };
 jest.mock('../src/stores/authStore', () => ({
   useAuthStore: (selector: (s: { user: typeof mockUser }) => unknown) => selector({ user: mockUser }),
@@ -43,6 +53,7 @@ describe('UploadsScreen', () => {
     jest.clearAllMocks();
     jest.spyOn(Alert, 'alert').mockImplementation(() => {});
     mockUser = { id: 'user-1' };
+    mockVideoPoll = { status: null, error: null, rejectReason: null };
     useVideoQueueStore.setState({ videos: [] });
     usePostingDraftStore.setState({ drafts: [] });
   });
@@ -69,6 +80,44 @@ describe('UploadsScreen', () => {
     usePostingDraftStore.setState({ drafts: [makeDraft({ id: 'other-draft', ownerId: 'someone-else' })] });
     const { getByText } = render(<UploadsScreen />);
     expect(getByText('Nothing pending')).toBeTruthy();
+  });
+
+  it('keeps an uploaded video with a server id visible while backend processing is still unknown', () => {
+    useVideoQueueStore.setState({
+      videos: [makeVideo({ id: 'uploaded', serverId: 'server-1', syncState: 'synced' })],
+    });
+
+    const { getByText } = render(<UploadsScreen />);
+
+    expect(getByText('VIDEOS')).toBeTruthy();
+    expect(getByText('Uploaded — checking review status')).toBeTruthy();
+  });
+
+  it('shows approved backend video status and lets the user dismiss the local status row', () => {
+    mockVideoPoll = { status: 'approved', error: null, rejectReason: null };
+    useVideoQueueStore.setState({
+      videos: [makeVideo({ id: 'uploaded', serverId: 'server-1', syncState: 'synced' })],
+    });
+
+    const { getByText, getByLabelText, queryByText } = render(<UploadsScreen />);
+
+    expect(getByText('Approved — now visible on the place')).toBeTruthy();
+    fireEvent.press(getByLabelText('Dismiss video status'));
+    expect(useVideoQueueStore.getState().videos).toHaveLength(0);
+    expect(queryByText('Approved — now visible on the place')).toBeNull();
+  });
+
+  it('shows rejected backend video status without pretending the upload is retryable', () => {
+    mockVideoPoll = { status: 'rejected', error: null, rejectReason: 'Not enough food visible' };
+    useVideoQueueStore.setState({
+      videos: [makeVideo({ id: 'uploaded', serverId: 'server-1', syncState: 'synced' })],
+    });
+
+    const { getByText, queryByLabelText } = render(<UploadsScreen />);
+
+    expect(getByText('Rejected — Not enough food visible')).toBeTruthy();
+    expect(queryByLabelText('Retry upload')).toBeNull();
+    expect(queryByLabelText('Dismiss video status')).toBeTruthy();
   });
 
   it('retries a failed video via the already-built retryFailedVideo + a fresh sync pass', () => {
