@@ -4,7 +4,7 @@ Status: ready-for-review (blocked only on a real Sentry DSN, see below)
 Owner: Claude
 Branch: claude/frontend-crash-reporting
 Base SHA: 755a722 (origin/main tip)
-Commit SHA: none yet -- see this branch's own commit once pushed
+Commit SHA: 3cce6c7
 Allowed next files: none from me pending PR review.
 
 ## Outcome

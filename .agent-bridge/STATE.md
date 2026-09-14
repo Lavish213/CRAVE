@@ -4,7 +4,8 @@ Status: ready-for-review
 Owner: Claude
 Branch: claude/frontend-crash-reporting
 Base SHA: 755a722 (origin/main tip)
-Commit SHA: (recorded after commit below)
+Commit SHA: 3cce6c7 (this branch's tip; final PR-head SHA may differ after
+CI-triggered follow-ups, see the PR itself for the authoritative one)
 Scope: user asked directly (repo-only session, no Sentry account access) to
 add real mobile-app crash/error reporting -- the backend has had working
 Sentry wiring for a while (`backend/app/main.py`), but an exhaustive grep of
