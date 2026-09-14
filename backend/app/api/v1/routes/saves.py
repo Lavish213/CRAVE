@@ -169,7 +169,36 @@ def create_save(
     )
     db.add(save)
     _clear_share_auto_save_opt_out(db, user_id, payload.place_id)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        # Lost a race with a concurrent create_save for the same user/place
+        # (a double-tap Save, or a client retry after a timed-out first
+        # request -- both routine on mobile). uq_hitlist_saves_user_dedup
+        # caught it; the other request already has the row. Same recovery
+        # pattern as moderation.py's report_* endpoints: roll back and
+        # return the winner's row instead of a bare 500.
+        db.rollback()
+        existing = (
+            db.query(HitlistSave)
+            .filter(
+                HitlistSave.user_id == user_id,
+                HitlistSave.dedup_key == dedup,
+            )
+            .one_or_none()
+        )
+        if not existing:
+            # The unique constraint that just fired is keyed on this exact
+            # dedup_key, so the row should be there -- if it isn't, this was
+            # a different integrity error and shouldn't be swallowed.
+            raise
+        _clear_share_auto_save_opt_out(db, user_id, payload.place_id)
+        db.commit()
+        logger.debug(
+            "save_race_resolved_as_already_saved user_id=%s place_id=%s",
+            user_id, payload.place_id,
+        )
+        return {"status": "already_saved", "id": existing.id}
 
     logger.info("save_created user_id=%s place_id=%s place_name=%s", user_id, payload.place_id, place.name)
     return {"status": "saved", "id": save.id}

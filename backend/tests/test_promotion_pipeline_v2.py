@@ -196,6 +196,40 @@ def test_promote_merges_into_existing_place_on_name_and_address_match(db, city):
     assert len(matches) == 1
 
 
+def test_promote_merges_via_address_when_existing_place_has_no_coords(db, city):
+    """
+    _find_matching_place pre-filters candidates by a bounding box around the
+    candidate's own lat/lng before running entity_match, to avoid loading
+    every active place in a city per candidate. entity_match's address
+    signal doesn't depend on either side having coordinates at all, so a
+    place with no recorded lat/lng must never be excluded by that pre-filter
+    regardless of how far away the candidate's own coordinates are.
+    """
+    existing = Place(
+        name="Null Coord Bistro", city_id=city.id,
+        lat=None, lng=None, address="55 Vacant Ave",
+    )
+    db.add(existing)
+    db.commit()
+
+    candidate = _make_candidate(
+        db, city.id, name="Null Coord Bistro", address="55 Vacant Ave",
+        # Deliberately far from anything -- if the bounding-box pre-filter
+        # excluded NULL-coordinate rows instead of always keeping them, this
+        # candidate's own coordinates would prune `existing` out before
+        # entity_match ever ran.
+        lat=10.0, lng=10.0,
+    )
+
+    place_id = promote_candidate_v2(db=db, candidate_id=candidate.id)
+
+    assert place_id == existing.id
+    matches = db.query(Place).filter(
+        Place.city_id == city.id, Place.name == "Null Coord Bistro"
+    ).all()
+    assert len(matches) == 1
+
+
 def test_promote_keeps_distinct_same_name_branches_in_one_city(db, city):
     """A chain can legitimately have multiple locations in one city.
 
