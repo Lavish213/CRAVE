@@ -161,6 +161,58 @@ describe('videoQueueStore', () => {
     expect(useVideoQueueStore.getState().videos).toHaveLength(0);
   });
 
+  it('does not prune a synced video whose local file deletion still fails on the retry, so its localUri is never lost', async () => {
+    // Confirmed CodeRabbit finding on PR #307: syncOne's own deleteAsync
+    // call swallows a real (non-"already gone") failure and still marks
+    // the video 'synced' -- the prune step must not then blindly drop
+    // that row too, or the file is orphaned on disk forever with no
+    // remaining reference to it.
+    (videosApi.requestVideoUpload as jest.Mock).mockResolvedValue({
+      video_id: 'server-1', upload_url: 'https://r2.example.test/put', key: 'k',
+    });
+    (videosApi.uploadVideoToSignedUrl as jest.Mock).mockResolvedValue(undefined);
+    (videosApi.confirmVideoUpload as jest.Mock).mockResolvedValue({ ok: true });
+
+    await useVideoQueueStore.getState().recordVideo({
+      sourceUri: 'file:///tmp/clip.mp4', placeId: 'place-1', contentType: 'video/mp4', uploadedBy: 'user-a',
+    });
+    await useVideoQueueStore.getState().runSyncPass('user-a');
+    const synced = useVideoQueueStore.getState().videos[0];
+    expect(synced.syncState).toBe('synced');
+
+    // Every subsequent deleteAsync call (syncOne's own, already spent
+    // above, plus every prune retry) genuinely fails -- simulating a
+    // real, persistent local-filesystem error, not "already gone".
+    (FileSystem.deleteAsync as jest.Mock).mockRejectedValue(new Error('EACCES'));
+
+    await useVideoQueueStore.getState().runSyncPass('user-a');
+    const stillThere = useVideoQueueStore.getState().videos.find((v) => v.id === synced.id);
+    expect(stillThere).toBeDefined();
+    expect(stillThere?.syncState).toBe('synced');
+    expect(stillThere?.localUri).toBe(synced.localUri);
+  });
+
+  it('prunes a synced video once a later retry of its file deletion finally succeeds', async () => {
+    (videosApi.requestVideoUpload as jest.Mock).mockResolvedValue({
+      video_id: 'server-1', upload_url: 'https://r2.example.test/put', key: 'k',
+    });
+    (videosApi.uploadVideoToSignedUrl as jest.Mock).mockResolvedValue(undefined);
+    (videosApi.confirmVideoUpload as jest.Mock).mockResolvedValue({ ok: true });
+
+    await useVideoQueueStore.getState().recordVideo({
+      sourceUri: 'file:///tmp/clip.mp4', placeId: 'place-1', contentType: 'video/mp4', uploadedBy: 'user-a',
+    });
+    await useVideoQueueStore.getState().runSyncPass('user-a');
+
+    // First prune retry fails (transient), second succeeds.
+    (FileSystem.deleteAsync as jest.Mock).mockRejectedValueOnce(new Error('EACCES'));
+    await useVideoQueueStore.getState().runSyncPass('user-a');
+    expect(useVideoQueueStore.getState().videos).toHaveLength(1);
+
+    await useVideoQueueStore.getState().runSyncPass('user-a');
+    expect(useVideoQueueStore.getState().videos).toHaveLength(0);
+  });
+
   it('does not sync a video recorded by a different (not currently signed-in) user', async () => {
     await useVideoQueueStore.getState().recordVideo({
       sourceUri: 'file:///tmp/clip.mp4',

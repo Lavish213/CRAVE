@@ -1,10 +1,11 @@
 # Active agent state
 
-Status: ready-for-review
+Status: merged (one post-merge CodeRabbit fix landed as a follow-up, see
+below -- do not treat the original PR #307 commit as the final state)
 Owner: Claude
-Branch: claude/offline-upload-visibility
+Branch: claude/offline-upload-visibility (merged, can be deleted)
 Base SHA: 9653aff (origin/main tip after PR #306)
-Commit SHA: pending (see PR for the authoritative head SHA once pushed)
+Commit SHA: ec475e9 (PR #307's real head, squash-merged as d8e7692)
 Scope: offline-upload UX, per the Codex/Claude split in
 `H-20260914-data-pipeline-dashboard-split` (Codex keeps the backend
 admin/source dashboard; Claude takes production-execution coordination,
@@ -37,16 +38,35 @@ Explicit exclusions: Codex's `backend/app/api/v1/routes/data_pipeline_admin.py`
 lane and its worktree/branch `codex/data-pipeline-dashboard` -- not touched.
 Backend untouched entirely this pass.
 Known gaps / risks: this pass is visibility/retry/delete only, not the
-full offline-upload UX roadmap -- three more scoped follow-ups remain
+full offline-upload UX roadmap -- four more scoped follow-ups remain
 (per-video status polling via the already-defined `fetchVideoStatus`;
 `@react-native-community/netinfo` + a wifi-only-upload toggle gating sync
 passes; real upload progress via `XMLHttpRequest.upload.onprogress`
 instead of `fetch`; merging locally-queued video placeholders into
 `PlaceVideoGallery`'s server-approved feed) -- deliberately not bundled
 into this PR to keep it reviewable.
-Next action: open PR, request CodeRabbit, merge once green. Whoever
-picks up the next offline-upload-UX slice should start from the four
-follow-ups listed above.
+
+**Post-merge correction (2026-09-14):** PR #307 merged (`d8e7692`) before
+its actual CodeRabbit review comments landed (only the summary/docstring-
+coverage note had posted by the time CI went green; the 4 line-level
+findings arrived after merge). One was a real, confirmed Major bug this
+session introduced: `pruneSyncedVideos`'s new pruning step removed every
+`'synced'` row unconditionally, but `syncOne`'s own `deleteAsync` call
+silently swallows a genuine (non-"already gone") failure -- so a real
+cleanup failure meant the row, and its `localUri`, was lost forever,
+orphaning the file on disk with no way to ever retry cleanup. Fixed in a
+follow-up commit/PR: the prune step now retries the (idempotent) delete
+itself and only removes a row once that retry actually succeeds, mirroring
+`pruneRetainedFailedVideos`'s existing pattern; two new regression tests
+added (one confirming a still-failing delete keeps the row, one confirming
+recovery once a later retry succeeds), both independently confirmed to
+fail on the pre-fix merged code. Also fixed two doc-accuracy findings in
+this file and `claude-to-codex.md` (both now correctly say "four"
+follow-ups, and this Commit SHA field is now the real SHA instead of
+`pending`). See the follow-up PR for its own exact verification numbers.
+Next action: none from me -- this task is fully closed. Whoever picks up
+the next offline-upload-UX slice should start from the four follow-ups
+listed above.
 
 ---
 
