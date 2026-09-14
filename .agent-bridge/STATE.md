@@ -1,5 +1,41 @@
 # Active agent state
 
+Status: ready-for-review
+Owner: Codex
+Branch: codex/menu-source-governance
+Base SHA: 474dec5
+Commit SHA: 5066076
+Scope: Menu source governance after the 10-place canary. Add a provider/source
+classification layer so protected providers like Toast/ChowNow/Cloudflare pages
+are treated as access/governance states instead of parser failures; document the
+manual/verified menu path for owner/user contribution without inventing fake
+provider access. Follow-up audit also preserves manual-menu evidence fields,
+latest source failure reasons, and internal image source/provenance metadata so
+menu/photo population can be reviewed instead of guessed.
+Locked files: .agent-bridge/STATE.md, backend/app/services/menu/**,
+backend/scripts/**menu**, backend/tests/**menu**, backend/app/db/models/**,
+backend/app/services/images/materialize_image_truth.py,
+backend/alembic/versions/e3f4g5h6i7j8_add_menu_governance_audit_fields.py,
+docs/**menu** if needed.
+Verification: inspected current menu source/manual submission routes; added
+focused unit coverage for the source classifier/failure taxonomy; confirmed
+Toast/ChowNow are typed `provider_api_required` blocks, Square Site remains a
+direct public source, and the legacy MenuOrchestrator path no longer fetches
+provider-access-required URLs. Added `menu_sources.last_failure_at/reason`,
+manual submission evidence fields, and internal `place_images` source metadata
+for third-party attribution/provenance. `python3 -m pytest
+backend/tests/test_menu_source_governance.py backend/tests/test_menu_submissions.py
+backend/tests/test_image_ingest_service.py -q` -> 24 passed, 1 warning.
+`python3 -m compileall -q backend/app/services/menu backend/app/services/images
+backend/app/api/v1/routes/menu_submissions.py backend/app/db/models
+backend/scripts/run_menu_backlog_canary.py` -> passed. `cd backend && python3
+-m alembic heads` -> `e3f4g5h6i7j8 (head)`. `git diff --check` -> passed.
+Explicit exclusions: official Toast/ChowNow/Square OAuth/API integrations,
+paid provider traffic, production canaries, frontend screen redesign, and any
+credential or dashboard work.
+
+---
+
 Status: merged (partially load-bearing -- see gap below)
 Owner: Claude
 Branch: claude/universal-link-setup (merged, can be deleted)

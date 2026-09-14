@@ -11,6 +11,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    JSON,
     String,
     text,
 )
@@ -154,6 +155,14 @@ class PlaceImage(Base, TimestampMixin):
         nullable=True,
         default=None,
     )
+
+    # Original image source/provenance. Kept internal so CRAVE can audit
+    # third-party/user/restaurant-owned media and preserve attribution payloads
+    # (for example Google Places html_attributions) without exposing raw
+    # provider details on public APIs by default.
+    source_provider: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    source_context: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    source_metadata: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
     # --------------------------------------------------
     # USER UPLOAD PIPELINE

@@ -64,6 +64,17 @@ class MenuItemSubmissionPayload(BaseModel):
 
 class MenuSubmissionRequest(BaseModel):
     items: List[MenuItemSubmissionPayload] = Field(..., min_length=1, max_length=MAX_ITEMS_PER_SUBMISSION)
+    evidence_url: Optional[str] = Field(None, max_length=1024)
+    evidence_image_id: Optional[str] = Field(None, max_length=36)
+    evidence_note: Optional[str] = Field(None, max_length=500)
+
+    @field_validator("evidence_url", "evidence_image_id", "evidence_note")
+    @classmethod
+    def _strip_optional_evidence(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return None
+        v = v.strip()
+        return v or None
 
 
 class MenuSubmissionOut(BaseModel):
@@ -72,6 +83,8 @@ class MenuSubmissionOut(BaseModel):
     status: str
     item_count: int
     created_at: datetime
+    evidence_url: Optional[str] = None
+    evidence_image_id: Optional[str] = None
 
 
 class ReviewRequest(BaseModel):
@@ -99,6 +112,9 @@ def submit_menu(
         place_id=place_id,
         submitted_by=user_id,
         items=[item.model_dump() for item in payload.items],
+        evidence_url=payload.evidence_url,
+        evidence_image_id=payload.evidence_image_id,
+        evidence_note=payload.evidence_note,
         status=STATUS_PENDING,
     )
     db.add(submission)
@@ -110,6 +126,8 @@ def submit_menu(
         status=submission.status,
         item_count=len(submission.items),
         created_at=submission.created_at,
+        evidence_url=submission.evidence_url,
+        evidence_image_id=submission.evidence_image_id,
     )
 
 
@@ -138,6 +156,8 @@ def review_queue(
                 status=s.status,
                 item_count=len(s.items or []),
                 created_at=s.created_at,
+                evidence_url=s.evidence_url,
+                evidence_image_id=s.evidence_image_id,
             )
             for s in submissions
         ]
@@ -165,6 +185,9 @@ def get_submission(
         "submitted_by": submission.submitted_by,
         "status": submission.status,
         "items": submission.items,
+        "evidence_url": submission.evidence_url,
+        "evidence_image_id": submission.evidence_image_id,
+        "evidence_note": submission.evidence_note,
         "created_at": submission.created_at,
         "reviewed_by": submission.reviewed_by,
         "reviewed_at": submission.reviewed_at,

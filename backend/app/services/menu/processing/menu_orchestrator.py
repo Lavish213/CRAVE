@@ -25,6 +25,10 @@ from app.services.menu.normalization.fingerprint import build_menu_fingerprint
 from app.services.images.menu_image_bridge import MenuImageBridge
 
 from app.services.menu.extraction.fetch_html import fetch_html
+from app.services.menu.fetch.fetch_strategy_router import (
+    STRATEGY_FAIL_FAST,
+    classify_fetch_strategy,
+)
 from app.services.menu.extraction.js.js_provider_router import route_provider
 from app.services.menu.extraction.provider.provider_detector import detect_provider
 from app.services.menu.extraction.html_menu_extractor import extract_html_menu
@@ -219,6 +223,7 @@ class MenuOrchestrator:
         website = getattr(place, "website", None)
         _best_known = menu_source_manager.get_best_source_url(db=db, place_id=place_id)
         _probe_url = best_usable_source(_best_known, menu_source_url, website)
+        _source_access_blocked = False
 
         if _probe_url and not extracted_items:
             _html: str | None = None
@@ -226,31 +231,55 @@ class MenuOrchestrator:
             # ── Negative URL cache check — skip confirmed dead/blocked URLs ──
             # Only set after permanent failures (4xx, blocked HTML, captcha).
             # Transient failures (timeout) use shorter TTL and don't block forever.
-            _neg_hit = self._check_negative_cache(_probe_url)
-            if _neg_hit:
-                logger.debug(
-                    "menu_orchestrator.negative_cache_hit place_id=%s url=%s reason=%s",
+            _strategy = classify_fetch_strategy(_probe_url)
+            if _strategy.strategy == STRATEGY_FAIL_FAST:
+                _source_access_blocked = True
+                blocked_reason = _strategy.blocked_reason or "fail_fast"
+                menu_source_manager.record_failure(
+                    db=db,
+                    place_id=place_id,
+                    source_url=_probe_url,
+                    reason=f"access_blocked:{blocked_reason}",
+                )
+                logger.info(
+                    "menu_orchestrator.source_governance_block place_id=%s url=%s reason=%s notes=%s",
                     place_id,
                     _probe_url,
-                    _neg_hit,
+                    blocked_reason,
+                    " | ".join(_strategy.notes),
                 )
             else:
-                try:
-                    _html = fetch_html(_probe_url)
-                except Exception as exc:
-                    menu_source_manager.record_failure(
-                        db=db, place_id=place_id, source_url=_probe_url,
-                        reason=f"fetch_error:{type(exc).__name__}",
-                    )
-                    self._set_negative_cache(_probe_url, exc)
+                _neg_hit = self._check_negative_cache(_probe_url)
+                if _neg_hit:
                     logger.debug(
-                        "menu_orchestrator.website_fetch_failed place_id=%s url=%s error=%s",
+                        "menu_orchestrator.negative_cache_hit place_id=%s url=%s reason=%s",
                         place_id,
                         _probe_url,
-                        exc,
+                        _neg_hit,
                     )
+                else:
+                    try:
+                        _html = fetch_html(_probe_url)
+                    except Exception as exc:
+                        menu_source_manager.record_failure(
+                            db=db, place_id=place_id, source_url=_probe_url,
+                            reason=f"fetch_error:{type(exc).__name__}",
+                        )
+                        self._set_negative_cache(_probe_url, exc)
+                        logger.debug(
+                            "menu_orchestrator.website_fetch_failed place_id=%s url=%s error=%s",
+                            place_id,
+                            _probe_url,
+                            exc,
+                        )
 
             if _html:
+                logger.debug(
+                    "menu_orchestrator.fetch_allowed_by_governance place_id=%s url=%s strategy=%s",
+                    place_id,
+                    _probe_url,
+                    _strategy.strategy,
+                )
                 # -- known provider path --
                 try:
                     _provider = detect_provider(_html, _probe_url)
@@ -417,7 +446,7 @@ class MenuOrchestrator:
         # real headless-browser fallback — but only runs here when every
         # cheaper method above found zero items, so places that already
         # work are completely unaffected.
-        if not extracted_items and _probe_url:
+        if not extracted_items and _probe_url and not _source_access_blocked:
             try:
                 from app.services.menu.menu_extraction_router import (
                     extract_menu as _extract_menu_advanced,

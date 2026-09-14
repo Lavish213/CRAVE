@@ -16,6 +16,10 @@ Strategies:
 
 Blocked reasons (logged, never silently swallowed):
     missing_auth        Credentials required and not present.
+    provider_api_required
+                        Source is a provider-owned ordering/menu surface that
+                        requires official partner/restaurant authorization;
+                        do not scrape or browser-escalate it.
     captcha_domain      Domain is known to serve CAPTCHA on first hit.
     delivery_aggregator Third-party aggregator (DoorDash, UberEats) — no
                         public structured menu API.
@@ -51,16 +55,23 @@ STRATEGY_FAIL_FAST = "fail_fast"
 # Domains that reliably serve CAPTCHAs on first unauthenticated hit.
 # Playwright MAY help but is expensive — mark for controlled escalation.
 _CAPTCHA_DOMAINS = frozenset({
-    "toasttab.com",
-    "order.toasttab.com",
-    "www.toasttab.com",
-    "chownow.com",
-    "ordering.chownow.com",
-    "www.clover.com",
     "dashboard.clover.com",
     "squareup.com",
     # square.site uses direct API (not CAPTCHA) — removed
 })
+
+# Provider-owned menu/ordering surfaces that should not be treated as normal
+# web pages. The correct production path is an official connector or a
+# restaurant/user submission reviewed through CRAVE's menu-submission queue.
+_PROVIDER_API_REQUIRED_DOMAINS: dict[str, str] = {
+    "toasttab.com": "toast",
+    "order.toasttab.com": "toast",
+    "www.toasttab.com": "toast",
+    "chownow.com": "chownow",
+    "ordering.chownow.com": "chownow",
+    "www.chownow.com": "chownow",
+    "api.chownow.com": "chownow",
+}
 
 # Domains that require authenticated API calls (env creds).
 _AUTH_REQUIRED_DOMAINS = frozenset({
@@ -87,11 +98,11 @@ _REDIRECT_TRAP_DOMAINS = frozenset({
     "tock.com",
 })
 
-# Known JSON API providers — use structured_request (API mode headers).
+# Known JSON/API-ish providers that are actually reachable without a partner
+# connector. Toast/ChowNow are intentionally excluded above: their public
+# ordering pages often expose URLs, but reliable menu sync needs authorized
+# provider access, not a browser scrape.
 _API_PROVIDERS = frozenset({
-    "toasttab.com",
-    "order.toasttab.com",
-    "api.chownow.com",
     "popmenu.com",
 })
 
@@ -170,7 +181,21 @@ class FetchStrategyRouter:
             self._log(result)
             return result
 
-        # ── 2. Redirect traps ─────────────────────────────────────────
+        # ── 2. Provider-owned ordering surfaces ───────────────────────
+        provider_api = _PROVIDER_API_REQUIRED_DOMAINS.get(host) or _PROVIDER_API_REQUIRED_DOMAINS.get(apex)
+        if provider_api:
+            result.strategy = STRATEGY_FAIL_FAST
+            result.provider = result.provider or provider_api
+            result.blocked_reason = "provider_api_required"
+            result.needs_auth = True
+            result.notes.append(
+                f"{provider_api} menu sync requires official provider/restaurant authorization; "
+                "use a connector or reviewed menu submission, not scraping"
+            )
+            self._log(result)
+            return result
+
+        # ── 3. Redirect traps ─────────────────────────────────────────
         if apex in _REDIRECT_TRAP_DOMAINS:
             result.strategy = STRATEGY_FAIL_FAST
             result.blocked_reason = "redirect_trap"
@@ -178,7 +203,7 @@ class FetchStrategyRouter:
             self._log(result)
             return result
 
-        # ── 3. Auth-required (Grubhub) ────────────────────────────────
+        # ── 4. Auth-required (Grubhub) ────────────────────────────────
         if apex in _AUTH_REQUIRED_DOMAINS:
             result.provider = result.provider or "grubhub"
             result.needs_auth = True
@@ -195,7 +220,7 @@ class FetchStrategyRouter:
             self._log(result)
             return result
 
-        # ── 4. Known CAPTCHA domains — try browser if available ───────
+        # ── 5. Known CAPTCHA domains — try browser if available ───────
         if apex in _CAPTCHA_DOMAINS or host in _CAPTCHA_DOMAINS:
             result.needs_browser = True
             if result.playwright_available:
@@ -223,13 +248,13 @@ class FetchStrategyRouter:
             self._log(result)
             return result
 
-        # ── 5. Known API providers (non-CAPTCHA) ─────────────────────
+        # ── 6. Known API providers (non-CAPTCHA) ─────────────────────
         if apex in _API_PROVIDERS or host in _API_PROVIDERS:
             result.strategy = STRATEGY_STRUCTURED
             self._log(result)
             return result
 
-        # ── 6. Default: direct HTTP + optional Playwright escalation ──
+        # ── 7. Default: direct HTTP + optional Playwright escalation ──
         result.strategy = STRATEGY_DIRECT
         if result.playwright_available:
             result.notes.append("Playwright available for escalation if needed")
