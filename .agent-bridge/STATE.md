@@ -1,10 +1,11 @@
 # Active agent state
 
-Status: implementing
+Status: ready-for-review
 Owner: Claude
 Branch: claude/wifi-only-upload-gating
 Base SHA: 34c5346 (origin/main tip after PR #309)
-Commit SHA: pending
+Commit SHA: af34bd1 (original implementation commit b14f3f3, CodeRabbit-fix
+commit af34bd1 on top -- see below)
 Scope: offline-upload UX follow-up #3 (of the four from #307/#308/#310's
 own "known gaps" lists) -- Wi-Fi-only video upload gating. Added a real
 `@react-native-community/netinfo@12.0.1` dependency (no fake detection --
@@ -47,16 +48,58 @@ triggered when `videoQueueStore.ts` is required, since it now imports
 that store) silently consumed instead of the video-queue store's own
 rehydration -- fixed by keying the mock on the storage name argument
 instead of call order. `git diff --check` clean. Backend untouched.
-Known gaps / risks: one follow-up remains after this -- merging the
-local queue into `PlaceVideoGallery`'s server feed. `npx expo install`
-couldn't be used to add the dependency (this sandbox's egress policy
-blocks the React Native Directory compatibility-check host it calls
-first) -- installed via plain `npm install @react-native-community/netinfo@12.0.1`
-instead, after independently confirming its `peerDependencies`
+Known gaps / risks: `npx expo install` couldn't be used to add the
+dependency (this sandbox's egress policy blocks the React Native
+Directory compatibility-check host it calls first) -- installed via
+plain `npm install @react-native-community/netinfo@12.0.1` instead,
+after independently confirming its `peerDependencies`
 (`react-native: >=0.59`) are compatible with this repo's RN 0.83.10.
-Next action: open PR, request CodeRabbit, wait for its actual findings
-(not just CI-green) before merging -- per the standing correction from
-#307.
+
+**CodeRabbit review, applied before merge (learned from #307's mistake
+-- waited for the actual findings this time instead of merging on green
+CI alone):** 3 real findings, all fixed forward on this same branch
+rather than merged first:
+- **Minor**: this file's and claude-to-codex.md's `Commit SHA` fields
+  were left `pending` after the implementation commit landed --
+  corrected above (and in claude-to-codex.md).
+- **Minor**: `uploadPreferencesStore`'s `false` default is live the
+  instant its module loads, but the real persisted value only lands
+  once AsyncStorage's own rehydration resolves. `runSyncPass` read
+  `wifiOnlyVideoUploads` without waiting for that -- a foreground/
+  connectivity event firing early enough would see the still-default
+  `false` and upload over cellular despite a persisted `true`. Fixed
+  with a new `waitForUploadPreferencesHydration()` export (zustand
+  persist's `hasHydrated()`/`onFinishHydration()`), awaited before the
+  gate. New regression test confirmed to fail without it (controls
+  exactly when `AsyncStorage.getItem('crave-upload-preferences')`
+  resolves and proves `requestVideoUpload` isn't called before it
+  does).
+- **Major**: if connectivity returned while a pass was already running,
+  `runSyncPass`'s `syncInFlight` guard silently no-op'd; if that active
+  upload then failed, nothing scheduled a further attempt beyond an
+  unrelated future foreground/connectivity event. Fixed by recording
+  the blocked call's userId and draining it once the active pass's
+  `finally` clears `syncInFlight` -- a reconnect signal is never
+  silently dropped, without adding a timer this store has deliberately
+  never used elsewhere (every retry stays externally triggered, per its
+  own existing comments). New regression test confirmed to fail without
+  it (blocks the first pass's upload, calls `runSyncPass` again mid-
+  pass, fails the upload, and asserts a 3rd drained call happened while
+  the just-failed video's own backoff still correctly held it back from
+  an immediate re-upload).
+- Skipped: CodeRabbit's pre-merge "Docstring Coverage" warning (25% vs
+  an 80% threshold) -- not one of the 3 actionable inline findings, and
+  this repo's established comment convention (rationale comments, not
+  docstrings -- see CLAUDE.md) doesn't use docstrings anywhere else in
+  this codebase.
+Verification (CodeRabbit-fix commit): `npx tsc --noEmit` -> clean.
+`npx jest --ci` -> 63/63 suites, 610/610 tests (2 new). Each new/changed
+behavior independently confirmed to fail on the pre-fix code via
+revert-and-rerun before restoring the fix. `git diff --check` clean.
+Next action: none needed from Codex -- doesn't touch the dashboard lane.
+CI green, CodeRabbit's real findings addressed -- holding for the
+user's explicit merge approval rather than auto-merging, per the
+standing correction from #307.
 
 ---
 
