@@ -78,7 +78,8 @@
           "color": "#38BDF8",
           "enableBackgroundRemoteNotifications": true
         }
-      ]
+      ],
+      "@sentry/react-native/expo"
     ],
     "extra": {
       "router": {},

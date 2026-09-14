@@ -2,26 +2,16 @@ name: CI
 
 # Smoke-test + real-test gate for both halves of the app.
 #
-# CORRECTION (this comment previously claimed "there are currently no
-# automated tests in either backend/ or frontend/" — that was wrong for the
-# backend. backend/tests/ has 20 real pytest files; they were just never
-# discovered during the audit that produced this file, and were never wired
-# into CI. Frontend genuinely has zero test files as of this writing.
-#
 # Backend: syntax/import checks run first (cheap, catch the broadest class
 # of breakage — a bad edit, a missing symbol, a circular import), then the
-# real test suite via pytest. See tests/conftest.py for why DATABASE_URL is
-# set explicitly here: nothing in the app calls Base.metadata.create_all(),
-# so a bare fresh SQLite file has no tables, and every DB-touching test
-# would otherwise fail immediately with "no such table".
+# real test suite via pytest (137 files under backend/tests/ as of this
+# writing). See tests/conftest.py for why DATABASE_URL is set explicitly
+# here: nothing in the app calls Base.metadata.create_all(), so a bare
+# fresh SQLite file has no tables, and every DB-touching test would
+# otherwise fail immediately with "no such table".
 #
-# Frontend: TypeScript typecheck only — no test files exist yet.
-#
-# NOTE: this is the first time backend/tests/ has ever been run against the
-# current codebase (no shell access existed anywhere in this project until
-# now) — expect some of the 20 files to surface real, previously-invisible
-# failures on the first CI run. That's the point of turning this on, not a
-# sign it's broken.
+# Frontend: TypeScript typecheck, then the real Jest suite (59 test files
+# as of this writing).
 
 on:
   push:
@@ -156,11 +146,10 @@ jobs:
         # environment — because a first attempt at this step used a plain
         # `pip install pip-audit` in-place, which silently upgraded a
         # shared package and broke the import-check step that runs before
-        # it. Advisory only (continue-on-error) since this is the first
-        # time it's run and findings haven't been triaged yet; also placed
-        # after the real test steps so even a bad interaction here can't
-        # mask or block them.
-        continue-on-error: true
+        # it. Triaged clean (no known vulnerabilities) before this was
+        # flipped from advisory to blocking; placed after the real test
+        # steps so a scan failure is never confused with an actual test
+        # regression.
         run: pipx run pip-audit -r requirements.txt
 
   backend-postgres:

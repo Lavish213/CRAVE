@@ -37,6 +37,7 @@ All other code hands raw candidates here and trusts the output.
 from __future__ import annotations
 
 import math
+import re
 import zlib
 from collections import defaultdict
 from typing import Dict, List, Optional
@@ -229,17 +230,43 @@ def explore_boost(p: Place) -> float:
 _explore_boost = explore_boost
 
 
+_NON_ALNUM_RE = re.compile(r"[^a-z0-9]+")
+
+
+def _normalize_chain_name(name: str) -> str:
+    """Lowercase, drop apostrophes, collapse everything else to single spaces."""
+    lowered = name.lower().replace("'", "")
+    return _NON_ALNUM_RE.sub(" ", lowered).strip()
+
+
 def _chain_penalty(p: Place) -> float:
     """
     Penalty for national/global chains.
 
     CRAVE is local discovery — chains are already universally known.
-    Any place whose name contains a known chain marker gets -0.06,
-    pushing them below local alternatives at the same quality level.
+    A place whose (normalized) name STARTS WITH a known chain marker gets
+    -0.06, pushing it below local alternatives at the same quality level.
+
+    Deliberately a prefix match, not "chain marker anywhere in the name": a
+    raw substring check would also dock an unrelated local business whose
+    name happens to contain a chain's name as one word among others (e.g.
+    "La Panera Bakery" is not Panera Bread). Real chain location names are,
+    in practice, always the chain name as the leading words of the place's
+    own name (plus an optional store number/suffix like "#4521" or
+    "- Downtown"), so this still catches real chain locations while
+    dropping that false-positive class. It can't be made airtight from a
+    name string alone -- a place that coincidentally starts with a chain's
+    exact name would still match -- but that's a materially narrower,
+    rarer case than an internal-word collision.
     """
-    name = (p.name or "").lower()
+    normalized = _normalize_chain_name(p.name or "")
+    if not normalized:
+        return 0.0
     for chain in _CHAINS:
-        if chain in name:
+        chain_normalized = _normalize_chain_name(chain)
+        if not chain_normalized:
+            continue
+        if normalized == chain_normalized or normalized.startswith(chain_normalized + " "):
             return _CHAIN_PENALTY
     return 0.0
 

@@ -45,6 +45,7 @@ even though they must still be *correct*.
 | `EXPO_PUBLIC_API_KEY` | Yes | EAS production env | No (low-value gate) | matches backend `API_KEY` | `RAILWAY_PRODUCTION_ENV_VERIFICATION.md` |
 | `EXPO_PUBLIC_SUPABASE_URL` | Yes | EAS production env | No | matches backend `SUPABASE_URL` | `RUNBOOK_SUPABASE_PRODUCTION.md` |
 | `EXPO_PUBLIC_SUPABASE_ANON_KEY` | Yes | EAS production env | No (anon key is public-by-design) | matches the production Supabase project's anon key | `RUNBOOK_SUPABASE_PRODUCTION.md` |
+| `EXPO_PUBLIC_SENTRY_DSN` | Yes (if Sentry is the chosen observability answer) | EAS production env | No (a DSN can only submit events, not read them) | a real Sentry DSN, normally a separate Sentry project from the backend's own | `SENTRY_PRODUCTION_VERIFICATION.md` |
 | `GOOGLE_MAPS_ANDROID_API_KEY` | Yes (Android only) | EAS build-time env / EAS secret | No (ships in binary, but restricted by package+SHA-1) | the Android-restricted Maps key | `RUNBOOK_GOOGLE_MAPS_PLACES_PRODUCTION.md` |
 
 ## Native/build identity (not env vars, but load-bearing)
@@ -67,7 +68,7 @@ even though they must still be *correct*.
 | Cloudflare R2 | Photo/video object storage | Cloudflare dashboard |
 | Google Cloud | Maps SDK (Android), Places API | Google Cloud Console |
 | Expo/EAS | Build, signing credentials, push delivery | expo.dev dashboard |
-| Sentry (if enabled) | Backend error monitoring | sentry.io dashboard |
+| Sentry (if enabled) | Backend and mobile-app error monitoring | sentry.io dashboard |
 | Apple Developer | iOS signing, App Store Connect | developer.apple.com |
 | Google Play Console | Android signing/submission, Data Safety | play.google.com/console |
 
