@@ -5,11 +5,27 @@ check for whoever has Railway dashboard access (Codex or a human
 operator), not something a repo-only session can run itself: it needs
 the production Railway console and the Sentry project dashboard.
 
+**Update, frontend crash reporting added:** a frontend Sentry SDK
+(`@sentry/react-native`) now exists — `frontend/src/lib/sentry.ts`
+guards `Sentry.init()` behind `EXPO_PUBLIC_SENTRY_DSN` exactly like the
+backend's own `SENTRY_DSN` guard below, wired into `frontend/app/_layout.tsx`
+(module-load `initSentry()`, `Sentry.wrap(RootLayout)`, and
+`Sentry.captureException` in the root `ErrorBoundary`). This whole
+checklist (Proofs 1-3 below) still only covers the **backend** DSN; a
+real `EXPO_PUBLIC_SENTRY_DSN` still needs to be provisioned and set as
+an EAS production env var before the app side reports anything, and its
+own equivalent 3-proof verification (env var actually set in the EAS
+build, a real device/build triggers a test event, the event lands
+correctly tagged with no PII) has not been written or run yet — do not
+assume frontend parity with the backend proofs below without doing that
+separately.
+
 ## Why this exists
 
-Phase 7 fixed the in-app privacy policy's crash-reporting claim (it no
-longer asserts a frontend Sentry SDK that doesn't exist) and confirmed
-the backend's Sentry wiring is real: `backend/app/main.py` calls
+Phase 7 fixed the in-app privacy policy's crash-reporting claim (at the
+time, it correctly said no frontend Sentry SDK existed yet — see the
+update above, now superseded) and confirmed the backend's Sentry wiring
+is real: `backend/app/main.py` calls
 `sentry_sdk.init(dsn=settings.sentry_dsn, environment=settings.app_env,
 send_default_pii=False, ...)` whenever `SENTRY_DSN` is set, and its
 `global_exception_handler` calls `sentry_sdk.capture_exception(exc)` on

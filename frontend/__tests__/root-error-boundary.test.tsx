@@ -1,5 +1,6 @@
 import React from 'react';
 import { fireEvent, render } from '@testing-library/react-native';
+import * as Sentry from '@sentry/react-native';
 import { ErrorBoundary, notificationRouteFromData } from '../app/_layout';
 
 // RootLayout imports several app-wide native/service modules that are not
@@ -26,6 +27,10 @@ jest.mock('../src/api/streak', () => ({ pingStreak: jest.fn() }));
 jest.mock('../src/components/Toast', () => ({ ToastContainer: () => null }));
 
 describe('root ErrorBoundary', () => {
+  afterEach(() => {
+    jest.clearAllMocks();
+  });
+
   it('delegates Try again to Expo Router retry()', () => {
     const retry = jest.fn();
     const { getByLabelText } = render(
@@ -34,6 +39,14 @@ describe('root ErrorBoundary', () => {
 
     fireEvent.press(getByLabelText('Retry loading CRAVE'));
     expect(retry).toHaveBeenCalledTimes(1);
+  });
+
+  it('reports the render error to Sentry so a device crash is no longer invisible', () => {
+    const error = new Error('boom');
+    render(<ErrorBoundary error={error} retry={jest.fn()} />);
+
+    expect(Sentry.captureException).toHaveBeenCalledWith(error);
+    expect(Sentry.captureException).toHaveBeenCalledTimes(1);
   });
 });
 
