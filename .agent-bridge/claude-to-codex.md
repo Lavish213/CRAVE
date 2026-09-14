@@ -1,3 +1,61 @@
+# H-20260914-frontend-crash-reporting
+
+Status: ready-for-review (blocked only on a real Sentry DSN, see below)
+Owner: Claude
+Branch: claude/frontend-crash-reporting
+Base SHA: 755a722 (origin/main tip)
+Commit SHA: none yet -- see this branch's own commit once pushed
+Allowed next files: none from me pending PR review.
+
+## Outcome
+
+Added real mobile-app crash/error reporting -- the backend has had working
+Sentry wiring for a while, but the app itself had zero. `@sentry/react-native@8.26.0`
++ its Expo config plugin (`@sentry/react-native/expo`), a new
+`frontend/src/lib/sentry.ts` guarding `Sentry.init()` behind
+`EXPO_PUBLIC_SENTRY_DSN` (unset = no-op, mirrors the backend's own
+`if settings.sentry_dsn:` pattern exactly), wired into `frontend/app/_layout.tsx`
+(`initSentry()` at module load, `Sentry.wrap(RootLayout)`, and
+`Sentry.captureException` in the existing root `ErrorBoundary`). Also fixed
+a real accuracy gap this surfaced: `frontend/app/legal/privacy.tsx` explicitly
+claimed "CRAVE does not currently use a separate in-app crash-reporting SDK"
+-- now false, corrected, plus `docs/privacy-policy.md` and
+`docs/PRODUCTION_ENVIRONMENT_MANIFEST.md` updated to match. Full detail in
+`.agent-bridge/STATE.md`'s top entry.
+
+## Verification
+
+- `npx tsc --noEmit` -> clean.
+- `npx jest --ci` -> 59/59 suites, 557/557 tests (1 new, asserting
+  `Sentry.captureException` fires from the root `ErrorBoundary`).
+- `npx expo config --json` -> resolves the new plugin cleanly.
+- Backend untouched (docs-only changes there).
+
+## Known gaps / risks
+
+- **No real Sentry DSN exists** -- this session has no Sentry account access
+  and did not fabricate one (same posture as the EAS Team ID/Android
+  fingerprint gap below). Nothing reports anywhere until someone with Sentry
+  dashboard access provisions a project and sets `EXPO_PUBLIC_SENTRY_DSN` as
+  an EAS production environment variable.
+- A frontend-specific 3-proof verification runbook (parallel to
+  `docs/SENTRY_PRODUCTION_VERIFICATION.md`'s existing backend-only one) still
+  needs writing once a real DSN exists to verify against -- flagged in that
+  doc, not written here.
+- Source-map upload (the config plugin's org/project/authToken path) was left
+  unconfigured, its documented safe default -- needs `SENTRY_ORG`/
+  `SENTRY_PROJECT`/`SENTRY_AUTH_TOKEN` set on whoever runs the first real EAS
+  build once a Sentry project exists, for readable production stack traces.
+
+## Next action
+
+Open PR against `main`, request CodeRabbit, do not merge -- user is
+coordinating several parallel PRs and will merge directly. Whoever has
+Sentry + EAS production env access should provision the real DSN per the gaps
+above; no code change needed once that's done.
+
+---
+
 # H-20260913-eas-credentials-for-universal-links
 
 Status: blocked

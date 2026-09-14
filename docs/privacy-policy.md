@@ -1,6 +1,6 @@
 # CRAVE Privacy Policy
 
-**Last updated: August 25, 2026**
+**Last updated: September 14, 2026**
 
 > **Before publishing**: this reflects CRAVE's actual features and data
 > flows as of this writing (kept in sync with the in-app copy at
@@ -44,8 +44,9 @@ used only to tell you about your own uploads (e.g. a video was
 approved).
 
 **Device and usage data.** Basic technical information (app version, OS
-version, crash reports) collected automatically to keep the app working
-and to diagnose problems.
+version, crash reports) collected automatically — both from the app on
+your device and from our backend — to keep the app working and to
+diagnose problems.
 
 ## How We Use Information
 
@@ -72,7 +73,8 @@ CRAVE relies on the following third parties to operate:
 - **DeepSeek** — used server-side to help extract menu information from
   restaurant websites. It does not receive your personal information;
   it only processes public webpage text to identify menu items.
-- **Sentry** — crash and error monitoring, so we can detect and fix bugs.
+- **Sentry** — crash and error monitoring for both our backend and the
+  CRAVE mobile app itself, so we can detect and fix bugs.
 - **Expo's push notification service** — delivers the notifications
   described above.
 

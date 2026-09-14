@@ -1,6 +1,87 @@
 # Active agent state
 
 Status: ready-for-review
+Owner: Claude
+Branch: claude/frontend-crash-reporting
+Base SHA: 755a722 (origin/main tip)
+Commit SHA: (recorded after commit below)
+Scope: user asked directly (repo-only session, no Sentry account access) to
+add real mobile-app crash/error reporting -- the backend has had working
+Sentry wiring for a while (`backend/app/main.py`), but an exhaustive grep of
+`frontend/src/**`/`frontend/app/**` for `Sentry` found zero hits before this
+change: a real crash on a user's phone was invisible to the team even though
+the app is live on both stores. Added `@sentry/react-native@8.26.0` (current
+stable per `npm view`, peer deps `expo>=49`/`react-native>=0.65` -- compatible
+with this repo's Expo ~55/RN 0.83.10) and its Expo config plugin
+(`@sentry/react-native/expo`, confirmed present in the installed tarball and
+resolves cleanly via `npx expo config --json`). New `frontend/src/lib/sentry.ts`
+guards `Sentry.init()` behind `EXPO_PUBLIC_SENTRY_DSN`, mirroring the backend's
+own `if settings.sentry_dsn:` pattern exactly -- unset means `Sentry.init()`
+is never called, nothing native touched, nothing sent. Wired into
+`frontend/app/_layout.tsx`: `initSentry()` at module load (before anything
+else), `export default Sentry.wrap(RootLayout)` (official Expo Router
+integration point), and the existing root `ErrorBoundary` (expo-router's own
+file-based error boundary, the one place a render error React already
+swallows can still be reported) now calls `Sentry.captureException(error)` in
+a `useEffect`. New manual Jest mock `frontend/__mocks__/@sentry/react-native.js`
+(same convention as this repo's existing `react-native-maps`/
+`@react-native-async-storage` manual mocks -- auto-picked up by Jest with no
+`jest.mock()` call needed) so no test ever touches Sentry's native modules.
+Added `EXPO_PUBLIC_SENTRY_DSN` to `frontend/.env.example` and to
+`docs/PRODUCTION_ENVIRONMENT_MANIFEST.md`'s frontend env-var table (backend
+`SENTRY_DSN` row already existed there). Fixed a real accuracy gap this
+surfaced: `frontend/app/legal/privacy.tsx`'s in-app privacy policy explicitly
+said "CRAVE does not currently use a separate in-app crash-reporting SDK" --
+now false as of this PR, corrected in place (also bumped its effective date
+and `docs/privacy-policy.md`'s, and clarified both docs' Sentry/crash-report
+language to cover the app, not just the backend). Added a short update note
+to `docs/SENTRY_PRODUCTION_VERIFICATION.md` flagging that its existing 3-proof
+checklist is backend-DSN-only and a frontend-DSN equivalent still needs to be
+written/run separately once a real `EXPO_PUBLIC_SENTRY_DSN` exists.
+Locked files: none -- closed, no further action from me pending user review.
+Verification: `npx tsc --noEmit` clean. `npx jest --ci` -> 59/59 suites,
+557/557 tests (1 new: `root-error-boundary.test.tsx`'s
+"reports the render error to Sentry" case, asserting
+`Sentry.captureException` is called with the boundary's error). `npx expo
+config --json` resolves the new plugin cleanly (`pluginHistory` shows
+`@sentry/react-native/expo` applied, version `8.26.0`). Backend untouched
+(docs-only changes there). Did not attempt a real `eas build`/native
+prebuild or launch the app in this sandbox -- static verification plus a
+clean full test suite, per the task's own instruction not to over-invest in
+headless RN app launching.
+Known gaps / risks: **no real Sentry DSN exists** -- this session has no
+Sentry account access and did not fabricate one, matching this repo's
+standing rule for this exact class of external-credential gap (see the EAS
+Team ID/Android fingerprint precedent in `claude-to-codex.md`). Whoever has
+Sentry dashboard access needs to create a project, set
+`EXPO_PUBLIC_SENTRY_DSN` as an EAS **production**-profile environment
+variable (`docs/PRODUCTION_ENVIRONMENT_MANIFEST.md`'s new row), and only then
+does any of this actually start reporting -- until then the app behaves
+exactly as it does today, by design. Also not done here: a frontend-specific
+3-proof verification runbook (parallel to `docs/SENTRY_PRODUCTION_VERIFICATION.md`'s
+backend one) confirming a real device build actually delivers an event --
+flagged in that doc, not written here since there's no real DSN yet to
+verify against. Native source-map upload (the config plugin's
+`sentryProperties`/Android-Gradle-plugin wiring) was added with no
+org/project/authToken configured, which is the documented safe default
+(falls back to `SENTRY_ORG`/`SENTRY_PROJECT`/`SENTRY_AUTH_TOKEN` env vars,
+printing an informational warning only) -- source-map upload for readable
+production stack traces will need those three set on whoever runs the first
+real EAS build once a Sentry project exists.
+Next action: user/whoever has Sentry dashboard + EAS production env access
+should (1) create a Sentry project (a separate one from the backend's, or
+the same project with two DSNs -- either is fine), (2) set
+`EXPO_PUBLIC_SENTRY_DSN` as an EAS production environment variable, (3)
+optionally set `SENTRY_ORG`/`SENTRY_PROJECT`/`SENTRY_AUTH_TOKEN` for
+source-map upload, (4) run a real production EAS build and manually trigger
+a test crash/error to confirm an event actually lands in the Sentry
+dashboard -- the same 3-proof discipline `docs/SENTRY_PRODUCTION_VERIFICATION.md`
+already uses for the backend, just not yet written down as its own frontend
+checklist.
+
+---
+
+Status: ready-for-review
 Owner: Codex
 Branch: codex/menu-source-governance
 Base SHA: 474dec5
