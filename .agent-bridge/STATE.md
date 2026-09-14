@@ -4,7 +4,7 @@ Status: implementing
 Owner: Codex
 Branch: codex/video-status-polling
 Base SHA: c33753f (origin/main tip when this worktree was created)
-Commit SHA: bdcc2f62a1b128e6148dc91cb84c71aabff6ad7a
+Commit SHA: 7993cacbe2e8e8d1dcd78024f3734fb35f07aaeb (implementation commit; bridge-only follow-up commit records this)
 Scope: offline-upload UX follow-up only: keep uploaded video rows visible
 after local upload completion when a backend `serverId` exists, poll the
 existing `/videos/{id}/status` API via the already-built `fetchVideoStatus`,
