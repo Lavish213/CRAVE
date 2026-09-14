@@ -2,6 +2,73 @@
 
 Status: ready-for-review
 Owner: Claude
+Branch: claude/dedupe-hygiene-audit-trail
+Base SHA: 755a722 (origin/main tip, includes menu-source-governance below
+already merged as PR #301 -- see staleness note under that entry)
+Commit SHA: 55cc582 (branch head; 4 commits total, see PR #304)
+Scope: bundle of four independent, low-risk cleanups from a prior full
+engineering audit, all in one PR per explicit instruction (not a bridge-
+tracked feature slice): (1) dedupe ReportPlaceSheet/ReportPhotoSheet/
+ReportVideoSheet into a shared frontend/src/components/ReportSheet.tsx,
+each original kept as a thin wrapper with identical external behavior;
+(2) bootstrap a minimal ESLint setup (none existed at all -- no config,
+no dependency, no lint script, no CI step) with one no-restricted-syntax
+rule blocking new raw `fontSize` literals in StyleSheet.create calls
+going forward (235 pre-existing occurrences left as documented follow-up
+debt, not fixed); (3) delete a tracked 0-byte U+2028-suffixed "priority"
+file, the orphaned root-level /src/upload tree, the stray root
+package.json, and package-lock.json.bak -- each independently confirmed
+zero-reference before deletion; root package-lock.json left alone,
+not named in the original audit; (4) add an AdminAuditLog model +
+Alembic migration (f4g5h6i7j8k9, chained onto e3f4g5h6i7j8) and wire it
+into every admin-gated moderation review/resolve action in
+moderation.py (review_image, review_video, resolve_place_report) and
+menu_submissions.py (review_submission, which turned out to live outside
+moderation.py -- found by searching for require_admin-gated endpoints
+rather than assuming co-location), alongside each action's logger call
+(moderation.py had none for these three before this change; added one to
+each, matching the file's own convention).
+Locked files: none -- closed, no further work planned on this PR from
+this session.
+Verification: frontend `npx tsc --noEmit` clean; `npx jest --ci` ->
+59/59 suites, 556/556 tests, no regressions. Backend
+`python3 -m compileall -q backend/app` clean;
+`python3 -m pytest -q tests/test_moderation_routes.py
+tests/test_moderation_queue_health_check.py
+tests/test_video_moderation_routes.py tests/test_menu_submissions.py` ->
+54 passed (includes new test_approving_writes_an_admin_audit_log_row);
+full suite `python3 -m pytest -q` -> 1150 passed, 2 skipped. Migration
+round-trip on f4g5h6i7j8k9 specifically (`alembic upgrade head` ->
+`downgrade -1` -> `upgrade head`) clean; `alembic heads` ->
+f4g5h6i7j8k9 (head). `git diff --check` clean.
+Known gaps / risks: 235 pre-existing raw fontSize literals (Task 2) and
+the orphaned root package-lock.json (Task 3) are explicitly deferred,
+not fixed here -- see PR #304's description. `npx eslint .` across the
+whole repo also surfaces 3 unrelated pre-existing "rule not found"
+errors from a stale @typescript-eslint/no-var-requires disable-comment
+in src/stores/cravesStore.test.ts (predates this PR, harmless, not
+touched). This session did not merge -- user is coordinating several
+parallel PRs and merges each themselves once green.
+Next action: none from me. Awaiting CodeRabbit review (requested) and
+the user's own merge once CI is green. PR:
+https://github.com/Lavish213/CRAVE/pull/304
+
+**Staleness note on this file, found while claiming the above (2026-09-14):**
+the entry immediately below (Codex, `codex/menu-source-governance`,
+listed as `Status: ready-for-review`) is actually already merged --
+`git log origin/main` shows its exact commit message
+("Add menu source governance (#301)") as `main`'s current tip
+(`755a722`), and its named alembic revision (`e3f4g5h6i7j8`) is already
+present in a fresh `origin/main` checkout. Whoever next touches this
+lane should update that entry's Status to `merged` rather than treating
+its `backend/app/db/models/**` etc. lock as still active -- this session
+independently verified it was safe to add a new, distinctly-named model
+file there for that reason, not by ignoring the lock.
+
+---
+
+Status: merged
+Owner: Claude
 Branch: claude/frontend-crash-reporting
 Base SHA: 755a722 (origin/main tip)
 Commit SHA: 3cce6c7 (this branch's tip; final PR-head SHA may differ after

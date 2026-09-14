@@ -36,7 +36,7 @@ from app.db.models.menu_submission import (
     STATUS_REJECTED,
     MenuSubmission,
 )
-from app.api.v1.routes.moderation import require_admin
+from app.api.v1.routes.moderation import require_admin, write_admin_audit_log
 from app.services.menu.user_submission_service import apply_approved_submission
 
 logger = logging.getLogger(__name__)
@@ -244,6 +244,17 @@ def review_submission(
         submission.reviewed_at = datetime.now(timezone.utc)
         submission.reviewed_by = admin_id
         submission.status = STATUS_APPROVED
+        logger.info(
+            "menu_submission_approved submission_id=%s admin_id=%s published_items=%s",
+            submission_id, admin_id, published_count,
+        )
+        write_admin_audit_log(
+            db,
+            admin_user_id=admin_id,
+            action="approve_menu_submission",
+            target_type="menu_submission",
+            target_id=submission_id,
+        )
         db.commit()
         return {"status": submission.status, "published_items": published_count}
 
@@ -251,5 +262,16 @@ def review_submission(
     submission.reviewed_by = admin_id
     submission.status = STATUS_REJECTED
     submission.rejection_reason = (payload.rejection_reason or "").strip() or None
+    logger.info(
+        "menu_submission_rejected submission_id=%s admin_id=%s",
+        submission_id, admin_id,
+    )
+    write_admin_audit_log(
+        db,
+        admin_user_id=admin_id,
+        action="reject_menu_submission",
+        target_type="menu_submission",
+        target_id=submission_id,
+    )
     db.commit()
     return {"status": submission.status}
