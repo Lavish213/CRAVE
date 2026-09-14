@@ -4,7 +4,8 @@ Status: ready-for-review
 Owner: Claude
 Branch: claude/video-feed-local-placeholders
 Base SHA: 34c5346 (origin/main tip after PR #309)
-Commit SHA: 1547159
+Commit SHA: c1807ff (original implementation commit 1547159,
+CodeRabbit-fix commit c1807ff on top -- see below)
 Scope: offline-upload UX follow-up #3 of 4 (the last one on #307/#308's
 own "remaining follow-ups" list, alongside wifi-only gating (#312) and
 real upload progress (#313)) -- merging the local queue into
@@ -45,11 +46,36 @@ guard I initially wrote was actually dead code -- on first mount
 `prevIds` starts empty so `lostAny` can never be true regardless of that
 guard -- simplified to `if (lostAny)` once the tests proved it made no
 behavioral difference). `git diff --check` clean. Backend untouched.
+
+**CodeRabbit review, applied before merge (learned from #307's mistake
+-- waited for the actual findings this time instead of merging on green
+CI alone):** 1 real finding, fixed forward on this same branch rather
+than merged first:
+- **Major**: the initial-mount fetch and the placeholder-loss refetch
+  both called `setVideos` unconditionally on resolution, with no
+  ordering guarantee between them -- an older request resolving after a
+  newer one (e.g. a slow initial fetch outlasting a placeholder-loss
+  refetch, or a stale request for a previous `placeId` after fast
+  navigation) could silently overwrite newer data with stale data.
+  Unified both call sites under one `refetchFeed()` using a
+  monotonically increasing request id: a response is only applied if
+  it's still the most recent request issued. New regression test
+  simulates a slower first request resolving after a faster second one;
+  confirmed to fail on the pre-fix code via revert-and-rerun -- the test
+  itself needed a proper `await act(async () => { ...; await
+  Promise.resolve(); })` flush to even observe the bug correctly (a bare
+  synchronous `act()` doesn't wait for a promise's own `.then()`
+  continuation, so the first draft of the test passed for the wrong
+  reason).
+Verification (CodeRabbit-fix commit): `npx tsc --noEmit` -> clean.
+`npx jest --ci` -> 63/63 suites, 609/609 tests (1 new). `git diff
+--check` clean.
 Known gaps / risks: this was the last item on the offline-upload-UX
 follow-up roadmap. No further follow-ups tracked from that list.
 Next action: none needed from Codex -- doesn't touch the dashboard lane.
-Waiting for CodeRabbit's actual findings (not just CI-green) before
-merging, per the standing correction from #307. PR: #314.
+CI green, CodeRabbit's real finding addressed -- holding for the user's
+explicit merge approval rather than auto-merging, per the standing
+correction from #307. PR: #314.
 
 ---
 
