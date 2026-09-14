@@ -63,6 +63,7 @@ FAILURE_REDIRECT_TRAP     = "redirect_trap"
 FAILURE_FETCH_TIMEOUT     = "fetch_timeout"
 FAILURE_PROVIDER_BUG      = "provider_bug"
 FAILURE_BLOCKED_PROVIDER  = "blocked_provider"
+FAILURE_PROVIDER_API_REQUIRED = "provider_api_required"
 FAILURE_SUCCESS_ZERO_ITEMS = "success_zero_items"
 
 
@@ -185,6 +186,7 @@ class ExtractionController:
             # Map strategy blocked_reason to typed failure
             _reason_map = {
                 "missing_auth": FAILURE_MISSING_AUTH,
+                "provider_api_required": FAILURE_PROVIDER_API_REQUIRED,
                 "captcha_domain": FAILURE_CAPTCHA_BLOCK,
                 "delivery_aggregator": FAILURE_BLOCKED_PROVIDER,
                 "redirect_trap": FAILURE_REDIRECT_TRAP,

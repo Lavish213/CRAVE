@@ -1,5 +1,33 @@
 # Active agent state
 
+Status: ready-for-review
+Owner: Codex
+Branch: codex/menu-source-governance
+Base SHA: 474dec5
+Commit SHA: db38a9f
+Scope: Menu source governance after the 10-place canary. Add a provider/source
+classification layer so protected providers like Toast/ChowNow/Cloudflare pages
+are treated as access/governance states instead of parser failures; document the
+manual/verified menu path for owner/user contribution without inventing fake
+provider access.
+Locked files: .agent-bridge/STATE.md, backend/app/services/menu/**,
+backend/scripts/**menu**, backend/tests/**menu**, docs/**menu** if needed.
+Verification: inspected current menu source/manual submission routes; added
+focused unit coverage for the source classifier/failure taxonomy; confirmed
+Toast/ChowNow are typed `provider_api_required` blocks, Square Site remains a
+direct public source, and the legacy MenuOrchestrator path no longer fetches
+provider-access-required URLs. `python3 -m pytest
+backend/tests/test_menu_source_governance.py backend/tests/test_menu_submissions.py
+-q` -> 16 passed, 1 warning. `python3 -m compileall -q
+backend/app/services/menu backend/scripts/run_menu_backlog_canary.py
+backend/app/api/v1/routes/menu_submissions.py` -> passed. `git diff --check`
+-> passed.
+Explicit exclusions: official Toast/ChowNow/Square OAuth/API integrations,
+paid provider traffic, production canaries, frontend screen redesign, and any
+credential or dashboard work.
+
+---
+
 Status: merged (partially load-bearing -- see gap below)
 Owner: Claude
 Branch: claude/universal-link-setup (merged, can be deleted)

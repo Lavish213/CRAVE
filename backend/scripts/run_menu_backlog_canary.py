@@ -46,6 +46,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.db.models.place import Place
 from app.db.session import SessionLocal
+from app.services.menu.fetch.fetch_strategy_router import classify_fetch_strategy
 from app.services.workers.menu_worker import MenuWorker
 
 
@@ -80,6 +81,8 @@ def run_is_authorized(*, requested_count: int, confirm_count: int | None) -> boo
 def _preview_row(place: Place | None, place_id: str) -> dict:
     if place is None:
         return {"place_id": place_id, "found": False}
+    source_url = place.menu_source_url or place.website or place.grubhub_url
+    strategy = classify_fetch_strategy(source_url) if source_url else None
     return {
         "place_id": place.id,
         "found": True,
@@ -90,6 +93,11 @@ def _preview_row(place: Place | None, place_id: str) -> dict:
         "website": place.website,
         "menu_source_url": place.menu_source_url,
         "grubhub_url": place.grubhub_url,
+        "selected_source_url": source_url,
+        "source_strategy": strategy.strategy if strategy else None,
+        "source_provider": strategy.provider if strategy else None,
+        "source_blocked_reason": strategy.blocked_reason if strategy else None,
+        "source_needs_auth": strategy.needs_auth if strategy else False,
         "menu_extraction_failure_count": place.menu_extraction_failure_count or 0,
         "menu_extraction_attempted_at": (
             place.menu_extraction_attempted_at.isoformat()
