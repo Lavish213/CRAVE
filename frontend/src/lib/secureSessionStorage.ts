@@ -13,10 +13,28 @@
  *
  * SecureStore enforces a practical per-item size limit well under what a
  * Supabase session JSON (access token + refresh token + user metadata) can
- * reach, so a value is split across multiple small SecureStore items
- * ({key}__0, {key}__1, ...) plus a small {key}__chunks item recording how
- * many. This still stores everything encrypted-at-rest; it never falls back
- * to a larger, unencrypted store for the parts that don't fit.
+ * reach, so a value is split across multiple small SecureStore items. This
+ * still stores everything encrypted-at-rest; it never falls back to a
+ * larger, unencrypted store for the parts that don't fit.
+ *
+ * Chunks are addressed by *generation*, not overwritten in place: a manifest
+ * item ({key}__manifest = "{gen}:{count}") names which generation is live.
+ * setSecure() writes every chunk of the *new* generation under fresh keys
+ * first, and only flips the manifest to point at it once all of them have
+ * succeeded -- the previous generation's chunks are left completely
+ * untouched until that point, and only cleaned up afterward. A write
+ * failure partway through a refresh-token rotation therefore never deletes
+ * or corrupts the session that's still live; the manifest keeps naming the
+ * old generation until a new one has been fully committed. (An earlier
+ * version of this file deleted the old chunks before writing the new ones,
+ * which could silently sign a real user out if any single chunk write
+ * failed mid-rotation -- caught in review before merge, not in production.)
+ *
+ * Chunking splits by real UTF-8 byte length, walking whole Unicode code
+ * points (not JS's UTF-16 string units) so a chunk boundary can never land
+ * inside a multi-byte character or a surrogate pair -- a session's user
+ * metadata isn't guaranteed to be ASCII-only, and SecureStore's native size
+ * limit is a byte limit, not a JS string-length limit.
  *
  * Migration for already-installed users: getItem() checks SecureStore
  * first, and only if that's empty falls back to reading the legacy
@@ -30,28 +48,78 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
 
 // Conservative margin under SecureStore's practical per-item limit
-// (documented around 2048 bytes on the more restrictive platform).
-const CHUNK_SIZE = 1800;
-const CHUNK_COUNT_SUFFIX = '__chunks';
+// (documented around 2048 bytes on the more restrictive platform), and this
+// is a true byte budget -- see splitByUtf8ByteBudget below.
+const CHUNK_BYTE_BUDGET = 1800;
+const MANIFEST_SUFFIX = '__manifest';
 
-function chunkKey(key: string, index: number): string {
-  return `${key}__${index}`;
+interface Manifest {
+  gen: number;
+  count: number;
 }
 
-async function readChunkCount(key: string): Promise<number> {
-  const raw = await SecureStore.getItemAsync(`${key}${CHUNK_COUNT_SUFFIX}`);
-  if (!raw) return 0;
-  const count = parseInt(raw, 10);
-  return Number.isFinite(count) && count > 0 ? count : 0;
+function chunkKey(key: string, gen: number, index: number): string {
+  return `${key}__${gen}__${index}`;
+}
+
+async function readManifest(key: string): Promise<Manifest | null> {
+  const raw = await SecureStore.getItemAsync(`${key}${MANIFEST_SUFFIX}`);
+  if (!raw) return null;
+  const [genRaw, countRaw] = raw.split(':');
+  const gen = parseInt(genRaw, 10);
+  const count = parseInt(countRaw, 10);
+  if (!Number.isFinite(gen) || !Number.isFinite(count) || count <= 0) return null;
+  return { gen, count };
+}
+
+function utf8ByteLengthOfCodePoint(codePoint: number): number {
+  if (codePoint < 0x80) return 1;
+  if (codePoint < 0x800) return 2;
+  if (codePoint < 0x10000) return 3;
+  return 4;
+}
+
+/**
+ * Splits `value` into pieces whose real UTF-8 byte size never exceeds
+ * `maxBytes`, breaking only between whole Unicode code points (`for...of`
+ * over a string iterates code points, correctly treating a surrogate pair
+ * as one unit) so a multi-byte character is never split across chunks.
+ */
+function splitByUtf8ByteBudget(value: string, maxBytes: number): string[] {
+  const chunks: string[] = [];
+  let current = '';
+  let currentBytes = 0;
+
+  for (const char of value) {
+    const codePoint = char.codePointAt(0) ?? 0;
+    const charBytes = utf8ByteLengthOfCodePoint(codePoint);
+    if (currentBytes + charBytes > maxBytes && current.length > 0) {
+      chunks.push(current);
+      current = '';
+      currentBytes = 0;
+    }
+    current += char;
+    currentBytes += charBytes;
+  }
+  if (current.length > 0 || chunks.length === 0) {
+    chunks.push(current);
+  }
+  return chunks;
+}
+
+async function deleteGeneration(key: string, gen: number, count: number): Promise<void> {
+  for (let i = 0; i < count; i++) {
+    await SecureStore.deleteItemAsync(chunkKey(key, gen, i)).catch(() => undefined);
+  }
 }
 
 async function getSecure(key: string): Promise<string | null> {
-  const count = await readChunkCount(key);
-  if (count === 0) return null;
+  const manifest = await readManifest(key);
+  if (!manifest) return null;
 
   const parts: string[] = [];
-  for (let i = 0; i < count; i++) {
-    const part = await SecureStore.getItemAsync(chunkKey(key, i));
+  for (let i = 0; i < manifest.count; i++) {
+    const part = await SecureStore.getItemAsync(chunkKey(key, manifest.gen, i));
     if (part === null) {
       // A partial/corrupted write -- treat as absent rather than returning
       // a truncated session, so the caller falls through to a clean
@@ -64,21 +132,35 @@ async function getSecure(key: string): Promise<string | null> {
 }
 
 async function setSecure(key: string, value: string): Promise<void> {
-  await removeSecure(key);
-  const count = Math.max(1, Math.ceil(value.length / CHUNK_SIZE));
-  for (let i = 0; i < count; i++) {
-    const part = value.slice(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE);
-    await SecureStore.setItemAsync(chunkKey(key, i), part);
+  const previous = await readManifest(key);
+  const newGen = (previous?.gen ?? 0) + 1;
+
+  const parts = splitByUtf8ByteBudget(value, CHUNK_BYTE_BUDGET);
+  for (let i = 0; i < parts.length; i++) {
+    await SecureStore.setItemAsync(chunkKey(key, newGen, i), parts[i]);
   }
-  await SecureStore.setItemAsync(`${key}${CHUNK_COUNT_SUFFIX}`, String(count));
+
+  // Commit point. Every chunk of the new generation is written and
+  // confirmed before this line runs; if any write above throws instead,
+  // the manifest still names `previous`, whose chunks were never touched.
+  await SecureStore.setItemAsync(`${key}${MANIFEST_SUFFIX}`, `${newGen}:${parts.length}`);
+
+  // The new generation is live -- best-effort clean up the old one now.
+  // A failure here just leaves harmless orphaned keys; they're never read
+  // again since the manifest no longer points at them.
+  if (previous) {
+    await deleteGeneration(key, previous.gen, previous.count);
+  }
 }
 
 async function removeSecure(key: string): Promise<void> {
-  const count = await readChunkCount(key);
-  for (let i = 0; i < count; i++) {
-    await SecureStore.deleteItemAsync(chunkKey(key, i));
-  }
-  await SecureStore.deleteItemAsync(`${key}${CHUNK_COUNT_SUFFIX}`);
+  const manifest = await readManifest(key);
+  if (!manifest) return;
+  // Delete the manifest first: if the process dies partway through this
+  // function, a reader must see "nothing stored," never a manifest
+  // pointing at chunks that are half-deleted.
+  await SecureStore.deleteItemAsync(`${key}${MANIFEST_SUFFIX}`);
+  await deleteGeneration(key, manifest.gen, manifest.count);
 }
 
 async function getItem(key: string): Promise<string | null> {

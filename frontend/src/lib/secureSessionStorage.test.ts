@@ -24,9 +24,58 @@ describe('secureSessionStorage', () => {
     const value = await secureSessionStorage.getItem('sb-project-auth-token');
     expect(value).toBe(large);
     expect(SecureStore.setItemAsync).toHaveBeenCalledWith(
-      expect.stringContaining('__chunks'),
+      expect.stringContaining('__manifest'),
       expect.any(String)
     );
+  });
+
+  it('round-trips a value containing multi-byte Unicode straddling a chunk boundary, with every chunk under the real byte budget', async () => {
+    // Chunking must split by real UTF-8 byte length, not JS string length --
+    // a session's user metadata isn't guaranteed to be ASCII-only. The
+    // in-memory SecureStore mock doesn't enforce a native size limit, so a
+    // round-trip alone can't catch a regression here (a `.slice()` by
+    // character count round-trips fine in-memory even though it could
+    // exceed the real native per-item byte limit on device) -- assert the
+    // real UTF-8 byte length of every stored chunk directly instead.
+    const padding = 'a'.repeat(1798); // sits right at the byte-budget edge
+    const multiByte = '🍜🍣🥟'.repeat(200); // 4-byte emoji, well past one budget
+    const value = padding + multiByte + 'TAIL';
+
+    await secureSessionStorage.setItem('sb-project-auth-token', value);
+
+    const encoder = new TextEncoder();
+    const chunkCalls = (SecureStore.setItemAsync as jest.Mock).mock.calls.filter(
+      ([key]) => key.includes('__') && !key.endsWith('__manifest')
+    );
+    expect(chunkCalls.length).toBeGreaterThan(1); // actually exercised multiple chunks
+    for (const [, storedValue] of chunkCalls) {
+      expect(encoder.encode(storedValue).byteLength).toBeLessThanOrEqual(1800);
+    }
+
+    const result = await secureSessionStorage.getItem('sb-project-auth-token');
+    expect(result).toBe(value);
+  });
+
+  it('a failed chunk write during an overwrite leaves the previous session fully readable', async () => {
+    // The real bug this scheme closes: chunks are written under a new
+    // generation's keys first, and the manifest only flips to point at the
+    // new generation once every one of them has succeeded. A write that
+    // fails partway through a refresh-token rotation must never delete or
+    // corrupt the session that was live before the rotation started.
+    await secureSessionStorage.setItem('sb-project-auth-token', 'original-session-still-valid');
+
+    const large = 'y'.repeat(5000); // forces multiple chunk writes
+    (SecureStore.setItemAsync as jest.Mock).mockImplementationOnce(async () => {
+      throw new Error('keychain busy mid-rotation');
+    });
+    await expect(
+      secureSessionStorage.setItem('sb-project-auth-token', large)
+    ).rejects.toThrow('keychain busy mid-rotation');
+
+    // The old session must still be there, untouched, not a mix of old and
+    // new chunks and not gone entirely.
+    const stillReadable = await secureSessionStorage.getItem('sb-project-auth-token');
+    expect(stillReadable).toBe('original-session-still-valid');
   });
 
   it('never stores the value in AsyncStorage on write', async () => {
