@@ -28,6 +28,16 @@ const VIDEO_STATE_COPY: Record<QueuedVideo['syncState'], string> = {
   missing_local_file: 'Recording no longer available',
 };
 
+// Confirmed CodeRabbit finding on PR #307: the Retry/Delete controls'
+// visual 32dp size fell short of a real touch target. Retry and Delete
+// sit right next to each other with only Spacing.md (12dp) between them,
+// so a naive hitSlop on both sides would make their hit areas overlap --
+// 6dp left/right brings them exactly flush (6+6=12) with no ambiguity
+// about which control a boundary tap hits; 8dp top/bottom (nothing else
+// stacked above/below in the same row) rounds each control up past the
+// 44dp minimum.
+const TOUCH_TARGET_HIT_SLOP = { top: 8, bottom: 8, left: 6, right: 6 };
+
 function isVideoInProgress(state: QueuedVideo['syncState']): boolean {
   return state === 'requesting_url' || state === 'uploading' || state === 'completing';
 }
@@ -171,6 +181,7 @@ export default function UploadsScreen() {
                         onPress={() => handleRetryVideo(video.id)}
                         accessibilityRole="button"
                         accessibilityLabel="Retry upload"
+                        hitSlop={TOUCH_TARGET_HIT_SLOP}
                       >
                         <Text style={styles.actionButtonText}>Retry</Text>
                       </TouchableOpacity>
@@ -181,6 +192,7 @@ export default function UploadsScreen() {
                         onPress={() => handleDeleteVideo(video.id)}
                         accessibilityRole="button"
                         accessibilityLabel="Delete video"
+                        hitSlop={TOUCH_TARGET_HIT_SLOP}
                       >
                         <Ionicons name="trash-outline" size={18} color={Colors.error} />
                       </TouchableOpacity>
@@ -228,6 +240,7 @@ export default function UploadsScreen() {
                         onPress={() => { void handleRetryDraft(draft); }}
                         accessibilityRole="button"
                         accessibilityLabel="Retry"
+                        hitSlop={TOUCH_TARGET_HIT_SLOP}
                       >
                         <Text style={styles.actionButtonText}>Retry</Text>
                       </TouchableOpacity>
@@ -237,6 +250,7 @@ export default function UploadsScreen() {
                       onPress={() => handleDeleteDraft(draft.id)}
                       accessibilityRole="button"
                       accessibilityLabel="Delete"
+                      hitSlop={TOUCH_TARGET_HIT_SLOP}
                     >
                       <Ionicons name="trash-outline" size={18} color={Colors.error} />
                     </TouchableOpacity>

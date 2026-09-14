@@ -202,10 +202,7 @@ export const useVideoQueueStore = create<VideoQueueStore>()(
           // instant syncOne marks a video 'synced', so a caller that just
           // awaited runSyncPass and inspected the video it synced this same
           // call (see videoQueueStore.test.ts) still finds it.
-          const hasStaleSynced = get().videos.some((v) => v.syncState === 'synced');
-          if (hasStaleSynced) {
-            set({ videos: get().videos.filter((v) => v.syncState !== 'synced') });
-          }
+          await pruneSyncedVideos(set, get);
 
           const now = Date.now();
           const pending = get().videos.filter(
@@ -333,6 +330,37 @@ async function recordFailure(
     }),
   });
   await pruneRetainedFailedVideos(set, get);
+}
+
+// syncOne already attempted FileSystem.deleteAsync once and silently
+// swallowed a real failure (see its own comment) -- if that attempt
+// genuinely failed (not just "already gone," which idempotent:true
+// already treats as success), the video was still marked 'synced'
+// regardless. Blindly pruning every 'synced' row here would then
+// silently lose the last reference to a real, still-on-disk orphaned
+// file forever (confirmed CodeRabbit finding on PR #307). Retrying the
+// (idempotent, so safe to repeat) delete here means a row is only
+// removed once its file is actually gone; a still-failing delete keeps
+// the row -- and its localUri -- around for the next pass to retry.
+async function pruneSyncedVideos(
+  set: (partial: Partial<VideoQueueStore>) => void,
+  get: () => VideoQueueStore
+) {
+  const synced = get().videos.filter((v) => v.syncState === 'synced');
+  if (synced.length === 0) return;
+
+  const stillOrphaned = new Set<string>();
+  for (const video of synced) {
+    try {
+      await FileSystem.deleteAsync(video.localUri, { idempotent: true });
+    } catch {
+      stillOrphaned.add(video.id);
+    }
+  }
+
+  set({
+    videos: get().videos.filter((v) => v.syncState !== 'synced' || stillOrphaned.has(v.id)),
+  });
 }
 
 // A 'failed' video retains its real local file (unlike
