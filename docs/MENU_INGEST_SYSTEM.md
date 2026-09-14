@@ -145,3 +145,57 @@ walls remain blocked until official access or reviewed manual submission.
 | Approve/reject a submitted menu | `POST /api/v1/moderation/menu-submissions/{id}/review` | Exists; admin gated. |
 | Add a brand-new place | App `add-spot` creates a `DiscoveryCandidate`; promotion creates the real `Place` later | Exists, but media/menu attachment to not-yet-promoted candidates is intentionally limited. |
 | Official Toast/ChowNow sync | Provider connector with restaurant/partner credentials | Not implemented. |
+
+---
+
+## External research notes that shape the policy
+
+- **Toast:** official menu access exists, but V3 is for ordering partners and
+  requires partner-scoped access such as `menus.channel:read`; V2/V3 behavior is
+  tied to channel visibility. Treat Toast public ordering URLs as
+  `provider_api_required`, not scrape targets.
+- **Square:** official Catalog API menu sync is the clean model: initial sync,
+  channel/location visibility, category hierarchy, item/modifier expansion,
+  incremental updates, validation, and sync-status dashboards. CRAVE's public
+  Square/Square Site extraction can stay enabled, but a durable Square connector
+  should eventually use authorized Catalog API sync.
+- **Clover:** official inventory/menu-ish data is reachable through merchant
+  OAuth/API-token flows (`/v3/merchants/{mId}/items`, categories, modifiers).
+  Public Clover pages should not be treated as equivalent to merchant-authorized
+  inventory access.
+- **ChowNow:** public docs emphasize embedded ordering buttons and POS
+  integrations, not a public menu-read API. Treat as `provider_api_required`
+  unless the restaurant/provider authorizes a connector or the menu is submitted
+  through CRAVE review.
+- **AllThePlaces pattern:** use targeted, source-specific spiders and consume
+  published/open outputs when available; do not rerun huge spider fleets or hit
+  every site blindly. Prefer sitemap/structured-data discovery before forms,
+  browser automation, or brute-force probing.
+- **Schema.org Menu:** public structured data is a high-quality free source
+  when present (`Restaurant.hasMenu`, `Menu`, `MenuSection`, `MenuItem`,
+  `Offer`). CRAVE's JSON-LD path should remain a first-class source.
+- **Anti-bot bypass tooling:** browserless/proxy/CAPTCHA-solving communities
+  prove protected surfaces can sometimes be bypassed, but that is an explicit
+  non-goal for bulk CRAVE menu population. Protected provider walls go to
+  official connector or manual/reviewed submission.
+
+## Best next implementation plan
+
+1. Keep PR #301's governance as the baseline: protected provider URLs are
+   access states, not parser misses.
+2. Add a menu-source dashboard/report grouped by:
+   `publishable_public`, `manual_review_needed`, `provider_api_required`,
+   `blocked_aggregator`, `auth_missing`, `low_quality`, and `dead_site`.
+3. Bias canaries toward `publishable_public` sources first: official restaurant
+   site, PDF, JSON-LD, hydration JSON, Square/Square Site, Popmenu, and clean
+   HTML.
+4. Route Toast/ChowNow/Clover Online Ordering walls to:
+   - official connector backlog if restaurant/provider access is available;
+   - manual menu submission if a human/owner can verify;
+   - no retry if neither is available.
+5. Surface the existing manual menu submission backend in product/admin UI:
+   user/owner submits items or menu photo; admin approves/rejects; approved
+   items enter `PlaceClaim` → `PlaceTruth` → `MenuPublisher`.
+6. Build official connectors in this order:
+   Square Catalog API first, Clover inventory second, Toast partner menus third,
+   ChowNow only if an authorized API/partner path is actually available.
