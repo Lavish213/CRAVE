@@ -1,5 +1,60 @@
 # Active agent state
 
+Status: implementing
+Owner: Claude
+Branch: claude/video-status-polling
+Base SHA: c33753f (origin/main tip after PR #308)
+Commit SHA: pending
+Scope: offline-upload UX follow-up #2 of 4 (per PR #307/#308's own
+"remaining follow-ups" list) -- per-video backend moderation status
+polling. `videoQueueStore.ts`'s `syncOne` previously jumped straight from
+upload-confirmed to the terminal `'synced'` state, which the Uploads
+screen (#307/#308) then silently pruned on the next pass -- the user got
+zero feedback on whether their video was ever actually approved or
+rejected by the backend's async moderation worker
+(video_processing_worker.py). Added a real `'reviewing'` intermediate
+state (upload confirmed, awaiting moderation) and a `'rejected'` terminal
+state (moderated, not approved -- dismissible via the existing
+`deleteFailedVideo`, not retryable, unlike upload `'failed'`). New
+`frontend/src/hooks/useVideoStatusPoll.ts` (mirrors the existing
+`useImageStatusPoll.ts` shape exactly) wires the already-defined-but-
+unused `fetchVideoStatus` into a per-row poll on the Uploads screen (a new
+`VideoRow` child component, since hooks can't run conditionally per array
+item in the parent). `'approved'` resolves the local row to `'synced'`
+(then pruned exactly as before, no separate cleanup path needed);
+`'rejected'`/backend-`'failed'` resolves to local `'rejected'` with the
+reject reason surfaced and kept visible until the user dismisses it.
+Locked files: frontend/src/stores/videoQueueStore.ts,
+frontend/src/stores/videoQueueStore.test.ts, frontend/app/uploads.tsx,
+frontend/__tests__/uploads.test.tsx, frontend/src/hooks/useVideoStatusPoll.ts (new).
+Verification: `npx tsc --noEmit` -> clean. `npx jest --ci` -> 62/62
+suites, 597/597 tests (9 new: 5 in `videoQueueStore.test.ts` covering
+`applyVideoReviewResult`'s approve/reject/still-processing/stale-callback
+cases plus `deleteFailedVideo` on a rejected video; 4 in `uploads.test.tsx`
+covering the reviewing-state render, the approve-then-disappear poll flow,
+the reject-then-show-reason-and-Delete-only poll flow, and a non-reviewing
+video never polling at all). Each new/changed behavior independently
+confirmed to fail on the pre-fix code via revert-and-rerun before
+restoring the fix (in particular: the `applyVideoReviewResult` guard
+against re-processing an already-resolved video, and the four existing
+sync/prune tests updated to route through the new `'reviewing'` ->
+`applyVideoReviewResult` -> `'synced'` path instead of assuming
+`runSyncPass` alone reaches `'synced'`). `git diff --check` clean. Backend
+untouched.
+Known gaps / risks: two follow-ups from #307/#308's own list remain after
+this one -- wifi-only NetInfo gating and real XHR upload progress, plus
+merging the local queue into `PlaceVideoGallery`'s server feed. The
+poll's backoff (2s->10s cap) matches `useImageStatusPoll`'s existing
+tuning exactly; moderation review can genuinely take longer than a user
+keeps the Uploads screen open, in which case polling simply stops on
+unmount and resumes next time the screen is opened (no background
+polling attempted -- consistent with `useImageStatusPoll`'s own scope).
+Next action: open PR, request CodeRabbit, verify actual findings land
+(not just the CI-green moment) before merging -- do not repeat #307's
+premature-merge mistake.
+
+---
+
 Status: merged (one post-merge CodeRabbit fix landed as a follow-up, see
 below -- do not treat the original PR #307 commit as the final state)
 Owner: Claude

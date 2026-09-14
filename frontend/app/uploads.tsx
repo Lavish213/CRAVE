@@ -7,7 +7,7 @@
 // no way for the user to see it, retry it sooner, or clear it. This screen
 // wires the already-built (but previously dead) retryFailedVideo/
 // deleteFailedVideo/deleteDraft/attachDraftToPlace-retry into real UI.
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator, Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View,
 } from 'react-native';
@@ -17,13 +17,16 @@ import { EmptyState } from '../src/components/EmptyState';
 import { useAuthStore } from '../src/stores/authStore';
 import { useVideoQueueStore, QueuedVideo } from '../src/stores/videoQueueStore';
 import { usePostingDraftStore, PostingDraft } from '../src/stores/postingDraftStore';
+import { useVideoStatusPoll } from '../src/hooks/useVideoStatusPoll';
 
 const VIDEO_STATE_COPY: Record<QueuedVideo['syncState'], string> = {
   recorded: 'Queued — will upload automatically',
   requesting_url: 'Uploading…',
   uploading: 'Uploading…',
   completing: 'Finishing up…',
+  reviewing: 'Uploaded — under review',
   synced: 'Uploaded',
+  rejected: "Wasn't approved",
   failed: "Couldn't upload",
   missing_local_file: 'Recording no longer available',
 };
@@ -39,11 +42,20 @@ const VIDEO_STATE_COPY: Record<QueuedVideo['syncState'], string> = {
 const TOUCH_TARGET_HIT_SLOP = { top: 8, bottom: 8, left: 6, right: 6 };
 
 function isVideoInProgress(state: QueuedVideo['syncState']): boolean {
-  return state === 'requesting_url' || state === 'uploading' || state === 'completing';
+  return (
+    state === 'requesting_url' ||
+    state === 'uploading' ||
+    state === 'completing' ||
+    // The upload itself finished; the backend's moderation review is
+    // still running. Genuinely open-ended (a real async worker, not
+    // fixed-duration), but still "something is happening" from the
+    // user's point of view, same spinner treatment as the upload phases.
+    state === 'reviewing'
+  );
 }
 
-function isVideoTerminalFailure(state: QueuedVideo['syncState']): boolean {
-  return state === 'failed' || state === 'missing_local_file';
+function isVideoDismissible(state: QueuedVideo['syncState']): boolean {
+  return state === 'failed' || state === 'missing_local_file' || state === 'rejected';
 }
 
 function draftStatusCopy(draft: PostingDraft): string {
@@ -53,6 +65,84 @@ function draftStatusCopy(draft: PostingDraft): string {
     return `Waiting for "${draft.restaurantRef.displayName}" to be confirmed`;
   }
   return 'Waiting for you to identify the restaurant';
+}
+
+// Its own component (not inlined in the parent's .map) so useVideoStatusPoll
+// -- a real per-item React hook, not just a plain function -- has a stable
+// place to live: hooks can't be called conditionally or in a loop inside
+// the parent's render, but a stable one-hook-per-row child component is
+// exactly the supported pattern for "poll while this specific item is
+// visible and relevant." Only videos actually 'reviewing' pass a
+// non-null id through, so every other row's poll is a no-op (see the
+// hook's own early-return on a falsy id).
+function VideoRow({
+  video,
+  onRetry,
+  onDelete,
+}: {
+  video: QueuedVideo;
+  onRetry: (id: string) => void;
+  onDelete: (id: string) => void;
+}) {
+  const applyVideoReviewResult = useVideoQueueStore((s) => s.applyVideoReviewResult);
+  const { status: reviewStatus, rejectReason } = useVideoStatusPoll(
+    video.syncState === 'reviewing' ? video.serverId : null
+  );
+
+  useEffect(() => {
+    if (!reviewStatus) return;
+    if (reviewStatus === 'approved' || reviewStatus === 'rejected' || reviewStatus === 'failed') {
+      applyVideoReviewResult(video.id, reviewStatus, rejectReason);
+    }
+  }, [reviewStatus, rejectReason, video.id, applyVideoReviewResult]);
+
+  const dismissible = isVideoDismissible(video.syncState);
+  const errorCopy =
+    (video.syncState === 'failed' || video.syncState === 'rejected') && video.lastError
+      ? video.lastError
+      : VIDEO_STATE_COPY[video.syncState];
+
+  return (
+    <View style={styles.row}>
+      <View style={styles.rowIcon}>
+        {isVideoInProgress(video.syncState) ? (
+          <ActivityIndicator size="small" color={Colors.brand} />
+        ) : (
+          <Ionicons
+            name={dismissible ? 'alert-circle-outline' : 'videocam-outline'}
+            size={18}
+            color={dismissible ? Colors.error : Colors.textSecondary}
+          />
+        )}
+      </View>
+      <View style={styles.rowBody}>
+        <Text style={styles.rowLabel}>Video</Text>
+        <Text style={[styles.rowSub, dismissible ? styles.rowSubError : null]}>{errorCopy}</Text>
+      </View>
+      {video.syncState === 'failed' ? (
+        <TouchableOpacity
+          style={styles.actionButton}
+          onPress={() => onRetry(video.id)}
+          accessibilityRole="button"
+          accessibilityLabel="Retry upload"
+          hitSlop={TOUCH_TARGET_HIT_SLOP}
+        >
+          <Text style={styles.actionButtonText}>Retry</Text>
+        </TouchableOpacity>
+      ) : null}
+      {dismissible ? (
+        <TouchableOpacity
+          style={styles.iconButton}
+          onPress={() => onDelete(video.id)}
+          accessibilityRole="button"
+          accessibilityLabel="Delete video"
+          hitSlop={TOUCH_TARGET_HIT_SLOP}
+        >
+          <Ionicons name="trash-outline" size={18} color={Colors.error} />
+        </TouchableOpacity>
+      ) : null}
+    </View>
+  );
 }
 
 export default function UploadsScreen() {
@@ -150,57 +240,16 @@ export default function UploadsScreen() {
         <>
           <Text style={styles.sectionTitle}>VIDEOS</Text>
           <View style={styles.card}>
-            {myVideos.map((video, index) => {
-              const failed = isVideoTerminalFailure(video.syncState);
-              return (
-                <React.Fragment key={video.id}>
-                  {index > 0 ? <View style={styles.divider} /> : null}
-                  <View style={styles.row}>
-                    <View style={styles.rowIcon}>
-                      {isVideoInProgress(video.syncState) ? (
-                        <ActivityIndicator size="small" color={Colors.brand} />
-                      ) : (
-                        <Ionicons
-                          name={failed ? 'alert-circle-outline' : 'videocam-outline'}
-                          size={18}
-                          color={failed ? Colors.error : Colors.textSecondary}
-                        />
-                      )}
-                    </View>
-                    <View style={styles.rowBody}>
-                      <Text style={styles.rowLabel}>Video</Text>
-                      <Text style={[styles.rowSub, failed ? styles.rowSubError : null]}>
-                        {video.syncState === 'failed' && video.lastError
-                          ? video.lastError
-                          : VIDEO_STATE_COPY[video.syncState]}
-                      </Text>
-                    </View>
-                    {video.syncState === 'failed' ? (
-                      <TouchableOpacity
-                        style={styles.actionButton}
-                        onPress={() => handleRetryVideo(video.id)}
-                        accessibilityRole="button"
-                        accessibilityLabel="Retry upload"
-                        hitSlop={TOUCH_TARGET_HIT_SLOP}
-                      >
-                        <Text style={styles.actionButtonText}>Retry</Text>
-                      </TouchableOpacity>
-                    ) : null}
-                    {failed ? (
-                      <TouchableOpacity
-                        style={styles.iconButton}
-                        onPress={() => handleDeleteVideo(video.id)}
-                        accessibilityRole="button"
-                        accessibilityLabel="Delete video"
-                        hitSlop={TOUCH_TARGET_HIT_SLOP}
-                      >
-                        <Ionicons name="trash-outline" size={18} color={Colors.error} />
-                      </TouchableOpacity>
-                    ) : null}
-                  </View>
-                </React.Fragment>
-              );
-            })}
+            {myVideos.map((video, index) => (
+              <React.Fragment key={video.id}>
+                {index > 0 ? <View style={styles.divider} /> : null}
+                <VideoRow
+                  video={video}
+                  onRetry={handleRetryVideo}
+                  onDelete={handleDeleteVideo}
+                />
+              </React.Fragment>
+            ))}
           </View>
         </>
       ) : null}
