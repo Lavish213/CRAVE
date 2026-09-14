@@ -129,8 +129,14 @@ export default function RankPlaceScreen() {
     // not go on blocking this fresh load until that stale request happens
     // to settle -- its own generation check already keeps its result from
     // being applied, but the lock itself needs releasing here too, not
-    // left to that unrelated `finally`.
+    // left to that unrelated `finally`. That same generation check is also
+    // why `finally` skips its own `setBusy(false)` in this exact case (its
+    // generation no longer matches), so this has to clear `busy` too --
+    // without it, the newly loaded place's tier/comparison controls stayed
+    // disabled and the busy overlay stuck on-screen indefinitely (caught in
+    // review, not by a device tester).
     submittingRef.current = false;
+    setBusy(false);
     setPlace(null);
     setError(null);
     setOpponent(null);

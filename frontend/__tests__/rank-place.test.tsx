@@ -361,6 +361,38 @@ describe('RankPlaceScreen', () => {
     expect(await findByText('New Route Place')).toBeTruthy();
   });
 
+  it('re-enables tier controls on the newly loaded place after a placeId change interrupts an in-flight submission', async () => {
+    // The generation guard that protects a late-resolving submission from
+    // committing under the wrong place has a real side effect: handlePickTier's
+    // own `finally` skips its `setBusy(false)` once the generation no longer
+    // matches (exactly what a placeId change causes), so resetAndLoad has to
+    // clear `busy` itself -- otherwise the newly loaded place's tier and
+    // comparison controls stayed disabled, and the busy overlay stuck on
+    // screen, indefinitely.
+    mockedStartRanking.mockImplementation(() => new Promise(() => {})); // place-A's submission never resolves
+
+    const { rerender, findByText, findByLabelText } = render(<RankPlaceScreen />);
+    await findByText('Tasty Spot');
+    fireEvent.press(await findByLabelText('Loved it'));
+    // place-A's tier submission is now in flight, unresolved -- busy is true.
+
+    mockPlaceId = 'place-B';
+    mockedFetchPlaceDetail.mockResolvedValue(makePlace('place-B', { name: 'New Route Place' }));
+    mockedStartRanking.mockResolvedValue(COMPARING_STEP());
+    rerender(<RankPlaceScreen />);
+    await findByText('New Route Place');
+
+    await act(async () => {
+      fireEvent.press(await findByLabelText('Loved it'));
+    });
+
+    // If `busy` were still stuck true from place-A's abandoned submission,
+    // this disabled tier button would never have called startRanking again.
+    expect(mockedStartRanking).toHaveBeenLastCalledWith(
+      expect.objectContaining({ place_id: 'place-B' }),
+    );
+  });
+
   it('does not let a stale place from before a placeId change render under the new route', async () => {
     let resolveOld: (p: PlaceOut) => void;
     mockedFetchPlaceDetail.mockImplementationOnce(
