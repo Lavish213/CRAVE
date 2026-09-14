@@ -1,5 +1,60 @@
 # Active agent state
 
+Status: ready-for-review
+Owner: Claude
+Branch: claude/video-feed-local-placeholders
+Base SHA: 34c5346 (origin/main tip after PR #309)
+Commit SHA: 1547159
+Scope: offline-upload UX follow-up #3 of 4 (the last one on #307/#308's
+own "remaining follow-ups" list, alongside wifi-only gating (#312) and
+real upload progress (#313)) -- merging the local queue into
+`PlaceVideoGallery`'s server feed. The gallery only ever rendered
+`fetchVideoFeed`'s backend-approved videos; a video you'd just recorded
+and queued (or uploading, or sitting in the backend's async moderation
+review) was completely invisible on the place's own page until
+approved, even though `videoQueueStore` already tracked its state and
+the Uploads screen already surfaced it there. `PlaceVideoGallery` now
+reads `useVideoQueueStore` directly and merges in the current user's own
+in-progress videos for this exact place
+(recorded/requesting_url/uploading/completing/reviewing) as placeholder
+tiles, shown ahead of the server-approved thumbnails in the same
+newest-first order the store itself keeps them. Terminal states
+(failed/rejected/missing_local_file) intentionally excluded -- those
+need a retry/delete decision that already lives on the Uploads screen;
+tapping a placeholder navigates there rather than duplicating those
+controls. Since videoQueueStore is a per-device local queue never synced
+across users, these placeholders are naturally private to the uploader's
+own device even though every viewer of the place renders the same
+component. A new effect watches for a placeholder disappearing (approved
+-and-pruned by videoQueueStore's own prune-on-next-pass logic, or
+dismissed) and refetches the server feed once, so the newly-approved
+video appears without the user leaving and reopening the place.
+Locked files: frontend/src/components/PlaceVideoGallery.tsx,
+frontend/__tests__/PlaceVideoGallery.test.tsx (new -- first dedicated
+coverage for this component).
+Verification: `npx tsc --noEmit` -> clean. `npx jest --ci` -> 63/63
+suites, 608/608 tests (8 new, all in PlaceVideoGallery.test.tsx: the
+Record-chip-only empty state, a queued video rendered as a placeholder,
+per-state copy plus cross-place leak exclusion, exclusion of another
+user's/this user's terminal-state videos, placeholder-ahead-of-server
+ordering, tap-to-Uploads navigation, refetch-on-placeholder-loss, and no
+spurious refetch on a placeholder-free initial mount). Each new behavior
+independently confirmed to fail on the pre-fix code via revert-and-rerun
+before restoring the fix (including confirming the `prevIds.size > 0`
+guard I initially wrote was actually dead code -- on first mount
+`prevIds` starts empty so `lostAny` can never be true regardless of that
+guard -- simplified to `if (lostAny)` once the tests proved it made no
+behavioral difference). `git diff --check` clean. Backend untouched.
+Known gaps / risks: this was the last item on the offline-upload-UX
+follow-up roadmap. No further follow-ups tracked from that list.
+Next action: none needed from Codex -- doesn't touch the dashboard lane.
+Waiting for CodeRabbit's actual findings (not just CI-green) before
+merging, per the standing correction from #307. PR: #314.
+
+---
+
+# Active agent state
+
 Status: implementing
 Owner: Claude
 Branch: claude/video-status-polling
