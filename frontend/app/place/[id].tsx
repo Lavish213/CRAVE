@@ -16,7 +16,7 @@ import { Image } from 'expo-image';
 import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { fetchPlaceDetail, fetchPlaceRelationship, PlaceOut } from '../../src/api/places';
 import { DecisionStrip, DecisionStripSource, SearchReasonRole } from '../../src/components/DecisionStrip';
 import { DecisionRole } from '../../src/api/decisionSession';
@@ -45,6 +45,7 @@ import { MenuSubmissionSheet } from '../../src/components/MenuSubmissionSheet';
 import { TierBadge } from '../../src/components/TierBadge';
 import { ErrorState } from '../../src/components/ErrorState';
 import { STALE_TIME, foundationQueryKey, placeUniversalLink } from '../../src/contracts/foundationGate';
+import { errorMessageFor } from '../../src/utils/errorMessage';
 
 const HEADER_RIGHT_BTN = {
   marginRight: 4,
@@ -101,14 +102,27 @@ export default function PlaceDetailScreen() {
   const { addSave, removeSave, isSaved, saves, setSaveMemory } = useCravesStore();
   const user = useAuthStore((s) => s.user);
   const toast = useToast((s) => s.show);
+  const queryClient = useQueryClient();
 
   // Shared entry point for every sign-in gate on this screen. Uses the
   // contextual auth-gate contract (see authGateStore.ts) instead of a
-  // toast-and-dead-end -- resume is a no-op by design: auto-resuming the
-  // original mutation later would run it off a stale closure captured
-  // while `user` was still null, so we let the caller's own reactive
-  // `useAuthStore` subscription take it from there once signed in.
-  const gateSignIn = (actionType: string, reason: AuthGateReason = 'default', destination?: string) => {
+  // toast-and-dead-end. `resume` defaults to a no-op -- for most calls
+  // here there's genuinely nothing to replay (photo/menu/report actions
+  // just open a sheet once signed in; the caller's own reactive
+  // `useAuthStore` subscription already re-renders past the signed-out
+  // branch on its own). Save is the one call site that passes a real
+  // `resume` (see handleSave/performSave below): a discrete, idempotent
+  // mutation worth completing automatically instead of making the user
+  // tap Save again after they sign in. Whatever `resume` a caller passes
+  // must not close over this render's `user`/`place` (both still null/
+  // possibly-stale at gate-request time) -- see performSave's own comment
+  // for how it reads both fresh at the moment it actually runs.
+  const gateSignIn = (
+    actionType: string,
+    reason: AuthGateReason = 'default',
+    destination?: string,
+    resume: () => Promise<void> | void = () => undefined,
+  ) => {
     requestAuthGate({
       actionType,
       reason,
@@ -116,7 +130,7 @@ export default function PlaceDetailScreen() {
       targetIds: id ? [id] : undefined,
       destination,
       idempotent: true,
-      resume: () => undefined,
+      resume,
     });
   };
   const { pick } = useImagePicker();
@@ -362,14 +376,13 @@ export default function PlaceDetailScreen() {
   if (isLoading) return <DetailSkeleton />;
 
   if (isError || !place) {
-    // No response at all (vs. a real 4xx/5xx) means the request never
-    // reached the backend -- same "genuinely offline" signal cravesStore's
-    // _classifyError already uses elsewhere, applied here since this
-    // screen previously showed the identical generic message for both.
-    const isOffline = !(error as any)?.response;
+    // Same shared classifier cravesStore.ts's own error handling already
+    // uses -- this screen previously carried its own inline copy of the
+    // identical "no response at all means offline" check, a third
+    // independent copy of the same logic drifting from the other two.
     return (
       <ErrorState
-        message={isOffline ? "Can't reach CRAVE — check your connection." : "Couldn't load this place"}
+        message={errorMessageFor(error, "Couldn't load this place")}
         onRetry={() => refetch()}
       />
     );
@@ -469,15 +482,30 @@ export default function PlaceDetailScreen() {
     menuByCategory[cat].push(item);
   }
 
-  const handleSave = async () => {
-    if (!user) {
-      gateSignIn('save_place', 'save');
-      return;
-    }
+  // The actual save/remove mutation, factored out of handleSave so it can
+  // also serve as the auth gate's `resume` closure (fires later, after
+  // sign-in, from AuthGateHost -- a wholly different point in time than
+  // when a signed-out tap requested the gate). Deliberately does not close
+  // over this render's `user`/`place`/`saved` -- those were captured while
+  // `user` was still null and would run the mutation against stale state
+  // (the exact bug this screen's other, still-no-op gates avoid by not
+  // having a resume at all). Reads both fresh at the moment it actually
+  // runs instead: `useAuthStore.getState().user` for whoever is signed in
+  // by then, and the place-detail query cache (same key this screen's own
+  // useQuery reads) for the current place, so a real re-render is never
+  // required for this to work correctly.
+  const performSave = async () => {
+    const currentUser = useAuthStore.getState().user;
+    if (!currentUser) return;
+    const currentPlace = queryClient.getQueryData<PlaceOut>(
+      foundationQueryKey({ scope: 'place', entity: 'detail', params: { id } }),
+    );
+    if (!currentPlace) return;
+
     const saveMeta = {
       surface: 'place_detail' as const,
-      rank_percentile: place.rank_percentile,
-      city_id: place.city_id ?? null,
+      rank_percentile: currentPlace.rank_percentile,
+      city_id: currentPlace.city_id ?? null,
       // Wave 7 relationship hierarchy -- if this screen was arrived at
       // from a role-bearing card (Craves reasoned subset, Search, or
       // Feed's Decision Session), persist that reason on the save
@@ -485,8 +513,8 @@ export default function PlaceDetailScreen() {
       reason_role: reasonRoleParam,
       reason_source: reasonSourceParam,
     };
-    if (saved) {
-      const err = await removeSave(place.id, user.id, saveMeta);
+    if (isSaved(currentPlace.id)) {
+      const err = await removeSave(currentPlace.id, currentUser.id, saveMeta);
       if (err) {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
         toast(err);
@@ -495,7 +523,7 @@ export default function PlaceDetailScreen() {
         toast('Removed from Saves');
       }
     } else {
-      const err = await addSave(place, user.id, saveMeta);
+      const err = await addSave(currentPlace, currentUser.id, saveMeta);
       if (err) {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
         toast(err);
@@ -504,6 +532,14 @@ export default function PlaceDetailScreen() {
         toast('Saved');
       }
     }
+  };
+
+  const handleSave = async () => {
+    if (!user) {
+      gateSignIn('save_place', 'save', undefined, performSave);
+      return;
+    }
+    await performSave();
   };
 
   const handleToggleVisited = async () => {

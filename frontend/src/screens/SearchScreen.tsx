@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { RefreshControl, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { FlashList, ViewToken } from '@shopify/flash-list';
 import { Ionicons } from '@expo/vector-icons';
@@ -373,7 +373,11 @@ export default function SearchScreen() {
     handleChange(query.replace(pattern, ' ').replace(/\s+/g, ' ').trim());
   };
 
-  const handleSave = async (place: PlaceOut, position: number) => {
+  // Memoized -- otherwise a fresh identity on every render feeds straight
+  // into the FlashList renderItem below (also memoized), and from there
+  // into every row's onSave closure, defeating PlaceCard's React.memo for
+  // every visible card whenever anything unrelated re-renders this screen.
+  const handleSave = useCallback(async (place: PlaceOut, position: number) => {
     if (!user) {
       toast('Sign in to save places');
       return;
@@ -394,7 +398,7 @@ export default function SearchScreen() {
 
     const err = await addSave(place, user.id, meta);
     toast(err ?? 'Saved');
-  };
+  }, [user, selectedCity?.id, isSaved, removeSave, addSave, toast]);
 
   /** Zero-state shortcut tap (recent search or the time-relevant intent
    * shortcut) -- a deliberate, explicit search, so it searches immediately
@@ -416,6 +420,64 @@ export default function SearchScreen() {
   const showNoResults = searched && results.length === 0 && !searchInitialError;
   const showNoFilterMatches = searched && results.length > 0 && filteredResults.length === 0 && !rankedScopeLoading && !rankedScopeError;
   const canRenderResults = !showZeroState && !showNoResults && !showNoFilterMatches && !searchInitialError && !rankedScopeLoading && !rankedScopeError && filteredResults.length > 0;
+
+  // Hoisted out of the FlashList `renderItem` prop and memoized: an inline
+  // renderItem is reconstructed on every render of this screen, and every
+  // onPress/onSave/onPressIn closure it builds for each row goes with it --
+  // new function identities on every unrelated re-render defeat
+  // PlaceCard/PlaceCardCompact's own React.memo, forcing every visible row
+  // to re-render instead of just the one whose own props actually changed.
+  const renderResultRow = useCallback(({ item }: { item: PlaceOut }) => {
+    const position = results.findIndex((place) => place.id === item.id);
+    const reason = searchReasonForResult(item, position, priceWasRelaxed);
+    const openPlace = () => {
+      logRecommendationEvent({
+        surface: 'search',
+        event_type: 'click',
+        place_id: item.id,
+        position,
+        rank_percentile: item.rank_percentile,
+        query: debouncedQuery,
+        city_id: selectedCity?.id ?? null,
+        search_session_id: searchSessionIdRef.current,
+      });
+      router.push(
+        reason
+          ? `/place/${item.id}?reason_role=${reason}&reason_source=search`
+          : `/place/${item.id}`,
+      );
+    };
+    if (position === 0) {
+      return (
+        <View style={styles.heroResult}>
+          <PlaceCard
+            place={item}
+            fitLabel={reason === 'best_match' ? 'Best match for you' : reason === 'safer_pick' ? 'Safer pick' : 'Worth exploring'}
+            reasonCaption={reason === 'best_match'
+              ? 'Fits this search best without relaxing what you asked for.'
+              : reason === 'safer_pick'
+                ? 'Strong match with reliable place signals.'
+                : 'A useful alternative if you want another direction.'}
+            reasonSource="search"
+            saved={isSaved(item.id)}
+            onSave={() => void handleSave(item, position)}
+            onPress={openPlace}
+            onPressIn={() => prefetchPlace(item.id)}
+          />
+        </View>
+      );
+    }
+    return (
+      <View style={styles.rowSpacer}>
+        <PlaceCardCompact
+          place={item}
+          searchReason={reason}
+          onPress={openPlace}
+          onPressIn={() => prefetchPlace(item.id)}
+        />
+      </View>
+    );
+  }, [results, priceWasRelaxed, debouncedQuery, selectedCity?.id, router, isSaved, handleSave, prefetchPlace]);
 
   return (
     <View style={styles.container}>
@@ -657,57 +719,7 @@ export default function SearchScreen() {
           keyExtractor={(place) => place.id}
           viewabilityConfig={VIEWABILITY_CONFIG}
           onViewableItemsChanged={onViewableItemsChanged}
-          renderItem={({ item }) => {
-            const position = results.findIndex((place) => place.id === item.id);
-            const reason = searchReasonForResult(item, position, priceWasRelaxed);
-            const openPlace = () => {
-              logRecommendationEvent({
-                surface: 'search',
-                event_type: 'click',
-                place_id: item.id,
-                position,
-                rank_percentile: item.rank_percentile,
-                query: debouncedQuery,
-                city_id: selectedCity?.id ?? null,
-                search_session_id: searchSessionIdRef.current,
-              });
-              router.push(
-                reason
-                  ? `/place/${item.id}?reason_role=${reason}&reason_source=search`
-                  : `/place/${item.id}`,
-              );
-            };
-            if (position === 0) {
-              return (
-                <View style={styles.heroResult}>
-                  <PlaceCard
-                    place={item}
-                    fitLabel={reason === 'best_match' ? 'Best match for you' : reason === 'safer_pick' ? 'Safer pick' : 'Worth exploring'}
-                    reasonCaption={reason === 'best_match'
-                      ? 'Fits this search best without relaxing what you asked for.'
-                      : reason === 'safer_pick'
-                        ? 'Strong match with reliable place signals.'
-                        : 'A useful alternative if you want another direction.'}
-                    reasonSource="search"
-                    saved={isSaved(item.id)}
-                    onSave={() => void handleSave(item, position)}
-                    onPress={openPlace}
-                    onPressIn={() => prefetchPlace(item.id)}
-                  />
-                </View>
-              );
-            }
-            return (
-              <View style={styles.rowSpacer}>
-                <PlaceCardCompact
-                  place={item}
-                  searchReason={reason}
-                  onPress={openPlace}
-                  onPressIn={() => prefetchPlace(item.id)}
-                />
-              </View>
-            );
-          }}
+          renderItem={renderResultRow}
           contentContainerStyle={styles.list}
           refreshControl={<RefreshControl refreshing={searchQuery.isRefetching} onRefresh={() => searchQuery.refetch()} tintColor={Colors.brand} />}
           ListHeaderComponent={(

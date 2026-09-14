@@ -53,6 +53,11 @@ export function PlaceVideoGallery({ placeId }: Props) {
         targetIds: [placeId],
         destination: `/record-video/${placeId}`,
         idempotent: true,
+        // Intentionally deferred, not forgotten: one of the 4 lower-value
+        // auth-gate call sites left as a no-op resume this pass (Save on
+        // place/[id].tsx and Rank submission on rank/[placeId].tsx got the
+        // real resume wiring) -- this only gates navigation intent, nothing
+        // is captured here to replay.
         resume: () => undefined,
       });
       return;
@@ -125,6 +130,9 @@ function VideoPlaybackModal({ video, onClose }: { video: FeedVideo; onClose: () 
         sourceRoute: `/place/${video.placeId}`,
         targetIds: [video.id],
         idempotent: true,
+        // Intentionally deferred, not forgotten: one of the 4 lower-value
+        // auth-gate call sites left as a no-op resume this pass -- see
+        // handleRecordPress's identical note above.
         resume: () => undefined,
       });
       return;

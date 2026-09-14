@@ -53,6 +53,12 @@ export default function RankHomeScreen() {
           sourceRoute: '/rank-home',
           destination: '/rank-home',
           idempotent: true,
+          // Intentionally deferred, not forgotten: one of the 4 lower-value
+          // auth-gate call sites left as a no-op resume this pass (Save on
+          // place/[id].tsx and Rank submission on rank/[placeId].tsx got the
+          // real resume wiring) -- viewing Rank Home has no pending mutation
+          // to replay once signed in, the reactive re-render already lands
+          // the user back on this same screen.
           resume: () => undefined,
         })}
       />

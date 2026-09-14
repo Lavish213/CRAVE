@@ -1,5 +1,38 @@
 # Active agent state
 
+Status: implementing
+Owner: Claude
+Branch: claude/frontend-architecture-fixes
+Base SHA: 755a722 (origin/main tip after PR #301)
+Scope: four independently-verified engineering-audit findings, frontend only:
+(1) `usePrefetchPlace.ts`'s prefetch queryKey didn't match Place Detail's real
+`foundationQueryKey` cache key, wasting every prefetch-on-tap; (2) three
+duplicated ad-hoc error classifiers (`errorMessage.ts`, `cravesStore.ts`'s
+`_classifyError`, `place/[id].tsx`'s inline copy) plus `activity.tsx`'s
+hardcoded error string, consolidated to delegate to the already-built,
+already-tested `foundationGate.ts` taxonomy; (3) `authGateStore.ts`'s
+`resume`-after-sign-in contract is fully built/tested but every real call site
+no-ops it -- wiring real `resume` closures for the two highest-value cases
+(Save on `place/[id].tsx`, Rank on `rank/[placeId].tsx`), leaving the other 4
+call sites (`activity.tsx`, `rank-home.tsx`, `user/[id].tsx`,
+`PlaceVideoGallery.tsx`) as deliberately-deferred no-ops; (4) four screens'
+inline FlashList `renderItem` closures defeat `PlaceCard`/`PlaceCardCompact`'s
+`React.memo` -- hoisting with `useCallback` in `(tabs)/index.tsx`,
+`(tabs)/craves.tsx`, `SearchScreen.tsx`, `activity.tsx`.
+Locked files: `frontend/src/hooks/usePrefetchPlace.ts`,
+`frontend/src/utils/errorMessage.ts`, `frontend/src/stores/cravesStore.ts`,
+`frontend/src/stores/authGateStore.ts`, `frontend/app/place/[id].tsx`,
+`frontend/app/rank/[placeId].tsx`, `frontend/app/activity.tsx`,
+`frontend/app/(tabs)/index.tsx`, `frontend/app/(tabs)/craves.tsx`,
+`frontend/src/screens/SearchScreen.tsx`, plus each touched file's own test.
+Verification plan: `npx tsc --noEmit` clean, `npx jest --ci` fully green
+(frontend only -- no backend touched), read own diff before opening the PR.
+Explicit exclusions: backend, the other 4 auth-gate call sites' `resume` wiring
+(left as documented no-ops), any Rank/Search/Craves screen contract redesign
+beyond what each fix specifically requires.
+
+---
+
 Status: ready-for-review
 Owner: Codex
 Branch: codex/menu-source-governance

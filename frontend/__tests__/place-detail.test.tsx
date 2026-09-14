@@ -9,7 +9,7 @@
 // already have their own established behavior from prior sessions.
 import React from 'react';
 import { Share } from 'react-native';
-import { render, waitFor, fireEvent } from '@testing-library/react-native';
+import { act, render, waitFor, fireEvent } from '@testing-library/react-native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import PlaceDetailScreen from '../app/place/[id]';
 import { fetchPlaceDetail, fetchPlaceRelationship } from '../src/api/places';
@@ -60,7 +60,18 @@ jest.mock('../src/hooks/useUploadImage', () => ({ useUploadImage: () => ({ uploa
 jest.mock('../src/hooks/useImageStatusPoll', () => ({
   useImageStatusPoll: () => ({ status: null, error: null, moderationStatus: null }),
 }));
-jest.mock('../src/stores/authStore', () => ({ useAuthStore: jest.fn() }));
+jest.mock('../src/stores/authStore', () => {
+  // performSave (place/[id].tsx) reads `useAuthStore.getState().user`
+  // directly rather than the hook value, so its resume closure never
+  // closes over a stale (still-null) `user` captured at gate-request
+  // time -- the mock needs the same static `getState` the real zustand
+  // hook always carries. Delegating to the mock function itself with an
+  // identity selector keeps it in sync with whatever `mockImplementation`
+  // each test sets, with nothing to duplicate/drift.
+  const hook: any = jest.fn();
+  hook.getState = () => hook((s: any) => s);
+  return { useAuthStore: hook };
+});
 const mockRequestAuthGate = jest.fn();
 jest.mock('../src/stores/authGateStore', () => ({
   requestAuthGate: (...args: unknown[]) => mockRequestAuthGate(...args),
@@ -555,6 +566,40 @@ describe('PlaceDetailScreen — signed-out actions route through the shared auth
 
     expect(mockRequestAuthGate).toHaveBeenCalledWith(
       expect.objectContaining({ actionType: 'save_place', reason: 'save', sourceRoute: '/place/place-1' }),
+    );
+  });
+
+  it('resume completes the save automatically once signed in, without a second tap', async () => {
+    // Real gap this closes: resume used to be `() => undefined` for every
+    // gate on this screen, Save included -- a signed-out tap opened the
+    // AuthSheet, and after signing in the user had to find and tap Save a
+    // second time themselves. `resume` now actually finishes the mutation.
+    mockedFetchPlaceDetail.mockResolvedValue(basePlace());
+    cravesStoreState.addSave.mockResolvedValue(null);
+    const { findByLabelText } = renderScreen();
+
+    fireEvent.press(await findByLabelText('Save to Saves'));
+    expect(cravesStoreState.addSave).not.toHaveBeenCalled();
+
+    const envelope = mockRequestAuthGate.mock.calls[0][0];
+    expect(typeof envelope.resume).toBe('function');
+
+    // Sign-in actually completes elsewhere (AuthSheet + authStore); this
+    // simulates AuthGateHost invoking the envelope's resume once that's
+    // confirmed -- a wholly different point in time/call stack than the
+    // original signed-out tap, which is exactly what a stale closure over
+    // this render's `user`/`place` would get wrong.
+    mockedUseAuthStore.mockImplementation((selector: (s: { user: unknown }) => unknown) =>
+      selector({ user: { id: 'user-1' } }),
+    );
+    await act(async () => {
+      await envelope.resume();
+    });
+
+    expect(cravesStoreState.addSave).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'place-1' }),
+      'user-1',
+      expect.anything(),
     );
   });
 

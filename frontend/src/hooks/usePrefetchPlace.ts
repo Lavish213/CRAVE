@@ -1,10 +1,6 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { fetchPlaceDetail } from '../api/places';
-
-// Matches place/[id].tsx's own useQuery(['place', id]) staleTime exactly --
-// if it didn't, prefetching here would still count as "fresh" for a
-// different window than the screen itself uses, defeating the point.
-const PLACE_DETAIL_STALE_TIME = 5 * 60 * 1000;
+import { STALE_TIME, foundationQueryKey } from '../contracts/foundationGate';
 
 /**
  * Warms the place-detail cache before navigation actually commits.
@@ -14,8 +10,16 @@ const PLACE_DETAIL_STALE_TIME = 5 * 60 * 1000;
  * destination screen had already mounted. Call the returned function from
  * a card's onPressIn (fires before onPress, which is what actually
  * navigates), so by the time place/[id].tsx mounts and runs its own
- * identical useQuery(['place', id]), the data is often already sitting in
- * cache instead of triggering a second, redundant fetch.
+ * identical useQuery, the data is often already sitting in cache instead
+ * of triggering a second, redundant fetch.
+ *
+ * The queryKey here must exactly match place/[id].tsx's own
+ * foundationQueryKey({ scope: 'place', entity: 'detail', params: { id } })
+ * -- it previously used a hand-rolled ['place', placeId] key instead, a
+ * different cache entry the real screen's useQuery never read from. That
+ * silently turned every prefetch-on-tap into a wasted network request:
+ * the destination screen always re-fetched under its own key, discarding
+ * whatever this hook had just warmed.
  */
 export function usePrefetchPlace() {
   const queryClient = useQueryClient();
@@ -23,9 +27,9 @@ export function usePrefetchPlace() {
   return (placeId: string | null | undefined) => {
     if (!placeId) return;
     queryClient.prefetchQuery({
-      queryKey: ['place', placeId],
+      queryKey: foundationQueryKey({ scope: 'place', entity: 'detail', params: { id: placeId } }),
       queryFn: () => fetchPlaceDetail(placeId),
-      staleTime: PLACE_DETAIL_STALE_TIME,
+      staleTime: STALE_TIME.normal,
     });
   };
 }

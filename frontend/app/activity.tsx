@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useCallback } from 'react';
 import { RefreshControl, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { FlashList } from '@shopify/flash-list';
 import { Ionicons } from '@expo/vector-icons';
@@ -13,6 +13,7 @@ import { foundationQueryKey, STALE_TIME } from '../src/contracts/foundationGate'
 import { requestAuthGate } from '../src/stores/authGateStore';
 import { useAuthStore } from '../src/stores/authStore';
 import { relativeTime } from '../src/utils/time';
+import { errorMessageFor } from '../src/utils/errorMessage';
 
 function eventCopy(event: ActivityEvent): string {
   if (event.event_type === 'ranked_place') {
@@ -26,7 +27,7 @@ function eventCopy(event: ActivityEvent): string {
 export default function ActivityScreen() {
   const router = useRouter();
   const user = useAuthStore((state) => state.user);
-  const { data, isLoading, isError, isRefetching, refetch } = useQuery({
+  const { data, isLoading, isError, isRefetching, refetch, error } = useQuery({
     queryKey: user
       ? foundationQueryKey({ scope: 'user', entity: 'activity', userId: user.id })
       : ['crave', 'user', 'activity', null, null],
@@ -34,6 +35,39 @@ export default function ActivityScreen() {
     enabled: Boolean(user),
     staleTime: STALE_TIME.short,
   });
+
+  // Row-level onPress hoisted out of renderItem (below) and memoized so its
+  // identity doesn't change on every render -- see renderRow's own comment.
+  const onPressRow = useCallback((item: ActivityEvent) => {
+    if (item.place_id) router.push(`/place/${item.place_id}`);
+  }, [router]);
+
+  const renderRow = useCallback(({ item }: { item: ActivityEvent }) => {
+    const canOpenPlace = item.event_type === 'ranked_place' && Boolean(item.place_id);
+    return (
+      <TouchableOpacity
+        style={styles.row}
+        disabled={!canOpenPlace}
+        activeOpacity={canOpenPlace ? 0.75 : 1}
+        onPress={() => onPressRow(item)}
+        accessibilityRole={canOpenPlace ? 'button' : 'text'}
+        accessibilityLabel={eventCopy(item)}
+      >
+        <View style={styles.icon}>
+          <Ionicons
+            name={item.event_type === 'ranked_place' ? 'star-outline' : 'person-add-outline'}
+            size={20}
+            color={Colors.primary}
+          />
+        </View>
+        <View style={styles.body}>
+          <Text style={styles.eventText}>{eventCopy(item)}</Text>
+          <Text style={styles.time}>{relativeTime(item.created_at)}</Text>
+        </View>
+        {canOpenPlace ? <Ionicons name="chevron-forward" size={18} color={Colors.textSecondary} /> : null}
+      </TouchableOpacity>
+    );
+  }, [onPressRow]);
 
   if (!user) {
     return (
@@ -48,6 +82,11 @@ export default function ActivityScreen() {
           sourceRoute: '/activity',
           destination: '/activity',
           idempotent: true,
+          // Intentionally deferred, not forgotten: this is one of the 4
+          // lower-value auth-gate call sites left as a no-op resume (see
+          // authGateStore.ts) -- Save and Rank got the real resume wiring
+          // this pass, since viewing Activity has no pending mutation to
+          // replay after sign-in.
           resume: () => undefined,
         })}
       />
@@ -59,7 +98,7 @@ export default function ActivityScreen() {
   }
 
   if (isError && (!data || data.length === 0)) {
-    return <ErrorState message="Couldn't load your activity" onRetry={() => void refetch()} />;
+    return <ErrorState message={errorMessageFor(error, "Couldn't load your activity")} onRetry={() => void refetch()} />;
   }
 
   if (!data?.length) {
@@ -84,32 +123,7 @@ export default function ActivityScreen() {
           You're viewing saved activity. Pull to try updating again.
         </Text>
       ) : null}
-      renderItem={({ item }) => {
-        const canOpenPlace = item.event_type === 'ranked_place' && Boolean(item.place_id);
-        return (
-          <TouchableOpacity
-            style={styles.row}
-            disabled={!canOpenPlace}
-            activeOpacity={canOpenPlace ? 0.75 : 1}
-            onPress={() => item.place_id && router.push(`/place/${item.place_id}`)}
-            accessibilityRole={canOpenPlace ? 'button' : 'text'}
-            accessibilityLabel={eventCopy(item)}
-          >
-            <View style={styles.icon}>
-              <Ionicons
-                name={item.event_type === 'ranked_place' ? 'star-outline' : 'person-add-outline'}
-                size={20}
-                color={Colors.primary}
-              />
-            </View>
-            <View style={styles.body}>
-              <Text style={styles.eventText}>{eventCopy(item)}</Text>
-              <Text style={styles.time}>{relativeTime(item.created_at)}</Text>
-            </View>
-            {canOpenPlace ? <Ionicons name="chevron-forward" size={18} color={Colors.textSecondary} /> : null}
-          </TouchableOpacity>
-        );
-      }}
+      renderItem={renderRow}
     />
   );
 }

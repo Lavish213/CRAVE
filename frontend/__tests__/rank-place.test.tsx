@@ -110,6 +110,33 @@ describe('RankPlaceScreen', () => {
     );
   });
 
+  it('gate -> sign in -> resume loads the place on its own, no second tap required', async () => {
+    // Real gap this closes: resume used to be `() => undefined` -- a user
+    // who hit this gate, signed in, and returned landed back on this exact
+    // screen with no place ever fetched (this mount effect deliberately
+    // does not auto-refetch itself on a `user` transition, to avoid racing
+    // resume). Without a real resume, they'd need some *other*, unrelated
+    // action to actually see the tier picker.
+    setAuth(null);
+    const { findByLabelText } = render(<RankPlaceScreen />);
+    fireEvent.press(await findByLabelText('Sign in'));
+
+    expect(mockedFetchPlaceDetail).not.toHaveBeenCalled();
+    const envelope = mockRequestAuthGate.mock.calls[0][0];
+    expect(typeof envelope.resume).toBe('function');
+
+    // Sign-in actually completes elsewhere (AuthSheet + authStore), then
+    // AuthGateHost invokes this envelope's resume -- exactly what a real
+    // post-sign-in resume does, with no further tap from the user.
+    setAuth({ id: 'user-1' });
+    await act(async () => {
+      await envelope.resume();
+    });
+
+    expect(mockedFetchPlaceDetail).toHaveBeenCalledWith('place-A');
+    expect(mockedFetchPlaceDetail).toHaveBeenCalledTimes(1);
+  });
+
   it('actually retries the place fetch on error, instead of just navigating back', async () => {
     // Confirmed release defect (docs/SCREEN_UX_FINDINGS_TRIAGE.md):
     // this button previously called router.back() -- a misleading
