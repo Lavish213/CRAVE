@@ -7,7 +7,7 @@ import React from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Colors, Spacing } from '../../src/constants/colors';
 
-const EFFECTIVE_DATE = 'September 6, 2026';
+const EFFECTIVE_DATE = 'September 14, 2026';
 
 function H2({ children }: { children: React.ReactNode }) {
   return <Text style={styles.h2}>{children}</Text>;
@@ -43,7 +43,7 @@ export default function PrivacyPolicyScreen() {
       <Li><Text style={styles.bold}>Photos &amp; videos:</Text> images or short videos you choose to upload of food or menus, and the camera/microphone access needed to record them. We only access the camera/mic when you're actively recording.</Li>
       <Li><Text style={styles.bold}>Content you create:</Text> places you save, rankings and comparisons you make, accounts you follow, reports you file, and links you share into the app.</Li>
       <Li><Text style={styles.bold}>Push notification token:</Text> if you allow notifications, a device token used only to tell you about your own uploads (for example, that a submission was approved or rejected).</Li>
-      <Li><Text style={styles.bold}>Operational logs:</Text> our backend and hosting providers may process basic request and error metadata needed to operate, secure, and troubleshoot the service. CRAVE does not currently use a separate in-app crash-reporting SDK.</Li>
+      <Li><Text style={styles.bold}>Operational logs and crash reports:</Text> our backend and hosting providers process basic request and error metadata needed to operate, secure, and troubleshoot the service, and the app itself automatically reports crashes and errors (via Sentry) so we can detect and fix bugs. Crash reports don't include your photos, videos, or account content.</Li>
 
       <H2>Who we share it with</H2>
       <P>We use a small number of service providers to run CRAVE. Each only receives what it needs to do its job:</P>

@@ -3,8 +3,10 @@ import { AppState, Platform, View, Text, TouchableOpacity, StyleSheet } from 're
 import { Stack, useRouter, type ErrorBoundaryProps } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import * as Notifications from 'expo-notifications';
+import * as Sentry from '@sentry/react-native';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { queryClient } from '../src/lib/queryClient';
+import { initSentry } from '../src/lib/sentry';
 import { useCityStore } from '../src/stores/cityStore';
 import { useAuthStore } from '../src/stores/authStore';
 import { useCravesStore } from '../src/stores/cravesStore';
@@ -17,6 +19,11 @@ import { Colors, Spacing, Typography } from '../src/constants/colors';
 import { ToastContainer } from '../src/components/Toast';
 import { AuthGateHost } from '../src/components/AuthGateHost';
 import { useToast } from '../src/hooks/useToast';
+
+// No-ops safely when EXPO_PUBLIC_SENTRY_DSN is unset (see src/lib/sentry.ts)
+// -- must run before anything else so the earliest possible startup crash
+// still has a chance of being captured.
+initSentry();
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -62,7 +69,15 @@ const eb = StyleSheet.create({
   },
 });
 
-export function ErrorBoundary({ retry }: ErrorBoundaryProps) {
+export function ErrorBoundary({ error, retry }: ErrorBoundaryProps) {
+  // This is expo-router's own file-based error boundary: it catches a
+  // render error React itself already swallows, so it's the one place an
+  // uncaught render crash can still reach Sentry. Report once per distinct
+  // error/mount, not on every re-render of this boundary.
+  useEffect(() => {
+    Sentry.captureException(error);
+  }, [error]);
+
   return (
     <View style={eb.container}>
       <Text style={eb.title}>Something went wrong</Text>
@@ -101,7 +116,7 @@ function ConfigErrorScreen() {
   );
 }
 
-export default function RootLayout() {
+function RootLayout() {
   const router = useRouter();
   const initCities = useCityStore((s) => s.initCities);
   const initAuth = useAuthStore((s) => s.init);
@@ -232,3 +247,12 @@ export default function RootLayout() {
     </QueryClientProvider>
   );
 }
+
+// Sentry.wrap() is the officially documented root-level integration point
+// (adds touch/profiling instrumentation the wrapped component reports
+// through once a client exists; the file-based ErrorBoundary above still
+// owns the actual fallback UI and its own captureException call). Safe with
+// EXPO_PUBLIC_SENTRY_DSN unset -- with no client initialized (see
+// src/lib/sentry.ts), the wrapper has nothing to report through and is
+// effectively inert.
+export default Sentry.wrap(RootLayout);

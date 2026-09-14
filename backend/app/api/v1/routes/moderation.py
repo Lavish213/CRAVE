@@ -67,6 +67,7 @@ from app.db.models.place_report import (
     VALID_REPORT_REASONS as VALID_PLACE_REPORT_REASONS,
     PlaceReport,
 )
+from app.db.models.admin_audit_log import AdminAuditLog
 
 logger = logging.getLogger(__name__)
 
@@ -78,6 +79,26 @@ def require_admin(user_id: str = Depends(get_current_user_id)) -> str:
         # 404 rather than 403 — don't advertise that the queue exists.
         raise HTTPException(status_code=404, detail="Not found")
     return user_id
+
+
+def write_admin_audit_log(
+    db: Session, *, admin_user_id: str, action: str, target_type: str, target_id: str
+) -> None:
+    """
+    Records a durable, queryable "admin X did Y to Z at time T" row
+    alongside (not instead of) each action's existing logger call. Added to
+    the same db.add()/flush the caller is already about to commit, so this
+    never needs its own separate commit -- see AdminAuditLog's own
+    docstring for why it's append-only with no update path.
+    """
+    db.add(
+        AdminAuditLog(
+            admin_user_id=admin_user_id,
+            action=action,
+            target_type=target_type,
+            target_id=target_id,
+        )
+    )
 
 
 class ReportRequest(BaseModel):
@@ -265,6 +286,17 @@ def review_image(
         image.visibility_status = VISIBILITY_HIDDEN
         image.moderation_reason = image.moderation_reason or "manual_reject"
 
+    logger.info(
+        "image_reviewed image_id=%s admin_id=%s decision=%s",
+        image_id, admin_id, payload.decision,
+    )
+    write_admin_audit_log(
+        db,
+        admin_user_id=admin_id,
+        action=f"{payload.decision}_image_report",
+        target_type="image",
+        target_id=image_id,
+    )
     db.commit()
 
     # Re-elect a primary if this decision changed what's eligible.
@@ -430,6 +462,17 @@ def review_video(
         video.moderation_status = VIDEO_MOD_REJECTED
         video.moderation_reason = video.moderation_reason or "manual_reject"
 
+    logger.info(
+        "video_reviewed video_id=%s admin_id=%s decision=%s",
+        video_id, admin_id, payload.decision,
+    )
+    write_admin_audit_log(
+        db,
+        admin_user_id=admin_id,
+        action=f"{payload.decision}_video_report",
+        target_type="video",
+        target_id=video_id,
+    )
     db.commit()
     return {"status": video.moderation_status}
 
@@ -559,5 +602,16 @@ def resolve_place_report(
 
     report.resolved_at = datetime.now(timezone.utc)
     report.resolved_by = admin_id
+    logger.info(
+        "place_report_resolved report_id=%s place_id=%s admin_id=%s",
+        report_id, report.place_id, admin_id,
+    )
+    write_admin_audit_log(
+        db,
+        admin_user_id=admin_id,
+        action="resolve_place_report",
+        target_type="place_report",
+        target_id=report_id,
+    )
     db.commit()
     return {"status": "resolved"}

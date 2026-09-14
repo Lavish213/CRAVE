@@ -4,6 +4,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Optional
 
+from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session
 
 from app.db.models.place import Place, candidate_place_uuid
@@ -12,11 +13,21 @@ from app.db.models.discovery_candidate import DiscoveryCandidate
 from app.db.models.place_claim import PlaceClaim
 from app.services.discovery.nominatim_client import search_place
 from app.services.entity.entity_matcher import entity_match
+from app.services.geo.bounding_box import bounding_box
 from app.services.truth.claim_normalizer_v2 import normalize_claim
 from app.services.truth.truth_resolver_v2 import resolve_place_truths_v2
 
 
 logger = logging.getLogger(__name__)
+
+# Pre-filter radius for _find_matching_place, in km. entity_match's own
+# spatial signal is a much tighter ~110m (SPATIAL_THRESHOLD in
+# entity_matcher.py); this is deliberately far wider (~27x) so it only ever
+# prunes places that are genuinely nowhere near the candidate, never a real
+# match with minor geocoding drift. entity_match's *address* signal doesn't
+# require any coordinate at all, so this stays a pure pre-filter, never a
+# substitute for the real matcher below.
+_ENTITY_MATCH_PREFILTER_RADIUS_KM = 3.0
 
 # OSM's own tag vocabulary for these two attributes -- both already
 # arrive for free in every OSM-sourced candidate's raw_payload (the full
@@ -138,18 +149,36 @@ def _find_matching_place(
     equally fail to catch near-duplicate spellings of the same restaurant
     that a real matcher (fuzzy name + address/geo corroboration) catches.
 
-    Scoped to active places in the candidate's city — same scope the old
-    query used. Iterates every place in that city per candidate (fine at
-    current per-city catalogue sizes; if a city's catalogue grows into the
-    tens of thousands, pre-filter by a geo bounding box before matching).
+    Scoped to active places in the candidate's city, further pre-filtered to
+    a generous bounding box around the candidate's own coordinates (places
+    with no recorded lat/lng are always kept in the scan, since entity_match's
+    address signal doesn't depend on either side having coordinates at all).
+    Without this, promotion loaded every active place in a city into Python
+    per candidate -- fine at a few thousand places per city, but an
+    unbounded O(n) scan (run every 5 minutes, against up to ~100 candidates
+    per run) that would visibly slow the discovery scheduler once any city's
+    catalogue grows into the tens of thousands.
     """
     candidate_dict = _candidate_match_dict(candidate, lat, lng)
 
-    existing_places = (
-        db.query(Place)
-        .filter(Place.city_id == candidate.city_id, Place.is_active.is_(True))
-        .all()
+    query = db.query(Place).filter(
+        Place.city_id == candidate.city_id, Place.is_active.is_(True)
     )
+
+    if lat is not None and lng is not None:
+        bb = bounding_box(lat, lng, _ENTITY_MATCH_PREFILTER_RADIUS_KM)
+        query = query.filter(
+            or_(
+                Place.lat.is_(None),
+                Place.lng.is_(None),
+                and_(
+                    Place.lat.between(bb.min_lat, bb.max_lat),
+                    Place.lng.between(bb.min_lng, bb.max_lng),
+                ),
+            )
+        )
+
+    existing_places = query.all()
 
     for place in existing_places:
         if entity_match(candidate_dict, _place_match_dict(place)):
