@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import {
-  Alert, Linking, ScrollView, StyleSheet, Text, TouchableOpacity, View,
+  Alert, Linking, ScrollView, StyleSheet, Switch, Text, TouchableOpacity, View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Application from 'expo-application';
@@ -11,6 +11,7 @@ import { useCityStore } from '../src/stores/cityStore';
 import { useAuthStore } from '../src/stores/authStore';
 import { useVideoQueueStore } from '../src/stores/videoQueueStore';
 import { usePostingDraftStore } from '../src/stores/postingDraftStore';
+import { useUploadPreferencesStore } from '../src/stores/uploadPreferencesStore';
 import { useToast } from '../src/hooks/useToast';
 import { deleteMyAccount } from '../src/api/social';
 import {
@@ -88,6 +89,8 @@ export default function MoreScreen() {
   const [notificationStatus, setNotificationStatus] = useState<PushPermissionStatus>('undetermined');
   const videos = useVideoQueueStore((s) => s.videos);
   const drafts = usePostingDraftStore((s) => s.drafts);
+  const wifiOnlyVideoUploads = useUploadPreferencesStore((s) => s.wifiOnlyVideoUploads);
+  const setWifiOnlyVideoUploads = useUploadPreferencesStore((s) => s.setWifiOnlyVideoUploads);
   const pendingUploadCount = user
     ? videos.filter((v) => v.uploadedBy === user.id && v.syncState !== 'synced').length +
       drafts.filter((d) => d.ownerId === user.id).length
@@ -224,6 +227,21 @@ export default function MoreScreen() {
               : 'Queued and failed photo/video uploads'
           }
           onPress={() => router.push('/uploads')}
+        />
+        <Divider />
+        <Row
+          icon="wifi-outline"
+          label="Wi-Fi only for video uploads"
+          sublabel="Videos are real, multi-MB files — hold them until Wi-Fi is back"
+          rightEl={
+            <Switch
+              value={wifiOnlyVideoUploads}
+              onValueChange={setWifiOnlyVideoUploads}
+              trackColor={{ false: Colors.surfaceElevated, true: Colors.brand }}
+              thumbColor={Colors.text}
+              accessibilityLabel="Wi-Fi only for video uploads"
+            />
+          }
         />
         {/* "Rate CRAVE" removed rather than shown as "Coming soon": no App
             Store/Play Store listing exists yet to link to (app isn't
