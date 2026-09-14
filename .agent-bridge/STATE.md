@@ -1,9 +1,10 @@
 # Active agent state
 
-Status: implementing
+Status: ready-for-review
 Owner: Claude
 Branch: claude/frontend-architecture-fixes
 Base SHA: 755a722 (origin/main tip after PR #301)
+Commit SHA: a7f914a
 Scope: four independently-verified engineering-audit findings, frontend only:
 (1) `usePrefetchPlace.ts`'s prefetch queryKey didn't match Place Detail's real
 `foundationQueryKey` cache key, wasting every prefetch-on-tap; (2) three
@@ -25,11 +26,25 @@ Locked files: `frontend/src/hooks/usePrefetchPlace.ts`,
 `frontend/app/rank/[placeId].tsx`, `frontend/app/activity.tsx`,
 `frontend/app/(tabs)/index.tsx`, `frontend/app/(tabs)/craves.tsx`,
 `frontend/src/screens/SearchScreen.tsx`, plus each touched file's own test.
-Verification plan: `npx tsc --noEmit` clean, `npx jest --ci` fully green
-(frontend only -- no backend touched), read own diff before opening the PR.
-Explicit exclusions: backend, the other 4 auth-gate call sites' `resume` wiring
-(left as documented no-ops), any Rank/Search/Craves screen contract redesign
-beyond what each fix specifically requires.
+Verification: `npx tsc --noEmit` -> clean. `npx jest --ci` -> 60/60 suites,
+563/563 tests passed (new: `usePrefetchPlace.test.tsx`, a
+`rank-place.test.tsx` resume test, a `place-detail.test.tsx` resume test, an
+`activity.test.tsx` offline-classification test; one pre-existing
+`activity.test.tsx` assertion updated to the now-more-specific offline copy,
+not weakened). Real diff read adversarially before pushing, including
+re-verifying every file against this worktree's own current `origin/main`
+content after discovering an earlier read pass had accidentally pulled from
+a stale sibling checkout (`/home/user/CRAVE/frontend`, ~15 commits behind
+this worktree) -- caught before any edit landed on the wrong base; every
+edit below is against this worktree's real content.
+Known gaps: cravesStore.ts's `_classifyError` was already delegating to
+`errorMessageFor` (PR #295, prior session) -- the audit's finding for that
+file was stale; confirmed via `git log`, not re-changed. The other 4
+auth-gate call sites' `resume` intentionally stay `() => undefined` (see
+scope above) -- not a gap, a deliberate scope boundary per the ask.
+Next action: open the PR against `main`, request CodeRabbit review, do not
+merge -- user is coordinating several parallel PRs and will sequence merges
+themselves.
 
 ---
 
