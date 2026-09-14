@@ -9,6 +9,8 @@ import { useRouter, useFocusEffect } from 'expo-router';
 import { Colors, Spacing, Radius, Typography } from '../src/constants/colors';
 import { useCityStore } from '../src/stores/cityStore';
 import { useAuthStore } from '../src/stores/authStore';
+import { useVideoQueueStore } from '../src/stores/videoQueueStore';
+import { usePostingDraftStore } from '../src/stores/postingDraftStore';
 import { useToast } from '../src/hooks/useToast';
 import { deleteMyAccount } from '../src/api/social';
 import {
@@ -84,6 +86,12 @@ export default function MoreScreen() {
   const signOut = useAuthStore((s) => s.signOut);
   const toast = useToast((s) => s.show);
   const [notificationStatus, setNotificationStatus] = useState<PushPermissionStatus>('undetermined');
+  const videos = useVideoQueueStore((s) => s.videos);
+  const drafts = usePostingDraftStore((s) => s.drafts);
+  const pendingUploadCount = user
+    ? videos.filter((v) => v.uploadedBy === user.id && v.syncState !== 'synced').length +
+      drafts.filter((d) => d.ownerId === user.id).length
+    : 0;
 
   useFocusEffect(
     React.useCallback(() => {
@@ -205,6 +213,17 @@ export default function MoreScreen() {
           sublabel={NOTIFICATION_STATUS_COPY[notificationStatus]}
           tint={notificationStatus === 'unavailable' ? Colors.textMuted : undefined}
           onPress={notificationStatus === 'unavailable' ? undefined : handleNotificationsPress}
+        />
+        <Divider />
+        <Row
+          icon="cloud-upload-outline"
+          label="Uploads"
+          sublabel={
+            pendingUploadCount > 0
+              ? `${pendingUploadCount} pending`
+              : 'Queued and failed photo/video uploads'
+          }
+          onPress={() => router.push('/uploads')}
         />
         {/* "Rate CRAVE" removed rather than shown as "Coming soon": no App
             Store/Play Store listing exists yet to link to (app isn't

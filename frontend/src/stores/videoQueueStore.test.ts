@@ -129,6 +129,38 @@ describe('videoQueueStore', () => {
     expect(FileSystem.deleteAsync).toHaveBeenCalledWith(video.localUri, { idempotent: true });
   });
 
+  it('prunes a previously synced video at the start of the next sync pass, not the same one that synced it', async () => {
+    // Confirmed gap: syncOne marks a video 'synced' and deletes its local
+    // file, but nothing ever removed the row itself from the persisted
+    // `videos` array -- unbounded growth, since nothing reads 'synced'
+    // entries back out. Pruning must happen on the *next* pass, not
+    // immediately, so a caller awaiting the same runSyncPass call that just
+    // synced a video (like the test above) still sees it.
+    (videosApi.requestVideoUpload as jest.Mock).mockResolvedValue({
+      video_id: 'server-1',
+      upload_url: 'https://r2.example.test/put',
+      key: 'k',
+    });
+    (videosApi.uploadVideoToSignedUrl as jest.Mock).mockResolvedValue(undefined);
+    (videosApi.confirmVideoUpload as jest.Mock).mockResolvedValue({ ok: true });
+
+    await useVideoQueueStore.getState().recordVideo({
+      sourceUri: 'file:///tmp/clip.mp4',
+      placeId: 'place-1',
+      contentType: 'video/mp4',
+      uploadedBy: 'user-a',
+    });
+
+    await useVideoQueueStore.getState().runSyncPass('user-a');
+    expect(useVideoQueueStore.getState().videos).toHaveLength(1);
+    expect(useVideoQueueStore.getState().videos[0].syncState).toBe('synced');
+
+    // A second pass (e.g. the next foreground event) with nothing new to
+    // sync must still clear the stale synced row.
+    await useVideoQueueStore.getState().runSyncPass('user-a');
+    expect(useVideoQueueStore.getState().videos).toHaveLength(0);
+  });
+
   it('does not sync a video recorded by a different (not currently signed-in) user', async () => {
     await useVideoQueueStore.getState().recordVideo({
       sourceUri: 'file:///tmp/clip.mp4',

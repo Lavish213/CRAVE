@@ -2,6 +2,56 @@
 
 Status: ready-for-review
 Owner: Claude
+Branch: claude/offline-upload-visibility
+Base SHA: 9653aff (origin/main tip after PR #306)
+Commit SHA: pending (see PR for the authoritative head SHA once pushed)
+Scope: offline-upload UX, per the Codex/Claude split in
+`H-20260914-data-pipeline-dashboard-split` (Codex keeps the backend
+admin/source dashboard; Claude takes production-execution coordination,
+universal-link credentials, device certification, and offline-upload
+UX -- the first three are blocked by lack of Railway/EAS/App-Store/device
+access from this sandbox, leaving offline-upload UX as the executable
+piece). Building a shared uploads-status screen surfacing
+`videoQueueStore`'s queued/failed videos and `postingDraftStore`'s
+unresolved/failed drafts, wiring the already-built-but-dead
+`retryFailedVideo`/`deleteFailedVideo`/`deleteDraft`/`attachDraftToPlace`-
+retry into real UI (new `frontend/app/uploads.tsx`, linked from a new
+Settings row). Also fixing a gap found while re-reading
+`videoQueueStore.ts` in full: `syncOne()` marked a video `'synced'` and
+deleted its local file but never removed it from the persisted `videos`
+array -- unbounded AsyncStorage-array growth, since nothing reads
+`'synced'` entries.
+Locked files: frontend/app/uploads.tsx (new), frontend/app/settings.tsx,
+frontend/app/_layout.tsx, frontend/src/stores/videoQueueStore.ts (prune
+fix only, no contract change), frontend/src/stores/videoQueueStore.test.ts.
+Read but not modified: frontend/src/stores/postingDraftStore.ts (already
+generic `deleteDraft`/`attachDraftToPlace` reused as-is).
+Verification: `npx tsc --noEmit` -> clean. `npx jest --ci` -> 62/62 suites,
+586/586 tests (new: `__tests__/uploads.test.tsx` (9 tests), 2 new
+`__tests__/settings.test.tsx` tests for the new Uploads row/count, 1 new
+`videoQueueStore.test.ts` test for the prune fix -- each new/changed
+behavior independently confirmed to fail on the pre-fix code via a
+revert-and-rerun, not just shown to pass post-fix). `git diff --check`
+clean.
+Explicit exclusions: Codex's `backend/app/api/v1/routes/data_pipeline_admin.py`
+lane and its worktree/branch `codex/data-pipeline-dashboard` -- not touched.
+Backend untouched entirely this pass.
+Known gaps / risks: this pass is visibility/retry/delete only, not the
+full offline-upload UX roadmap -- three more scoped follow-ups remain
+(per-video status polling via the already-defined `fetchVideoStatus`;
+`@react-native-community/netinfo` + a wifi-only-upload toggle gating sync
+passes; real upload progress via `XMLHttpRequest.upload.onprogress`
+instead of `fetch`; merging locally-queued video placeholders into
+`PlaceVideoGallery`'s server-approved feed) -- deliberately not bundled
+into this PR to keep it reviewable.
+Next action: open PR, request CodeRabbit, merge once green. Whoever
+picks up the next offline-upload-UX slice should start from the four
+follow-ups listed above.
+
+---
+
+Status: ready-for-review
+Owner: Claude
 Branch: claude/frontend-architecture-fixes
 Base SHA: 9ea03b8 (origin/main tip after PR #304; this entry originally
 targeted 755a722/commit a7f914a before a merge-conflict rebase and a
