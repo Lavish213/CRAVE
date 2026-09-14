@@ -134,6 +134,43 @@ describe('videoQueueStore', () => {
     expect(FileSystem.deleteAsync).toHaveBeenCalledWith(video.localUri, { idempotent: true });
   });
 
+  it('surfaces real upload progress while uploading, then clears it once the upload step is behind it', async () => {
+    (videosApi.requestVideoUpload as jest.Mock).mockResolvedValue({
+      video_id: 'server-1', upload_url: 'https://r2.example.test/put', key: 'k',
+    });
+    const progressSnapshots: Array<number | null> = [];
+    (videosApi.uploadVideoToSignedUrl as jest.Mock).mockImplementation(
+      async (
+        _url: string,
+        _uri: string,
+        _contentType: string,
+        onProgress?: (fraction: number) => void
+      ) => {
+        onProgress?.(0.3);
+        progressSnapshots.push(useVideoQueueStore.getState().videos[0].uploadProgress);
+        onProgress?.(0.8);
+        progressSnapshots.push(useVideoQueueStore.getState().videos[0].uploadProgress);
+      }
+    );
+    (videosApi.confirmVideoUpload as jest.Mock).mockResolvedValue({ ok: true });
+
+    await useVideoQueueStore.getState().recordVideo({
+      sourceUri: 'file:///tmp/clip.mp4',
+      placeId: 'place-1',
+      contentType: 'video/mp4',
+      uploadedBy: 'user-a',
+    });
+    expect(useVideoQueueStore.getState().videos[0].uploadProgress).toBeNull();
+
+    await useVideoQueueStore.getState().runSyncPass('user-a');
+
+    expect(progressSnapshots).toEqual([0.3, 0.8]);
+    // Past 'uploading' (now 'reviewing') -- a stale "80%" left showing on
+    // a row that's no longer uploading would be actively misleading.
+    expect(useVideoQueueStore.getState().videos[0].syncState).toBe('reviewing');
+    expect(useVideoQueueStore.getState().videos[0].uploadProgress).toBeNull();
+  });
+
   describe('applyVideoReviewResult', () => {
     async function syncOneReviewingVideo() {
       (videosApi.requestVideoUpload as jest.Mock).mockResolvedValue({
@@ -299,6 +336,36 @@ describe('videoQueueStore', () => {
     expect(video.attemptCount).toBe(1);
     expect(video.lastAttemptAt).not.toBeNull();
     expect(video.lastError).toBe('Network Error');
+  });
+
+  it('clears uploadProgress when the upload step itself fails, so a retry does not start out showing a stale percentage', async () => {
+    (videosApi.requestVideoUpload as jest.Mock).mockResolvedValue({
+      video_id: 'server-1', upload_url: 'https://r2.example.test/put', key: 'k',
+    });
+    (videosApi.uploadVideoToSignedUrl as jest.Mock).mockImplementation(
+      async (
+        _url: string,
+        _uri: string,
+        _contentType: string,
+        onProgress?: (fraction: number) => void
+      ) => {
+        onProgress?.(0.5);
+        throw new Error('Upload to storage failed (network error)');
+      }
+    );
+
+    await useVideoQueueStore.getState().recordVideo({
+      sourceUri: 'file:///tmp/clip.mp4',
+      placeId: 'place-1',
+      contentType: 'video/mp4',
+      uploadedBy: 'user-a',
+    });
+
+    await useVideoQueueStore.getState().runSyncPass('user-a');
+
+    const [video] = useVideoQueueStore.getState().videos;
+    expect(video.syncState).toBe('recorded');
+    expect(video.uploadProgress).toBeNull();
   });
 
   describe('exponential backoff', () => {

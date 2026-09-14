@@ -71,6 +71,11 @@ export interface QueuedVideo {
   lastAttemptAt: number | null;
   lastError: string | null;
   createdAt: number;
+  // 0-1 fraction reported by uploadVideoToSignedUrl's onProgress while
+  // syncState === 'uploading'; null the rest of the time (never started,
+  // or past the upload step entirely) so a stale value from a previous
+  // attempt can't be mistaken for current progress.
+  uploadProgress: number | null;
 }
 
 const MAX_ATTEMPTS = 5;
@@ -209,6 +214,7 @@ export const useVideoQueueStore = create<VideoQueueStore>()(
           lastAttemptAt: null,
           lastError: null,
           createdAt: Date.now(),
+          uploadProgress: null,
         };
 
         set({ videos: [video, ...get().videos] });
@@ -261,7 +267,14 @@ export const useVideoQueueStore = create<VideoQueueStore>()(
         set({
           videos: get().videos.map((v) =>
             v.id === id && v.syncState === 'failed'
-              ? { ...v, syncState: 'recorded', attemptCount: 0, lastAttemptAt: null, lastError: null }
+              ? {
+                  ...v,
+                  syncState: 'recorded',
+                  attemptCount: 0,
+                  lastAttemptAt: null,
+                  lastError: null,
+                  uploadProgress: null,
+                }
               : v
           ),
         });
@@ -325,14 +338,26 @@ export const useVideoQueueStore = create<VideoQueueStore>()(
       migrate: (persistedState: unknown, version: number) => {
         const state = (persistedState ?? {}) as { videos?: unknown };
         const videos = Array.isArray(state.videos) ? state.videos : [];
-        if (version >= 1) return { ...state, videos };
+        // uploadProgress was added after version 1 shipped, so any legacy
+        // persisted row (regardless of which branch below touches it) may
+        // be missing the field entirely -- backfilled to null rather than
+        // left undefined so it matches the QueuedVideo type exactly.
+        const withProgress = (video: QueuedVideo): QueuedVideo => ({
+          ...video,
+          uploadProgress: video.uploadProgress ?? null,
+        });
+        if (version >= 1) {
+          return { ...state, videos: videos.map((v) => withProgress(v as QueuedVideo)) };
+        }
         return {
           ...state,
           videos: videos.map((v) => {
             const video = v as QueuedVideo;
-            return video && video.syncState === 'synced' && video.serverId
-              ? { ...video, syncState: 'reviewing' as const }
-              : video;
+            const migrated =
+              video && video.syncState === 'synced' && video.serverId
+                ? { ...video, syncState: 'reviewing' as const }
+                : video;
+            return withProgress(migrated);
           }),
         };
       },
@@ -384,10 +409,12 @@ async function syncOne(
   });
   setVideoState({ serverId });
 
-  setVideoState({ syncState: 'uploading' });
-  await uploadVideoToSignedUrl(uploadUrl, video.localUri, video.contentType);
+  setVideoState({ syncState: 'uploading', uploadProgress: 0 });
+  await uploadVideoToSignedUrl(uploadUrl, video.localUri, video.contentType, (fraction) => {
+    setVideoState({ uploadProgress: fraction });
+  });
 
-  setVideoState({ syncState: 'completing' });
+  setVideoState({ syncState: 'completing', uploadProgress: null });
   await confirmVideoUpload(serverId);
 
   // Uploaded and confirmed -- the local file's job is done regardless of
@@ -416,6 +443,7 @@ async function recordFailure(
         lastAttemptAt: Date.now(),
         lastError: message,
         syncState: attemptCount >= MAX_ATTEMPTS ? 'failed' : 'recorded',
+        uploadProgress: null,
       };
     }),
   });

@@ -104,12 +104,23 @@ function VideoRow({
   // moderation" from "actually stuck." Surfacing the retry itself here --
   // still non-terminal, still spinning -- rather than leaving it silent.
   const showPollWarning = video.syncState === 'reviewing' && Boolean(pollError);
+  // A multi-MB video can sit at "Uploading…" for a real, noticeable
+  // stretch -- a bare spinner gives no sense of whether it's actually
+  // moving. uploadProgress is only ever non-null during 'uploading' (see
+  // videoQueueStore.ts's syncOne), so this can't show a stale percentage
+  // left over from a previous attempt or a different phase.
+  const showUploadProgress = video.syncState === 'uploading' && video.uploadProgress != null;
+  const uploadPercent = showUploadProgress
+    ? Math.round((video.uploadProgress as number) * 100)
+    : null;
   const errorCopy =
     (video.syncState === 'failed' || video.syncState === 'rejected') && video.lastError
       ? video.lastError
       : showPollWarning
         ? "Couldn't check status — retrying…"
-        : VIDEO_STATE_COPY[video.syncState];
+        : uploadPercent != null
+          ? `Uploading… ${uploadPercent}%`
+          : VIDEO_STATE_COPY[video.syncState];
 
   return (
     <View style={styles.row}>
@@ -135,6 +146,11 @@ function VideoRow({
         >
           {errorCopy}
         </Text>
+        {uploadPercent != null ? (
+          <View style={styles.progressTrack}>
+            <View style={[styles.progressFill, { width: `${uploadPercent}%` }]} />
+          </View>
+        ) : null}
       </View>
       {video.syncState === 'failed' ? (
         <TouchableOpacity
@@ -372,6 +388,17 @@ const styles = StyleSheet.create({
   rowSub: { fontSize: 12, color: Colors.textSecondary },
   rowSubError: { color: Colors.error },
   rowSubWarning: { color: Colors.warning },
+  progressTrack: {
+    height: 3,
+    borderRadius: 2,
+    backgroundColor: Colors.surfaceElevated,
+    overflow: 'hidden',
+  },
+  progressFill: {
+    height: '100%',
+    borderRadius: 2,
+    backgroundColor: Colors.brand,
+  },
   divider: { height: 1, backgroundColor: Colors.border, marginLeft: 56 },
   actionButton: {
     paddingHorizontal: Spacing.md,

@@ -86,6 +86,7 @@ describe('SettingsScreen', () => {
       id: 'v1', serverId: null, localUri: 'file:///v1.mp4', placeId: 'place-1', templateId: null,
       contentType: 'video/mp4', uploadedBy: 'user-1', syncState: 'failed', attemptCount: 5,
       lastAttemptAt: Date.now(), lastError: 'Network Error', createdAt: Date.now(),
+      uploadProgress: null,
     };
     const syncedVideo: QueuedVideo = { ...video, id: 'v2', syncState: 'synced' };
     const otherUserVideo: QueuedVideo = { ...video, id: 'v3', uploadedBy: 'someone-else' };

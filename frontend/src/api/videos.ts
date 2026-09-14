@@ -117,21 +117,46 @@ export async function fetchVideoTemplates(): Promise<{ templates: VideoTemplate[
 // `client` (no baseURL, no API key/auth headers; R2 authenticates via the
 // presign signature already embedded in the URL), same as upload.ts's
 // uploadToSignedUrl.
-export async function uploadVideoToSignedUrl(
+//
+// XMLHttpRequest, not fetch: RN's fetch has no way to observe request
+// (upload) body progress, only response-download progress -- fine for a
+// small photo, not for a real multi-MB video where "uploading" could
+// otherwise sit at an unmoving spinner for a long time with no sense of
+// whether it's actually progressing. `xhr.upload.onprogress` is the
+// standard RN pattern for this. `onProgress` receives a 0-1 fraction,
+// not a 0-100 percentage, leaving the display format to the caller.
+export function uploadVideoToSignedUrl(
   uploadUrl: string,
   fileUri: string,
   contentType: VideoContentType,
+  onProgress?: (fraction: number) => void,
 ): Promise<void> {
-  const fileResponse = await fetch(fileUri);
-  const blob = await fileResponse.blob();
+  return new Promise((resolve, reject) => {
+    fetch(fileUri)
+      .then((fileResponse) => fileResponse.blob())
+      .then((blob) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open('PUT', uploadUrl);
+        xhr.setRequestHeader('Content-Type', contentType);
 
-  const putResponse = await fetch(uploadUrl, {
-    method: 'PUT',
-    headers: { 'Content-Type': contentType },
-    body: blob,
+        xhr.upload.onprogress = (event) => {
+          if (!onProgress || !event.lengthComputable || event.total <= 0) return;
+          onProgress(event.loaded / event.total);
+        };
+
+        xhr.onload = () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            resolve();
+          } else {
+            reject(new Error(`Upload to storage failed (status ${xhr.status})`));
+          }
+        };
+
+        xhr.onerror = () => reject(new Error('Upload to storage failed (network error)'));
+        xhr.onabort = () => reject(new Error('Upload to storage was aborted'));
+
+        xhr.send(blob);
+      })
+      .catch(reject);
   });
-
-  if (!putResponse.ok) {
-    throw new Error(`Upload to storage failed (status ${putResponse.status})`);
-  }
 }
