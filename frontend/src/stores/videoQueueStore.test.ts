@@ -102,7 +102,7 @@ describe('videoQueueStore', () => {
     ).rejects.toThrow(/waiting to post/);
   });
 
-  it('syncs a recorded video through request -> upload -> confirm -> synced', async () => {
+  it('syncs a recorded video through request -> upload -> confirm -> reviewing', async () => {
     (videosApi.requestVideoUpload as jest.Mock).mockResolvedValue({
       video_id: 'server-1',
       upload_url: 'https://r2.example.test/put',
@@ -120,22 +120,74 @@ describe('videoQueueStore', () => {
 
     await useVideoQueueStore.getState().runSyncPass('user-a');
 
+    // 'reviewing', not 'synced' -- the upload itself succeeded, but the
+    // backend's moderation review hasn't resolved yet (see
+    // applyVideoReviewResult, driven by useVideoStatusPoll).
     const [video] = useVideoQueueStore.getState().videos;
-    expect(video.syncState).toBe('synced');
+    expect(video.syncState).toBe('reviewing');
     expect(video.serverId).toBe('server-1');
     expect(videosApi.requestVideoUpload).toHaveBeenCalledWith(
       expect.objectContaining({ place_id: 'place-1', client_id: video.id })
     );
+    // The local file is freed immediately on a successful upload,
+    // regardless of the review outcome still being unknown.
     expect(FileSystem.deleteAsync).toHaveBeenCalledWith(video.localUri, { idempotent: true });
   });
 
-  it('prunes a previously synced video at the start of the next sync pass, not the same one that synced it', async () => {
+  describe('applyVideoReviewResult', () => {
+    async function syncOneReviewingVideo() {
+      (videosApi.requestVideoUpload as jest.Mock).mockResolvedValue({
+        video_id: 'server-1', upload_url: 'https://r2.example.test/put', key: 'k',
+      });
+      (videosApi.uploadVideoToSignedUrl as jest.Mock).mockResolvedValue(undefined);
+      (videosApi.confirmVideoUpload as jest.Mock).mockResolvedValue({ ok: true });
+
+      const video = await useVideoQueueStore.getState().recordVideo({
+        sourceUri: 'file:///tmp/clip.mp4', placeId: 'place-1', contentType: 'video/mp4', uploadedBy: 'user-a',
+      });
+      await useVideoQueueStore.getState().runSyncPass('user-a');
+      expect(useVideoQueueStore.getState().videos[0].syncState).toBe('reviewing');
+      return video;
+    }
+
+    it('resolves an approved video to synced', async () => {
+      const video = await syncOneReviewingVideo();
+      useVideoQueueStore.getState().applyVideoReviewResult(video.id, 'approved', null);
+      expect(useVideoQueueStore.getState().videos[0].syncState).toBe('synced');
+    });
+
+    it('resolves a rejected video to rejected, with the reject reason surfaced', async () => {
+      const video = await syncOneReviewingVideo();
+      useVideoQueueStore.getState().applyVideoReviewResult(video.id, 'rejected', 'No food visible');
+      const updated = useVideoQueueStore.getState().videos[0];
+      expect(updated.syncState).toBe('rejected');
+      expect(updated.lastError).toBe('No food visible');
+    });
+
+    it('leaves a still-processing video alone', async () => {
+      const video = await syncOneReviewingVideo();
+      useVideoQueueStore.getState().applyVideoReviewResult(video.id, 'processing', null);
+      expect(useVideoQueueStore.getState().videos[0].syncState).toBe('reviewing');
+    });
+
+    it('ignores a review result for a video that is not (or no longer) reviewing', async () => {
+      const video = await syncOneReviewingVideo();
+      useVideoQueueStore.getState().applyVideoReviewResult(video.id, 'approved', null);
+      // Already resolved to 'synced' -- a stale/duplicate poll callback
+      // must not re-process it (e.g. flip an already-'rejected' video
+      // back based on a late in-flight request).
+      useVideoQueueStore.getState().applyVideoReviewResult(video.id, 'rejected', 'late callback');
+      expect(useVideoQueueStore.getState().videos[0].syncState).toBe('synced');
+    });
+  });
+
+  it('prunes a previously approved (now synced) video at the start of the next sync pass, not the same call that resolved it', async () => {
     // Confirmed gap: syncOne marks a video 'synced' and deletes its local
     // file, but nothing ever removed the row itself from the persisted
     // `videos` array -- unbounded growth, since nothing reads 'synced'
-    // entries back out. Pruning must happen on the *next* pass, not
-    // immediately, so a caller awaiting the same runSyncPass call that just
-    // synced a video (like the test above) still sees it.
+    // entries back out. Pruning must happen on a *later* pass, not
+    // immediately, so a caller that just resolved a video to 'synced'
+    // (like the tests above) still sees it.
     (videosApi.requestVideoUpload as jest.Mock).mockResolvedValue({
       video_id: 'server-1',
       upload_url: 'https://r2.example.test/put',
@@ -144,7 +196,7 @@ describe('videoQueueStore', () => {
     (videosApi.uploadVideoToSignedUrl as jest.Mock).mockResolvedValue(undefined);
     (videosApi.confirmVideoUpload as jest.Mock).mockResolvedValue({ ok: true });
 
-    await useVideoQueueStore.getState().recordVideo({
+    const video = await useVideoQueueStore.getState().recordVideo({
       sourceUri: 'file:///tmp/clip.mp4',
       placeId: 'place-1',
       contentType: 'video/mp4',
@@ -152,10 +204,11 @@ describe('videoQueueStore', () => {
     });
 
     await useVideoQueueStore.getState().runSyncPass('user-a');
+    useVideoQueueStore.getState().applyVideoReviewResult(video.id, 'approved', null);
     expect(useVideoQueueStore.getState().videos).toHaveLength(1);
     expect(useVideoQueueStore.getState().videos[0].syncState).toBe('synced');
 
-    // A second pass (e.g. the next foreground event) with nothing new to
+    // A later pass (e.g. the next foreground event) with nothing new to
     // sync must still clear the stale synced row.
     await useVideoQueueStore.getState().runSyncPass('user-a');
     expect(useVideoQueueStore.getState().videos).toHaveLength(0);
@@ -164,19 +217,20 @@ describe('videoQueueStore', () => {
   it('does not prune a synced video whose local file deletion still fails on the retry, so its localUri is never lost', async () => {
     // Confirmed CodeRabbit finding on PR #307: syncOne's own deleteAsync
     // call swallows a real (non-"already gone") failure and still marks
-    // the video 'synced' -- the prune step must not then blindly drop
-    // that row too, or the file is orphaned on disk forever with no
-    // remaining reference to it.
+    // the video 'reviewing' (now resolved to 'synced' once approved) --
+    // the prune step must not then blindly drop that row too, or the
+    // file is orphaned on disk forever with no remaining reference to it.
     (videosApi.requestVideoUpload as jest.Mock).mockResolvedValue({
       video_id: 'server-1', upload_url: 'https://r2.example.test/put', key: 'k',
     });
     (videosApi.uploadVideoToSignedUrl as jest.Mock).mockResolvedValue(undefined);
     (videosApi.confirmVideoUpload as jest.Mock).mockResolvedValue({ ok: true });
 
-    await useVideoQueueStore.getState().recordVideo({
+    const recorded = await useVideoQueueStore.getState().recordVideo({
       sourceUri: 'file:///tmp/clip.mp4', placeId: 'place-1', contentType: 'video/mp4', uploadedBy: 'user-a',
     });
     await useVideoQueueStore.getState().runSyncPass('user-a');
+    useVideoQueueStore.getState().applyVideoReviewResult(recorded.id, 'approved', null);
     const synced = useVideoQueueStore.getState().videos[0];
     expect(synced.syncState).toBe('synced');
 
@@ -199,10 +253,11 @@ describe('videoQueueStore', () => {
     (videosApi.uploadVideoToSignedUrl as jest.Mock).mockResolvedValue(undefined);
     (videosApi.confirmVideoUpload as jest.Mock).mockResolvedValue({ ok: true });
 
-    await useVideoQueueStore.getState().recordVideo({
+    const recorded = await useVideoQueueStore.getState().recordVideo({
       sourceUri: 'file:///tmp/clip.mp4', placeId: 'place-1', contentType: 'video/mp4', uploadedBy: 'user-a',
     });
     await useVideoQueueStore.getState().runSyncPass('user-a');
+    useVideoQueueStore.getState().applyVideoReviewResult(recorded.id, 'approved', null);
 
     // First prune retry fails (transient), second succeeds.
     (FileSystem.deleteAsync as jest.Mock).mockRejectedValueOnce(new Error('EACCES'));
@@ -408,6 +463,24 @@ describe('videoQueueStore', () => {
     }
   });
 
+  it('deleteFailedVideo also dismisses a rejected video', async () => {
+    (videosApi.requestVideoUpload as jest.Mock).mockResolvedValue({
+      video_id: 'server-1', upload_url: 'https://r2.example.test/put', key: 'k',
+    });
+    (videosApi.uploadVideoToSignedUrl as jest.Mock).mockResolvedValue(undefined);
+    (videosApi.confirmVideoUpload as jest.Mock).mockResolvedValue({ ok: true });
+
+    const video = await useVideoQueueStore.getState().recordVideo({
+      sourceUri: 'file:///tmp/clip.mp4', placeId: 'place-1', contentType: 'video/mp4', uploadedBy: 'user-a',
+    });
+    await useVideoQueueStore.getState().runSyncPass('user-a');
+    useVideoQueueStore.getState().applyVideoReviewResult(video.id, 'rejected', 'No food visible');
+    expect(useVideoQueueStore.getState().videos[0].syncState).toBe('rejected');
+
+    await useVideoQueueStore.getState().deleteFailedVideo(video.id);
+    expect(useVideoQueueStore.getState().videos).toHaveLength(0);
+  });
+
   it('marks the queue entry missing_local_file rather than silently dropping it when the OS has removed the file', async () => {
     // Confirmed Phase 5 gap: previously this silently deleted the row --
     // the user's recording just vanished from the queue with no
@@ -588,5 +661,52 @@ describe('videoQueueStore', () => {
     } finally {
       clock.restore();
     }
+  });
+});
+
+// Its own top-level describe (not nested in the main one above) since it
+// needs to control what AsyncStorage.getItem resolves to *before* the
+// store module is first required, rather than reusing the shared
+// beforeEach's fixed empty-storage setup.
+describe('videoQueueStore persisted-store migration', () => {
+  it('migrates a legacy persisted "synced" video (uploaded before this version tracked review outcomes) to reviewing, not silently treating it as approved', async () => {
+    // Confirmed CodeRabbit finding on PR #310: a device already holding a
+    // 'synced' row from before this version shipped would otherwise have
+    // it pruned as "approved" on the very next sync pass -- with no
+    // chance to ever learn of a real rejection the backend might still
+    // hand back for it.
+    jest.resetModules();
+    const AsyncStorageModule = require('@react-native-async-storage/async-storage').default;
+    const legacyPersistedState = JSON.stringify({
+      state: {
+        videos: [
+          {
+            id: 'legacy-1', serverId: 'server-legacy', localUri: 'file:///legacy.mp4',
+            placeId: 'place-1', templateId: null, contentType: 'video/mp4', uploadedBy: 'user-a',
+            syncState: 'synced', attemptCount: 0, lastAttemptAt: null, lastError: null, createdAt: 1,
+          },
+          // A video with no serverId was never actually uploaded under any
+          // version -- shouldn't exist in practice, but must pass through
+          // unmigrated (not force-converted into a nonsensical 'reviewing'
+          // state with nothing to poll).
+          {
+            id: 'legacy-2', serverId: null, localUri: 'file:///legacy2.mp4',
+            placeId: 'place-1', templateId: null, contentType: 'video/mp4', uploadedBy: 'user-a',
+            syncState: 'recorded', attemptCount: 0, lastAttemptAt: null, lastError: null, createdAt: 2,
+          },
+        ],
+      },
+      version: 0,
+    });
+    (AsyncStorageModule.getItem as jest.Mock).mockResolvedValueOnce(legacyPersistedState);
+
+    const { useVideoQueueStore: migratedStore } = require('./videoQueueStore');
+    for (let i = 0; i < 15; i++) {
+      await Promise.resolve();
+    }
+
+    const videos = migratedStore.getState().videos;
+    expect(videos.find((v: { id: string }) => v.id === 'legacy-1')?.syncState).toBe('reviewing');
+    expect(videos.find((v: { id: string }) => v.id === 'legacy-2')?.syncState).toBe('recorded');
   });
 });

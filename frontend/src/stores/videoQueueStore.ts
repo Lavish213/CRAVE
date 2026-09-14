@@ -27,6 +27,7 @@ import {
   confirmVideoUpload,
   uploadVideoToSignedUrl,
   VideoContentType,
+  VideoStatus,
 } from '../api/videos';
 
 export type VideoSyncState =
@@ -34,7 +35,19 @@ export type VideoSyncState =
   | 'requesting_url'
   | 'uploading'
   | 'completing'
+  // Uploaded and confirmed, but not yet visible anywhere -- the backend's
+  // separate scheduler-driven worker (video_processing_worker.py) still
+  // has to compress/food-score/moderate it before it's approved or
+  // rejected. Distinct from 'synced': that now means "approved," reached
+  // only via applyVideoReviewResult below once polling confirms it, not
+  // the instant the upload itself completes.
+  | 'reviewing'
   | 'synced'
+  // The backend moderated it and it did not pass -- distinct from
+  // 'failed' (an upload/network failure, retryable) since resubmitting
+  // the same rejected content would just be rejected again. Dismissible
+  // via deleteFailedVideo, not retryable.
+  | 'rejected'
   | 'failed' // only after MAX_ATTEMPTS is exhausted
   | 'missing_local_file'; // terminal -- the recorded file itself is gone, nothing left to upload
 
@@ -134,6 +147,15 @@ interface VideoQueueStore {
 
   retryFailedVideo: (id: string) => void;
   deleteFailedVideo: (id: string) => Promise<void>;
+
+  // Called by useVideoStatusPoll (see that hook) once a 'reviewing'
+  // video's backend moderation outcome is known. 'approved' resolves to
+  // 'synced' -- the existing prune-on-next-pass logic then clears it
+  // exactly as it already does for any other synced video, no separate
+  // cleanup path needed. A non-approved terminal outcome resolves to
+  // 'rejected', which -- unlike 'synced' -- is never auto-pruned, so the
+  // user actually sees why before dismissing it themselves.
+  applyVideoReviewResult: (id: string, status: VideoStatus, rejectReason: string | null) => void;
 }
 
 let syncInFlight = false;
@@ -151,7 +173,12 @@ export const useVideoQueueStore = create<VideoQueueStore>()(
         // permanently block new recordings just because an old one
         // stalled out.
         const queuedCount = get().videos.filter(
-          (v) => v.syncState !== 'synced' && v.syncState !== 'failed' && v.syncState !== 'missing_local_file'
+          (v) =>
+            v.syncState !== 'synced' &&
+            v.syncState !== 'reviewing' &&
+            v.syncState !== 'rejected' &&
+            v.syncState !== 'failed' &&
+            v.syncState !== 'missing_local_file'
         ).length;
         if (queuedCount >= MAX_QUEUED_VIDEOS) {
           throw new Error(
@@ -209,6 +236,8 @@ export const useVideoQueueStore = create<VideoQueueStore>()(
             (v) =>
               v.uploadedBy === userId &&
               v.syncState !== 'synced' &&
+              v.syncState !== 'reviewing' &&
+              v.syncState !== 'rejected' &&
               v.syncState !== 'failed' &&
               v.syncState !== 'missing_local_file' &&
               v.attemptCount < MAX_ATTEMPTS &&
@@ -240,18 +269,73 @@ export const useVideoQueueStore = create<VideoQueueStore>()(
 
       deleteFailedVideo: async (id: string) => {
         const video = get().videos.find((v) => v.id === id);
-        // Either terminal state (exhausted retries, or the local file
-        // itself is already gone) is equally unrecoverable and equally
-        // safe to clear -- deleteAsync is idempotent regardless of
-        // whether the file still exists.
-        if (!video || (video.syncState !== 'failed' && video.syncState !== 'missing_local_file')) return;
+        // All three are equally unrecoverable and equally safe to clear --
+        // 'failed' (retries exhausted) and 'missing_local_file' still have
+        // (or once had) a local file, while 'rejected' never does by this
+        // point (syncOne already deleted it on successful upload) --
+        // deleteAsync is idempotent regardless of whether the file exists.
+        if (
+          !video ||
+          (video.syncState !== 'failed' &&
+            video.syncState !== 'missing_local_file' &&
+            video.syncState !== 'rejected')
+        ) {
+          return;
+        }
         await FileSystem.deleteAsync(video.localUri, { idempotent: true }).catch(() => {});
         set({ videos: get().videos.filter((v) => v.id !== id) });
+      },
+
+      applyVideoReviewResult: (id: string, status: VideoStatus, rejectReason: string | null) => {
+        set({
+          videos: get().videos.map((v) => {
+            if (v.id !== id || v.syncState !== 'reviewing') return v;
+            if (status === 'approved') {
+              return { ...v, syncState: 'synced', lastError: null };
+            }
+            if (status === 'rejected' || status === 'failed') {
+              return {
+                ...v,
+                syncState: 'rejected',
+                lastError: rejectReason ?? 'This video was not approved.',
+              };
+            }
+            // 'pending' / 'queued' / 'processing' -- still under review,
+            // nothing to change yet; the poll hook keeps calling this as
+            // status updates arrive.
+            return v;
+          }),
+        });
       },
     }),
     {
       name: 'crave-video-queue',
       storage: createJSONStorage(() => AsyncStorage),
+      // Confirmed CodeRabbit finding on PR #310: before this version,
+      // 'synced' meant only "upload confirmed" -- a device that already
+      // has a persisted 'synced' row from before this update shipped
+      // would, on the first rehydration under the new code, be treated
+      // as already-approved (the new meaning of 'synced') and pruned on
+      // the very next sync pass, with no chance to ever see a real
+      // rejection the backend might still hand back for it. Migrating
+      // any such legacy row (uploaded, so it has a serverId) to
+      // 'reviewing' lets the normal poll path resolve its actual outcome
+      // instead of silently assuming success.
+      version: 1,
+      migrate: (persistedState: unknown, version: number) => {
+        const state = (persistedState ?? {}) as { videos?: unknown };
+        const videos = Array.isArray(state.videos) ? state.videos : [];
+        if (version >= 1) return { ...state, videos };
+        return {
+          ...state,
+          videos: videos.map((v) => {
+            const video = v as QueuedVideo;
+            return video && video.syncState === 'synced' && video.serverId
+              ? { ...video, syncState: 'reviewing' as const }
+              : video;
+          }),
+        };
+      },
     }
   )
 );
@@ -306,7 +390,13 @@ async function syncOne(
   setVideoState({ syncState: 'completing' });
   await confirmVideoUpload(serverId);
 
-  setVideoState({ syncState: 'synced' });
+  // Uploaded and confirmed -- the local file's job is done regardless of
+  // what the backend's moderation review eventually decides, so it's
+  // freed here rather than held until that (possibly much later) outcome
+  // is known. 'reviewing', not 'synced': the review itself hasn't
+  // happened yet (see applyVideoReviewResult, driven by
+  // useVideoStatusPoll).
+  setVideoState({ syncState: 'reviewing' });
   await FileSystem.deleteAsync(video.localUri, { idempotent: true }).catch(() => {});
 }
 

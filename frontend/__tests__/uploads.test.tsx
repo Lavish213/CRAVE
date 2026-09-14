@@ -10,11 +10,24 @@ import UploadsScreen from '../app/uploads';
 import { useAuthStore } from '../src/stores/authStore';
 import { useVideoQueueStore, QueuedVideo } from '../src/stores/videoQueueStore';
 import { usePostingDraftStore, PostingDraft } from '../src/stores/postingDraftStore';
+import { fetchVideoStatus } from '../src/api/videos';
 
 let mockUser: { id: string } | null = { id: 'user-1' };
 jest.mock('../src/stores/authStore', () => ({
   useAuthStore: (selector: (s: { user: typeof mockUser }) => unknown) => selector({ user: mockUser }),
 }));
+
+// videoQueueStore.ts itself imports requestVideoUpload/confirmVideoUpload/
+// uploadVideoToSignedUrl from this same module -- stubbed here too so the
+// store still imports cleanly, even though this file's own tests never
+// exercise the real sync path (videos are seeded directly via setState).
+jest.mock('../src/api/videos', () => ({
+  fetchVideoStatus: jest.fn(),
+  requestVideoUpload: jest.fn(),
+  confirmVideoUpload: jest.fn(),
+  uploadVideoToSignedUrl: jest.fn(),
+}));
+const mockedFetchVideoStatus = fetchVideoStatus as jest.MockedFunction<typeof fetchVideoStatus>;
 
 function pressAlertButton(buttonText: string) {
   const call = (Alert.alert as jest.Mock).mock.calls[(Alert.alert as jest.Mock).mock.calls.length - 1];
@@ -143,5 +156,101 @@ describe('UploadsScreen', () => {
 
     pressAlertButton('Delete');
     expect(deleteSpy).toHaveBeenCalledWith('d1');
+  });
+
+  describe('per-video review-status polling', () => {
+    it('shows a reviewing video as under review, with no Retry/Delete controls', () => {
+      mockedFetchVideoStatus.mockResolvedValue({
+        id: 'server-1', status: 'processing', rejectReason: null, durationMs: null,
+        foodScore: null, thumbnailUrl: null, videoUrl: null,
+      });
+      useVideoQueueStore.setState({
+        videos: [makeVideo({ syncState: 'reviewing', serverId: 'server-1' })],
+      });
+
+      const { getByText, queryByLabelText } = render(<UploadsScreen />);
+      expect(getByText('Uploaded — under review')).toBeTruthy();
+      expect(queryByLabelText('Retry upload')).toBeNull();
+      expect(queryByLabelText('Delete video')).toBeNull();
+    });
+
+    it('polls fetchVideoStatus for a reviewing video and removes it once approved', async () => {
+      mockedFetchVideoStatus.mockResolvedValue({
+        id: 'server-1', status: 'approved', rejectReason: null, durationMs: null,
+        foodScore: null, thumbnailUrl: null, videoUrl: null,
+      });
+      useVideoQueueStore.setState({
+        videos: [makeVideo({ syncState: 'reviewing', serverId: 'server-1' })],
+      });
+
+      const { getByText, queryByText } = render(<UploadsScreen />);
+      expect(getByText('Uploaded — under review')).toBeTruthy();
+
+      await waitFor(() => expect(mockedFetchVideoStatus).toHaveBeenCalledWith('server-1'));
+      await waitFor(() => expect(useVideoQueueStore.getState().videos[0].syncState).toBe('synced'));
+      // 'synced' is filtered out of the visible list -- approval removes
+      // the row from view entirely rather than leaving a dead "Uploaded"
+      // entry behind.
+      await waitFor(() => expect(queryByText('Uploaded — under review')).toBeNull());
+    });
+
+    it('polls fetchVideoStatus for a reviewing video and surfaces the reject reason once rejected, with only a Delete control', async () => {
+      mockedFetchVideoStatus.mockResolvedValue({
+        id: 'server-1', status: 'rejected', rejectReason: 'No food visible', durationMs: null,
+        foodScore: null, thumbnailUrl: null, videoUrl: null,
+      });
+      useVideoQueueStore.setState({
+        videos: [makeVideo({ syncState: 'reviewing', serverId: 'server-1' })],
+      });
+
+      const { findByText, queryByLabelText, getByLabelText } = render(<UploadsScreen />);
+      expect(await findByText('No food visible')).toBeTruthy();
+      expect(queryByLabelText('Retry upload')).toBeNull(); // rejected content isn't retryable
+      expect(getByLabelText('Delete video')).toBeTruthy();
+    });
+
+    it('does not poll a video that is not reviewing', () => {
+      useVideoQueueStore.setState({
+        videos: [makeVideo({ syncState: 'failed', serverId: 'server-1', lastError: 'Network Error' })],
+      });
+      render(<UploadsScreen />);
+      expect(mockedFetchVideoStatus).not.toHaveBeenCalled();
+    });
+
+    it('surfaces a persistent polling failure instead of leaving the row silently stuck on "under review"', async () => {
+      // Confirmed CodeRabbit finding on PR #310: useVideoStatusPoll retried
+      // a failing fetchVideoStatus call forever with nothing surfaced --
+      // this row must show something once a check actually fails, not
+      // stay indistinguishable from a normal in-progress review.
+      mockedFetchVideoStatus.mockRejectedValue(new Error('Network request failed'));
+      useVideoQueueStore.setState({
+        videos: [makeVideo({ syncState: 'reviewing', serverId: 'server-1' })],
+      });
+
+      const { findByText, queryByText } = render(<UploadsScreen />);
+      expect(await findByText("Couldn't check status — retrying…")).toBeTruthy();
+      // Not the normal in-progress copy while a check is actively failing.
+      expect(queryByText('Uploaded — under review')).toBeNull();
+    });
+
+    it('clears a prior polling failure once a status check succeeds again', async () => {
+      mockedFetchVideoStatus.mockRejectedValueOnce(new Error('Network request failed'));
+      mockedFetchVideoStatus.mockResolvedValueOnce({
+        id: 'server-1', status: 'processing', rejectReason: null, durationMs: null,
+        foodScore: null, thumbnailUrl: null, videoUrl: null,
+      });
+      useVideoQueueStore.setState({
+        videos: [makeVideo({ syncState: 'reviewing', serverId: 'server-1' })],
+      });
+
+      const { findByText } = render(<UploadsScreen />);
+      expect(await findByText("Couldn't check status — retrying…")).toBeTruthy();
+
+      // The hook's own real backoff (2s) elapses before its retry fires --
+      // waited out in real time here (a generous findByText timeout)
+      // rather than fake timers, which would fight RTL's own internal
+      // polling for the same clock.
+      expect(await findByText('Uploaded — under review', {}, { timeout: 4000 })).toBeTruthy();
+    }, 10000);
   });
 });
