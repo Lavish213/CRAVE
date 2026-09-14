@@ -376,6 +376,51 @@ describe('videoQueueStore', () => {
     });
   });
 
+  describe('reconnect while a pass is already in flight', () => {
+    it('drains a request that arrived mid-pass instead of silently dropping it once the active pass clears', async () => {
+      // Confirmed CodeRabbit finding on PR #312: connectivity returning
+      // while a pass is already running used to just no-op (the
+      // syncInFlight guard). If the in-flight upload then failed, nothing
+      // was left to retry it beyond whatever unrelated event happened to
+      // fire next.
+      (videosApi.requestVideoUpload as jest.Mock).mockResolvedValue({
+        video_id: 'server-1', upload_url: 'https://r2.example.test/put', key: 'k',
+      });
+      let rejectUpload: ((err: Error) => void) | undefined;
+      (videosApi.uploadVideoToSignedUrl as jest.Mock).mockImplementation(
+        () => new Promise<void>((_resolve, reject) => { rejectUpload = reject; })
+      );
+
+      await useVideoQueueStore.getState().recordVideo({
+        sourceUri: 'file:///tmp/clip.mp4', placeId: 'place-1', contentType: 'video/mp4', uploadedBy: 'user-a',
+      });
+
+      const runSyncPassSpy = jest.spyOn(useVideoQueueStore.getState(), 'runSyncPass');
+
+      const firstPass = useVideoQueueStore.getState().runSyncPass('user-a');
+      await flush();
+      expect(videosApi.uploadVideoToSignedUrl).toHaveBeenCalledTimes(1);
+
+      // Simulates the NetInfo listener firing mid-upload (a brief drop and
+      // reconnect) -- must be a no-op right now, not a second concurrent
+      // syncOne for the same video.
+      await useVideoQueueStore.getState().runSyncPass('user-a');
+      expect(videosApi.requestVideoUpload).toHaveBeenCalledTimes(1);
+
+      rejectUpload?.(new Error('Network Error'));
+      await firstPass;
+      await flush();
+
+      // The drained call is a real extra pass (3rd), not just the two
+      // explicit calls above -- without the fix there would be no 3rd.
+      expect(runSyncPassSpy).toHaveBeenCalledTimes(3);
+      // The just-failed video's own backoff still applies -- the drained
+      // pass must not retry it immediately just because it ran.
+      expect(videosApi.requestVideoUpload).toHaveBeenCalledTimes(1);
+      expect(useVideoQueueStore.getState().videos[0].attemptCount).toBe(1);
+    });
+  });
+
   it('records a failure and keeps the video retryable until MAX_ATTEMPTS', async () => {
     (videosApi.requestVideoUpload as jest.Mock).mockRejectedValue(new Error('Network Error'));
 
@@ -809,5 +854,58 @@ describe('videoQueueStore persisted-store migration', () => {
     const videos = migratedStore.getState().videos;
     expect(videos.find((v: { id: string }) => v.id === 'legacy-1')?.syncState).toBe('reviewing');
     expect(videos.find((v: { id: string }) => v.id === 'legacy-2')?.syncState).toBe('recorded');
+  });
+
+  it('waits for uploadPreferencesStore to finish hydrating before trusting its default wifiOnlyVideoUploads value', async () => {
+    // Confirmed CodeRabbit finding on PR #312: uploadPreferencesStore's
+    // `false` default is live the instant its module loads, but the real
+    // persisted value only lands once AsyncStorage's own rehydration
+    // resolves -- a genuine async gap. Without awaiting it, a foreground/
+    // connectivity event that fires runSyncPass early enough would read
+    // the still-default `false` and upload a video over cellular despite
+    // the user having turned Wi-Fi-only on.
+    jest.resetModules();
+    const AsyncStorageModule = require('@react-native-async-storage/async-storage').default;
+
+    let resolveUploadPrefsGetItem: (value: string | null) => void = () => {};
+    const uploadPrefsGetItemPromise = new Promise<string | null>((resolve) => {
+      resolveUploadPrefsGetItem = resolve;
+    });
+    (AsyncStorageModule.getItem as jest.Mock).mockImplementation((key: string) =>
+      key === 'crave-upload-preferences' ? uploadPrefsGetItemPromise : Promise.resolve(null)
+    );
+
+    const { useVideoQueueStore: freshStore } = require('./videoQueueStore');
+    const videosApiFresh = require('../api/videos');
+    (videosApiFresh.requestVideoUpload as jest.Mock).mockResolvedValue({
+      video_id: 'server-1', upload_url: 'https://r2.example.test/put', key: 'k',
+    });
+    (videosApiFresh.uploadVideoToSignedUrl as jest.Mock).mockResolvedValue(undefined);
+    (videosApiFresh.confirmVideoUpload as jest.Mock).mockResolvedValue({ ok: true });
+    const NetInfoFresh = require('@react-native-community/netinfo').default;
+    (NetInfoFresh.fetch as jest.Mock).mockResolvedValue({
+      type: 'cellular', isConnected: true, isInternetReachable: true, details: {},
+    });
+
+    await freshStore.getState().recordVideo({
+      sourceUri: 'file:///tmp/clip.mp4', placeId: 'place-1', contentType: 'video/mp4', uploadedBy: 'user-a',
+    });
+
+    const syncPromise = freshStore.getState().runSyncPass('user-a');
+
+    // uploadPreferencesStore hasn't rehydrated yet -- without the fix,
+    // runSyncPass would already have read the default `false` and
+    // requested an upload slot over cellular by now.
+    for (let i = 0; i < 15; i++) {
+      await Promise.resolve();
+    }
+    expect(videosApiFresh.requestVideoUpload).not.toHaveBeenCalled();
+
+    // Now rehydration resolves with the user's real, persisted `true`.
+    resolveUploadPrefsGetItem(JSON.stringify({ state: { wifiOnlyVideoUploads: true }, version: 0 }));
+    await syncPromise;
+
+    expect(videosApiFresh.requestVideoUpload).not.toHaveBeenCalled();
+    expect(freshStore.getState().videos[0].syncState).toBe('recorded');
   });
 });

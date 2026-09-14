@@ -16,7 +16,7 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import NetInfo, { NetInfoState } from '@react-native-community/netinfo';
-import { useUploadPreferencesStore } from './uploadPreferencesStore';
+import { useUploadPreferencesStore, waitForUploadPreferencesHydration } from './uploadPreferencesStore';
 // SDK54's expo-file-system replaced its promise-based API with a new
 // class-based one (File/Directory) at the default import path -- the
 // familiar documentDirectory/moveAsync/getInfoAsync/deleteAsync surface
@@ -171,6 +171,17 @@ interface VideoQueueStore {
 }
 
 let syncInFlight = false;
+// Confirmed CodeRabbit finding on PR #312: connectivity returning while a
+// pass is already running used to just no-op (the guard below returns
+// immediately) -- if the video the active pass was uploading then failed,
+// nothing was left to retry it beyond whatever *unrelated* foreground/
+// connectivity event happened to fire next, which could be a long wait or
+// never. Recording the userId of a request that arrived mid-pass and
+// draining it once the active pass clears means a connectivity-return
+// signal is never silently dropped, without adding a timer this store has
+// deliberately never used elsewhere (see the AppState/NetInfo listeners'
+// own comments -- every retry stays externally triggered).
+let pendingSyncUserId: string | null = null;
 
 export const useVideoQueueStore = create<VideoQueueStore>()(
   persist(
@@ -228,7 +239,10 @@ export const useVideoQueueStore = create<VideoQueueStore>()(
       },
 
       runSyncPass: async (userId: string) => {
-        if (syncInFlight) return;
+        if (syncInFlight) {
+          pendingSyncUserId = userId;
+          return;
+        }
         syncInFlight = true;
         try {
           // A video that synced successfully in a *prior* pass has already
@@ -250,6 +264,7 @@ export const useVideoQueueStore = create<VideoQueueStore>()(
           // calls; queued videos are simply left 'recorded' untouched
           // until a qualifying connection triggers the next pass (see the
           // NetInfo listener below, and the foreground AppState one).
+          await waitForUploadPreferencesHydration();
           if (useUploadPreferencesStore.getState().wifiOnlyVideoUploads) {
             const netState = await NetInfo.fetch();
             if (!isConnectionAllowedForVideoUpload(netState, true)) {
@@ -280,6 +295,15 @@ export const useVideoQueueStore = create<VideoQueueStore>()(
           }
         } finally {
           syncInFlight = false;
+          if (pendingSyncUserId) {
+            const nextUserId = pendingSyncUserId;
+            pendingSyncUserId = null;
+            // Fire-and-forget, same as every other caller of runSyncPass --
+            // its own backoff/eligibility filtering above still applies, so
+            // a video that just failed and is now in backoff is correctly
+            // left alone here rather than retried immediately.
+            get().runSyncPass(nextUserId).catch(() => {});
+          }
         }
       },
 

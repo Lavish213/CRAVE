@@ -27,3 +27,23 @@ export const useUploadPreferencesStore = create<UploadPreferencesStore>()(
     }
   )
 );
+
+// Confirmed CodeRabbit finding on PR #312: this store's `false` default
+// is live the instant the module loads, but the real (possibly `true`)
+// persisted value only lands once AsyncStorage's rehydration resolves --
+// a real async gap, not merely a same-tick formality. A caller that reads
+// `wifiOnlyVideoUploads` before that resolves (videoQueueStore.ts's
+// runSyncPass, triggered by a foreground/connectivity event that can fire
+// this early) would silently treat a user's real "Wi-Fi only" preference
+// as off and upload over cellular. Awaited once at the top of that gate,
+// not cached, since a single in-flight hydration only ever needs to
+// resolve once.
+export function waitForUploadPreferencesHydration(): Promise<void> {
+  if (useUploadPreferencesStore.persist.hasHydrated()) return Promise.resolve();
+  return new Promise((resolve) => {
+    const unsubscribe = useUploadPreferencesStore.persist.onFinishHydration(() => {
+      unsubscribe();
+      resolve();
+    });
+  });
+}
