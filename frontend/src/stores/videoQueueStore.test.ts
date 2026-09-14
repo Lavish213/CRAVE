@@ -776,4 +776,40 @@ describe('videoQueueStore persisted-store migration', () => {
     expect(videos.find((v: { id: string }) => v.id === 'legacy-1')?.syncState).toBe('reviewing');
     expect(videos.find((v: { id: string }) => v.id === 'legacy-2')?.syncState).toBe('recorded');
   });
+
+  it('backfills uploadProgress on a version-1 persisted queue (PR #310-era data, from before this field existed)', async () => {
+    // Confirmed CodeRabbit finding on PR #313: persist's migrate only runs
+    // when the stored version differs from the current one. Version 1 is
+    // exactly what every real device already has persisted (shipped in
+    // #310) -- left at 1, this backfill would never run for any of them,
+    // permanently leaving their queued rows' uploadProgress undefined
+    // instead of the null the QueuedVideo type promises. Bumping to 2 is
+    // what makes stored version 1 actually mismatch and trigger migrate.
+    jest.resetModules();
+    const AsyncStorageModule = require('@react-native-async-storage/async-storage').default;
+    const version1PersistedState = JSON.stringify({
+      state: {
+        videos: [
+          {
+            id: 'v1-video', serverId: null, localUri: 'file:///v1.mp4',
+            placeId: 'place-1', templateId: null, contentType: 'video/mp4', uploadedBy: 'user-a',
+            syncState: 'recorded', attemptCount: 0, lastAttemptAt: null, lastError: null, createdAt: 1,
+            // No uploadProgress key at all -- this is exactly what a real
+            // version-1 persisted row looks like, from before this field
+            // was ever written.
+          },
+        ],
+      },
+      version: 1,
+    });
+    (AsyncStorageModule.getItem as jest.Mock).mockResolvedValueOnce(version1PersistedState);
+
+    const { useVideoQueueStore: migratedStore } = require('./videoQueueStore');
+    for (let i = 0; i < 15; i++) {
+      await Promise.resolve();
+    }
+
+    const [video] = migratedStore.getState().videos;
+    expect(video.uploadProgress).toBeNull();
+  });
 });

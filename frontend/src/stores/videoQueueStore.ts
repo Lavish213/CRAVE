@@ -334,7 +334,17 @@ export const useVideoQueueStore = create<VideoQueueStore>()(
       // any such legacy row (uploaded, so it has a serverId) to
       // 'reviewing' lets the normal poll path resolve its actual outcome
       // instead of silently assuming success.
-      version: 1,
+      //
+      // Confirmed CodeRabbit finding on PR #313: persist's migrate only
+      // runs when the stored version differs from this one -- bumping to
+      // 2 (not left at 1) is what actually makes the uploadProgress
+      // backfill below run for the common real-world case (any device
+      // that already persisted version-1 data under #310, before this
+      // field existed). Left at 1, every such device's stored version
+      // would equal the current version and migrate would never run at
+      // all, leaving their queued rows' uploadProgress permanently
+      // undefined instead of backfilled to null.
+      version: 2,
       migrate: (persistedState: unknown, version: number) => {
         const state = (persistedState ?? {}) as { videos?: unknown };
         const videos = Array.isArray(state.videos) ? state.videos : [];
