@@ -21,8 +21,12 @@ jest.mock('expo-haptics', () => ({
 }));
 
 jest.mock('expo-image', () => ({ Image: () => null }));
+const mockUseVideoPlayer = jest.fn((_source: string, _config?: (player: unknown) => void) => ({
+  loop: false,
+  play: jest.fn(),
+}));
 jest.mock('expo-video', () => ({
-  useVideoPlayer: () => ({ loop: false, play: jest.fn() }),
+  useVideoPlayer: (source: string, config?: (player: unknown) => void) => mockUseVideoPlayer(source, config),
   VideoView: () => null,
 }));
 jest.mock('../src/components/ReportVideoSheet', () => ({ ReportVideoSheet: () => null }));
@@ -154,6 +158,65 @@ describe('PlaceVideoGallery', () => {
     });
 
     await waitFor(() => expect(mockedFetchVideoFeed).toHaveBeenCalledTimes(2));
+  });
+
+  it('ignores a stale response from an earlier request that resolves after a newer one', async () => {
+    // Confirmed CodeRabbit finding on PR #314: the initial-mount fetch and
+    // the placeholder-loss refetch both called setVideos unconditionally --
+    // if the initial (older) request happened to resolve *after* a newer
+    // refetch had already applied its own result, the stale response would
+    // silently win and overwrite the newer data.
+    let resolveFirst: ((v: { videos: FeedVideo[]; limit: number; offset: number }) => void) | undefined;
+    let resolveSecond: ((v: { videos: FeedVideo[]; limit: number; offset: number }) => void) | undefined;
+    mockedFetchVideoFeed
+      .mockReturnValueOnce(
+        new Promise((resolve) => {
+          resolveFirst = resolve;
+        })
+      )
+      .mockReturnValueOnce(
+        new Promise((resolve) => {
+          resolveSecond = resolve;
+        })
+      );
+
+    useVideoQueueStore.setState({ videos: [makeVideo({ id: 'v1', syncState: 'reviewing' })] });
+    const { getByLabelText } = render(<PlaceVideoGallery placeId="place-1" />);
+    await waitFor(() => expect(mockedFetchVideoFeed).toHaveBeenCalledTimes(1));
+
+    // Triggers the second (newer) fetch via the placeholder-loss path while
+    // the first (mount) fetch is still unresolved.
+    await act(async () => {
+      useVideoQueueStore.setState({ videos: [] });
+    });
+    await waitFor(() => expect(mockedFetchVideoFeed).toHaveBeenCalledTimes(2));
+
+    // The newer request resolves first -- `act`'s async form awaits its own
+    // callback, which here includes the promise's `.then` continuation
+    // (via the extra microtask flush below), so the resulting setVideos
+    // call is committed to the render tree before the next line runs.
+    await act(async () => {
+      resolveSecond?.({
+        videos: [makeFeedVideo({ id: 'newer', videoUrl: 'https://cdn.example/newer.mp4' })],
+        limit: 20,
+        offset: 0,
+      });
+      await Promise.resolve();
+    });
+
+    // ...then the older request finally resolves with different data.
+    await act(async () => {
+      resolveFirst?.({
+        videos: [makeFeedVideo({ id: 'stale', videoUrl: 'https://cdn.example/stale.mp4' })],
+        limit: 20,
+        offset: 0,
+      });
+      await Promise.resolve();
+    });
+
+    fireEvent.press(getByLabelText('Play video 1 of 1'));
+    expect(mockUseVideoPlayer).toHaveBeenCalledWith('https://cdn.example/newer.mp4', expect.any(Function));
+    expect(mockUseVideoPlayer).not.toHaveBeenCalledWith('https://cdn.example/stale.mp4', expect.any(Function));
   });
 
   it('does not refetch on the initial mount just because there were no placeholders to begin with', async () => {

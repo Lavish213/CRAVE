@@ -64,19 +64,32 @@ export function PlaceVideoGallery({ placeId }: Props) {
     [queuedVideos, user, placeId]
   );
 
-  useEffect(() => {
-    let cancelled = false;
-    fetchVideoFeed({ placeId, limit: 20 })
+  // Confirmed CodeRabbit finding on PR #314: two separate call sites below
+  // both fetch this same feed (initial mount/placeId-change, and a
+  // placeholder-loss refetch) with no ordering guarantee between them --
+  // navigating to a new place while a slower request for the previous one
+  // is still in flight, or either request simply resolving out of order,
+  // could let a stale response overwrite newer data. A monotonically
+  // increasing request id shared by both call sites means a response is
+  // only ever applied if it's still the most recent request issued,
+  // regardless of which effect started it or how long it took.
+  const latestRequestIdRef = useRef(0);
+  const refetchFeed = useCallback((forPlaceId: string) => {
+    const requestId = ++latestRequestIdRef.current;
+    fetchVideoFeed({ placeId: forPlaceId, limit: 20 })
       .then((data) => {
-        if (!cancelled) setVideos(data.videos);
+        if (latestRequestIdRef.current !== requestId) return;
+        setVideos(data.videos);
       })
       .catch((err: any) => {
+        if (latestRequestIdRef.current !== requestId) return;
         if (__DEV__) console.warn('[PlaceVideoGallery] fetch_failed', err?.response?.status, err?.message);
       });
-    return () => {
-      cancelled = true;
-    };
-  }, [placeId]);
+  }, []);
+
+  useEffect(() => {
+    refetchFeed(placeId);
+  }, [placeId, refetchFeed]);
 
   // A locally-queued video for this place disappearing from
   // localPlaceholders (rather than just changing syncState) means it either
@@ -91,11 +104,9 @@ export function PlaceVideoGallery({ placeId }: Props) {
     const lostAny = Array.from(prevIds).some((id) => !currentIds.has(id));
     prevPlaceholderIdsRef.current = currentIds;
     if (lostAny) {
-      fetchVideoFeed({ placeId, limit: 20 })
-        .then((data) => setVideos(data.videos))
-        .catch(() => {});
+      refetchFeed(placeId);
     }
-  }, [localPlaceholders, placeId]);
+  }, [localPlaceholders, placeId, refetchFeed]);
 
   const handleRecordPress = useCallback(() => {
     if (!user) {
