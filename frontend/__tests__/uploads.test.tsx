@@ -39,7 +39,7 @@ function makeVideo(overrides: Partial<QueuedVideo>): QueuedVideo {
   return {
     id: 'v1', serverId: null, localUri: 'file:///v1.mp4', placeId: 'place-1', templateId: null,
     contentType: 'video/mp4', uploadedBy: 'user-1', syncState: 'recorded', attemptCount: 0,
-    lastAttemptAt: null, lastError: null, createdAt: Date.now(), ...overrides,
+    lastAttemptAt: null, lastError: null, createdAt: Date.now(), uploadProgress: null, ...overrides,
   };
 }
 
@@ -82,6 +82,22 @@ describe('UploadsScreen', () => {
     usePostingDraftStore.setState({ drafts: [makeDraft({ id: 'other-draft', ownerId: 'someone-else' })] });
     const { getByText } = render(<UploadsScreen />);
     expect(getByText('Nothing pending')).toBeTruthy();
+  });
+
+  it('shows a real upload percentage while uploading, not just a bare spinner', () => {
+    useVideoQueueStore.setState({
+      videos: [makeVideo({ syncState: 'uploading', uploadProgress: 0.42 })],
+    });
+    const { getByText } = render(<UploadsScreen />);
+    expect(getByText('Uploading… 42%')).toBeTruthy();
+  });
+
+  it('falls back to the plain "Uploading…" copy before any progress event has arrived', () => {
+    useVideoQueueStore.setState({
+      videos: [makeVideo({ syncState: 'uploading', uploadProgress: null })],
+    });
+    const { getByText } = render(<UploadsScreen />);
+    expect(getByText('Uploading…')).toBeTruthy();
   });
 
   it('retries a failed video via the already-built retryFailedVideo + a fresh sync pass', () => {

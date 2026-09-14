@@ -1,5 +1,95 @@
 # Active agent state
 
+Status: ready-for-review
+Owner: Claude
+Branch: claude/real-upload-progress
+Base SHA: 34c5346 (origin/main tip after PR #309)
+Commit SHA: 559129f (original implementation commit cd6be78,
+CodeRabbit-fix commit 559129f on top -- see below)
+Scope: offline-upload UX follow-up #4 of 4 (per #307/#308's own
+"remaining follow-ups" list, alongside wifi-only gating (#312) and
+per-video status polling (merged in #310)) -- real upload progress,
+replacing the bare "Uploading…" spinner with an actual percentage.
+`uploadToSignedUrl` (photos, upload.ts) and `uploadVideoToSignedUrl`
+(videos, videos.ts) rewritten from `fetch`-based PUTs to
+`XMLHttpRequest`, since RN's `fetch` has no way to observe request
+(upload) body progress -- only response/download progress. Both take a
+new optional `onProgress(fraction)` callback (0-1, not 0-100 -- display
+formatting is the caller's job). Fully backward compatible: the
+parameter is optional, every existing call site (the direct photo
+posting flow in postingDraftStore.ts/useUploadImage.ts) is untouched.
+`videoQueueStore.ts`'s `QueuedVideo` gains `uploadProgress: number |
+null`, set via the new callback during `syncOne`'s `'uploading'` state
+and reset to `null` on completion, on a failed attempt, and by
+`retryFailedVideo` -- so a stale percentage from a previous attempt can
+never linger into the next one. Legacy persisted rows backfilled to
+`null` via the existing migrate function, persist version bumped 1->2 so
+that backfill actually runs for every real device (see CodeRabbit
+findings below). `uploads.tsx`'s `VideoRow` shows "Uploading…
+NN%" plus a thin progress bar once the first progress event arrives,
+falling back to the existing static copy until then.
+Locked files: frontend/src/api/upload.ts, frontend/src/api/upload.test.ts
+(new), frontend/src/api/videos.ts, frontend/src/api/videos.test.ts (new),
+frontend/src/stores/videoQueueStore.ts,
+frontend/src/stores/videoQueueStore.test.ts, frontend/app/uploads.tsx,
+frontend/__tests__/uploads.test.tsx, frontend/__tests__/settings.test.tsx
+(one QueuedVideo fixture updated for the new required field).
+Verification (original commit): `npx tsc --noEmit` -> clean. `npx jest
+--ci` -> 64/64 suites, 612/612 tests (12 new -- corrected from an
+arithmetic error in this doc's first version, see CodeRabbit findings
+below: 8 at the API level for the XHR rewrite across both upload.test.ts
+and videos.test.ts -- progress-fraction reporting, non-length-computable
+events ignored, non-2xx rejection, network-error rejection,
+no-callback-passed; 2 in videoQueueStore.test.ts for the store-level
+progress wiring and its reset-on-failure behavior; 2 in uploads.test.tsx
+for the "NN%" + fallback-copy UI display). Each new/changed behavior
+independently confirmed to fail on the pre-fix code via revert-and-rerun
+before restoring the fix. `git diff --check` clean. Backend untouched.
+
+**CodeRabbit review, applied before merge (learned from #307's mistake
+-- waited for the actual findings this time instead of merging on green
+CI alone):** 2 real findings, both fixed forward on this same branch
+rather than merged first:
+- **Minor**: the persisted-store `version` was left at `1` even though
+  `uploadProgress` was new this PR -- zustand's `persist` only calls
+  `migrate` when the *stored* version differs from the *current* one,
+  and every real device already has version-1 data persisted since
+  #310 shipped. Left at 1, the backfill-to-`null` logic I'd already
+  written would never actually run for any real user -- their stored
+  version would equal the current version and `migrate` would be
+  skipped entirely, leaving `uploadProgress` permanently `undefined`
+  instead of the `null` the `QueuedVideo` type promises. Bumped to `2`.
+  New regression test (a version-1 persisted blob with no
+  `uploadProgress` key at all, exactly what real #310-era data looks
+  like) confirmed to fail without the bump.
+- **Minor**: this doc's own test-count arithmetic was wrong -- claimed
+  "10 new" while the listed breakdown (8+2+2) summed to 12. Corrected
+  above (and the running total below, now 613 with the new hydration
+  test).
+Verification (CodeRabbit-fix commit): `npx jest --ci` -> 64/64 suites,
+613/613 tests (13 new total: the 12 above plus the new version-1
+hydration test). `git diff --check` clean.
+Known gaps / risks: XMLHttpRequest isn't defined in this repo's jest
+environment at all (confirmed directly -- jest-expo's preset doesn't
+polyfill it), so both new test files supply their own minimal fake XHR
+class rather than relying on any ambient mock; the real fetch->blob->XHR
+promise chain needed several flushed microtask ticks (not just one
+`await Promise.resolve()`) before the XHR instance actually exists,
+handled with a small `flushMicrotasks` helper in each test file. Photo
+uploads intentionally keep their existing spinner-only UI in the direct
+posting flow -- quick, single-shot uploads, out of scope for this
+task's roadmap item (the video queue screen). One follow-up remains
+after this: merging the local queue into `PlaceVideoGallery`'s server
+feed.
+Next action: none needed from Codex -- doesn't touch the dashboard lane.
+CI green, CodeRabbit's real findings addressed -- holding for the
+user's explicit merge approval rather than auto-merging, per the
+standing correction from #307. PR: #313.
+
+---
+
+# Active agent state
+
 Status: implementing
 Owner: Claude
 Branch: claude/video-status-polling

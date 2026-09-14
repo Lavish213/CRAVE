@@ -134,6 +134,43 @@ describe('videoQueueStore', () => {
     expect(FileSystem.deleteAsync).toHaveBeenCalledWith(video.localUri, { idempotent: true });
   });
 
+  it('surfaces real upload progress while uploading, then clears it once the upload step is behind it', async () => {
+    (videosApi.requestVideoUpload as jest.Mock).mockResolvedValue({
+      video_id: 'server-1', upload_url: 'https://r2.example.test/put', key: 'k',
+    });
+    const progressSnapshots: Array<number | null> = [];
+    (videosApi.uploadVideoToSignedUrl as jest.Mock).mockImplementation(
+      async (
+        _url: string,
+        _uri: string,
+        _contentType: string,
+        onProgress?: (fraction: number) => void
+      ) => {
+        onProgress?.(0.3);
+        progressSnapshots.push(useVideoQueueStore.getState().videos[0].uploadProgress);
+        onProgress?.(0.8);
+        progressSnapshots.push(useVideoQueueStore.getState().videos[0].uploadProgress);
+      }
+    );
+    (videosApi.confirmVideoUpload as jest.Mock).mockResolvedValue({ ok: true });
+
+    await useVideoQueueStore.getState().recordVideo({
+      sourceUri: 'file:///tmp/clip.mp4',
+      placeId: 'place-1',
+      contentType: 'video/mp4',
+      uploadedBy: 'user-a',
+    });
+    expect(useVideoQueueStore.getState().videos[0].uploadProgress).toBeNull();
+
+    await useVideoQueueStore.getState().runSyncPass('user-a');
+
+    expect(progressSnapshots).toEqual([0.3, 0.8]);
+    // Past 'uploading' (now 'reviewing') -- a stale "80%" left showing on
+    // a row that's no longer uploading would be actively misleading.
+    expect(useVideoQueueStore.getState().videos[0].syncState).toBe('reviewing');
+    expect(useVideoQueueStore.getState().videos[0].uploadProgress).toBeNull();
+  });
+
   describe('applyVideoReviewResult', () => {
     async function syncOneReviewingVideo() {
       (videosApi.requestVideoUpload as jest.Mock).mockResolvedValue({
@@ -299,6 +336,36 @@ describe('videoQueueStore', () => {
     expect(video.attemptCount).toBe(1);
     expect(video.lastAttemptAt).not.toBeNull();
     expect(video.lastError).toBe('Network Error');
+  });
+
+  it('clears uploadProgress when the upload step itself fails, so a retry does not start out showing a stale percentage', async () => {
+    (videosApi.requestVideoUpload as jest.Mock).mockResolvedValue({
+      video_id: 'server-1', upload_url: 'https://r2.example.test/put', key: 'k',
+    });
+    (videosApi.uploadVideoToSignedUrl as jest.Mock).mockImplementation(
+      async (
+        _url: string,
+        _uri: string,
+        _contentType: string,
+        onProgress?: (fraction: number) => void
+      ) => {
+        onProgress?.(0.5);
+        throw new Error('Upload to storage failed (network error)');
+      }
+    );
+
+    await useVideoQueueStore.getState().recordVideo({
+      sourceUri: 'file:///tmp/clip.mp4',
+      placeId: 'place-1',
+      contentType: 'video/mp4',
+      uploadedBy: 'user-a',
+    });
+
+    await useVideoQueueStore.getState().runSyncPass('user-a');
+
+    const [video] = useVideoQueueStore.getState().videos;
+    expect(video.syncState).toBe('recorded');
+    expect(video.uploadProgress).toBeNull();
   });
 
   describe('exponential backoff', () => {
@@ -708,5 +775,41 @@ describe('videoQueueStore persisted-store migration', () => {
     const videos = migratedStore.getState().videos;
     expect(videos.find((v: { id: string }) => v.id === 'legacy-1')?.syncState).toBe('reviewing');
     expect(videos.find((v: { id: string }) => v.id === 'legacy-2')?.syncState).toBe('recorded');
+  });
+
+  it('backfills uploadProgress on a version-1 persisted queue (PR #310-era data, from before this field existed)', async () => {
+    // Confirmed CodeRabbit finding on PR #313: persist's migrate only runs
+    // when the stored version differs from the current one. Version 1 is
+    // exactly what every real device already has persisted (shipped in
+    // #310) -- left at 1, this backfill would never run for any of them,
+    // permanently leaving their queued rows' uploadProgress undefined
+    // instead of the null the QueuedVideo type promises. Bumping to 2 is
+    // what makes stored version 1 actually mismatch and trigger migrate.
+    jest.resetModules();
+    const AsyncStorageModule = require('@react-native-async-storage/async-storage').default;
+    const version1PersistedState = JSON.stringify({
+      state: {
+        videos: [
+          {
+            id: 'v1-video', serverId: null, localUri: 'file:///v1.mp4',
+            placeId: 'place-1', templateId: null, contentType: 'video/mp4', uploadedBy: 'user-a',
+            syncState: 'recorded', attemptCount: 0, lastAttemptAt: null, lastError: null, createdAt: 1,
+            // No uploadProgress key at all -- this is exactly what a real
+            // version-1 persisted row looks like, from before this field
+            // was ever written.
+          },
+        ],
+      },
+      version: 1,
+    });
+    (AsyncStorageModule.getItem as jest.Mock).mockResolvedValueOnce(version1PersistedState);
+
+    const { useVideoQueueStore: migratedStore } = require('./videoQueueStore');
+    for (let i = 0; i < 15; i++) {
+      await Promise.resolve();
+    }
+
+    const [video] = migratedStore.getState().videos;
+    expect(video.uploadProgress).toBeNull();
   });
 });

@@ -71,6 +71,11 @@ export interface QueuedVideo {
   lastAttemptAt: number | null;
   lastError: string | null;
   createdAt: number;
+  // 0-1 fraction reported by uploadVideoToSignedUrl's onProgress while
+  // syncState === 'uploading'; null the rest of the time (never started,
+  // or past the upload step entirely) so a stale value from a previous
+  // attempt can't be mistaken for current progress.
+  uploadProgress: number | null;
 }
 
 const MAX_ATTEMPTS = 5;
@@ -209,6 +214,7 @@ export const useVideoQueueStore = create<VideoQueueStore>()(
           lastAttemptAt: null,
           lastError: null,
           createdAt: Date.now(),
+          uploadProgress: null,
         };
 
         set({ videos: [video, ...get().videos] });
@@ -261,7 +267,14 @@ export const useVideoQueueStore = create<VideoQueueStore>()(
         set({
           videos: get().videos.map((v) =>
             v.id === id && v.syncState === 'failed'
-              ? { ...v, syncState: 'recorded', attemptCount: 0, lastAttemptAt: null, lastError: null }
+              ? {
+                  ...v,
+                  syncState: 'recorded',
+                  attemptCount: 0,
+                  lastAttemptAt: null,
+                  lastError: null,
+                  uploadProgress: null,
+                }
               : v
           ),
         });
@@ -321,18 +334,40 @@ export const useVideoQueueStore = create<VideoQueueStore>()(
       // any such legacy row (uploaded, so it has a serverId) to
       // 'reviewing' lets the normal poll path resolve its actual outcome
       // instead of silently assuming success.
-      version: 1,
+      //
+      // Confirmed CodeRabbit finding on PR #313: persist's migrate only
+      // runs when the stored version differs from this one -- bumping to
+      // 2 (not left at 1) is what actually makes the uploadProgress
+      // backfill below run for the common real-world case (any device
+      // that already persisted version-1 data under #310, before this
+      // field existed). Left at 1, every such device's stored version
+      // would equal the current version and migrate would never run at
+      // all, leaving their queued rows' uploadProgress permanently
+      // undefined instead of backfilled to null.
+      version: 2,
       migrate: (persistedState: unknown, version: number) => {
         const state = (persistedState ?? {}) as { videos?: unknown };
         const videos = Array.isArray(state.videos) ? state.videos : [];
-        if (version >= 1) return { ...state, videos };
+        // uploadProgress was added after version 1 shipped, so any legacy
+        // persisted row (regardless of which branch below touches it) may
+        // be missing the field entirely -- backfilled to null rather than
+        // left undefined so it matches the QueuedVideo type exactly.
+        const withProgress = (video: QueuedVideo): QueuedVideo => ({
+          ...video,
+          uploadProgress: video.uploadProgress ?? null,
+        });
+        if (version >= 1) {
+          return { ...state, videos: videos.map((v) => withProgress(v as QueuedVideo)) };
+        }
         return {
           ...state,
           videos: videos.map((v) => {
             const video = v as QueuedVideo;
-            return video && video.syncState === 'synced' && video.serverId
-              ? { ...video, syncState: 'reviewing' as const }
-              : video;
+            const migrated =
+              video && video.syncState === 'synced' && video.serverId
+                ? { ...video, syncState: 'reviewing' as const }
+                : video;
+            return withProgress(migrated);
           }),
         };
       },
@@ -384,10 +419,12 @@ async function syncOne(
   });
   setVideoState({ serverId });
 
-  setVideoState({ syncState: 'uploading' });
-  await uploadVideoToSignedUrl(uploadUrl, video.localUri, video.contentType);
+  setVideoState({ syncState: 'uploading', uploadProgress: 0 });
+  await uploadVideoToSignedUrl(uploadUrl, video.localUri, video.contentType, (fraction) => {
+    setVideoState({ uploadProgress: fraction });
+  });
 
-  setVideoState({ syncState: 'completing' });
+  setVideoState({ syncState: 'completing', uploadProgress: null });
   await confirmVideoUpload(serverId);
 
   // Uploaded and confirmed -- the local file's job is done regardless of
@@ -416,6 +453,7 @@ async function recordFailure(
         lastAttemptAt: Date.now(),
         lastError: message,
         syncState: attemptCount >= MAX_ATTEMPTS ? 'failed' : 'recorded',
+        uploadProgress: null,
       };
     }),
   });
