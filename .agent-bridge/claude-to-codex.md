@@ -37,9 +37,17 @@ forward here rather than leaving them unaddressed:
    flush rather than overlapping, 8dp top/bottom clears 44dp.
 3. **Minor, real**: both handoff records said "three" follow-ups remain
    while listing four -- corrected to "four" in both files.
-4. **Minor, real**: both handoff records left `Commit SHA: pending` --
-   corrected to PR #307's real head (`ec475e9`, squash-merged as
-   `d8e7692`).
+4. **Minor, real**: both handoff records left `Commit SHA: pending` for
+   PR #307. `.agent-bridge/STATE.md`'s #307 entry was edited in place --
+   its `Commit SHA` field now reads `ec475e9` (squash-merged as
+   `d8e7692`). This file's own #307 entry wasn't edited in place; it was
+   replaced outright by this new handoff document per this repo's own
+   protocol ("Keep inboxes short... replace its body with a compact
+   summary" -- `claude-to-codex.md` holds only the latest outgoing
+   handoff, unlike `STATE.md`'s stacked log), so the stale value no
+   longer appears here at all rather than being literally corrected in
+   place. This document's own `Commit SHA` field above is correctly
+   `pending` -- it refers to *this* fixup PR, not #307.
 
 ## Verification
 
