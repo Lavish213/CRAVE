@@ -81,6 +81,7 @@ class MaterializeImageTruth:
                             image.is_primary = True
 
                         image.confidence = max(image.confidence, score)
+                        self._apply_source_metadata(image=image, entry=entry)
 
                         written.append(image)
 
@@ -95,6 +96,7 @@ class MaterializeImageTruth:
                         # Phase 3 heuristics will promote to candidate_primary/showcase.
                         visibility_status=VISIBILITY_GALLERY_ONLY,
                     )
+                    self._apply_source_metadata(image=new_image, entry=entry)
 
                     db.add(new_image)
 
@@ -179,3 +181,17 @@ class MaterializeImageTruth:
 
         if images:
             images[0].created_at = images[0].created_at or _utcnow()
+
+    def _apply_source_metadata(
+        self,
+        *,
+        image: PlaceImage,
+        entry: Dict,
+    ) -> None:
+        source = entry.get("source")
+        context = entry.get("context")
+        metadata = entry.get("metadata")
+
+        image.source_provider = str(source).strip()[:64] if source else None
+        image.source_context = str(context).strip()[:64] if context else None
+        image.source_metadata = metadata if isinstance(metadata, dict) else None

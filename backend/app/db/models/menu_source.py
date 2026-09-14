@@ -125,6 +125,16 @@ class MenuSource(Base, TimestampMixin):
         nullable=True,
     )
 
+    last_failure_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+
+    last_failure_reason: Mapped[str | None] = mapped_column(
+        String(128),
+        nullable=True,
+    )
+
     # --------------------------------------------------
     # FAILURE TRACKING
     # --------------------------------------------------

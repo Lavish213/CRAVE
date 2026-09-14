@@ -74,6 +74,10 @@ def apply_approved_submission(*, db: Session, submission: MenuSubmission) -> int
             "currency": DEFAULT_CURRENCY,
             "description": description,
             "source_type": "user_submitted",
+            "submission_id": submission.id,
+            "evidence_url": submission.evidence_url,
+            "evidence_image_id": submission.evidence_image_id,
+            "evidence_note": submission.evidence_note,
         }
 
         existing = (

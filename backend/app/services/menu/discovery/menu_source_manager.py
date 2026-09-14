@@ -200,12 +200,15 @@ class MenuSourceManager:
         if not source:
             return
 
+        now = _now()
         source.failure_count += 1
-        source.last_verified_at = _now()
+        source.last_verified_at = now
+        source.last_failure_at = now
+        source.last_failure_reason = (reason or "").strip()[:128] or None
 
         if source.failure_count >= FAILURE_THRESHOLD:
             source.is_active = False
-            source.invalidated_at = _now()
+            source.invalidated_at = now
             source.invalidation_reason = reason or f"failure_count>={FAILURE_THRESHOLD}"
             logger.warning(
                 "menu_source_demoted place_id=%s provider=%s url=%s reason=%s",

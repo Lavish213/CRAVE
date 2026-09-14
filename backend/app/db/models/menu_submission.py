@@ -64,6 +64,14 @@ class MenuSubmission(Base, TimestampMixin):
     # (see MenuItemSubmissionPayload), not re-validated here.
     items: Mapped[list] = mapped_column(JSON, nullable=False)
 
+    # Optional evidence shown to reviewers. A menu submission without this
+    # evidence is still allowed (some users type from a physical menu), but
+    # approved claims preserve these fields so future audits know what the
+    # moderator had in front of them.
+    evidence_url: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    evidence_image_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    evidence_note: Mapped[str | None] = mapped_column(String(500), nullable=True)
+
     status: Mapped[str] = mapped_column(
         String(16),
         nullable=False,

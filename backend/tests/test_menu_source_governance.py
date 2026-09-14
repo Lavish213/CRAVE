@@ -5,8 +5,10 @@ import uuid
 import pytest
 
 from app.db.models.city import City
+from app.db.models.menu_source import MenuSource
 from app.db.models.place import Place
 from app.db.session import SessionLocal
+from app.services.menu.discovery.menu_source_manager import menu_source_manager
 from app.services.menu.fetch.fetch_strategy_router import (
     STRATEGY_DIRECT,
     STRATEGY_FAIL_FAST,
@@ -60,6 +62,47 @@ def test_square_site_remains_direct_public_source():
     result = classify_fetch_strategy("https://house-coffee-co.square.site")
     assert result.strategy == STRATEGY_DIRECT
     assert result.blocked_reason is None
+
+
+def test_menu_source_records_latest_failure_reason_immediately(db, city):
+    place = Place(
+        name="Failure Reason Test",
+        city_id=city.id,
+        is_active=True,
+        website="https://example.test",
+    )
+    db.add(place)
+    db.commit()
+
+    source_url = "https://order.toasttab.com/online/failure-reason-test"
+    try:
+        menu_source_manager.record_discovery(
+            db=db,
+            place_id=place.id,
+            source_url=source_url,
+            provider="toast",
+            source_type="provider",
+            confidence=0.97,
+        )
+        db.commit()
+
+        menu_source_manager.record_failure(
+            db=db,
+            place_id=place.id,
+            source_url=source_url,
+            reason="access_blocked:provider_api_required",
+        )
+        db.commit()
+
+        row = db.query(MenuSource).filter(MenuSource.place_id == place.id).one()
+        assert row.failure_count == 1
+        assert row.last_failure_at is not None
+        assert row.last_failure_reason == "access_blocked:provider_api_required"
+        assert row.invalidation_reason is None
+    finally:
+        db.query(MenuSource).filter(MenuSource.place_id == place.id).delete()
+        db.query(Place).filter(Place.id == place.id).delete()
+        db.commit()
 
 
 def test_menu_orchestrator_does_not_fetch_provider_api_required_urls(

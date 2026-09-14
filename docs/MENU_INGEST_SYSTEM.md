@@ -107,6 +107,12 @@ provider, blocked reason, and auth requirement so Toast/ChowNow/provider walls
 can be excluded or intentionally sent to manual/provider-access queues before
 execution.
 
+`menu_sources` now preserves `last_failure_at` and `last_failure_reason` on
+every failed attempt, not only once the source is demoted. This is required for
+source dashboards and canary reviews: a Toast source that failed because it
+requires official provider access should be visibly different from a public HTML
+source that merely timed out.
+
 The same governance applies inside the advanced extractor:
 
 - direct provider extraction,
@@ -145,6 +151,23 @@ walls remain blocked until official access or reviewed manual submission.
 | Approve/reject a submitted menu | `POST /api/v1/moderation/menu-submissions/{id}/review` | Exists; admin gated. |
 | Add a brand-new place | App `add-spot` creates a `DiscoveryCandidate`; promotion creates the real `Place` later | Exists, but media/menu attachment to not-yet-promoted candidates is intentionally limited. |
 | Official Toast/ChowNow sync | Provider connector with restaurant/partner credentials | Not implemented. |
+
+Manual menu submissions preserve optional reviewer evidence:
+
+- `evidence_url` — official PDF/menu page/restaurant-owned source.
+- `evidence_image_id` — uploaded menu photo ID, when the evidence is an image.
+- `evidence_note` — short reviewer/user context.
+
+On approval, these fields are copied into the emitted `PlaceClaim.value_json`
+alongside `submission_id`, so later audits can trace a published manual menu
+back to the evidence the reviewer approved.
+
+Photo/source provenance uses the same rule. Third-party image candidates already
+arrive with provider metadata (for example Google Places `html_attributions`);
+`place_images` now keeps `source_provider`, `source_context`, and
+`source_metadata` internally when those candidates are materialized. This keeps
+attribution/provenance audit data available without changing public gallery API
+shape yet.
 
 ---
 

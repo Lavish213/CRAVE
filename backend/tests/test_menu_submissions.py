@@ -136,6 +136,51 @@ def test_submitted_by_is_server_set_from_auth_not_client_input(db, place):
     assert row.submitted_by == "real-user"
 
 
+def test_submission_preserves_evidence_for_review_and_claim_audit(db, place):
+    _as_user("submitter-evidence")
+    resp = client.post(
+        f"/api/v1/places/{place.id}/menu/submit",
+        json={
+            "items": _TWO_ITEMS,
+            "evidence_url": " https://example.com/menu.pdf ",
+            "evidence_image_id": "menu-photo-123",
+            "evidence_note": "Photo taken from the counter menu today.",
+        },
+    )
+    assert resp.status_code == 201
+    submission_id = resp.json()["id"]
+    assert resp.json()["evidence_url"] == "https://example.com/menu.pdf"
+    assert resp.json()["evidence_image_id"] == "menu-photo-123"
+
+    _as_user(ADMIN_ID)
+    detail = client.get(f"/api/v1/moderation/menu-submissions/{submission_id}")
+    assert detail.status_code == 200
+    assert detail.json()["evidence_url"] == "https://example.com/menu.pdf"
+    assert detail.json()["evidence_image_id"] == "menu-photo-123"
+    assert detail.json()["evidence_note"] == "Photo taken from the counter menu today."
+
+    approve = client.post(
+        f"/api/v1/moderation/menu-submissions/{submission_id}/review",
+        json={"decision": "approve"},
+    )
+    assert approve.status_code == 200
+
+    claim = (
+        db.query(PlaceClaim)
+        .filter(
+            PlaceClaim.place_id == place.id,
+            PlaceClaim.field == "menu_item",
+            PlaceClaim.source == "user_submission",
+        )
+        .first()
+    )
+    assert claim is not None
+    assert claim.value_json["submission_id"] == submission_id
+    assert claim.value_json["evidence_url"] == "https://example.com/menu.pdf"
+    assert claim.value_json["evidence_image_id"] == "menu-photo-123"
+    assert claim.value_json["evidence_note"] == "Photo taken from the counter menu today."
+
+
 # ---------------------------------------------------------------------------
 # Review queue — admin gated
 # ---------------------------------------------------------------------------
