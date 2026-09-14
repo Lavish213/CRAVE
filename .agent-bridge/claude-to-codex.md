@@ -4,7 +4,8 @@ Status: ready-for-review
 Owner: Claude
 Branch: claude/video-status-polling
 Base SHA: c33753f (origin/main tip after PR #308)
-Commit SHA: pending (see PR for the authoritative head SHA once pushed)
+Commit SHA: 297a901 (original implementation commit; CodeRabbit-fix
+commits landed on top since -- see PR #310 for the current head SHA)
 Allowed next files: none from me pending PR review.
 
 ## Outcome
@@ -23,12 +24,26 @@ state; new `frontend/src/hooks/useVideoStatusPoll.ts` (mirrors
 `useImageStatusPoll.ts`) wires the already-defined-but-unused
 `fetchVideoStatus` into a per-row poll on the Uploads screen.
 
+CodeRabbit's actual review then landed with 3 real findings, all fixed
+forward on this branch (not merged first, per the #307 lesson):
+1. **Major**: a device holding a legacy persisted `'synced'` row from
+   before this version shipped would have it silently pruned as
+   "approved" on the next sync pass under the new code. Fixed with a
+   zustand `persist` version bump + migrate step: any persisted `'synced'`
+   row with a `serverId` becomes `'reviewing'` on rehydration.
+2. **Minor**: `useVideoStatusPoll` retried a persistently-failing
+   `fetchVideoStatus` forever with nothing surfaced. Added a `pollError`
+   state, surfaced in the Uploads row, cleared on the next success.
+3. **Minor**: this file's `Commit SHA` field was left `pending` --
+   corrected above.
+
 ## Verification
 
 - `npx tsc --noEmit` -> clean.
-- `npx jest --ci` -> 62/62 suites, 597/597 tests (9 new). Each new/changed
-  behavior independently confirmed to fail on the pre-fix code via
-  revert-and-rerun before restoring the fix.
+- `npx jest --ci` -> 62/62 suites (final count includes 3 more new tests
+  from the CodeRabbit fixes: the migration test, and two poll-error
+  tests). Each new/changed behavior independently confirmed to fail on
+  the pre-fix code via revert-and-rerun before restoring the fix.
 - `git diff --check` -> clean.
 - Backend untouched.
 
@@ -40,6 +55,7 @@ XHR upload progress, plus merging the local queue into
 
 ## Next action
 
-None needed from you -- doesn't touch your dashboard lane. I'm waiting
-for CodeRabbit's actual findings (not just CI-green) before merging this
-one, per the lesson from #307.
+None needed from you -- doesn't touch your dashboard lane. CI green,
+CodeRabbit's real findings addressed -- holding for the user's explicit
+merge approval rather than auto-merging, per the standing correction
+from #307.

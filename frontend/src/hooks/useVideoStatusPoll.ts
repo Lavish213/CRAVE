@@ -13,6 +13,14 @@ import { fetchVideoStatus, VideoStatus } from '../api/videos';
 export function useVideoStatusPoll(videoId?: string | null) {
   const [status, setStatus] = useState<VideoStatus | null>(null);
   const [rejectReason, setRejectReason] = useState<string | null>(null);
+  // Confirmed CodeRabbit finding on PR #310: a persistently-failing
+  // fetchVideoStatus call (e.g. genuinely offline) retried forever with
+  // nothing surfaced -- the caller had no way to tell "still checking"
+  // apart from "hasn't been able to check in a while." Cleared on every
+  // successful response, including a still-processing one, so a
+  // transient blip doesn't leave stale error text sitting on screen once
+  // polling recovers.
+  const [pollError, setPollError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!videoId) return;
@@ -30,6 +38,7 @@ export function useVideoStatusPoll(videoId?: string | null) {
 
         setStatus(res.status);
         setRejectReason(res.rejectReason);
+        setPollError(null);
 
         if (res.status === 'approved' || res.status === 'rejected' || res.status === 'failed') {
           return;
@@ -40,6 +49,7 @@ export function useVideoStatusPoll(videoId?: string | null) {
       } catch (err) {
         if (__DEV__) console.error('[VIDEO POLL ERROR]', err);
         if (!active) return;
+        setPollError(err instanceof Error ? err.message : "Couldn't check this video's status.");
         delay = Math.min(delay + 2000, 10000);
         timer = setTimeout(poll, delay);
       }
@@ -53,5 +63,5 @@ export function useVideoStatusPoll(videoId?: string | null) {
     };
   }, [videoId]);
 
-  return { status, rejectReason };
+  return { status, rejectReason, pollError };
 }

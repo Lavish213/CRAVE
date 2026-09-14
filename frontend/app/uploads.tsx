@@ -85,7 +85,7 @@ function VideoRow({
   onDelete: (id: string) => void;
 }) {
   const applyVideoReviewResult = useVideoQueueStore((s) => s.applyVideoReviewResult);
-  const { status: reviewStatus, rejectReason } = useVideoStatusPoll(
+  const { status: reviewStatus, rejectReason, pollError } = useVideoStatusPoll(
     video.syncState === 'reviewing' ? video.serverId : null
   );
 
@@ -97,10 +97,19 @@ function VideoRow({
   }, [reviewStatus, rejectReason, video.id, applyVideoReviewResult]);
 
   const dismissible = isVideoDismissible(video.syncState);
+  // Confirmed CodeRabbit finding on PR #310: a video stuck 'reviewing'
+  // with no successful status check yet (offline, or the backend is
+  // unreachable) previously showed the same static "under review" copy
+  // forever, with nothing distinguishing "normally waiting on
+  // moderation" from "actually stuck." Surfacing the retry itself here --
+  // still non-terminal, still spinning -- rather than leaving it silent.
+  const showPollWarning = video.syncState === 'reviewing' && Boolean(pollError);
   const errorCopy =
     (video.syncState === 'failed' || video.syncState === 'rejected') && video.lastError
       ? video.lastError
-      : VIDEO_STATE_COPY[video.syncState];
+      : showPollWarning
+        ? "Couldn't check status — retrying…"
+        : VIDEO_STATE_COPY[video.syncState];
 
   return (
     <View style={styles.row}>
@@ -117,7 +126,15 @@ function VideoRow({
       </View>
       <View style={styles.rowBody}>
         <Text style={styles.rowLabel}>Video</Text>
-        <Text style={[styles.rowSub, dismissible ? styles.rowSubError : null]}>{errorCopy}</Text>
+        <Text
+          style={[
+            styles.rowSub,
+            dismissible ? styles.rowSubError : null,
+            showPollWarning ? styles.rowSubWarning : null,
+          ]}
+        >
+          {errorCopy}
+        </Text>
       </View>
       {video.syncState === 'failed' ? (
         <TouchableOpacity
@@ -354,6 +371,7 @@ const styles = StyleSheet.create({
   rowLabel: { fontSize: 15, fontWeight: '600', color: Colors.text },
   rowSub: { fontSize: 12, color: Colors.textSecondary },
   rowSubError: { color: Colors.error },
+  rowSubWarning: { color: Colors.warning },
   divider: { height: 1, backgroundColor: Colors.border, marginLeft: 56 },
   actionButton: {
     paddingHorizontal: Spacing.md,

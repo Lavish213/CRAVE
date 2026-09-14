@@ -216,5 +216,41 @@ describe('UploadsScreen', () => {
       render(<UploadsScreen />);
       expect(mockedFetchVideoStatus).not.toHaveBeenCalled();
     });
+
+    it('surfaces a persistent polling failure instead of leaving the row silently stuck on "under review"', async () => {
+      // Confirmed CodeRabbit finding on PR #310: useVideoStatusPoll retried
+      // a failing fetchVideoStatus call forever with nothing surfaced --
+      // this row must show something once a check actually fails, not
+      // stay indistinguishable from a normal in-progress review.
+      mockedFetchVideoStatus.mockRejectedValue(new Error('Network request failed'));
+      useVideoQueueStore.setState({
+        videos: [makeVideo({ syncState: 'reviewing', serverId: 'server-1' })],
+      });
+
+      const { findByText, queryByText } = render(<UploadsScreen />);
+      expect(await findByText("Couldn't check status — retrying…")).toBeTruthy();
+      // Not the normal in-progress copy while a check is actively failing.
+      expect(queryByText('Uploaded — under review')).toBeNull();
+    });
+
+    it('clears a prior polling failure once a status check succeeds again', async () => {
+      mockedFetchVideoStatus.mockRejectedValueOnce(new Error('Network request failed'));
+      mockedFetchVideoStatus.mockResolvedValueOnce({
+        id: 'server-1', status: 'processing', rejectReason: null, durationMs: null,
+        foodScore: null, thumbnailUrl: null, videoUrl: null,
+      });
+      useVideoQueueStore.setState({
+        videos: [makeVideo({ syncState: 'reviewing', serverId: 'server-1' })],
+      });
+
+      const { findByText } = render(<UploadsScreen />);
+      expect(await findByText("Couldn't check status — retrying…")).toBeTruthy();
+
+      // The hook's own real backoff (2s) elapses before its retry fires --
+      // waited out in real time here (a generous findByText timeout)
+      // rather than fake timers, which would fight RTL's own internal
+      // polling for the same clock.
+      expect(await findByText('Uploaded — under review', {}, { timeout: 4000 })).toBeTruthy();
+    }, 10000);
   });
 });

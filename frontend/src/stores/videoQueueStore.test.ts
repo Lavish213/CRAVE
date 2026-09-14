@@ -663,3 +663,50 @@ describe('videoQueueStore', () => {
     }
   });
 });
+
+// Its own top-level describe (not nested in the main one above) since it
+// needs to control what AsyncStorage.getItem resolves to *before* the
+// store module is first required, rather than reusing the shared
+// beforeEach's fixed empty-storage setup.
+describe('videoQueueStore persisted-store migration', () => {
+  it('migrates a legacy persisted "synced" video (uploaded before this version tracked review outcomes) to reviewing, not silently treating it as approved', async () => {
+    // Confirmed CodeRabbit finding on PR #310: a device already holding a
+    // 'synced' row from before this version shipped would otherwise have
+    // it pruned as "approved" on the very next sync pass -- with no
+    // chance to ever learn of a real rejection the backend might still
+    // hand back for it.
+    jest.resetModules();
+    const AsyncStorageModule = require('@react-native-async-storage/async-storage').default;
+    const legacyPersistedState = JSON.stringify({
+      state: {
+        videos: [
+          {
+            id: 'legacy-1', serverId: 'server-legacy', localUri: 'file:///legacy.mp4',
+            placeId: 'place-1', templateId: null, contentType: 'video/mp4', uploadedBy: 'user-a',
+            syncState: 'synced', attemptCount: 0, lastAttemptAt: null, lastError: null, createdAt: 1,
+          },
+          // A video with no serverId was never actually uploaded under any
+          // version -- shouldn't exist in practice, but must pass through
+          // unmigrated (not force-converted into a nonsensical 'reviewing'
+          // state with nothing to poll).
+          {
+            id: 'legacy-2', serverId: null, localUri: 'file:///legacy2.mp4',
+            placeId: 'place-1', templateId: null, contentType: 'video/mp4', uploadedBy: 'user-a',
+            syncState: 'recorded', attemptCount: 0, lastAttemptAt: null, lastError: null, createdAt: 2,
+          },
+        ],
+      },
+      version: 0,
+    });
+    (AsyncStorageModule.getItem as jest.Mock).mockResolvedValueOnce(legacyPersistedState);
+
+    const { useVideoQueueStore: migratedStore } = require('./videoQueueStore');
+    for (let i = 0; i < 15; i++) {
+      await Promise.resolve();
+    }
+
+    const videos = migratedStore.getState().videos;
+    expect(videos.find((v: { id: string }) => v.id === 'legacy-1')?.syncState).toBe('reviewing');
+    expect(videos.find((v: { id: string }) => v.id === 'legacy-2')?.syncState).toBe('recorded');
+  });
+});

@@ -311,6 +311,31 @@ export const useVideoQueueStore = create<VideoQueueStore>()(
     {
       name: 'crave-video-queue',
       storage: createJSONStorage(() => AsyncStorage),
+      // Confirmed CodeRabbit finding on PR #310: before this version,
+      // 'synced' meant only "upload confirmed" -- a device that already
+      // has a persisted 'synced' row from before this update shipped
+      // would, on the first rehydration under the new code, be treated
+      // as already-approved (the new meaning of 'synced') and pruned on
+      // the very next sync pass, with no chance to ever see a real
+      // rejection the backend might still hand back for it. Migrating
+      // any such legacy row (uploaded, so it has a serverId) to
+      // 'reviewing' lets the normal poll path resolve its actual outcome
+      // instead of silently assuming success.
+      version: 1,
+      migrate: (persistedState: unknown, version: number) => {
+        const state = (persistedState ?? {}) as { videos?: unknown };
+        const videos = Array.isArray(state.videos) ? state.videos : [];
+        if (version >= 1) return { ...state, videos };
+        return {
+          ...state,
+          videos: videos.map((v) => {
+            const video = v as QueuedVideo;
+            return video && video.syncState === 'synced' && video.serverId
+              ? { ...video, syncState: 'reviewing' as const }
+              : video;
+          }),
+        };
+      },
     }
   )
 );

@@ -4,7 +4,10 @@ Status: implementing
 Owner: Claude
 Branch: claude/video-status-polling
 Base SHA: c33753f (origin/main tip after PR #308)
-Commit SHA: pending
+Commit SHA: 297a901 (original implementation commit; this entry has since
+been amended in place with CodeRabbit-fix commits on top -- see PR #310
+for the current head SHA, not recorded here to avoid a commit whose
+contents include its own hash)
 Scope: offline-upload UX follow-up #2 of 4 (per PR #307/#308's own
 "remaining follow-ups" list) -- per-video backend moderation status
 polling. `videoQueueStore.ts`'s `syncOne` previously jumped straight from
@@ -49,9 +52,33 @@ tuning exactly; moderation review can genuinely take longer than a user
 keeps the Uploads screen open, in which case polling simply stops on
 unmount and resumes next time the screen is opened (no background
 polling attempted -- consistent with `useImageStatusPoll`'s own scope).
-Next action: open PR, request CodeRabbit, verify actual findings land
-(not just the CI-green moment) before merging -- do not repeat #307's
-premature-merge mistake.
+
+**CodeRabbit review, applied before merge (learned from #307's mistake --
+waited for the actual findings this time instead of merging on green CI
+alone):** 3 real findings, all fixed forward on this same branch rather
+than merged first:
+- **Major**: a device already holding a legacy persisted `'synced'` row
+  from before this version shipped would have it pruned as "approved" on
+  the very next sync pass under the new code -- silently losing any
+  chance to see a real rejection the backend might still hand back for
+  it. Fixed with a zustand `persist` `version`/`migrate` bump: any
+  persisted `'synced'` row with a `serverId` is converted to `'reviewing'`
+  on rehydration; one with no `serverId` (never actually uploaded) passes
+  through unmigrated. New regression test confirmed to fail without the
+  migrate config.
+- **Minor**: `useVideoStatusPoll` retried a persistently-failing
+  `fetchVideoStatus` forever with nothing surfaced -- a genuinely-stuck
+  video looked identical to a normally-still-processing one. Added a
+  `pollError` state (cleared on the next successful response), surfaced
+  in the Uploads row as "Couldn't check status — retrying…" in place of
+  the static in-progress copy. Two new regression tests (persistent
+  failure surfaces the message; a later successful check clears it),
+  both confirmed to fail on the pre-fix hook.
+- **Minor**: this file's `Commit SHA` field was left `pending` after the
+  implementation commit landed -- corrected above.
+Next action: none from me -- CI green, CodeRabbit's real findings all
+addressed. Holding for the user's explicit merge approval rather than
+auto-merging, per the standing correction from #307.
 
 ---
 
