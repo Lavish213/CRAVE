@@ -9,6 +9,8 @@ import { fireEvent, render } from '@testing-library/react-native';
 import SettingsScreen from '../app/settings';
 import { useCityStore } from '../src/stores/cityStore';
 import { useAuthStore } from '../src/stores/authStore';
+import { useVideoQueueStore, QueuedVideo } from '../src/stores/videoQueueStore';
+import { usePostingDraftStore, PostingDraft } from '../src/stores/postingDraftStore';
 import { deleteMyAccount } from '../src/api/social';
 
 const mockPush = jest.fn();
@@ -63,10 +65,43 @@ describe('SettingsScreen', () => {
     jest.spyOn(Linking, 'openURL').mockResolvedValue(true);
     jest.spyOn(Linking, 'openSettings').mockResolvedValue(undefined);
     useCityStore.setState({ selectedCity: SF_CITY, cities: [SF_CITY] });
+    useVideoQueueStore.setState({ videos: [] });
+    usePostingDraftStore.setState({ drafts: [] });
     mockedUseAuthStore.mockImplementation((selector: (s: unknown) => unknown) =>
       selector({ user: { id: 'user-1', email: 'a@b.com' }, signOut: mockSignOut }),
     );
     mockGetPushPermissionStatus.mockResolvedValue('undetermined');
+  });
+
+  it('navigates to the Uploads screen, showing no count when nothing is pending', () => {
+    const { getByText, getByLabelText } = render(<SettingsScreen />);
+    expect(getByText('Queued and failed photo/video uploads')).toBeTruthy();
+
+    fireEvent.press(getByLabelText('Uploads'));
+    expect(mockPush).toHaveBeenCalledWith('/uploads');
+  });
+
+  it('shows a pending count combining this user\'s queued videos and drafts, excluding synced videos and other users\'', () => {
+    const video: QueuedVideo = {
+      id: 'v1', serverId: null, localUri: 'file:///v1.mp4', placeId: 'place-1', templateId: null,
+      contentType: 'video/mp4', uploadedBy: 'user-1', syncState: 'failed', attemptCount: 5,
+      lastAttemptAt: Date.now(), lastError: 'Network Error', createdAt: Date.now(),
+    };
+    const syncedVideo: QueuedVideo = { ...video, id: 'v2', syncState: 'synced' };
+    const otherUserVideo: QueuedVideo = { ...video, id: 'v3', uploadedBy: 'someone-else' };
+    useVideoQueueStore.setState({ videos: [video, syncedVideo, otherUserVideo] });
+
+    const draft: PostingDraft = {
+      id: 'd1', ownerId: 'user-1', localUri: 'file:///d1.jpg', kind: 'photo', mimeType: 'image/jpeg',
+      fileSize: 100, restaurantRef: { type: 'unresolved' }, outcome: 'pending', lastError: null,
+      createdAt: Date.now(),
+    };
+    const otherUserDraft: PostingDraft = { ...draft, id: 'd2', ownerId: 'someone-else' };
+    usePostingDraftStore.setState({ drafts: [draft, otherUserDraft] });
+
+    const { getByText } = render(<SettingsScreen />);
+    // 1 failed video (not the synced or other-user one) + 1 draft = 2.
+    expect(getByText('2 pending')).toBeTruthy();
   });
 
   it('shows the current city, and falls back to "None selected" when there is none', () => {

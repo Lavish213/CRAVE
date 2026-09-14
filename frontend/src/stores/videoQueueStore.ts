@@ -192,6 +192,21 @@ export const useVideoQueueStore = create<VideoQueueStore>()(
         if (syncInFlight) return;
         syncInFlight = true;
         try {
+          // A video that synced successfully in a *prior* pass has already
+          // had its local file deleted (see syncOne below) and nothing in
+          // the app ever reads a 'synced' entry back out of this store
+          // (PlaceVideoGallery doesn't consume this store at all) -- so
+          // without this, every successful upload left a dead row in the
+          // AsyncStorage-persisted `videos` array forever, growing without
+          // bound. Pruned here, at the *start* of the pass rather than the
+          // instant syncOne marks a video 'synced', so a caller that just
+          // awaited runSyncPass and inspected the video it synced this same
+          // call (see videoQueueStore.test.ts) still finds it.
+          const hasStaleSynced = get().videos.some((v) => v.syncState === 'synced');
+          if (hasStaleSynced) {
+            set({ videos: get().videos.filter((v) => v.syncState !== 'synced') });
+          }
+
           const now = Date.now();
           const pending = get().videos.filter(
             (v) =>

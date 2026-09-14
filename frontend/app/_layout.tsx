@@ -238,6 +238,7 @@ function RootLayout() {
           <Stack.Screen name="leaderboard" options={{ headerShown: false }} />
           <Stack.Screen name="taste-profile/[userId]" options={{ title: 'Taste Profile' }} />
           <Stack.Screen name="settings" options={{ title: 'Settings' }} />
+          <Stack.Screen name="uploads" options={{ title: 'Uploads' }} />
           <Stack.Screen name="legal/privacy" options={{ title: 'Privacy Policy' }} />
           <Stack.Screen name="legal/terms" options={{ title: 'Terms of Service' }} />
         </Stack>
