@@ -1,331 +1,727 @@
-# CRAVE Screen Contract — Feed / Decision Session
+# CRAVE Screen Contract — Feed / Decision Session V2
 
-**Status:** Draft contract, pending audit/freeze (2026-09-07)
-**Reconciliation basis:** `(tabs)/index.tsx` today is a tiered
-structural feed (Crave Pick/Gem/Solid/New catalog-percentile sections,
-`FlashList`-backed, real skeleton/error/empty states) with a Decision
-Session block already live at the top per the shipped
-`useDecisionSession` hook and backend — but, per the earlier screen
-audit, that block **competes with the main feed rather than
-integrating into it.** This contract reconciles the two into one
-hierarchy and makes an explicit call the prior audit only flagged:
-**catalog-percentile-tier section headers (CRAVE Pick/Gem/Solid/New as
-the feed's primary organizing structure) are superseded by Discovery's
-reason-coded rails.** The tier *badge* stays, per card, as a catalog
-fact (Design System §6) — the tier is no longer what organizes the
-screen.
+**Status:** DESIGN CONTRACT — implementation not started
+**Date:** 2026-09-08
+**Architecture dependency:** `CRAVE_FEED_V2_MASTER_ARCHITECTURE.md`
+**Screen:** `(tabs)/index.tsx`
 
 ---
 
 ## 1. Purpose
 
-Feed is the "decide" surface (`CRAVE_ROUTE_FLOW_MAP.md` §2) — the
-default opening tab. It answers "what should I eat right now" first,
-and "what else might I like" second, in that structural order, never
-the reverse.
+Feed is CRAVE's default **decide** surface.
+
+Its first job is to answer:
+
+> **What should I eat right now?**
+
+Its second job is to expose a small amount of useful discovery only when that discovery deserves attention.
+
+Feed is not a restaurant directory, popularity board, social timeline, or engagement-maximizing content stream.
+
+Canonical principle:
+
+> **Home shows the next useful decision, not everything CRAVE knows.**
+
+---
 
 ## 2. User objective
 
-Reach a confident decision (act, save, or a considered no) with as
-little browsing as possible; secondarily, discover something genuinely
-new without having to ask for it.
+The user should be able to:
+
+1. understand CRAVE's strongest current answer;
+2. understand why it fits;
+3. compare at most a small number of meaningfully different alternatives;
+4. act, save, reject, or deliberately explore;
+5. finish the decision without being pushed into more browsing.
+
+A confident `no` is a valid outcome.
+
+A short successful session is better than a long indecisive one.
+
+---
 
 ## 3. Entry points
 
-Default tab on app open. Also reached after completing an action
-elsewhere (Place Detail exit, Rank Comparison "done") via normal tab
-navigation — no special re-entry framing.
+- default tab on app open;
+- normal tab navigation from Search, Craves, Rank, Profile, or Place Detail;
+- return from Place Detail after considering a Decision Session recommendation;
+- return from an action that does not itself complete the Decision Session.
+
+Feed must not require authentication merely to view recommendations.
+
+---
 
 ## 4. Exit points
 
-Tap-through to Place Detail (§9 of that contract's Decision-Session/
-Discovery entry variants), tap "Map these picks" → Contextual Map
-(Route & Flow Map F9.1), tap into the social rail's "see all" → the
-temporary `friends-feed.tsx` scaffolding (Route & Flow Map §1.1) until
-migration completes, or **no action at all** — a first-class success
-terminus (F14), never prompted against.
+Primary exits:
+
+- `View Place` -> Place Detail;
+- Directions through Place Detail/current action contract;
+- Save -> stays in context;
+- Search -> explicit intent/refinement;
+- Craves -> saved-intent resolution;
+- contextual Map -> current candidate set where supported;
+- Explore More -> explicit Explore Mode;
+- no further action -> valid success.
+
+The screen may also enter a **completion state** without navigation.
 
 ---
 
 ## 5. First viewport
 
-Persistent context chip (top, always visible, tap-to-expand) +
-Decision Session's first card(s) — a first-time viewer sees CRAVE's
-actual recommendation, not a generic banner, before any scrolling.
+The first viewport must contain, in order:
+
+1. CRAVE identity/header;
+2. a compact **Decision Context** control/summary;
+3. `Tonight's answer` / equivalent Decision Session framing;
+4. one dominant Best Fit candidate when available;
+5. one concise evidence-backed `Why this fits` reason;
+6. operational truth relevant to acting now;
+7. primary `View Place` action;
+8. Save as a secondary lightweight action.
+
+Best Fit must receive more visual weight than Safe Bet/Wildcard.
+
+Home must not open with:
+
+- a generic filter drawer;
+- category chips dominating the viewport;
+- a social feed;
+- a directory list;
+- a `Trending` module;
+- a greeting that competes with the decision.
 
 ---
 
-## 6. Information hierarchy & section order
+## 6. Canonical information hierarchy
 
-**Always present:**
-1. **Context chip** — current inferred/set context summary ("Solo ·
-   Dinner · Nearby"), always visible, tap-to-expand into the
-   lightweight override (Just me/Date/Friends/Family, ± budget/
-   distance).
-2. **Decision Session** — 0-3 cards (`PlaceCard` with `role` set),
-   never padded to a fixed count. Honestly labeled lower-confidence
-   when applicable (cold start, thin local coverage).
+### 6.1 Decision Context
 
-**Conditional, in this order when present:**
-3. **Discovery rails** — reason-coded (Design System §5's Reason Block
-   grammar drives each rail's header via `SectionHeader`), each rail
-   present only when it has real, personalized content: "Because you
-   loved X," a hole-in-the-wall rail, "From your Craves." **Never** a
-   raw catalog-tier section ("CRAVE Pick," "Hidden Gem") as a rail
-   header — those badges still render per-card inside any rail, they
-   no longer organize the screen.
-4. **Discovery bounded mixed stream** — the finite tail beyond named
-   rails, with a real end state ("That's everything new today"), never
-   an infinite scroll.
-5. **Social rail** — small, personalized (followed-user evidence
-   weighted, never raw-chronological), present only with real content;
-   absent entirely otherwise, never padded with unrelated posts to fill
-   the slot.
+Examples:
+
+- `Dinner · Nearby · Open now`
+- `Lunch · Oakland · Balanced`
+
+This is a compact summary of real/inferred/set context.
+
+It replaces the mental model of a generic directory filter on Home.
+
+Tapping it opens only supported context controls.
+
+Unsupported controls must not appear as fake affordances.
+
+### 6.2 Best Fit
+
+Dominant visual candidate.
+
+Contains:
+
+- food-first media when real media exists;
+- restaurant identity;
+- `BEST FIT` role;
+- one concise evidence-backed reason;
+- relevant operational metadata;
+- `View Place`;
+- Save.
+
+### 6.3 Safe Bet / Wildcard
+
+If legitimately available, present as subordinate alternatives rather than three equal hero cards.
+
+Each role must be semantically qualified by the backend.
+
+If a role has no valid candidate, omit it.
+
+### 6.4 Optional supporting module
+
+After the Decision Set, at most a small number of supporting modules may appear when evidence supports them.
+
+Examples:
+
+- From your Craves;
+- Worth stretching for;
+- Something different;
+- Saved and nearby;
+- Because you loved X.
+
+The exact module vocabulary is generated from approved composition-policy types, not improvised by frontend heuristics.
+
+### 6.5 Explore More
+
+Explore is an explicit transition.
+
+The screen must not silently continue the Decision Session into an unbounded general feed.
 
 ---
 
 ## 7. Component tree
 
-```
+```text
 FeedScreen
-├─ ContextChip                                    (new — Component Registry §3.6)
-├─ DecisionSession
-│   └─ PlaceCard × 0-3                             (existing, role set — Component Registry §2 A)
-│       └─ ReasonBlock (terse)                      (Component Registry §3.1, shared w/ Place Detail)
-├─ DiscoveryRails
-│   └─ SectionHeader + PlaceCard/PlaceCardCompact × N   (existing components, reason-coded headers)
-├─ DiscoveryStreamTail                              (bounded, FlashList — existing pattern, extended)
-└─ SocialRail                                       (sourced from friends-feed's existing query logic, relocated)
+├─ FeedHeader
+│  ├─ Wordmark
+│  └─ Activity affordance when globally required
+├─ DecisionContextControl
+├─ DecisionMode
+│  ├─ DecisionHeading
+│  ├─ BestFitHero
+│  │  ├─ FoodMedia / PlaceIdentityFallback
+│  │  ├─ PlaceIdentity
+│  │  ├─ DecisionRole
+│  │  ├─ ReasonLine / ConfidenceStatement
+│  │  ├─ OperationalStatus
+│  │  ├─ ViewPlaceAction
+│  │  └─ SaveAction
+│  ├─ DecisionAlternatives
+│  │  ├─ SafeBetCard?
+│  │  └─ WildcardCard?
+│  ├─ DecisionRecovery?
+│  └─ FeedCompletionState?
+├─ SupportingModule? × small bounded count
+└─ ExploreMoreAction?
 ```
+
+Where UI V2 product components already exist and are semantically compatible, reuse them rather than building duplicate Feed-only components.
+
+---
 
 ## 8. Component reuse / new components
 
-**Reused, unchanged:** `PlaceCard` (Decision Session and Discovery
-cards alike — no separate card type), `PlaceCardCompact`,
-`SectionHeader` (rail headers), `SkeletonCard`/`EmptyState`/
-`ErrorState`, `CitySelectorStrip` (location-denied fallback, §16),
-`TierBadge` (per-card catalog fact only — never a section header, per
-this contract's central reconciliation).
+### Reuse where compatible
 
-**New:** the Context Chip (Component Registry §3.6) and the Reason
-Block renderer (§3.1, shared with Place Detail's Decision Strip/Why
-This Fits — one grammar, not a third template).
+- UI V2 text/button/surface/image primitives;
+- `FoodMedia`;
+- `PlaceIdentityFallback`;
+- `ReasonLine`;
+- `OperationalStatus`;
+- `ConfidenceStatement`;
+- `SaveAction`;
+- `DecisionRecovery` where semantics fit;
+- existing auth gate;
+- Place Detail prefetch behavior;
+- true viewability instrumentation;
+- existing toast/haptic conventions.
 
-**Retired from this screen's primary structure:** `TrendingStrip.tsx`
-stays dormant (Component Registry §2 A) — this contract does not
-revive it; Discovery's reason-coded rails are the superseding
-mechanism, not a restyled trending strip.
+### New or Feed-specific composition
 
----
+- `DecisionContextControl`;
+- `BestFitHero` if existing result hero cannot express Feed semantics without conditional overload;
+- compact role alternatives;
+- `FeedCompletionState`;
+- supporting-module renderer tied to backend composition types.
 
-## 9. Context chip behavior
+### Must not be reused as semantic shortcuts
 
-Adaptive, not interrogative (`CRAVE_ROUTE_FLOW_MAP.md` F1/F2): CRAVE
-asks for context via the chip's expansion only when uncertainty is
-materially high and the answer would change the recommendation set —
-never more than once per session before recommending. The chip always
-shows the current inferred-or-set state; changing it re-queries
-Decision Session and Discovery, it does not require a screen reload.
-
----
-
-## 10. Decision Session behavior
-
-Per Route & Flow Map F2 exactly — this contract does not re-derive it,
-only cites it: card tap carries role/reason/session-id into Place
-Detail (F2.1); reject replaces only that slot or shows nothing rather
-than a padded weak pick (F2.2); the primary commit action routes
-through the adaptive-CTA priority already specified in the Place Detail
-contract (F2.3); two consecutive full-set rejections trigger an
-explicit "what's off tonight" prompt instead of silent regeneration
-(F2.4).
+- `gem` tier as `hole-in-the-wall`;
+- `TrendingStrip` as discovery;
+- generic FilterSheet as the primary Home context model.
 
 ---
 
-## 11. Cold start
+## 9. Decision Context behavior
 
-Per `CRAVE_ROUTE_FLOW_MAP.md` F1.1-F1.2: Decision Session appears
-immediately for a new/anonymous user, honestly labeled lower-confidence,
-powered by city-popularity fallback plus whatever anonymous-session
-evidence exists (Privacy Matrix D2). The account gate (F10) triggers
-only at the first stateful action (Save, a full Decision Session
-commit, a rail item's Save) — never at page load, never to merely view
-Feed.
+The control summarizes supported current context and exposes only material overrides.
 
----
+Context may include, once implementation supports it:
 
-## 12. Discovery rail sourcing and firewall
+- area/location;
+- meal/time context;
+- novelty mode;
+- soft distance/travel preference;
+- price/value tendency;
+- hard dietary constraints.
 
-Each rail's content is evidence-driven (dish-first vs. restaurant-first
-per Evidence Hierarchy §3.16's scope rule), reads the recommendation
-request/context contract (Data & State Map §2) scoped to Discovery, and
-is subject to the same evidence-contamination firewall as everything
-else: no `commercial_affiliated` content in any rail, no rail organized
-around raw popularity, ever (Evidence Hierarchy §7).
+### Rules
 
----
-
-## 13. Social rail sourcing
-
-Sourced from the same query logic `friends-feed.tsx` uses today
-(chronological, small, "your friend just ranked X"), reweighted here to
-be personalized rather than purely chronological, per the Route & Flow
-Map's resolved judgment call (§1.1: content migrates here, the
-standalone screen becomes a temporary "see all" scaffold, then is
-removed once this rail and Activity both exist). `source_type`
-(`followed_user`, not `commercial_affiliated` or `imported_external`)
-is enforced the same way it is on Place Detail (Data & State Map §7).
+- no more than one clarifying question before recommending when uncertainty materially changes the result;
+- inferred context must remain editable;
+- hard constraints stay visibly protected;
+- changing context re-runs the Decision Session;
+- current-session rejection/commitment state resets only according to the approved session lifecycle;
+- context edits do not silently rewrite durable Taste Profile.
 
 ---
 
-## 14. State coverage table
+## 10. Decision Session roles
 
-| State | Behavior |
+### Best Fit
+
+Strongest supported overall decision under personal fit, current context, constraints, operational viability, evidence confidence, and resolved state.
+
+### Safe Bet
+
+Strong established fit with lower uncertainty/high confidence.
+
+Safe Bet is not synonymous with popular, chain, or highest percentile.
+
+### Wildcard
+
+Relevant, evidence-backed stretch beyond the user's established norm.
+
+Wildcard is not random diversity.
+
+### Missing role
+
+Omit it.
+
+Never pad to three.
+
+---
+
+## 11. Recommendation explanation
+
+Every role card may show at most a concise reason in the first presentation layer.
+
+Reason must answer:
+
+> **Why this, for me, now?**
+
+Examples of valid source concepts:
+
+- repeated high Rank outcomes for related cuisine/attributes;
+- collaborative-filter support plus local/context fit;
+- saved intent;
+- proximity inside normal/specified range;
+- explicit novelty choice;
+- a recent explicit preference correction.
+
+Prohibited explanation behavior:
+
+- hallucinated personal facts;
+- opaque percentages such as `98% match`;
+- `perfect for you`;
+- `hidden gem` without evidence for that concept;
+- treating missing data as negative evidence.
+
+---
+
+## 12. Confidence semantics
+
+Confidence describes CRAVE's evidence about the match, not restaurant quality.
+
+Examples:
+
+- `Strong confidence`;
+- `Still learning your Thai preferences`;
+- `Few matching rankings yet`.
+
+Operational uncertainty uses separate language:
+
+- `Hours not recently verified`;
+- `Limited menu information`;
+- `Photo unavailable`.
+
+Do not collapse every uncertainty into `Still learning`.
+
+---
+
+## 13. Rejection behavior
+
+### Single rejection
+
+Rejecting a candidate:
+
+- records session-level negative intent;
+- does not automatically create a permanent dislike;
+- replaces only that role when another candidate legitimately qualifies;
+- may leave the role empty.
+
+### Full-set rejection
+
+A full-set rejection means the current recommendation framing did not work.
+
+### Two consecutive full-set rejections
+
+Stop regeneration.
+
+Show an explicit recovery interaction such as:
+
+> What's off tonight?
+
+Then allow supported context refinement or route to Search.
+
+Do not silently produce another three restaurants indefinitely.
+
+---
+
+## 14. Commitment and completion
+
+When the user commits to a restaurant, Decision Mode ends.
+
+Canonical completion state:
+
+### You're set
+
+- chosen restaurant;
+- relevant context;
+- Directions / View Place actions;
+- Save state if relevant;
+- optional explicit `Explore anyway` action.
+
+The selected restaurant does not get replaced by another recommendation because Home needs content.
+
+Supporting discovery should recede.
+
+---
+
+## 15. Explore Mode
+
+Explore is explicitly entered through `Explore more` or equivalent.
+
+It may contain a bounded/paginated discovery list using stable cursor snapshots.
+
+Rules:
+
+- no semantic leakage from Explore ordering into Best Fit labels;
+- no raw popularity/trending framing;
+- finite/explicit pagination rather than an attention trap;
+- exact availability remains discoverable via Search even when Home shows only a few options.
+
+Canonical principle:
+
+> **Reduce simultaneous competition, not restaurant availability.**
+
+---
+
+## 16. Supporting module policy
+
+Supporting modules come from backend composition policy.
+
+Frontend must not construct them by filtering whatever datasets happen to be loaded.
+
+A module requires:
+
+- an approved module type;
+- a truthful reason;
+- enough real candidates;
+- no duplication against Decision Set;
+- no hard-constraint conflict;
+- no resolved-state conflict.
+
+If none qualify, render none.
+
+---
+
+## 17. Cold start
+
+### Anonymous / no durable taste
+
+Feed still shows a Decision Session using honest lower-confidence fallback from supported city/location/catalog evidence.
+
+### Signed in but sparse Rank history
+
+Use what is known:
+
+- onboarding reactions when available;
+- saves/Craves;
+- location/city;
+- hard constraints;
+- coarse affinity/novelty inputs that actually exist.
+
+Never fabricate personalization language.
+
+Account creation is required only at the first stateful action according to the global auth-gate contract.
+
+---
+
+## 18. State coverage
+
+| State | Required behavior |
 |---|---|
-| Anonymous | Decision Session + Discovery both work, lower-confidence labeled per cold-start rules (§11). Social rail is **N/A** — following requires an account, nothing to source. |
-| Authenticated | Full hierarchy (§6). |
-| Loading (initial) | `SkeletonCard` list matching the eventual card layout. |
-| Success | The relationship in §6. |
-| Empty (whole-screen — "nothing new") | A real, named, honest state ("Nothing new fits right now — check Search or your Craves"), not a blank screen and not filler content manufactured to avoid looking empty. |
-| Partial data (some rails have content, others don't) | Handled entirely by §6's conditional presence — not a distinct state. |
-| Stale | Last-known Decision Session/Discovery content + honest timestamp (Route & Flow Map F11). |
-| Offline | Same as stale, from local cache; rejections/context-chip changes queue until reconnect. |
-| Permission-denied (location) | `CitySelectorStrip` manual area selection substitutes; Feed remains fully functional (F12). |
-| Low-confidence | Decision Session's own honest "still learning" labeling (§11); never hidden, never faked confident. |
-| Error (fetch failure) | `ErrorState` + retry. |
-| Screen-specific: two consecutive full-set rejections | Explicit "what's off tonight" prompt (§10, F2.4) replaces silent regeneration. |
+| Anonymous | Useful lower-confidence Decision Mode, no fake personal claims. |
+| Authenticated | Full evidence-aware Decision Mode. |
+| Initial loading | Skeleton matching final hierarchy, not generic spinner-only layout. |
+| Refreshing | Preserve current content while refreshing when safe. |
+| Success | Decision hierarchy defined in §§5-6. |
+| Thin candidate pool | Render fewer roles honestly. |
+| Low personalization confidence | Specific confidence language; still provide best supported answer. |
+| No qualifying decision | Honest recovery to context/Search/Craves; no filler. |
+| Single role rejected | Replace only if a real replacement qualifies. |
+| Two full-set rejections | Explicit recovery prompt, no endless regeneration. |
+| Committed | `You're set` completion state. |
+| Location denied | Manual area/city fallback; Feed remains usable. |
+| Location unavailable | Preserve selected/manual area or ask for area, not a broken screen. |
+| Stale operational data | Show stale/unknown truth separately from recommendation confidence. |
+| Missing media | Typography-led identity/fallback, no fake photo. |
+| Offline | Last-known content where cache supports it; no false claim that context/rejection synced if it did not. |
+| Network error | Clear retry path; do not mislabel as empty/no matches. |
+| Hard-constraint zero result | Name protected constraint/recovery; never silent relaxation. |
+| No supporting modules | Omit them cleanly. |
+| Explore end | Real end state or bounded Show More behavior. |
 
 ---
 
-## 15. Cross-cutting fields
+## 19. Data reads
 
-**Interactions:** tap card → Place Detail; tap reject → §10; tap
-context chip → expand/override; tap "Map these picks" → Contextual Map;
-scroll → paginate the bounded Discovery tail, never infinitely.
+Feed V2 may read through approved backend composition services:
 
-**Navigation/transitions:** tab-level screen, no internal stack of its
-own beyond the drill-ins named in §4.
+- RecommendationContext;
+- local/catalog candidate retrieval;
+- collaborative-filter recommendations;
+- Rank history;
+- VisitEvidence;
+- saves/Craves;
+- resolved operational PlaceTruth where applicable;
+- recommendation exposure/resolved state;
+- session state.
 
-**Data reads:** recommendation request/context contract (Data & State
-Map §2, three scoped views: Decision Session, Discovery, social rail's
-followed-user query), constraint contract (§3, dietary hard-exclusion
-always applied), social evidence contract (§7).
-
-**Data writes/evidence emitted:** impression logging (Tier 6 passive,
-Evidence Hierarchy §3.20) for every card shown; click-through with
-role/position, `surface=decision_session` or `surface=discovery`
-respectively (Data & State Map §9); rejection with reason, tier-
-differentiated by role (Evidence Hierarchy §3.10); context-chip changes
-write session-scoped constraints (§3 of the Constraint contract).
-
-**Auth:** viewing requires none; Save/commit/full rejection-with-reason
-persistence gate through F10 at the point of action.
-
-**Permissions:** location (foreground, optional, §14's fallback).
-
-**Accessibility:** Decision Session and Discovery reasoning are text-
-forward by construction (Reason Block renderer) — understandable
-without photography or color, per Design System §10. Named typography
-roles throughout; 44pt touch targets; full screen-reader/reduced-motion
-support.
-
-**Analytics:** `surface` values `decision_session` and `discovery` are
-distinct (Data & State Map §9); the social rail is not itself a
-`surface` value (it's not a recommendation-generating contract call in
-the same sense — it logs under the social evidence contract instead).
-
-**Responsive behavior:** mobile portrait primary and only locked form
-factor for V1, consistent with every other contract in this set.
+Frontend should not need to independently orchestrate these data sources once FV2-04 is complete.
 
 ---
 
-## 16. Prohibited behavior
+## 20. Data writes
 
-- No infinite scroll without a real end state (§6.4).
-- No catalog-percentile tier as a section-organizing header — badge
-  only, per card (this contract's central reconciliation).
-- No popularity/trending rail, ever.
-- No autoplay or muted-autoplay video anywhere in Discovery.
-- No color-coded Decision Session roles.
-- More than one context-clarifying question per session before
-  recommending.
-- Padding Decision Session to three cards with a weak pick.
-- Continuing silent card regeneration past two consecutive full-set
-  rejections.
-- Reviving `TrendingStrip.tsx` as a shortcut instead of building
-  Discovery's reason-coded rails properly.
+Possible writes only when the corresponding interaction exists:
 
----
+- visible impression;
+- Place Detail click;
+- Save/unsave;
+- rejection;
+- context override;
+- commitment;
+- Rank outcome later in journey.
 
-## 17. Unresolved dependencies
+Every new persisted event needs:
 
-- **Dish Intelligence data model** — blocks true dish-first Discovery
-  rail presentation beyond restaurant-level evidence.
-- **Craves' own contract** (next in this sequence) — the "From your
-  Craves" rail's exact sourcing is finalized there, not here.
-- **`friends-feed.tsx` migration** (Route & Flow Map §1.1) — already
-  resolved in direction, not yet executed; this contract's social rail
-  assumes that migration's target shape.
-- **Recommendation request/context contract's literal backend API** —
-  deferred to the forthcoming API/Integration Contract artifact; this
-  contract specifies the product-level shape only (Data & State Map §2),
-  not endpoints/DTOs.
+- named semantics;
+- retention/deletion behavior;
+- tests;
+- privacy review.
 
 ---
 
-## 18. Codex implementation boundary
+## 21. Analytics
 
-Codex may: integrate the existing Decision Session block into one
-hierarchy per §6; build the Context Chip and reuse the Reason Block
-renderer; restructure Feed's rails from catalog-tier sections to
-reason-coded Discovery rails; relocate `friends-feed`'s query logic into
-the social rail per §13.
+Keep distinct surfaces/roles.
 
-Codex may **not**: revive `TrendingStrip.tsx` as a stand-in for
-Discovery; keep catalog-tier names as section headers "temporarily";
-invent a literal backend endpoint shape ahead of the API/Integration
-Contract artifact; build a social rail that's purely chronological
-(must be personalized per §13); silently drop the two-consecutive-
-rejection prompt as "an edge case for later."
+Decision Session events remain distinguishable from Explore/discovery events.
 
----
+Required analysis dimensions after Feed V2:
 
-## 19. Acceptance criteria
+- session id;
+- role;
+- candidate position;
+- context identity/version where safe and necessary;
+- visible exposure, not fetched-only exposure;
+- rejection/commitment outcomes when implemented;
+- algorithm/composition version once a real versioned evaluator exists.
 
-- Decision Session and Discovery read as one integrated hierarchy, not
-  two competing sections (the exact defect the prior audit flagged).
-- Zero catalog-tier section headers remain; tier badges still render
-  per-card.
-- The cold-start state (§11), the two-consecutive-rejection state
-  (§10), and the whole-screen empty state (§14) are all demonstrably
-  distinct in the running app.
-- Full frontend test suite + `tsc --noEmit` clean.
+Primary product metrics:
 
----
+- time to decision;
+- commitment/acceptance;
+- rejection/correction rate;
+- post-visit Rank agreement;
+- novelty acceptance;
+- abandonment;
+- repeat trust.
 
-## 20. Traceability
-
-**Backward:** `CRAVE_MASTER_PRODUCT_INTELLIGENCE_BIBLE.md` §22.1 (Feed,
-including the already-logged `SHOW_FEED_DISCOVERY_STRIPS` decision),
-`CRAVE_V1_SCOPE.md` §3.1/§3.2, `CRAVE_TARGET_SCREEN_REGISTRY.md` §3.1,
-`CRAVE_ROUTE_FLOW_MAP.md` F1/F2/F9/F14/§1.1, `CRAVE_DATA_STATE_MAP.md`
-§2/§3/§7/§9, `CRAVE_PRIVACY_PERMISSION_MATRIX.md` D2/F1/F3,
-`CRAVE_EVIDENCE_SIGNAL_HIERARCHY.md` §3.10/§3.16/§3.20/§7,
-`CRAVE_DESIGN_SYSTEM.md` §5/§6/§7/§9, `CRAVE_COMPONENT_REGISTRY.md`
-§2/§3, and this contract's own upstream sibling,
-`CRAVE_SCREEN_CONTRACT_PLACE_DETAIL.md` (the Reason Block renderer and
-CTA hand-off it shares).
-
-**Forward:** the Craves contract (finalizes "From your Craves" rail
-sourcing), the Search contract (shares the constraint contract and the
-Map hand-off pattern), the future API/Integration Contract (the
-recommendation request/context contract's literal shape), the future
-Requirements/Traceability Matrix.
+Do not optimize for session duration or scroll depth.
 
 ---
 
-## 21. Proposed status
+## 22. Accessibility
 
-**YELLOW — pending audit.** Named blockers (§17) gate specific
-sections (Discovery's dish-first presentation, the Craves rail's exact
-sourcing), not the whole contract.
+Design requirements before implementation:
+
+- all meaning available without photography or color;
+- minimum 44x44pt interactive targets;
+- VoiceOver order follows visual decision hierarchy;
+- role labels included in accessible name/description where useful;
+- Dynamic Type reflow without clipped reason/operational text;
+- Reduced Motion respected;
+- no swipe-only rejection/action;
+- missing-media fallback fully accessible;
+- confidence/constraint/operational state never color-only;
+- Explore entry and Decision completion are distinguishable programmatically.
+
+Runtime verification occurs after implementation.
+
+---
+
+## 23. Performance
+
+- Home decision content should load in one composed request where practical;
+- avoid frontend waterfalls across multiple independent ranking endpoints;
+- no real-time LLM generation in Home critical path;
+- reuse bulk hydration for media/percentiles/operational metadata;
+- preserve Place Detail prefetch on deliberate press-in where it remains beneficial;
+- avoid re-fetch loops caused by context/store identity churn.
+
+---
+
+## 24. Privacy
+
+Before release of richer Feed V2 persistence, update privacy/data-lifecycle documentation to explain recommendation interaction data and personalization use.
+
+Temporary session state should remain ephemeral by default.
+
+No background location by default.
+
+No scraped/purchased external personal behavior.
+
+Account deletion/reset must remove any new persisted user-derived Feed state according to canonical privacy doctrine.
+
+---
+
+## 25. Responsive behavior
+
+V1 remains mobile-first React Native.
+
+Requirements:
+
+- Best Fit remains dominant across supported phone widths;
+- long restaurant names wrap without pushing primary action off-screen;
+- reason copy reflows;
+- large text may move metadata/action rows vertically;
+- safe areas respected;
+- no layout depends on fixed image text height.
+
+---
+
+## 26. Visual rules
+
+Home follows approved CRAVE UI V2 semantics:
+
+- dark cinematic surface;
+- real appetite photography strongest where available;
+- calm UI, energetic food media;
+- food -> place -> why -> action hierarchy;
+- gold limited to brand/selection/primary action;
+- uncertainty, positive, protected, destructive, and neutral states use separate semantics;
+- no star averages;
+- no fake match percentage;
+- no giant empty image panel when media is absent;
+- no equal-weight wall of cards;
+- no generic marketplace/carousel overload.
+
+UI V2 implementation may refine composition spacing, but may not redesign screen behavior or semantics.
+
+---
+
+## 27. Prohibited behavior
+
+- infinite Decision Mode;
+- automatic endless recommendation regeneration;
+- frontend-created recommendation semantics;
+- `gem` -> `hole-in-the-wall` mapping;
+- random/deterministic exploration -> `Wildcard` mapping;
+- hard constraint silent relaxation;
+- popularity/trending rail;
+- star ratings/average-review framing;
+- fake match percentage;
+- visit -> positive preference assumption;
+- equal visual weight for all three roles;
+- always-present supporting modules;
+- account wall before value;
+- session rejection silently becoming durable dislike;
+- unavailable operational facts presented as known;
+- LLM-generated unsupported `Why this fits` copy.
+
+---
+
+## 28. Codex implementation boundary
+
+### Codex may
+
+- implement the approved composed Home response;
+- reduce `(tabs)/index.tsx` to a presentation/orchestration shell;
+- reuse UI V2 components;
+- implement approved Decision Context controls;
+- implement role/recovery/completion states;
+- add accessibility/performance/test coverage;
+- retire old Feed composition only after parity.
+
+### Codex may not
+
+- redefine Best Fit/Safe Bet/Wildcard;
+- invent new rail types;
+- invent unsupported context fields;
+- use existing generic FilterSheet as a substitute for Decision Context without contract approval;
+- preserve `MORE IN YOUR LANE`/`HOLE-IN-THE-WALL` merely because they already exist;
+- keep independent frontend `useRecommendations` Home composition after backend composition is canonical;
+- redesign Search/Map/Craves while implementing Feed;
+- call implementation Final before runtime accessibility/device verification.
+
+---
+
+## 29. Acceptance criteria
+
+Feed V2 is implementation-ready only when:
+
+1. Best Fit/Safe Bet/Wildcard backend semantics match the Master Architecture.
+2. Decision Context fields are explicitly supported or explicitly omitted.
+3. Home composition response is defined.
+4. every supporting module type is enumerated and truthfully sourced;
+5. rejection lifecycle is defined;
+6. completion lifecycle is defined;
+7. hard-constraint recovery is defined;
+8. cold start is defined without fake personalization;
+9. loading/error/offline/stale/missing-media states are covered;
+10. analytics semantics are defined;
+11. privacy impact is named;
+12. Codex has no unresolved product/UX/data ambiguity to silently decide.
+
+Feed V2 is Final only after implementation, automated QA, runtime accessibility QA, real-data/photo QA, and device QA.
+
+---
+
+## 30. Readiness
+
+**Current:** YELLOW — architecture specified, implementation dependencies intentionally unresolved.
+
+### Buildable now after FV2-00 approval
+
+- evidence resolver over existing Rank/visit/save/recommendation data;
+- deterministic candidate evaluation;
+- shared Decision Session semantic upgrade;
+- backend composition policy;
+- Home response simplification;
+- rejection/completion session mechanics;
+- frontend V2 migration;
+- privacy/telemetry updates.
+
+### Data-limited / not implementation blockers
+
+- learned position debiasing;
+- adaptive bandits/UCB;
+- learned novelty calibration;
+- CRAVE-trained embeddings.
+
+These are not required for Feed V2 V1.
+
+---
+
+## 31. Traceability
+
+Backward dependencies:
+
+- `CRAVE_MASTER_PRODUCT_INTELLIGENCE_BIBLE.md`;
+- `CRAVE_DECISION_INTELLIGENCE_ARCHITECTURE.md`;
+- `CRAVE_ROUTE_FLOW_MAP.md`;
+- `CRAVE_DATA_STATE_MAP.md`;
+- `CRAVE_PRIVACY_PERMISSION_MATRIX.md`;
+- `CRAVE_EVIDENCE_SIGNAL_HIERARCHY.md`;
+- `CRAVE_DESIGN_SYSTEM.md`;
+- `CRAVE_COMPONENT_REGISTRY.md`;
+- `CRAVE_SCREEN_CONTRACT_PLACE_DETAIL.md`;
+- `CRAVE_SCREEN_CONTRACT_CRAVES.md`;
+- `CRAVE_SCREEN_CONTRACT_SEARCH.md`;
+- `CRAVE_API_INTEGRATION_CONTRACTS.md`;
+- `CRAVE_FEED_V2_MASTER_ARCHITECTURE.md`.
+
+Implementation traceability:
+
+- `CRAVE_FEED_V2_MIGRATION_MATRIX.md`.
+
+---
+
+## 32. Screen lock
+
+> **Feed is a decision system rendered as a calm food-first Home surface, not an endless recommendation feed.**
+
+> **The first viewport should make the strongest decision legible before asking the user to browse.**
+
+> **Once CRAVE has helped the user decide, Home is allowed to become quiet.**

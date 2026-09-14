@@ -22,14 +22,16 @@ Read in this order:
 12. `CRAVE_DESIGN_SYSTEM.md`
 13. `CRAVE_COMPONENT_REGISTRY.md`
 14. approved `CRAVE_SCREEN_CONTRACT_*.md` files
-15. `CRAVE_RANK_PRESENTATION_MAPPING.md` for the persisted-ranking to Rank-Home presentation boundary
-16. `CRAVE_API_INTEGRATION_CONTRACTS.md`
-17. `CRAVE_REQUIREMENTS_TRACEABILITY_MATRIX.md`
-18. `CRAVE_IMPLEMENTATION_MIGRATION_PLAN.md`
-19. `CRAVE_CODEX_IMPLEMENTATION_RULES_V2.md`
-20. `CRAVE_CODEX_READINESS_AUDIT.md`
-21. `CRAVE_CODEX_HANDOFF_STATE.md` for the concrete completed-wave baseline and next executable wave
-22. `CRAVE_MASTER_CODEX_REMAINING_WORK.md` — **the current operational checklist of exactly what remains**; check this before starting any task so scope is not re-derived from scratch
+15. approved screen-specific architecture overlays such as `CRAVE_FEED_V2_MASTER_ARCHITECTURE.md`
+16. approved screen-specific execution maps such as `CRAVE_FEED_V2_MIGRATION_MATRIX.md`
+17. `CRAVE_RANK_PRESENTATION_MAPPING.md` for the persisted-ranking to Rank-Home presentation boundary
+18. `CRAVE_API_INTEGRATION_CONTRACTS.md`
+19. `CRAVE_REQUIREMENTS_TRACEABILITY_MATRIX.md`
+20. `CRAVE_IMPLEMENTATION_MIGRATION_PLAN.md`
+21. `CRAVE_CODEX_IMPLEMENTATION_RULES_V2.md`
+22. `CRAVE_CODEX_READINESS_AUDIT.md`
+23. `CRAVE_CODEX_HANDOFF_STATE.md` for the concrete completed-wave baseline and next executable wave
+24. `CRAVE_MASTER_CODEX_REMAINING_WORK.md` — **the current operational checklist of exactly what remains**; check this before starting any task so scope is not re-derived from scratch
 
 If two documents conflict, later explicitly approved canon supersedes older product/UI decisions while preserving traceability.
 
@@ -39,13 +41,35 @@ Codex must treat the following as already completed baseline, not work to redo:
 - **Wave 1:** shared foundations from PR #170, including typography roles, Decision Strip, resumable auth gate, recommendation-context/privacy/evidence primitives.
 - **Wave 2:** visit-evidence persistence + Rank queue + Rank Home ownership + Profile handoff from PR #172.
 - **Wave 3:** navigation topology from PR #185 — five tabs (Feed/Search/Craves/Rank/Profile), Map off the tab bar but reachable contextually, persistent `+`, Activity as a header route.
-- **Wave 4:** Feed / Decision Session hierarchy.
+- **Wave 4:** initial Feed / Decision Session hierarchy.
 
-Verified end-to-end against the current `main` head (backend `pytest` 1043 passed/2 skipped, single Alembic head, frontend `tsc`/`jest --ci` clean, conflict-marker guard clean) — 2026-09-07.
+Wave 4 remains real shipped baseline. It is **not** permission to treat its current recommendation semantics as final. The later Feed V2 research/audit found that Home currently combines multiple recommendation authorities and overstates the meaning of Best Fit/Wildcard in places. Feed V2 therefore upgrades the existing Wave-4 foundation rather than reopening navigation or discarding the shipped Decision Session.
 
-**Codex begins broad implementation at Migration Plan Wave 5 — Search and contextual Map**, per the exact item breakdown in `CRAVE_MASTER_CODEX_REMAINING_WORK.md`.
+Verified end-to-end against the then-current `main` head (backend `pytest` 1043 passed/2 skipped, single Alembic head, frontend `tsc`/`jest --ci` clean, conflict-marker guard clean) — 2026-09-07. Later waves and fixes have landed since; always re-check current CI before claiming implementation-ready runtime status.
 
 The handoff details and hard invariants are in `CRAVE_CODEX_HANDOFF_STATE.md`; the concrete remaining checklist is in `CRAVE_MASTER_CODEX_REMAINING_WORK.md`.
+
+## 3.1 Feed V2 doctrine overlay
+
+The following artifacts were authored after a repository census plus external Feed/recommender research:
+
+- `CRAVE_FEED_V2_MASTER_ARCHITECTURE.md`
+- `CRAVE_SCREEN_CONTRACT_FEED.md` (upgraded to Feed / Decision Session V2)
+- `CRAVE_FEED_V2_MIGRATION_MATRIX.md`
+
+Their central architectural decision is:
+
+> **Feed V2 does not create another recommender. It consolidates CRAVE's existing Feed ranker, collaborative filtering, Decision Session, Craves, Rank, visit evidence, recommendation context, and recommendation ledger into one truthful Home decision architecture.**
+
+And the UI/product decision is:
+
+> **Decision Mode ends. Explore Mode may continue only when deliberately entered.**
+
+These documents are **architecture/design contracts, not production implementation evidence**. Do not mark Feed V2 implemented merely because these files exist.
+
+Implementation sequence is the dedicated FV2-00 through FV2-09 lane defined in `CRAVE_FEED_V2_MASTER_ARCHITECTURE.md` and `CRAVE_FEED_V2_MIGRATION_MATRIX.md`.
+
+Until the Feed V2 doctrine package is explicitly approved, treat it as a proposed higher-specificity overlay, not permission to begin FV2-01 production changes.
 
 ## 4. Target V1 navigation
 Bottom tabs are exactly:
@@ -87,9 +111,14 @@ Unless a newer canonical decision explicitly promotes them:
 - full reservation/ordering integrations beyond approved deep links
 - personal food-history map
 - full route-aware discovery
+- learned Feed position-debiasing model before sufficient truthful exposure/outcome volume exists
+- contextual-bandit/UCB Feed exploration before sufficient data volume and explicit approval
+- CRAVE-trained heavy ranking/embedding infrastructure merely because large marketplace apps use it
 
 ## 7. Screen-contract rule
 A screen contract is the implementation authority for hierarchy, interactions, states, data dependencies, accessibility, and prohibited behavior. Current code is inspected and reused where correct but does not override the contract.
+
+For Feed specifically, the Screen Contract must be read together with `CRAVE_FEED_V2_MASTER_ARCHITECTURE.md`; the Screen Contract owns the user experience while the Master Architecture owns recommendation/evidence/composition responsibility boundaries.
 
 ## 8. Stale-document quarantine rule
 The following artifact classes are informative only unless explicitly promoted:
@@ -110,9 +139,10 @@ No execution brief may be considered complete if it contains a product, UX, data
 Codex should begin broad implementation only from the final handoff commit where:
 - this canonical chain is present together;
 - #146 regression fixes or equivalent preserved fixes are present;
-- Waves 1–2 are present and must be reused;
+- prior completed waves are preserved;
 - frontend/backend/Postgres/security checks are green;
-- the target screen is GREEN or the task is explicitly an unblocker for a named YELLOW implementation dependency.
+- the target screen is GREEN or the task is explicitly an unblocker for a named YELLOW implementation dependency;
+- for Feed V2, FV2-00 has explicit product-owner approval before FV2-01 begins.
 
 ## 11. Escalation rule
 A technical unknown may be solved locally. A product/UX/data/privacy/evidence/permission/interaction unknown must be made visible rather than guessed.
