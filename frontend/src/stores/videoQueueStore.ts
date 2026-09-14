@@ -57,6 +57,7 @@ export interface QueuedVideo {
   // connection that was just proven bad seconds ago.
   lastAttemptAt: number | null;
   lastError: string | null;
+  progressPct: number | null;
   createdAt: number;
 }
 
@@ -109,6 +110,7 @@ const PENDING_CLIPS_DIR = `${FileSystem.documentDirectory}pending_video_clips/`;
 
 interface VideoQueueStore {
   videos: QueuedVideo[];
+  autoSyncEnabled: boolean;
 
   // Step 1: save locally, no network involved. Moves (not copies) the
   // camera's temp output into a stable app-owned directory so it
@@ -130,7 +132,8 @@ interface VideoQueueStore {
   // CURRENTLY signed in (see src/api/client.ts's session-token
   // interceptor), so syncing another account's queued video here would
   // silently attribute it to the wrong user.
-  runSyncPass: (userId: string) => Promise<void>;
+  runSyncPass: (userId: string, opts?: { force?: boolean }) => Promise<void>;
+  setAutoSyncEnabled: (enabled: boolean) => void;
 
   retryFailedVideo: (id: string) => void;
   deleteFailedVideo: (id: string) => Promise<void>;
@@ -142,6 +145,7 @@ export const useVideoQueueStore = create<VideoQueueStore>()(
   persist(
     (set, get) => ({
       videos: [],
+      autoSyncEnabled: true,
 
       recordVideo: async ({ sourceUri, placeId, contentType, uploadedBy, templateId }) => {
         // 'failed' and 'missing_local_file' are both terminal -- nothing
@@ -181,6 +185,7 @@ export const useVideoQueueStore = create<VideoQueueStore>()(
           attemptCount: 0,
           lastAttemptAt: null,
           lastError: null,
+          progressPct: null,
           createdAt: Date.now(),
         };
 
@@ -188,8 +193,9 @@ export const useVideoQueueStore = create<VideoQueueStore>()(
         return video;
       },
 
-      runSyncPass: async (userId: string) => {
+      runSyncPass: async (userId: string, opts?: { force?: boolean }) => {
         if (syncInFlight) return;
+        if (!opts?.force && !get().autoSyncEnabled) return;
         syncInFlight = true;
         try {
           const now = Date.now();
@@ -216,11 +222,22 @@ export const useVideoQueueStore = create<VideoQueueStore>()(
         }
       },
 
+      setAutoSyncEnabled: (enabled: boolean) => {
+        set({ autoSyncEnabled: enabled });
+      },
+
       retryFailedVideo: (id: string) => {
         set({
           videos: get().videos.map((v) =>
             v.id === id && v.syncState === 'failed'
-              ? { ...v, syncState: 'recorded', attemptCount: 0, lastAttemptAt: null, lastError: null }
+              ? {
+                ...v,
+                syncState: 'recorded',
+                attemptCount: 0,
+                lastAttemptAt: null,
+                lastError: null,
+                progressPct: null,
+              }
               : v
           ),
         });
@@ -250,9 +267,7 @@ async function syncOne(
   get: () => VideoQueueStore
 ) {
   const setVideoState = (patch: Partial<QueuedVideo>) => {
-    set({
-      videos: get().videos.map((v) => (v.id === video.id ? { ...v, ...patch } : v)),
-    });
+    set({ videos: get().videos.map((v) => (v.id === video.id ? { ...v, ...patch } : v)) });
   };
 
   // Checked *before* ever contacting the backend -- requesting an upload
@@ -269,7 +284,11 @@ async function syncOne(
     // from the queue with no explanation at all. A missing local file is
     // a real, distinct terminal failure -- not the same as never having
     // recorded anything -- so it's recorded as one instead of erased.
-    setVideoState({ syncState: 'missing_local_file', lastError: 'Local recording is no longer available.' });
+    setVideoState({
+      syncState: 'missing_local_file',
+      lastError: 'Local recording is no longer available.',
+      progressPct: null,
+    });
     return;
   }
 
@@ -279,22 +298,22 @@ async function syncOne(
   // backend's client_id dedupe (see routes/videos.py) makes this safe and
   // idempotent: a repeat call for the same video.id returns the same
   // server row and storage key rather than creating a duplicate.
-  setVideoState({ syncState: 'requesting_url' });
+  setVideoState({ syncState: 'requesting_url', progressPct: 0.1 });
   const { video_id: serverId, upload_url: uploadUrl } = await requestVideoUpload({
     place_id: video.placeId,
     content_type: video.contentType,
     template_id: video.templateId ?? undefined,
     client_id: video.id,
   });
-  setVideoState({ serverId });
+  setVideoState({ serverId, progressPct: 0.25 });
 
-  setVideoState({ syncState: 'uploading' });
+  setVideoState({ syncState: 'uploading', progressPct: 0.5 });
   await uploadVideoToSignedUrl(uploadUrl, video.localUri, video.contentType);
 
-  setVideoState({ syncState: 'completing' });
+  setVideoState({ syncState: 'completing', progressPct: 0.85 });
   await confirmVideoUpload(serverId);
 
-  setVideoState({ syncState: 'synced' });
+  setVideoState({ syncState: 'synced', progressPct: 1 });
   await FileSystem.deleteAsync(video.localUri, { idempotent: true }).catch(() => {});
 }
 
@@ -313,6 +332,7 @@ async function recordFailure(
         attemptCount,
         lastAttemptAt: Date.now(),
         lastError: message,
+        progressPct: null,
         syncState: attemptCount >= MAX_ATTEMPTS ? 'failed' : 'recorded',
       };
     }),

@@ -55,6 +55,7 @@ from app.api.v1.routes.menu_submissions import (
     router as menu_submissions_router,
     router_moderation as menu_submissions_moderation_router,
 )
+from app.api.v1.routes.data_pipeline_admin import router as data_pipeline_admin_router
 from app.api.v1.routes.debug import router as debug_router
 from app.api.v1.routes.videos import router as videos_router
 
@@ -104,5 +105,6 @@ router.include_router(leaderboard_router)
 router.include_router(moderation_router)
 router.include_router(menu_submissions_router)
 router.include_router(menu_submissions_moderation_router)
+router.include_router(data_pipeline_admin_router)
 router.include_router(debug_router)
 router.include_router(videos_router)

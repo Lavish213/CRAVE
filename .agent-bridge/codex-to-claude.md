@@ -1,3 +1,84 @@
+# H-20260914-data-pipeline-dashboard-and-offline-uploads
+
+Status: information-only
+Owner: Codex
+Branch: codex/data-pipeline-dashboard
+Base SHA: 9653aff
+Commit SHA: none yet
+Allowed next files: see split below
+
+## Outcome
+
+User asked to finish the menu/data-pipeline roadmap, then clarified Claude
+cannot execute the production/device/credential pieces from its sandbox either.
+Codex is keeping the code-doable work in a clean worktree/branch:
+
+- Worktree: `/Users/angelowashington/CRAVE/.worktrees/codex-data-pipeline-dashboard`
+- Branch: `codex/data-pipeline-dashboard`
+- Base: `9653aff` (`main` after #301-#306)
+
+Uncommitted Codex work in that worktree:
+
+- Added read-only admin endpoint `GET /api/v1/moderation/data-pipeline/dashboard` in `backend/app/api/v1/routes/data_pipeline_admin.py`.
+- Registered it in `backend/app/api/v1/routes/__init__.py`.
+- Added `backend/tests/test_data_pipeline_admin.py`.
+- Added offline-upload queue UX:
+  - `frontend/app/offline-uploads.tsx` shows the current user's queued video uploads, phase progress, manual sync, retry, and delete/remove actions.
+  - `frontend/app/settings.tsx` links to the queue and surfaces waiting/attention counts without exposing another signed-out/signed-in account's queue.
+  - `frontend/app/_layout.tsx` registers the route.
+  - `frontend/src/stores/videoQueueStore.ts` adds `autoSyncEnabled`, a forced manual sync override, and phase progress.
+  - Added/updated tests in `frontend/__tests__/offline-uploads.test.tsx`, `frontend/__tests__/settings.test.tsx`, and `frontend/src/stores/videoQueueStore.test.ts`.
+
+The endpoint is intentionally admin-only and read-only. It summarizes the
+"control room" signals needed before running production data jobs: menu source
+counts/failures, menu submission status/evidence, image provenance coverage,
+and latest relevant `job_runs`.
+
+## Verification
+
+- Backend focused tests:
+  `python3 -m pytest backend/tests/test_data_pipeline_admin.py backend/tests/test_menu_submissions.py backend/tests/test_menu_source_governance.py -q`
+  -> 24 passed, 1 warning.
+- Backend compileall for touched route files -> passed.
+- Frontend targeted Jest via the existing local dependency tree:
+  `__tests__/offline-uploads.test.tsx __tests__/settings.test.tsx src/stores/videoQueueStore.test.ts --runInBand`
+  -> 3 suites passed, 40 tests passed. React `act()` warnings are from existing Settings/Icon async behavior.
+- `git diff --check` -> clean.
+- Full frontend `tsc --noEmit` was attempted, but this sandbox could not complete `npm ci` (registry timeout after earlier ENOTFOUND). The fallback local dependency tree is stale and missing `@sentry/react-native` and `expo-secure-store`, so TypeScript stops on those missing modules before a true branch-wide verdict. A new offline-upload test typing issue was fixed and no longer appears in the tsc output.
+
+## Known gaps / risks
+
+- No production jobs were run.
+- No device certification was claimed.
+- No App Store/Play Console/EAS credential retrieval was attempted.
+- No true Wi-Fi-only enforcement was claimed. The repo does not currently include a network-type dependency (`expo-network` or NetInfo), so this change adds an honest auto-sync control and manual Sync Now path rather than pretending it can detect Wi-Fi.
+
+### Codex should keep
+
+- Backend/admin control-room endpoint and tests.
+- Optional docs/runbook for dashboard/menu canary/OSM backfill preflight.
+- Offline-upload UX code in this branch.
+
+### Blocked unless an environment has real external access
+
+- Production-only execution: deploy/verify migrations, run controlled menu canary, run OSM hours/outdoor-seating backfill on Railway Postgres, record production outcomes.
+- Universal-link credentials: real Apple Team ID and Android SHA-256, then real-device verification.
+- Device certification: Sentry crash firing, SecureStore relaunch, Search→Map→Place, Dynamic Type/VoiceOver/TalkBack/touch targets, offline/media behavior.
+
+Claude should not take those as actionable unless it actually has Railway/EAS/device access. Review help is fine; execution claims are not.
+
+Do not touch the dirty root checkout `claude/project-grade-systems-review-4ot7d0`
+for this work. It contains old unrelated modifications. Use a clean worktree
+off `origin/main`.
+
+## Next action
+
+Claude: do not edit the current Codex dashboard/offline-upload branch unless
+explicitly asked to review or take it over. Production/device/credential items
+remain blocked without real access.
+
+---
+
 # H-20260912-profile-taste-social-cleanup
 
 Status: ready-for-review

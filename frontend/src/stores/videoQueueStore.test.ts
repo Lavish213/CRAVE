@@ -122,11 +122,38 @@ describe('videoQueueStore', () => {
 
     const [video] = useVideoQueueStore.getState().videos;
     expect(video.syncState).toBe('synced');
+    expect(video.progressPct).toBe(1);
     expect(video.serverId).toBe('server-1');
     expect(videosApi.requestVideoUpload).toHaveBeenCalledWith(
       expect.objectContaining({ place_id: 'place-1', client_id: video.id })
     );
     expect(FileSystem.deleteAsync).toHaveBeenCalledWith(video.localUri, { idempotent: true });
+  });
+
+  it('does not auto-sync when automatic video sync is disabled, but allows a forced manual sync', async () => {
+    (videosApi.requestVideoUpload as jest.Mock).mockResolvedValue({
+      video_id: 'server-1',
+      upload_url: 'https://r2.example.test/put',
+      key: 'places/place-1/videos/orig/x.mp4',
+    });
+    (videosApi.uploadVideoToSignedUrl as jest.Mock).mockResolvedValue(undefined);
+    (videosApi.confirmVideoUpload as jest.Mock).mockResolvedValue({ ok: true });
+
+    await useVideoQueueStore.getState().recordVideo({
+      sourceUri: 'file:///tmp/clip.mp4',
+      placeId: 'place-1',
+      contentType: 'video/mp4',
+      uploadedBy: 'user-a',
+    });
+
+    useVideoQueueStore.getState().setAutoSyncEnabled(false);
+    await useVideoQueueStore.getState().runSyncPass('user-a');
+    expect(videosApi.requestVideoUpload).not.toHaveBeenCalled();
+    expect(useVideoQueueStore.getState().videos[0].syncState).toBe('recorded');
+
+    await useVideoQueueStore.getState().runSyncPass('user-a', { force: true });
+    expect(videosApi.requestVideoUpload).toHaveBeenCalledTimes(1);
+    expect(useVideoQueueStore.getState().videos[0].syncState).toBe('synced');
   });
 
   it('does not sync a video recorded by a different (not currently signed-in) user', async () => {

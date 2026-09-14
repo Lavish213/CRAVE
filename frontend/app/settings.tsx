@@ -9,6 +9,7 @@ import { useRouter, useFocusEffect } from 'expo-router';
 import { Colors, Spacing, Radius, Typography } from '../src/constants/colors';
 import { useCityStore } from '../src/stores/cityStore';
 import { useAuthStore } from '../src/stores/authStore';
+import { useVideoQueueStore } from '../src/stores/videoQueueStore';
 import { useToast } from '../src/hooks/useToast';
 import { deleteMyAccount } from '../src/api/social';
 import {
@@ -84,6 +85,17 @@ export default function MoreScreen() {
   const signOut = useAuthStore((s) => s.signOut);
   const toast = useToast((s) => s.show);
   const [notificationStatus, setNotificationStatus] = useState<PushPermissionStatus>('undetermined');
+  const queuedVideos = useVideoQueueStore((s) => s.videos);
+  const myQueuedVideos = user?.id ? queuedVideos.filter((video) => video.uploadedBy === user.id) : [];
+  const waitingUploadCount = myQueuedVideos.filter((video) =>
+    video.syncState === 'recorded' ||
+    video.syncState === 'requesting_url' ||
+    video.syncState === 'uploading' ||
+    video.syncState === 'completing'
+  ).length;
+  const uploadAttentionCount = myQueuedVideos.filter((video) =>
+    video.syncState === 'failed' || video.syncState === 'missing_local_file'
+  ).length;
 
   useFocusEffect(
     React.useCallback(() => {
@@ -205,6 +217,22 @@ export default function MoreScreen() {
           sublabel={NOTIFICATION_STATUS_COPY[notificationStatus]}
           tint={notificationStatus === 'unavailable' ? Colors.textMuted : undefined}
           onPress={notificationStatus === 'unavailable' ? undefined : handleNotificationsPress}
+        />
+        <Divider />
+        <Row
+          icon="cloud-upload-outline"
+          label="Offline uploads"
+          sublabel={
+            !user?.id
+              ? 'Sign in to manage queued videos'
+              : uploadAttentionCount > 0
+              ? `${uploadAttentionCount} need attention`
+              : waitingUploadCount > 0
+                ? `${waitingUploadCount} waiting to post`
+                : 'No queued videos'
+          }
+          tint={uploadAttentionCount > 0 ? Colors.error : undefined}
+          onPress={() => router.push('/offline-uploads')}
         />
         {/* "Rate CRAVE" removed rather than shown as "Coming soon": no App
             Store/Play Store listing exists yet to link to (app isn't

@@ -9,6 +9,7 @@ import { fireEvent, render } from '@testing-library/react-native';
 import SettingsScreen from '../app/settings';
 import { useCityStore } from '../src/stores/cityStore';
 import { useAuthStore } from '../src/stores/authStore';
+import { useVideoQueueStore } from '../src/stores/videoQueueStore';
 import { deleteMyAccount } from '../src/api/social';
 
 const mockPush = jest.fn();
@@ -18,6 +19,9 @@ jest.mock('expo-router', () => ({
 }));
 jest.mock('../src/stores/authStore', () => ({
   useAuthStore: jest.fn(),
+}));
+jest.mock('../src/stores/videoQueueStore', () => ({
+  useVideoQueueStore: jest.fn(),
 }));
 jest.mock('../src/api/cities', () => ({
   fetchCities: jest.fn().mockResolvedValue([]),
@@ -38,6 +42,7 @@ jest.mock('../src/services/pushNotifications', () => ({
 }));
 
 const mockedUseAuthStore = useAuthStore as unknown as jest.Mock;
+const mockedUseVideoQueueStore = useVideoQueueStore as unknown as jest.Mock;
 const mockedDeleteMyAccount = deleteMyAccount as jest.MockedFunction<typeof deleteMyAccount>;
 const mockSignOut = jest.fn().mockResolvedValue(undefined);
 const mockToastShow = jest.fn();
@@ -65,6 +70,9 @@ describe('SettingsScreen', () => {
     useCityStore.setState({ selectedCity: SF_CITY, cities: [SF_CITY] });
     mockedUseAuthStore.mockImplementation((selector: (s: unknown) => unknown) =>
       selector({ user: { id: 'user-1', email: 'a@b.com' }, signOut: mockSignOut }),
+    );
+    mockedUseVideoQueueStore.mockImplementation((selector: (s: unknown) => unknown) =>
+      selector({ videos: [] }),
     );
     mockGetPushPermissionStatus.mockResolvedValue('undetermined');
   });
@@ -135,6 +143,28 @@ describe('SettingsScreen', () => {
     expect(mockPush).toHaveBeenCalledWith('/legal/terms');
   });
 
+  it('navigates to offline uploads and surfaces queue attention', () => {
+    mockedUseVideoQueueStore.mockImplementation((selector: (s: unknown) => unknown) =>
+      selector({
+        videos: [
+          {
+            id: 'queued-1',
+            uploadedBy: 'user-1',
+            syncState: 'failed',
+            contentType: 'video/mp4',
+            createdAt: Date.now(),
+          },
+        ],
+      }),
+    );
+
+    const { getByLabelText, getByText } = render(<SettingsScreen />);
+    expect(getByText('1 need attention')).toBeTruthy();
+
+    fireEvent.press(getByLabelText('Offline uploads'));
+    expect(mockPush).toHaveBeenCalledWith('/offline-uploads');
+  });
+
   it('shows the native app/build version and explains CRAVE via an alert', () => {
     const { getByText, getByLabelText } = render(<SettingsScreen />);
     expect(getByText('mock (mock)')).toBeTruthy();
@@ -165,6 +195,29 @@ describe('SettingsScreen', () => {
     rerender(<SettingsScreen />);
     expect(queryByLabelText('Sign Out')).toBeNull();
     expect(queryByLabelText('Delete Account')).toBeNull();
+  });
+
+  it('does not expose queued upload counts while signed out', () => {
+    mockedUseAuthStore.mockImplementation((selector: (s: unknown) => unknown) =>
+      selector({ user: null, signOut: mockSignOut }),
+    );
+    mockedUseVideoQueueStore.mockImplementation((selector: (s: unknown) => unknown) =>
+      selector({
+        videos: [
+          {
+            id: 'queued-1',
+            uploadedBy: 'user-1',
+            syncState: 'failed',
+            contentType: 'video/mp4',
+            createdAt: Date.now(),
+          },
+        ],
+      }),
+    );
+
+    const { getByText, queryByText } = render(<SettingsScreen />);
+    expect(getByText('Sign in to manage queued videos')).toBeTruthy();
+    expect(queryByText('1 need attention')).toBeNull();
   });
 
   it('signs out only after confirming, not on the initial tap', () => {
