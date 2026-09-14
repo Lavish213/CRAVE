@@ -19,7 +19,7 @@ starlette>=1.3.1
 uvicorn[standard]>=0.30.0
 
 # HTTP
-requests>=2.33.0
+requests>=2.34.2
 httpx>=0.28.1
 # h2 — required for httpx's http2=True (app/services/network/http_client.py).
 # Without it, every _create_client() call raised ImportError and every
