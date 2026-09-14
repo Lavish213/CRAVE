@@ -20,6 +20,7 @@ from app.db.session import SessionLocal
 from app.db.models.city import City
 from app.db.models.place import Place
 from app.db.models.image_report import AUTO_HIDE_REPORT_COUNT, ImageReport
+from app.db.models.admin_audit_log import AdminAuditLog
 from app.db.models.place_image import (
     PlaceImage,
     VISIBILITY_GALLERY_ONLY,
@@ -266,6 +267,34 @@ def test_approving_restores_visibility_but_not_primary(db, image):
     assert image.visibility_status == VISIBILITY_GALLERY_ONLY
     assert image.reviewed_by == ADMIN_ID
     assert image.reviewed_at is not None
+
+
+def test_approving_writes_an_admin_audit_log_row(db, image):
+    """The allowlist already restricts *who* can review; this is the
+    queryable record of *what* they did, alongside the existing log line
+    (see write_admin_audit_log in moderation.py)."""
+    image.moderation_status = MOD_PENDING_REVIEW
+    db.commit()
+
+    _as_user(ADMIN_ID)
+    resp = client.post(
+        f"/api/v1/moderation/images/{image.id}/review", json={"decision": "approve"},
+    )
+    assert resp.status_code == 200
+
+    rows = (
+        db.query(AdminAuditLog)
+        .filter(AdminAuditLog.target_id == image.id, AdminAuditLog.target_type == "image")
+        .all()
+    )
+    assert len(rows) == 1
+    row = rows[0]
+    assert row.admin_user_id == ADMIN_ID
+    assert row.action == "approve_image_report"
+    assert row.created_at is not None
+
+    db.query(AdminAuditLog).filter(AdminAuditLog.id == row.id).delete()
+    db.commit()
 
 
 def test_rejecting_hides_the_image_permanently(db, image):

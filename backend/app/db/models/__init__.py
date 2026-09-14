@@ -69,6 +69,7 @@ from .user_streak import UserStreak
 from .image_report import ImageReport
 from .video_report import VideoReport
 from .place_report import PlaceReport
+from .admin_audit_log import AdminAuditLog
 
 # ----- Video Layer -----
 from .video_template import VideoTemplate
@@ -146,6 +147,7 @@ __all__ = [
     "ImageReport",
     "VideoReport",
     "PlaceReport",
+    "AdminAuditLog",
 
     # Video
     "VideoTemplate",
