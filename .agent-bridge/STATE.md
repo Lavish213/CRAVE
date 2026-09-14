@@ -2,6 +2,66 @@
 
 Status: implementing
 Owner: Claude
+Branch: claude/wifi-only-upload-gating
+Base SHA: 34c5346 (origin/main tip after PR #309)
+Commit SHA: pending
+Scope: offline-upload UX follow-up #3 (of the four from #307/#308/#310's
+own "known gaps" lists) -- Wi-Fi-only video upload gating. Added a real
+`@react-native-community/netinfo@12.0.1` dependency (no fake detection --
+this repo previously had no way to know the actual connection type at
+all). New `frontend/src/stores/uploadPreferencesStore.ts`: a single
+persisted preference, `wifiOnlyVideoUploads`, defaulting to **off** --
+videos already upload on any connection today, so defaulting users into
+Wi-Fi-only would be a silent behavior regression (queued videos suddenly
+stop uploading on cellular with no explanation), not a new opt-in safety
+feature. `videoQueueStore.ts`'s `runSyncPass` checks `NetInfo.fetch()`
+only when the preference is on, and skips the entire pass (leaving
+queued videos untouched at `'recorded'`) unless the connection is
+`'wifi'` or `'ethernet'` (both unmetered). A new `NetInfo.addEventListener`
+listener (mirrors the existing `AppState` foreground listener exactly,
+reusing the same `_currentUserIdForForegroundSync` tracking) re-attempts
+a sync pass on any connectivity change, so a video queued while the
+preference is on doesn't have to wait for the next app-foreground event
+once Wi-Fi actually returns. New Settings row: a `Switch` toggle, "Wi-Fi
+only for video uploads."
+Locked files: frontend/src/stores/videoQueueStore.ts,
+frontend/src/stores/videoQueueStore.test.ts,
+frontend/src/stores/uploadPreferencesStore.ts (new),
+frontend/src/stores/uploadPreferencesStore.test.ts (new),
+frontend/app/settings.tsx, frontend/__tests__/settings.test.tsx,
+frontend/__mocks__/@react-native-community/netinfo.js (new),
+frontend/package.json, frontend/package-lock.json.
+Verification: `npx tsc --noEmit` -> clean. `npx jest --ci` -> 63/63
+suites, 608/608 tests (8 new: 4 in `videoQueueStore.test.ts` -- default-
+off ignores connectivity entirely (asserts `NetInfo.fetch` is never
+even called), holds on cellular when the preference is on, proceeds on
+Wi-Fi, treats ethernet the same as Wi-Fi; 2 in `settings.test.tsx` for
+the toggle's default state and that toggling it updates the store; 2 in
+a new `uploadPreferencesStore.test.ts`). Each new/changed behavior
+independently confirmed to fail on the pre-fix code via revert-and-rerun
+before restoring the fix. Fixed one real test-isolation bug this surfaced
+along the way: the existing legacy-`'synced'`-migration test (PR #310)
+used a blind `mockResolvedValueOnce` on `AsyncStorage.getItem`, which
+`uploadPreferencesStore.ts`'s own new `persist` rehydration call (also
+triggered when `videoQueueStore.ts` is required, since it now imports
+that store) silently consumed instead of the video-queue store's own
+rehydration -- fixed by keying the mock on the storage name argument
+instead of call order. `git diff --check` clean. Backend untouched.
+Known gaps / risks: one follow-up remains after this -- merging the
+local queue into `PlaceVideoGallery`'s server feed. `npx expo install`
+couldn't be used to add the dependency (this sandbox's egress policy
+blocks the React Native Directory compatibility-check host it calls
+first) -- installed via plain `npm install @react-native-community/netinfo@12.0.1`
+instead, after independently confirming its `peerDependencies`
+(`react-native: >=0.59`) are compatible with this repo's RN 0.83.10.
+Next action: open PR, request CodeRabbit, wait for its actual findings
+(not just CI-green) before merging -- per the standing correction from
+#307.
+
+---
+
+Status: implementing
+Owner: Claude
 Branch: claude/video-status-polling
 Base SHA: c33753f (origin/main tip after PR #308)
 Commit SHA: 297a901 (original implementation commit; this entry has since

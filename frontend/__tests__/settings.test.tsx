@@ -11,6 +11,7 @@ import { useCityStore } from '../src/stores/cityStore';
 import { useAuthStore } from '../src/stores/authStore';
 import { useVideoQueueStore, QueuedVideo } from '../src/stores/videoQueueStore';
 import { usePostingDraftStore, PostingDraft } from '../src/stores/postingDraftStore';
+import { useUploadPreferencesStore } from '../src/stores/uploadPreferencesStore';
 import { deleteMyAccount } from '../src/api/social';
 
 const mockPush = jest.fn();
@@ -67,10 +68,26 @@ describe('SettingsScreen', () => {
     useCityStore.setState({ selectedCity: SF_CITY, cities: [SF_CITY] });
     useVideoQueueStore.setState({ videos: [] });
     usePostingDraftStore.setState({ drafts: [] });
+    useUploadPreferencesStore.setState({ wifiOnlyVideoUploads: false });
     mockedUseAuthStore.mockImplementation((selector: (s: unknown) => unknown) =>
       selector({ user: { id: 'user-1', email: 'a@b.com' }, signOut: mockSignOut }),
     );
     mockGetPushPermissionStatus.mockResolvedValue('undetermined');
+  });
+
+  it('shows the Wi-Fi-only video upload toggle, off by default, and toggling it updates the preference store', () => {
+    const { getByLabelText } = render(<SettingsScreen />);
+    const toggle = getByLabelText('Wi-Fi only for video uploads');
+    expect(toggle.props.value).toBe(false);
+
+    fireEvent(toggle, 'valueChange', true);
+    expect(useUploadPreferencesStore.getState().wifiOnlyVideoUploads).toBe(true);
+  });
+
+  it('reflects an already-enabled Wi-Fi-only preference', () => {
+    useUploadPreferencesStore.setState({ wifiOnlyVideoUploads: true });
+    const { getByLabelText } = render(<SettingsScreen />);
+    expect(getByLabelText('Wi-Fi only for video uploads').props.value).toBe(true);
   });
 
   it('navigates to the Uploads screen, showing no count when nothing is pending', () => {

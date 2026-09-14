@@ -15,6 +15,8 @@ import { AppState } from 'react-native';
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import NetInfo, { NetInfoState } from '@react-native-community/netinfo';
+import { useUploadPreferencesStore } from './uploadPreferencesStore';
 // SDK54's expo-file-system replaced its promise-based API with a new
 // class-based one (File/Directory) at the default import path -- the
 // familiar documentDirectory/moveAsync/getInfoAsync/deleteAsync surface
@@ -106,6 +108,16 @@ const MAX_QUEUED_VIDEOS = 10;
 // accurately describes it from that point on: retryable in principle,
 // but the file itself is now actually gone.
 const MAX_RETAINED_FAILED_VIDEOS = 3;
+
+// Ethernet is exceedingly rare on the mobile devices this app targets,
+// but exists (Android TV, a tablet docked to ethernet) and, like Wi-Fi,
+// is not a metered connection -- treated the same. Everything else
+// (cellular, bluetooth, vpn, unknown) is not, when the user has opted
+// into Wi-Fi-only video uploads (see uploadPreferencesStore.ts).
+function isConnectionAllowedForVideoUpload(state: NetInfoState, wifiOnly: boolean): boolean {
+  if (!wifiOnly) return true;
+  return state.type === 'wifi' || state.type === 'ethernet';
+}
 
 function generateLocalId(): string {
   // Not cryptographically secure -- doesn't need to be. This is purely a
@@ -230,6 +242,20 @@ export const useVideoQueueStore = create<VideoQueueStore>()(
           // awaited runSyncPass and inspected the video it synced this same
           // call (see videoQueueStore.test.ts) still finds it.
           await pruneSyncedVideos(set, get);
+
+          // Videos are real, multi-MB files -- a user who has opted into
+          // Wi-Fi-only uploads (Settings) should never have this pass
+          // silently burn cellular data on their behalf. Checked fresh on
+          // every pass (not cached) since connectivity can change between
+          // calls; queued videos are simply left 'recorded' untouched
+          // until a qualifying connection triggers the next pass (see the
+          // NetInfo listener below, and the foreground AppState one).
+          if (useUploadPreferencesStore.getState().wifiOnlyVideoUploads) {
+            const netState = await NetInfo.fetch();
+            if (!isConnectionAllowedForVideoUpload(netState, true)) {
+              return;
+            }
+          }
 
           const now = Date.now();
           const pending = get().videos.filter(
@@ -505,6 +531,19 @@ export function setActiveUserForVideoSync(userId: string | null): void {
 
 AppState.addEventListener('change', (state) => {
   if (state !== 'active') return;
+  if (!_currentUserIdForForegroundSync) return;
+  useVideoQueueStore.getState().runSyncPass(_currentUserIdForForegroundSync).catch(() => {});
+});
+
+// Wi-Fi-only uploads would otherwise leave a queued video stuck until the
+// next foreground event, even if the device reconnects to Wi-Fi while the
+// app is already open (backgrounded or not). Any connectivity change
+// re-attempts a pass; runSyncPass's own gating above decides whether the
+// new connection actually qualifies, so this listener doesn't duplicate
+// that logic -- it just re-triggers the check on every network change,
+// same as the AppState listener does on every foreground.
+NetInfo.addEventListener((state) => {
+  if (!state.isConnected) return;
   if (!_currentUserIdForForegroundSync) return;
   useVideoQueueStore.getState().runSyncPass(_currentUserIdForForegroundSync).catch(() => {});
 });

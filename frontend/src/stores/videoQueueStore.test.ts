@@ -23,6 +23,16 @@ jest.mock('../api/videos', () => ({
   uploadVideoToSignedUrl: jest.fn(),
 }));
 
+jest.mock('@react-native-community/netinfo', () => ({
+  __esModule: true,
+  default: {
+    fetch: jest.fn(() =>
+      Promise.resolve({ type: 'wifi', isConnected: true, isInternetReachable: true, details: {} })
+    ),
+    addEventListener: jest.fn(() => jest.fn()),
+  },
+}));
+
 async function flush(): Promise<void> {
   for (let i = 0; i < 15; i++) {
     await Promise.resolve();
@@ -54,6 +64,8 @@ describe('videoQueueStore', () => {
   let useVideoQueueStore: typeof import('./videoQueueStore').useVideoQueueStore;
   let videosApi: typeof import('../api/videos');
   let FileSystem: typeof import('expo-file-system/legacy');
+  let NetInfo: typeof import('@react-native-community/netinfo').default;
+  let useUploadPreferencesStore: typeof import('./uploadPreferencesStore').useUploadPreferencesStore;
 
   beforeEach(() => {
     jest.resetModules();
@@ -65,6 +77,12 @@ describe('videoQueueStore', () => {
     (FileSystem.moveAsync as jest.Mock).mockClear();
     (FileSystem.deleteAsync as jest.Mock).mockClear();
     (FileSystem.getInfoAsync as jest.Mock).mockReset().mockResolvedValue({ exists: true });
+    NetInfo = require('@react-native-community/netinfo').default;
+    (NetInfo.fetch as jest.Mock)
+      .mockReset()
+      .mockResolvedValue({ type: 'wifi', isConnected: true, isInternetReachable: true, details: {} });
+    ({ useUploadPreferencesStore } = require('./uploadPreferencesStore'));
+    useUploadPreferencesStore.setState({ wifiOnlyVideoUploads: false });
     ({ useVideoQueueStore } = require('./videoQueueStore'));
   });
 
@@ -280,6 +298,82 @@ describe('videoQueueStore', () => {
 
     expect(videosApi.requestVideoUpload).not.toHaveBeenCalled();
     expect(useVideoQueueStore.getState().videos[0].syncState).toBe('recorded');
+  });
+
+  describe('Wi-Fi-only video uploads', () => {
+    it('ignores connectivity entirely when the preference is off (default) -- never even checks', async () => {
+      (videosApi.requestVideoUpload as jest.Mock).mockResolvedValue({
+        video_id: 'server-1', upload_url: 'https://r2.example.test/put', key: 'k',
+      });
+      (videosApi.uploadVideoToSignedUrl as jest.Mock).mockResolvedValue(undefined);
+      (videosApi.confirmVideoUpload as jest.Mock).mockResolvedValue({ ok: true });
+      (NetInfo.fetch as jest.Mock).mockResolvedValue({
+        type: 'cellular', isConnected: true, isInternetReachable: true, details: {},
+      });
+
+      await useVideoQueueStore.getState().recordVideo({
+        sourceUri: 'file:///tmp/clip.mp4', placeId: 'place-1', contentType: 'video/mp4', uploadedBy: 'user-a',
+      });
+      await useVideoQueueStore.getState().runSyncPass('user-a');
+
+      expect(NetInfo.fetch).not.toHaveBeenCalled();
+      expect(videosApi.requestVideoUpload).toHaveBeenCalled();
+      expect(useVideoQueueStore.getState().videos[0].syncState).toBe('reviewing');
+    });
+
+    it('holds a queued video untouched on a cellular connection when the preference is on', async () => {
+      useUploadPreferencesStore.getState().setWifiOnlyVideoUploads(true);
+      (NetInfo.fetch as jest.Mock).mockResolvedValue({
+        type: 'cellular', isConnected: true, isInternetReachable: true, details: {},
+      });
+
+      await useVideoQueueStore.getState().recordVideo({
+        sourceUri: 'file:///tmp/clip.mp4', placeId: 'place-1', contentType: 'video/mp4', uploadedBy: 'user-a',
+      });
+      await useVideoQueueStore.getState().runSyncPass('user-a');
+
+      expect(videosApi.requestVideoUpload).not.toHaveBeenCalled();
+      expect(useVideoQueueStore.getState().videos[0].syncState).toBe('recorded');
+    });
+
+    it('proceeds on a Wi-Fi connection when the preference is on', async () => {
+      useUploadPreferencesStore.getState().setWifiOnlyVideoUploads(true);
+      (videosApi.requestVideoUpload as jest.Mock).mockResolvedValue({
+        video_id: 'server-1', upload_url: 'https://r2.example.test/put', key: 'k',
+      });
+      (videosApi.uploadVideoToSignedUrl as jest.Mock).mockResolvedValue(undefined);
+      (videosApi.confirmVideoUpload as jest.Mock).mockResolvedValue({ ok: true });
+      (NetInfo.fetch as jest.Mock).mockResolvedValue({
+        type: 'wifi', isConnected: true, isInternetReachable: true, details: {},
+      });
+
+      await useVideoQueueStore.getState().recordVideo({
+        sourceUri: 'file:///tmp/clip.mp4', placeId: 'place-1', contentType: 'video/mp4', uploadedBy: 'user-a',
+      });
+      await useVideoQueueStore.getState().runSyncPass('user-a');
+
+      expect(videosApi.requestVideoUpload).toHaveBeenCalled();
+      expect(useVideoQueueStore.getState().videos[0].syncState).toBe('reviewing');
+    });
+
+    it('treats ethernet the same as Wi-Fi (not metered)', async () => {
+      useUploadPreferencesStore.getState().setWifiOnlyVideoUploads(true);
+      (videosApi.requestVideoUpload as jest.Mock).mockResolvedValue({
+        video_id: 'server-1', upload_url: 'https://r2.example.test/put', key: 'k',
+      });
+      (videosApi.uploadVideoToSignedUrl as jest.Mock).mockResolvedValue(undefined);
+      (videosApi.confirmVideoUpload as jest.Mock).mockResolvedValue({ ok: true });
+      (NetInfo.fetch as jest.Mock).mockResolvedValue({
+        type: 'ethernet', isConnected: true, isInternetReachable: true, details: {},
+      });
+
+      await useVideoQueueStore.getState().recordVideo({
+        sourceUri: 'file:///tmp/clip.mp4', placeId: 'place-1', contentType: 'video/mp4', uploadedBy: 'user-a',
+      });
+      await useVideoQueueStore.getState().runSyncPass('user-a');
+
+      expect(videosApi.requestVideoUpload).toHaveBeenCalled();
+    });
   });
 
   it('records a failure and keeps the video retryable until MAX_ATTEMPTS', async () => {
@@ -698,7 +792,14 @@ describe('videoQueueStore persisted-store migration', () => {
       },
       version: 0,
     });
-    (AsyncStorageModule.getItem as jest.Mock).mockResolvedValueOnce(legacyPersistedState);
+    // Keyed by storage name, not a blind "next call" -- videoQueueStore.ts
+    // now also imports uploadPreferencesStore.ts, whose own persist
+    // middleware calls getItem('crave-upload-preferences') during the
+    // same require() below, and a plain mockResolvedValueOnce would get
+    // consumed by whichever store's rehydration happens to run first.
+    (AsyncStorageModule.getItem as jest.Mock).mockImplementation((key: string) =>
+      Promise.resolve(key === 'crave-video-queue' ? legacyPersistedState : null)
+    );
 
     const { useVideoQueueStore: migratedStore } = require('./videoQueueStore');
     for (let i = 0; i < 15; i++) {
