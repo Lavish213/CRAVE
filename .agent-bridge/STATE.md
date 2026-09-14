@@ -42,9 +42,11 @@ Known gaps: cravesStore.ts's `_classifyError` was already delegating to
 file was stale; confirmed via `git log`, not re-changed. The other 4
 auth-gate call sites' `resume` intentionally stay `() => undefined` (see
 scope above) -- not a gap, a deliberate scope boundary per the ask.
-Next action: open the PR against `main`, request CodeRabbit review, do not
-merge -- user is coordinating several parallel PRs and will sequence merges
-themselves.
+PR: https://github.com/Lavish213/CRAVE/pull/306 (opened against `main`,
+CodeRabbit review requested via `@coderabbitai review`).
+Next action: none from me -- do not merge. User is coordinating several
+parallel PRs against `main` and will watch CI/CodeRabbit and sequence
+merges themselves.
 
 ---
 
