@@ -88,12 +88,12 @@ imagehash>=4.3.1
 
 # Frame-array preprocessing for the video food-classifier
 # (app/services/video/food_classifier.py).
-numpy>=1.26.0
+numpy>=2.5.2
 
 # TFLite interpreter for the video food-classifier
 # (app/services/video/food_classifier.py) -- Google's current package for
 # this (tflite-runtime's successor, same Interpreter API). Confirmed
-# installing cleanly against this same numpy>=1.26.0 pin in a sandbox
+# installing cleanly against this same numpy>=2.5.2 pin in a sandbox
 # test (tflite-runtime 2.14.0, the only PyPI version, does NOT -- it's
 # built against numpy 1.x and raises on import under numpy 2.x, which
 # this repo's numpy pin already allows). Still needs a real Railway build
