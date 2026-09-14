@@ -25,6 +25,10 @@ from app.services.menu.extraction.llm_menu_extractor import extract_llm_menu
 from app.services.menu.extraction.pdf_menu_extractor import extract_pdf_menu
 from app.services.menu.extraction.provider_detector import detect_provider
 from app.services.menu.extraction.js.js_extractor import extract_menu_from_js
+from app.services.menu.fetch.fetch_strategy_router import (
+    STRATEGY_FAIL_FAST,
+    classify_fetch_strategy,
+)
 from app.services.menu.providers.provider_registry import extract_with_fallback
 from app.services.network.browser_escalation import fetch_with_browser, should_browser_escalate
 from app.services.network.http_fetcher import fetch
@@ -101,6 +105,16 @@ def _safe_provider_extract(
     if not provider or not url:
         return []
 
+    strategy = classify_fetch_strategy(url)
+    if strategy.strategy == STRATEGY_FAIL_FAST:
+        logger.info(
+            "provider_extract_governance_block provider=%s url=%s reason=%s",
+            provider,
+            url,
+            strategy.blocked_reason,
+        )
+        return []
+
     try:
         items = extract_with_fallback(provider, url, html)
         if not isinstance(items, list):
@@ -122,6 +136,15 @@ def _safe_api_extract(html: str, url: Optional[str]) -> List[ExtractedMenuItem]:
     if not html or not url:
         return items
 
+    parent_strategy = classify_fetch_strategy(url)
+    if parent_strategy.strategy == STRATEGY_FAIL_FAST:
+        logger.info(
+            "api_discovery_governance_block url=%s reason=%s",
+            url,
+            parent_strategy.blocked_reason,
+        )
+        return items
+
     try:
         endpoints = discover_api_endpoints(html, url)[:MAX_API_ENDPOINTS]
         probe_deadline = time.monotonic() + MAX_API_PROBE_SECONDS
@@ -140,6 +163,16 @@ def _safe_api_extract(html: str, url: Optional[str]) -> List[ExtractedMenuItem]:
                 endpoint_text = _safe_text(endpoint).lower()
 
                 if not endpoint_text:
+                    continue
+
+                endpoint_strategy = classify_fetch_strategy(endpoint)
+                if endpoint_strategy.strategy == STRATEGY_FAIL_FAST:
+                    logger.info(
+                        "api_endpoint_governance_block endpoint=%s parent_url=%s reason=%s",
+                        endpoint,
+                        url,
+                        endpoint_strategy.blocked_reason,
+                    )
                     continue
 
                 if any(
@@ -203,6 +236,16 @@ def _safe_iframe_extract(
                 break
 
             try:
+                iframe_strategy = classify_fetch_strategy(iframe_url)
+                if iframe_strategy.strategy == STRATEGY_FAIL_FAST:
+                    logger.info(
+                        "iframe_governance_block iframe_url=%s parent_url=%s reason=%s",
+                        iframe_url,
+                        url,
+                        iframe_strategy.blocked_reason,
+                    )
+                    continue
+
                 response = fetch(iframe_url, mode="document", referer=url)
 
                 if not response or getattr(response, "status_code", None) != 200:
@@ -519,6 +562,16 @@ def extract_menu(
 ) -> List[ExtractedMenuItem]:
     if not html and not url:
         return []
+
+    if url:
+        strategy = classify_fetch_strategy(url)
+        if strategy.strategy == STRATEGY_FAIL_FAST:
+            logger.info(
+                "menu_extract_governance_block url=%s reason=%s",
+                url,
+                strategy.blocked_reason,
+            )
+            return []
 
     if url and url.lower().endswith(".pdf"):
         return _return(place_id, url, "pdf", _safe_extract(extract_pdf_menu, url))

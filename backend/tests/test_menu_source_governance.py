@@ -12,6 +12,8 @@ from app.services.menu.fetch.fetch_strategy_router import (
     STRATEGY_FAIL_FAST,
     classify_fetch_strategy,
 )
+from app.services.menu import menu_extraction_router
+from app.services.menu.menu_extraction_router import extract_menu
 from app.services.menu.processing.menu_orchestrator import MenuOrchestrator
 
 
@@ -88,3 +90,57 @@ def test_menu_orchestrator_does_not_fetch_provider_api_required_urls(
     finally:
         db.query(Place).filter(Place.id == place.id).delete()
         db.commit()
+
+
+def test_advanced_extraction_blocks_provider_api_required_direct_urls(monkeypatch):
+    def _browser_should_not_run(*args, **kwargs):  # pragma: no cover - failure path
+        raise AssertionError("browser escalation should not run for Toast")
+
+    monkeypatch.setattr(
+        "app.services.menu.menu_extraction_router.fetch_with_browser",
+        _browser_should_not_run,
+    )
+
+    assert extract_menu(
+        html="",
+        url="https://order.toasttab.com/online/provider-wall-test",
+        place_id="place-1",
+    ) == []
+
+
+def test_advanced_api_discovery_skips_provider_api_required_endpoints(monkeypatch):
+    monkeypatch.setattr(
+        menu_extraction_router,
+        "discover_api_endpoints",
+        lambda html, url: ["https://order.toasttab.com/api/menus/v3/restaurant/demo"],
+    )
+
+    def _api_should_not_run(*args, **kwargs):  # pragma: no cover - failure path
+        raise AssertionError("Toast API endpoint should not be probed")
+
+    monkeypatch.setattr(menu_extraction_router, "extract_api_menu", _api_should_not_run)
+    monkeypatch.setattr(menu_extraction_router, "extract_graphql_menu", _api_should_not_run)
+
+    assert menu_extraction_router._safe_api_extract(
+        "<html><script src='/menu.js'></script></html>",
+        "https://example-restaurant.test/menu",
+    ) == []
+
+
+def test_advanced_iframe_discovery_skips_provider_api_required_iframes(monkeypatch):
+    monkeypatch.setattr(
+        menu_extraction_router,
+        "detect_menu_iframes",
+        lambda html, url: ["https://ordering.chownow.com/order/123"],
+    )
+
+    def _fetch_should_not_run(*args, **kwargs):  # pragma: no cover - failure path
+        raise AssertionError("ChowNow iframe should not be fetched")
+
+    monkeypatch.setattr(menu_extraction_router, "fetch", _fetch_should_not_run)
+
+    assert menu_extraction_router._safe_iframe_extract(
+        "<html><iframe src='https://ordering.chownow.com/order/123'></iframe></html>",
+        "https://example-restaurant.test/menu",
+        "Example Restaurant",
+    ) == []

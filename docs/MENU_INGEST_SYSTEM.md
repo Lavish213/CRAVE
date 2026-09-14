@@ -107,6 +107,19 @@ provider, blocked reason, and auth requirement so Toast/ChowNow/provider walls
 can be excluded or intentionally sent to manual/provider-access queues before
 execution.
 
+The same governance applies inside the advanced extractor:
+
+- direct provider extraction,
+- discovered API/GraphQL endpoints,
+- embedded menu iframes,
+- browser escalation.
+
+This matters because an ordinary restaurant website may embed a protected
+Toast/ChowNow ordering surface even when the restaurant's own homepage is
+public. Public extraction remains enabled for normal HTML, JSON-LD, hydration
+state, PDFs, Square/Square Site, Popmenu, and other reachable sources; provider
+walls remain blocked until official access or reviewed manual submission.
+
 ---
 
 ## Rules
