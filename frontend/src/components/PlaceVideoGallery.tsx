@@ -3,8 +3,8 @@
 // Approved food videos for a place, plus the entry point into recording
 // a new one. Self-contained (fetches its own feed) so place/[id].tsx only
 // needs to render <PlaceVideoGallery placeId={place.id} /> once.
-import React, { useCallback, useEffect, useState } from 'react';
-import { Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ActivityIndicator, Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Image } from 'expo-image';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { useRouter } from 'expo-router';
@@ -17,8 +17,29 @@ import { useAuthStore } from '../stores/authStore';
 import { useToast } from '../hooks/useToast';
 import { requestAuthGate } from '../stores/authGateStore';
 import { ReportVideoSheet } from './ReportVideoSheet';
+import { useVideoQueueStore, QueuedVideo } from '../stores/videoQueueStore';
 
 const THUMB_SIZE = 96;
+
+// videoQueueStore is a per-device local queue, not synced across users --
+// only the person who recorded a video ever has it in their own store, so
+// these placeholders are naturally private to the uploader's own device
+// even though this component itself is rendered for every viewer of the
+// place. Deliberately excludes the terminal 'failed'/'rejected'/
+// 'missing_local_file' states: those need a retry/delete decision, which
+// already lives on the dedicated Uploads screen (app/uploads.tsx) -- this
+// gallery only needs to answer "is one of my videos on its way in?".
+const LOCAL_VIDEO_STATUS_COPY: Partial<Record<QueuedVideo['syncState'], string>> = {
+  recorded: 'Queued',
+  requesting_url: 'Uploading…',
+  uploading: 'Uploading…',
+  completing: 'Uploading…',
+  reviewing: 'Under review',
+};
+
+function isLocalVideoPending(state: QueuedVideo['syncState']): boolean {
+  return state in LOCAL_VIDEO_STATUS_COPY;
+}
 
 interface Props {
   placeId: string;
@@ -29,20 +50,63 @@ export function PlaceVideoGallery({ placeId }: Props) {
   const user = useAuthStore((s) => s.user);
   const [videos, setVideos] = useState<FeedVideo[]>([]);
   const [playingVideo, setPlayingVideo] = useState<FeedVideo | null>(null);
+  const queuedVideos = useVideoQueueStore((s) => s.videos);
 
-  useEffect(() => {
-    let cancelled = false;
-    fetchVideoFeed({ placeId, limit: 20 })
+  // Newest-first, same order recordVideo itself stores them in (see
+  // videoQueueStore.ts's recordVideo: `[video, ...get().videos]`).
+  const localPlaceholders = useMemo(
+    () =>
+      user
+        ? queuedVideos.filter(
+            (v) => v.placeId === placeId && v.uploadedBy === user.id && isLocalVideoPending(v.syncState)
+          )
+        : [],
+    [queuedVideos, user, placeId]
+  );
+
+  // Confirmed CodeRabbit finding on PR #314: two separate call sites below
+  // both fetch this same feed (initial mount/placeId-change, and a
+  // placeholder-loss refetch) with no ordering guarantee between them --
+  // navigating to a new place while a slower request for the previous one
+  // is still in flight, or either request simply resolving out of order,
+  // could let a stale response overwrite newer data. A monotonically
+  // increasing request id shared by both call sites means a response is
+  // only ever applied if it's still the most recent request issued,
+  // regardless of which effect started it or how long it took.
+  const latestRequestIdRef = useRef(0);
+  const refetchFeed = useCallback((forPlaceId: string) => {
+    const requestId = ++latestRequestIdRef.current;
+    fetchVideoFeed({ placeId: forPlaceId, limit: 20 })
       .then((data) => {
-        if (!cancelled) setVideos(data.videos);
+        if (latestRequestIdRef.current !== requestId) return;
+        setVideos(data.videos);
       })
       .catch((err: any) => {
+        if (latestRequestIdRef.current !== requestId) return;
         if (__DEV__) console.warn('[PlaceVideoGallery] fetch_failed', err?.response?.status, err?.message);
       });
-    return () => {
-      cancelled = true;
-    };
-  }, [placeId]);
+  }, []);
+
+  useEffect(() => {
+    refetchFeed(placeId);
+  }, [placeId, refetchFeed]);
+
+  // A locally-queued video for this place disappearing from
+  // localPlaceholders (rather than just changing syncState) means it either
+  // finished -- approved and pruned by videoQueueStore's own prune-on-
+  // next-pass logic -- or was dismissed/deleted. Either way, the server
+  // feed may now have a new video this component hasn't fetched yet, so
+  // refetch instead of waiting for the user to leave and reopen this place.
+  const prevPlaceholderIdsRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    const prevIds = prevPlaceholderIdsRef.current;
+    const currentIds = new Set(localPlaceholders.map((v) => v.id));
+    const lostAny = Array.from(prevIds).some((id) => !currentIds.has(id));
+    prevPlaceholderIdsRef.current = currentIds;
+    if (lostAny) {
+      refetchFeed(placeId);
+    }
+  }, [localPlaceholders, placeId, refetchFeed]);
 
   const handleRecordPress = useCallback(() => {
     if (!user) {
@@ -66,7 +130,11 @@ export function PlaceVideoGallery({ placeId }: Props) {
     router.push(`/record-video/${placeId}`);
   }, [user, placeId, router]);
 
-  if (videos.length === 0) {
+  const handlePlaceholderPress = useCallback(() => {
+    router.push('/uploads');
+  }, [router]);
+
+  if (videos.length === 0 && localPlaceholders.length === 0) {
     return (
       <View style={styles.container}>
         <TouchableOpacity style={styles.recordChip} onPress={handleRecordPress}>
@@ -84,6 +152,20 @@ export function PlaceVideoGallery({ placeId }: Props) {
           <Ionicons name="videocam" size={22} color={Colors.text} />
           <Text style={styles.recordThumbText}>Record</Text>
         </TouchableOpacity>
+        {localPlaceholders.map((v) => (
+          <TouchableOpacity
+            key={v.id}
+            style={[styles.thumbWrap, styles.localPlaceholder]}
+            onPress={handlePlaceholderPress}
+            accessibilityRole="button"
+            accessibilityLabel={`${LOCAL_VIDEO_STATUS_COPY[v.syncState]} — view in your uploads`}
+          >
+            <ActivityIndicator size="small" color={Colors.brand} />
+            <Text style={styles.localPlaceholderText} numberOfLines={2}>
+              {LOCAL_VIDEO_STATUS_COPY[v.syncState]}
+            </Text>
+          </TouchableOpacity>
+        ))}
         {videos.map((v, index) => (
           <TouchableOpacity
             key={v.id}
@@ -226,6 +308,21 @@ const styles = StyleSheet.create({
   },
   thumbPlaceholder: {
     backgroundColor: Colors.surfaceElevated,
+  },
+  localPlaceholder: {
+    backgroundColor: Colors.surfaceElevated,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: Spacing.xs,
+    gap: Spacing.xs,
+  },
+  localPlaceholderText: {
+    color: Colors.textSecondary,
+    fontSize: 10,
+    fontWeight: '600',
+    textAlign: 'center',
   },
   playBadge: {
     position: 'absolute',
