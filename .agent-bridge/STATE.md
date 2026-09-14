@@ -4,7 +4,7 @@ Status: ready-for-review
 Owner: Codex
 Branch: codex/menu-source-governance
 Base SHA: 474dec5
-Commit SHA: db38a9f
+Commit SHA: 8a46509
 Scope: Menu source governance after the 10-place canary. Add a provider/source
 classification layer so protected providers like Toast/ChowNow/Cloudflare pages
 are treated as access/governance states instead of parser failures; document the
