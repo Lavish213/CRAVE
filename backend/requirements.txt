@@ -55,7 +55,7 @@ pyjwt>=2.8.0
 cryptography>=42.0.0
 
 # Cache
-redis>=5.0.0
+redis>=8.1.0
 
 # Utilities
 python-dotenv>=1.2.0
