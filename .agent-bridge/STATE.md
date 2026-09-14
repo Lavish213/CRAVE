@@ -4,7 +4,7 @@ Status: implementing
 Owner: Codex
 Branch: codex/data-pipeline-dashboard
 Base SHA: 9653aff
-Commit SHA: 6e1fad3
+Commit SHA: 16c6332 (implementation commit; followed by state-only correction)
 Scope: Menu/data-pipeline control-room pass plus the code-doable offline-upload
 UX handoff that Claude cannot finish from its sandbox. Implement source/admin
 dashboard visibility, then expose the existing durable video-upload queue to
