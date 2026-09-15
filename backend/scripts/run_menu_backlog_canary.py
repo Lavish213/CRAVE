@@ -125,6 +125,40 @@ def build_preview(db, place_ids: list[str]) -> tuple[dict, list[dict], dict[str,
     return summary, preview, places_by_id
 
 
+def build_telemetry(*, preview: list[dict], run_summary: dict | None = None) -> dict:
+    found_rows = [row for row in preview if row.get("found")]
+    blocked_rows = [
+        row for row in found_rows
+        if row.get("source_strategy") == "fail_fast" or row.get("source_blocked_reason")
+    ]
+    auth_rows = [row for row in found_rows if row.get("source_needs_auth")]
+    provider_blocked_rows = [
+        row for row in blocked_rows
+        if row.get("source_blocked_reason") == "provider_api_required"
+    ]
+    telemetry = {
+        "canary_type": "menu_backlog",
+        "requested_places": len(preview),
+        "found_places": len(found_rows),
+        "blocked_sources": len(blocked_rows),
+        "provider_access_required": len(provider_blocked_rows),
+        "auth_required_sources": len(auth_rows),
+        # Menu backlog canary must never buy provider traffic implicitly.
+        # Provider/API cases are classified fail-fast by fetch_strategy_router.
+        "paid_provider_calls": 0,
+        "bounded_rollout_max_places": MAX_CANARY_PLACES,
+    }
+    if run_summary:
+        telemetry.update(
+            {
+                "attempted_places": run_summary.get("attempted", 0),
+                "materialized_places": run_summary.get("materialized", 0),
+                "error_count": run_summary.get("errors", 0),
+            }
+        )
+    return telemetry
+
+
 def run_canary(db, *, place_ids: list[str], places_by_id: dict[str, Place]) -> tuple[list[dict], dict]:
     """Runs extraction for exactly the given place_ids (already validated
     present and active by the caller) via MenuWorker's own per-place
@@ -199,7 +233,11 @@ def main(argv: list[str] | None = None) -> int:
     db = SessionLocal()
     try:
         summary, preview, places_by_id = build_preview(db, place_ids)
-        output: dict = {"canary_summary": summary, "places": preview}
+        output: dict = {
+            "canary_summary": summary,
+            "places": preview,
+            "telemetry": build_telemetry(preview=preview),
+        }
 
         if not args.run:
             print(json.dumps(output, indent=2, sort_keys=True, default=str))
@@ -235,6 +273,7 @@ def main(argv: list[str] | None = None) -> int:
         output["run_summary"] = run_summary
         output["canary_summary"]["mode"] = "run"
         output["results"] = results
+        output["telemetry"] = build_telemetry(preview=preview, run_summary=run_summary)
 
         print(json.dumps(output, indent=2, sort_keys=True, default=str))
         return 0

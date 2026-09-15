@@ -51,6 +51,9 @@ from .hitlist_dedup_key import HitlistDedupKey
 
 # ----- Share-to-CRAVE Layer -----
 from .crave_item import CraveItem
+from .crave_collection import CraveCollection, CraveCollectionPlace
+from .crave_place_state import CravePlaceState
+from .crave_tag import CraveTag, CravePlaceTag
 from .share_save_preference import ShareSavePreference
 
 # ----- Ops / Observability Layer -----
@@ -129,6 +132,11 @@ __all__ = [
 
     # Share-to-CRAVE
     "CraveItem",
+    "CraveCollection",
+    "CraveCollectionPlace",
+    "CravePlaceState",
+    "CraveTag",
+    "CravePlaceTag",
     "ShareSavePreference",
 
     # Ops / Observability

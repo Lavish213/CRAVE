@@ -1,6 +1,42 @@
 # Active agent state
 
 Status: implementing
+Owner: Codex
+Branch: codex/runtime-prod-run
+Base SHA: 34c5346
+Scope: backend/data lane requested by the user: production-safe P0.3 canary
+telemetry, P0.2 Supabase auth smoke gate, and the backend Craves data contract
+needed before frontend P0.6 can ship. Live production canary execution remains
+excluded from this code change because this sandbox still has no Railway
+Postgres connection string/TCP access; this PR only adds the audited contract
+and runnable gates.
+Locked files: backend/app/api/v1/routes/craves.py,
+backend/app/db/models/__init__.py, backend/app/db/models/crave_collection.py,
+backend/app/db/models/crave_place_state.py, backend/app/db/models/crave_tag.py,
+backend/alembic/versions/h9i0j1k2l3m4_add_craves_data_model.py,
+backend/scripts/smoke_supabase_auth.py,
+backend/scripts/run_free_image_canary.py,
+backend/scripts/run_menu_backlog_canary.py,
+backend/tests/test_craves_data_model_route.py,
+backend/tests/test_supabase_auth_smoke_script.py,
+backend/tests/test_free_image_canary_script.py,
+backend/tests/test_menu_backlog_canary_script.py.
+Verification so far: `python3 -m compileall -q app scripts` clean;
+`DATABASE_URL=sqlite:////private/tmp/crave-craves-contract-migration-2.db
+alembic upgrade head` passed; focused backend tests for Craves/auth/canaries/
+dashboard passed (29 passed, 1 warning); full backend suite passed
+(`1167 passed, 2 skipped, 29 warnings`).
+Known gaps / risks: production numbers, actual image/menu canary runs,
+Railway OSM backfill, and production auth provider smoke with a real
+Supabase token still require live production credentials/access. P0.8 import/
+pairwise endpoints and City Readiness live measurement are not included in
+this first backend/data PR.
+Next action: commit, push, open PR, request review; do not claim live
+production execution until Railway/Supabase smoke evidence exists.
+
+---
+
+Status: implementing
 Owner: Claude
 Branch: claude/video-status-polling
 Base SHA: c33753f (origin/main tip after PR #308)

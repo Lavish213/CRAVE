@@ -16,6 +16,7 @@ from app.db.models.place import Place
 from app.services.menu.processing.menu_orchestrator import MenuOrchestratorResult
 
 from scripts.run_menu_backlog_canary import (
+    build_telemetry,
     build_preview,
     parse_place_ids,
     run_canary,
@@ -91,6 +92,31 @@ def test_build_preview_reports_found_missing_and_inactive(db, city):
 
     found_names = {row["place_id"]: row["name"] for row in preview if row["found"]}
     assert found_names[active_place.id] == active_place.name
+
+
+def test_build_telemetry_reports_provider_blocks_without_paid_calls():
+    telemetry = build_telemetry(
+        preview=[
+            {
+                "place_id": "p1",
+                "found": True,
+                "source_strategy": "fail_fast",
+                "source_blocked_reason": "provider_api_required",
+                "source_needs_auth": True,
+            },
+            {"place_id": "p2", "found": True, "source_strategy": "direct_request"},
+            {"place_id": "missing", "found": False},
+        ],
+        run_summary={"attempted": 2, "materialized": 1, "errors": 0},
+    )
+
+    assert telemetry["canary_type"] == "menu_backlog"
+    assert telemetry["requested_places"] == 3
+    assert telemetry["found_places"] == 2
+    assert telemetry["provider_access_required"] == 1
+    assert telemetry["auth_required_sources"] == 1
+    assert telemetry["paid_provider_calls"] == 0
+    assert telemetry["materialized_places"] == 1
 
 
 def test_run_canary_only_touches_the_exact_given_place_ids(db, city, monkeypatch):

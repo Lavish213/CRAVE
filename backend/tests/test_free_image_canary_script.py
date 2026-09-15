@@ -9,6 +9,7 @@ from app.db.session import SessionLocal
 
 from scripts.run_free_image_canary import (
     FreeOnlyImageReader,
+    build_telemetry,
     build_preview,
     parse_place_ids,
     run_is_authorized,
@@ -102,6 +103,22 @@ def test_preview_reports_existing_rows(db, city):
     assert summary["missing"] == ["missing"]
     assert summary["already_has_image_rows"] == [place.id]
     assert rows[0]["existing_image_rows"] == 1
+
+
+def test_telemetry_keeps_free_image_canary_at_zero_paid_and_zero_public():
+    telemetry = build_telemetry(
+        rows=[
+            {"place_id": "p1", "found": True, "existing_image_rows": 0},
+            {"place_id": "p2", "found": True, "existing_image_rows": 3},
+        ],
+        run_summary={"attempted": 2, "staged": 4, "publicly_visible": 0},
+    )
+
+    assert telemetry["canary_type"] == "free_image"
+    assert telemetry["already_has_image_rows"] == 1
+    assert telemetry["paid_provider_calls"] == 0
+    assert telemetry["publicly_visible_images"] == 0
+    assert telemetry["staged_images"] == 4
 
 
 def test_stage_canary_hides_every_new_image(db, city, monkeypatch):

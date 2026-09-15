@@ -114,6 +114,30 @@ def build_preview(db, place_ids: list[str]) -> tuple[dict, list[dict], dict[str,
     )
 
 
+def build_telemetry(*, rows: list[dict], run_summary: dict | None = None) -> dict:
+    found_rows = [row for row in rows if row.get("found")]
+    already_has_images = [row for row in rows if row.get("existing_image_rows", 0) > 0]
+    telemetry = {
+        "canary_type": "free_image",
+        "requested_places": len(rows),
+        "found_places": len(found_rows),
+        "already_has_image_rows": len(already_has_images),
+        # Canary image reader structurally removes Google and any paid branch.
+        "paid_provider_calls": 0,
+        "publicly_visible_images": 0,
+        "bounded_rollout_max_places": MAX_CANARY_PLACES,
+    }
+    if run_summary:
+        telemetry.update(
+            {
+                "attempted_places": run_summary.get("attempted", 0),
+                "staged_images": run_summary.get("staged", 0),
+                "publicly_visible_images": run_summary.get("publicly_visible", 0),
+            }
+        )
+    return telemetry
+
+
 def stage_canary(db, *, place_ids: list[str], places_by_id: dict[str, Place]) -> tuple[list[dict], dict]:
     service = ImageIngestService(reader=FreeOnlyImageReader())
     results: list[dict] = []
@@ -170,7 +194,11 @@ def main(argv: list[str] | None = None) -> int:
     db = SessionLocal()
     try:
         summary, rows, places_by_id = build_preview(db, place_ids)
-        output: dict = {"canary_summary": summary, "places": rows}
+        output: dict = {
+            "canary_summary": summary,
+            "places": rows,
+            "telemetry": build_telemetry(rows=rows),
+        }
         if not args.run:
             print(json.dumps(output, indent=2, sort_keys=True, default=str))
             return 0
@@ -188,6 +216,7 @@ def main(argv: list[str] | None = None) -> int:
         output["canary_summary"]["mode"] = "run"
         output["run_summary"] = run_summary
         output["results"] = results
+        output["telemetry"] = build_telemetry(rows=rows, run_summary=run_summary)
         print(json.dumps(output, indent=2, sort_keys=True, default=str))
         return 0
     finally:
